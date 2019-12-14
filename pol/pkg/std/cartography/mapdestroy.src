@@ -1,0 +1,26 @@
+///////////////////////////////////////////////////////////////////////////
+// mapdestroy - bei Zerstoerung der Karte ggf. die Box im Storage entfernen
+
+use storage;
+include ":treasuremap:treasurechest";
+include "include/storage";
+
+Const DESTROY_OK := 1;
+Program MapDestroy(map)
+    var custom := map.getprop(CHEST_CUSTOM_CPROP);
+    If (!custom)
+        // keine Kiste mit eigener Fuellung -> nix zu loeschen
+        return DESTROY_OK;
+    EndIf
+
+    var area := FindStorageArea(STORAGE_CHEST);
+    If (!area)
+        // ohne entsprechende Area gibt es keine Boxen, die weg muessen
+        return DESTROY_OK;
+    EndIf
+
+    // Killversuch
+    DestroyRootItemInStorageArea(area, custom);
+
+    return DESTROY_OK;
+EndProgram

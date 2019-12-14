@@ -1,0 +1,476 @@
+use cfgfile;
+use math;
+use os;
+use polsys;
+use uo;
+use util;
+include ":farming:farm";
+include "include/eventid";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/logutil";
+include "include/msgs";
+include "include/properties";
+
+// Debugmeldungen an/aus
+Const COMP_DEBUG   := 0;
+
+// Wartezeit zwischen Umgebungsscans
+Const DELAY_SEARCH := 300;
+// Sekunden, nach der Torf/Humus erzeugt wird und der Haufen schrumpft
+Const DELAY_SHRINK := 12 * 3600; // 1/2 Tag
+// Zaehler, wie lange der Haufen schon leer ist
+Const PROP_EMPTY      := "TimesEmpty";
+// maximaler Leerstand (DELAY_SHRINK * MAX_EMPTY) in Sekunden
+Const MAX_EMPTY       := 2 * 7; // 7 Tage
+// ist es ein oeffentlicher Haufen (nicht weggrabbar)
+Const PROP_COMMUNAL   := "communal";
+
+Program CompostHeap(heap)
+    // While (heap.container or heap.movable)
+    //     // TODO: Rangecheck und festmachen
+    // EndWhile
+
+    heap.setprop("#pid", GetPid());
+
+    var lastsearch := ReadGameClock();
+    var lastshrink := ReadGameClock();
+
+    var completelist := GetCompostSet(heap);
+    While (heap)
+        var ev := Wait_For_Event(DELAY_SEARCH);
+
+        If (ev and ev.type == EVID_SELF_KILL)
+            DebugLog("umgraben");
+            DigCompost(heap, ev.source, ev.tool);
+        EndIf
+
+        If (!heap)
+            // falls inzwischen beseitigt
+            exit;
+        EndIf
+
+        DebugLog("aufwach");
+
+        // Haufen regelmaessig schrumpfen und Humus/Torf erzeugen
+        If (ReadGameClock() >= lastshrink + DELAY_SHRINK)
+            lastshrink := ReadGameClock();
+            ShrinkCompost(heap);
+        EndIf
+
+        // ist wieder Zeit zum Kompostieren?
+        If (ReadGameClock() >= lastsearch + DELAY_SEARCH)
+            lastsearch := ReadGameClock();
+
+            // gucken, ob es etwas zum Kompostieren gibt
+            var compostable := SearchLocation(heap);
+            If (compostable.size() <= 0)
+                DebugLog("nix da");
+                continue;
+            EndIf
+
+            // zufaelliges Item zum Kompostieren vorsehen {{{
+            var tocompost   := 0;
+            While (compostable.size() >= 1)
+                var try := 1 + RandomInt(compostable.size());
+
+                If (ReserveItem(compostable[try]))
+                    // Item ist geeignet
+                    tocompost := compostable[try];
+                    break;
+                EndIf
+
+                // das war schon in Benutzung
+                compostable.erase(try);
+            EndWhile
+            If (!tocompost)
+                continue;
+            EndIf
+            // }}}
+            DebugLog("kompostiere "+tocompost.name);
+
+            // gewaehltes Item kompostieren
+            GrowCompost(heap, completelist, tocompost);
+        EndIf
+    EndWhile
+EndProgram
+
+// baut ein Array aus Grafiken und Koordinaten der Kompostsetitems
+Function GetCompostSet(item) // {{{
+    var cfg  := ReadConfigFile("::sets");
+    var elem := FindConfigElem(cfg, "Kompost");
+    var set  := GetConfigStringArray(elem, "Item");
+
+    var i;
+    For (i := 1; i <= set.size(); i += 1)
+        SleepMs(2);
+        var list  := SplitWords(set[i]);
+        var desc := struct{
+            graphic := CInt(list[1]),
+            x       := CInt(list[2]),
+            y       := CInt(list[3]),
+            z       := CInt(list[4])
+        };
+        set[i] := desc;
+    EndFor
+
+    // das Kompostitem ist das erste Item, daher:
+    // Grafik uebernehmen und aus Array entfernen
+    item.graphic := set[1].graphic;
+    set.erase(1);
+
+    return set;
+EndFunction // }}}
+
+// Kompost verkleinern, Humus/Torf erzeugen
+Function ShrinkCompost(heap) // {{{
+    DebugLog("schrumpfen");
+
+    var heapitems := GetObjPropOrDefault(heap, PROP_LIST, array{});
+    // Haufen leer {{{
+    If (heapitems.size() <= 0)
+        If (heap.getprop(PROP_COMMUNAL))
+            // oeffentliche Haufen bleiben ewig da,
+            // produzieren leer aber nichts
+            return;
+        EndIf
+
+        // Beseitigung pruefen
+        var timesempty := GetObjPropOrDefault(heap, PROP_EMPTY, 0);
+        timesempty += 1;
+        If (timesempty > MAX_EMPTY)
+            // Haufenrest entfernen
+            DebugLog("Selbstzerstoerung");
+            DestroyItem(heap);
+            return;
+        Else
+            // Leerzeit speichern
+            DebugLog("erhoehe Leerzaehler auf "+timesempty);
+            heap.setprop(PROP_EMPTY, timesempty);
+        EndIf
+        return;
+    EndIf
+    // }}}
+
+    // noch nicht leer, ein Haufenitem durch Humus/Torf ersetzen
+
+    // immer neuestes/oberstes Item ersetzen, damit der Haufen nicht
+    // irgendwann in der Luft haengt
+    // {{{
+    var replace := error{errortext := "Init loop"};
+    While (heapitems.size() >= 1 and !replace)
+        SleepMs(2);
+        var index := heapitems.size();
+        replace := SystemFindObjectBySerial(heapitems[index]);
+        heapitems.erase(index);
+    EndWhile
+    If (replace == error)
+        syslog(
+            "FEHLER: "+ItemInfoStr(heap, COORDS_REALM)+
+            " kann nicht schrumpfen: "+replace.errortext
+        );
+        return;
+    EndIf
+    // }}}
+
+    // Anzahl der erzeuten Humus-/Torfitems berechnen {{{
+    var mouldcount := 1;
+    If (heapitems.size() >= 10)
+        // gute Pflege der Haufen belohnen
+        mouldcount := 2;
+        If (heapitems.size() >= 18)
+            // maximale Groesse der Haufen ist 20, aber das oberste
+            // Item ist schon abgezogen
+            mouldcount := 4;
+        EndIf
+    EndIf
+
+    // Aufteilung berechnen
+    // es gibt immer ein Humusitem, da RandomInt < mould liefert
+    var peatcount := RandomInt(mouldcount);
+    mouldcount -= peatcount;
+
+    DebugLog("erzeuge "+mouldcount+" Humus/"+peatcount+" Torf");
+    // }}}
+
+    // Humus/Torf erzeugen {{{
+    // Humus erzeugen
+    var mould := CreateItemAtLocation(
+        replace.x, replace.y, replace.z,
+        "FertileDirt", mouldcount, replace.realm
+    );
+    If (!mould)
+        syslog(
+            "FEHLER: "+ItemInfoStr(heap, COORDS_REALM)+
+            " kann keinen Humus erzeugen: "+mould.errortext
+        );
+        return;
+    EndIf
+    // Decay vermeiden
+    // (zumindest, solange nicht unter allen statischen Haeusern Multis sind)
+    mould.decayat := 0;
+
+    // ggf. Torf erzeugen
+    var peat := 0;
+    If (peatcount > 0)
+        peat := CreateItemAtLocation(
+            replace.x, replace.y, replace.z,
+            "BlackMoor", peatcount, replace.realm
+        );
+        If (!peat)
+            // bereits erzeugten Humus wieder entfernen
+            DestroyItem(mould);
+            syslog(
+                "FEHLER: "+ItemInfoStr(heap, COORDS_REALM)+
+                " kann keinen Torf erzeugen: "+peat.errortext
+            );
+            return;
+        EndIf
+        peat.decayat := 0;
+    EndIf
+    // }}}
+
+    // zuletzt zu ersetzendes Item aus dem Haufen entfernen
+    If (!DestroyItem(replace))
+        // fehlgeschlagen
+        DestroyItem(mould);
+        If (peat)
+            DestroyItem(peat);
+        EndIf
+        syslog(
+            "FEHLER: "+ItemInfoStr(heap, COORDS_REALM)+
+            " konnte Haufenteil "+ItemInfoStr(replace)+" nicht ersetzen"
+        );
+        return;
+    EndIf
+
+    // hat geklappt, gekuerzte Liste sichern
+    heap.setprop(PROP_LIST, heapitems);
+EndFunction // }}}
+
+// Umgebung nach kompostierbaren Items absuchen,
+// moegliche Items vom Decay ausschliessen
+Function SearchLocation(heap) // {{{
+    DebugLog("suche");
+    var here := ListItemsNearLocation(heap.x, heap.y, heap.z, 2, heap.realm);
+    If (!here)
+        syslog(
+            "FEHLER: Bei "+ItemInfoStr(heap, COORDS_REALM)+
+            " ist Kompostsuche defekt: "+here.errortext
+        );
+        return array{};
+    EndIf
+
+    var heapitems := heap.getprop(PROP_LIST);
+    // Liste auf geeignete Items einschraenken
+    var i;
+    For (i := here.size(); i >= 1; i -= 1)
+        SleepMs(2);
+
+        // gehoert schon zum Kompost
+        If (here[i] == heap or here[i].serial in (heapitems))
+            here.erase(i);
+            continue;
+        EndIf
+
+        // Humus/Torf leise ignorieren
+        If (here[i].objtype in (array{0x0f79, 0x0f81}))
+            here.erase(i);
+            continue;
+        EndIf
+
+        // nicht aus fremden Etagen klauen
+        If (Abs(here[i].z - heap.z) > 15)
+            DebugLog(here[i].desc+" ist zu hoch/tief");
+            here.erase(i);
+            continue;
+        EndIf
+
+        // festgemachte Items aussondern
+        If (!here[i].movable)
+            DebugLog(here[i].desc+" ist fest");
+            here.erase(i);
+            continue;
+        EndIf
+
+        // unkompostierbare Items aussondern
+        If (!IsCompostable(here[i]))
+            DebugLog(here[i].desc+" ist unkompostierbar");
+            here.erase(i);
+            continue;
+        EndIf
+
+        // Decay auf allen kompostierbaren Items abschalten
+        here[i].decayat := 0;
+    EndFor
+
+    // kompostierbare Items zurueckgeben
+    return here;
+EndFunction // }}}
+
+// prueft, ob das uebergebene Item kompostierbar ist
+Function IsCompostable(item) // {{{
+    If (item.objtype in (array{0x0f3b, 0x0f3c}))
+        // Pferdeapfel
+        return 1;
+    EndIf
+
+    If (item.objtype in (array{0x0f34, 0x0f35, 0x1037}))
+        // Heu
+        return 1;
+    EndIf
+
+    If (item.objtype in (array{
+            0x0cac, 0x0cad, 0x0cae, 0x0caf, 0x0cb0, 0x0cb1, 0x0cb2, 0x0cb3,
+            0x0cb4, 0x0cb5, 0x0cb6, 0x0cb9, 0x0cba, 0x0cbb, 0x0cbc, 0x0cbd,
+            0x0cc3, 0x0cc5, 0x0cc6, 0x0d32, 0x0d32, 0x0d33
+    }))
+        // Graeser
+        return 1;
+    EndIf
+
+    If (item.objtype in (array{
+            0x0c98, 0x0c9f, 0x0ca0, 0x0ca1, 0x0ca2, 0x0ca3, 0x0ca4
+    }))
+        // Farne
+        return 1;
+    EndIf
+
+    If (item.objtype in (array{
+        0x1b1f, 0x1b20, 0x1b21, 0x1b22, 0x1b23, 0x1b24, 0x1b25, 0x1b26
+    }))
+        // Laub
+        return 1;
+    EndIf
+
+    If (item.objtype in (array{0x09b4}))
+        // Eierschalen
+        return 1;
+    EndIf
+
+    return error{errortext := "Item is not compostable"};
+EndFunction // }}}
+
+// ein Item zum Kompost hinzufuegen, wenn der Haufen noch wachsen kann
+Function GrowCompost(heap, byref completelist, delitem) // {{{
+    var heapitems := GetObjPropOrDefault(heap, PROP_LIST, array{});
+
+    DebugLog(heapitems.size());
+    DebugLog(completelist.size());
+    // das erste Item ist heap und nicht in der Liste, daher "1 +"
+    If (heapitems.size() >= completelist.size())
+        // Haufen ist schon maximal
+        DebugLog("haufen maximal");
+        ReleaseItem(delitem);
+        return;
+    EndIf
+
+    // Beschreibung fuer neues Item ermitteln
+    var new := completelist[heapitems.size() + 1];
+    new.x += heap.x;
+    new.y += heap.y;
+    new.z += heap.z;
+    var desc := GetItemDescriptor("compostdummy");
+    desc.cprops  := dictionary;
+    desc.cprops[PROP_CONTROLLER] := heap.serial;
+    desc.graphic := new.graphic;
+
+    // Haufen um ein Item vergroessern
+    var newheapitem := CreateItemAtLocation(
+        new.x, new.y, new.z, desc, 1, heap.realm
+    );
+    If (!newheapitem)
+        // Fehler
+        syslog(
+            "FEHLER: Konnte Kompost nicht vergroessern: "+newheapitem.errortext
+        );
+        // zu kompostierendes Item freigeben
+        ReleaseItem(delitem);
+        return;
+    EndIf
+
+    // hat geklappt, kompostiertes Item reduzieren und ggf. freigeben
+    SubtractAmount(delitem, 1);
+    If (delitem)
+        ReleaseItem(delitem);
+    EndIf
+
+    // Haufenliste erweitern
+    heapitems.append(newheapitem.serial);
+    heap.setprop(PROP_LIST, heapitems);
+    // Leerzaehler zuruecksetzen
+    heap.setprop(PROP_EMPTY, 0);
+EndFunction // }}}
+
+// Grabe-Event (von Heugabelscript) fuehrt zu Selbstzerstoerung
+Function DigCompost(heap, who, tool) // {{{
+    If (heap.getprop(PROP_COMMUNAL))
+        SendSysMessagePergon(who,
+            "Dies ist ein öffentlicher Komposthaufen. "+
+            "Ihr dürft ihn nicht zerstören.",
+            "This is a communal compost heap. You must not destroy it."
+        );
+        return;
+    EndIf
+    SendSysMessagePergon(who,
+        "Ihr grabt den Komposthaufen um.",
+        "You dig trough the compost heap."
+    );
+
+    // Sofortige Zerstoerung fuer Zentralitem setzen
+    heap.setprop(PROP_EMPTY, MAX_EMPTY);
+
+    // Heugabel reservieren und festmachen,
+    // damit man sie nicht nutzen/weglegen kann
+    If (!ReserveItem(tool))
+        SendSysMessagePergon(who,
+            "Damit könnt Ihr gerade nicht umgraben.",
+            "You cannot dig with that now."
+        );
+        return;
+    EndIf
+    tool.movable := 0;
+
+    While (who and who.connected and heap)
+        If (Distance(who, heap) > 2)
+            SendSysMessagePergon(who,
+                "Ihr seid zu weit weg!", "You are too far away."
+            );
+            break;
+        EndIf
+        // zum Haufen drehen
+        var facing := GetFacing(who.x, who.y, heap.x, heap.y);
+        If (facing <> who.facing)
+            who.facing := facing;
+        EndIf
+        // etwas herumfuchteln
+        PerformAction(who, ANIM_ATTACK_2HAND_JAB);
+        If (RandomInt(2))
+            PlaySoundEffect(heap, 0x33a);
+        Else
+            PlaySoundEffect(heap, 0x33b);
+        EndIf
+        ShrinkCompost(heap);
+        If (heap)
+            Sleep(4);
+        EndIf
+    EndWhile
+
+    ReleaseItem(tool);
+    tool.movable := 1;
+
+    // ab und an kaputtgehen
+    If (RandomInt(100) <= 3)
+        SetWerkzeugSchaden(who, tool,
+            "Eure Heugabel hat gelitten!",
+            "Eure Heugabel ist stark beschädigt!",
+            "Eure Heugabel ist zerbrochen!"
+        );
+    EndIf
+EndFunction // }}}
+
+Function DebugLog(text);
+    If (COMP_DEBUG)
+        syslog(text);
+    EndIf
+EndFunction

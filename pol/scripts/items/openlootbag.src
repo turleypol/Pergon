@@ -1,0 +1,68 @@
+/////////////////////////////////////////////////////////////
+//
+//   Open Gravestonebackpack - Prüfen ob der Corpse geöffnet werden darf, wenn nicht Abfrage
+//
+//     Author: Fox
+//
+/////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/modifyskill";
+Include "include/party";
+
+Var acceptlayout:={                   // Besteht der Looter aufs ungenehmigte Looten
+  "page 0",
+  "resizepic 30 30 9250 230 100",
+  "text 50 45 10 0",
+  "button 50 70 2104 2103 1 0 3001", //   Ja
+  "text 70 65 10 1",
+  "button 50 90 2104 2103 1 0 3002", //   Nein
+  "text 70 85 10 2"
+};
+
+Var acceptdata:={
+  "Wollt ihr diese Leiche looten?",
+  "Ja",
+  "Nein"
+};
+
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program OpenLootBag(who, bag)
+	Var open:=0;
+  If (ZugriffErlaubt(who, bag))
+  		open:=1; //genehmigt, alles oks
+	Else
+		Var answer:=SendDialogGump(who, acceptlayout, acceptdata); //kann nicht beim Bewegen gemacht werden da dann etwas in der Hand gehalten wird, deswegen hier die Sicherungsabfrage gegen ausversehen looten
+    If (answer[0]==3001) //ungenehmigt, aber der Looter möchte es durchziehen und wird im Forensic-Beweis vermerkt werden wenn er etwas bewegt
+			open:=1;
+		EndIf
+  EndIf
+  
+ If (open==1)
+ 	  //Loggen, wie in opencont
+		If ((!bag.container) And (bag.serial<>who.backpack.serial))
+	    SysLog("HINWEIS: "+who.name+" ("+Lower(Hex(who.serial))+") oeffnet den Container '"+
+	      bag.desc+"' ("+Lower(Hex(bag.serial))+") bei "+who.x+" "+who.y+" "+who.z+".");
+	  EndIf
+	  SendViewContainer(who, bag); // Container oeffnen  
+	EndIf
+EndProgram
+
+
+
+
+

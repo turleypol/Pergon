@@ -1,0 +1,35 @@
+////////////////////////////////////////////////////
+//
+//   TextCMD ShowIP - Zeigt die IP des Spielers an
+//
+//     Author: Shinigami
+//
+//   Modification
+//
+////////////////////////////////////////////////////
+
+/////////////
+// Includes
+/////////////
+use uo;
+
+Include "include/modifyskill";
+Include "include/msgs";
+Include "include/permissions";
+
+//////////////////
+// Hauptprogtamm
+//////////////////
+
+Program TextCMD_ShowIP(who)
+  If (AllowedToCheckIP(who))
+    SendSysMessagePergon(who, "Wählt den Spieler.", "Choose a Player.");
+
+    Var player:=Target(who);
+    If (player.isa(POLCLASS_MOBILE) And (!player.isa(POLCLASS_NPC)))
+      SendSysMessagePergon(who, player.name+" spielt von IP "+player.ip, player.name+" plays from IP "+player.ip);
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr seid nicht befugt!", "You are not authorizied!");
+  EndIf
+EndProgram

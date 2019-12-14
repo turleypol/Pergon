@@ -1,0 +1,64 @@
+use file;
+use os;
+use uo;
+include "include/msgs";
+include "include/pergonstatistik";
+include "include/quests";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+
+Program TextCMD_SayAbove(who, text, uc_text, langcode)
+  SendSysMessagePergon(who,
+    "Sage über was oder wem?", "Say above what or whom?");
+   
+	var what:=Target(who, TGTOPT_NOCHECK_LOS);    
+
+  If (!what) //Abfrage Zielcursor	 
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+	//Staffler sollen Sayabove für alles nutzen können, Spieler nur für NPC deren Master sie sind
+	If (who.cmdlevel <= CMDLEVEL_COUNSELOR) //Abfrage Spieler oder Staffler
+		If (Distance(who, what) > 8) //Abfrage Range
+		  SendSysMessagePergon(who, "Das ist zu weit entfernt!", "That is too far away!");
+		  return;	
+		ElseIf (what.IsA(POLCLASS_ITEM)) //Abfrage ob Ziel ein Item ist
+	      SendSysMessagePergon(who, "Sieht das aus wie ein Lebewesen?!", "Hm, this is not a living thing.");
+	    return;
+		ElseIf (what.serial == who.serial) //Abfrage ob man selbst das Ziel ist
+		  SendSysMessagePergon(who, "So ein dummes Tier könnt ihr nicht sprechen lassen...", "This animal seems to be too dumb to speak..." );
+		  return;
+		ElseIf (!(what.IsA(POLCLASS_NPC))) //Abfrage ob das Ziel ein NPC ist	
+		  SendSysMessagePergon(who, "Ihr könnt keine fremden Gedanken beeinflussen!", "You can not manipulate thoughts of others!");
+		  SendSysMessagePergon(what, who.name+" versucht euch scheinbar Worte in den Mund zu legen..", who.name+" tried to manipulate your words..");
+	    return;	
+		ElseIf (what.master != who) //Abfrage ob man Besitzer des Ziels ist
+	 	  SendSysMessagePergon(who, "Das ist nicht Eures!", "This is not yours!");
+	    return;
+	  EndIf   	
+	EndIf
+	
+	If (uc_text) // UniCode, sendet eigentlich heutzutage jeder Client
+      Var unicodetext:=Struct{uc_text:=uc_text, lang:=langcode};
+      PrintTextAbovePergon(who, what, unicodetext, unicodetext, _DEFAULT_UCFONT, who.last_textcolor);    
+    Else //ASCII für den Fall der Fälle
+      PrintTextAbovePergon(who, what, text, text,_DEFAULT_TEXT_FONT, who.last_textcolor);	
+    EndIf
+	
+	If (what.isa(POLCLASS_MOBILE))
+	  StatistikSayAbove(who, what, text); // Statistische Analyse durchfuehren
+	  Var spectatorev:=struct;
+  	  Var Spectator:=GetGlobalProperty("#Spectator");  
+		If (Spectator)
+          spectatorev.+type:="sayabove";
+          spectatorev.+value:={who.acctname, what.acctname, who.name+" ueber "+what.name+": "+text};
+          GetProcess(Spectator).sendevent(spectatorev);
+  	    EndIf
+	Else
+      QuestCharLog(who, "TextCMD SayAbove: Item '"+what.desc+"' ["+Lower(Hex(what.objtype))+"] ["+what.x+", "+what.y+", "+what.z+"]: "+text);
+	EndIf	
+	return;
+EndProgram

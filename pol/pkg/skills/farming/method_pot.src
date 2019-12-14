@@ -1,0 +1,32 @@
+/////////////////////////////////////////////////////////
+//
+//   method_seed - Für Tooltips
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     12.08.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Include ":tooltips:method_include";
+Include "include/modifyskill";
+
+Program Install()
+  Return(1);
+EndProgram
+
+Exported Function HasTooltip(object,who)
+  If ((HasPlayerSkill(who,SKILLID_ACKERBAU)) ||
+     (who.cmdlevel>=CMDLEVEL_SEER))
+    Return(1);
+  EndIf
+  Return(0);
+  object:=object;
+EndFunction
+
+Exported Function setTooltip(object,byref packet)
+  setTooltipPot(object,packet);
+EndFunction

@@ -1,0 +1,42 @@
+///////////////////////////////////////////////////////////////////////////
+// setkey - eine Tuer mit der Lock-ID eines Schluessels versehen
+
+use uo;
+include "include/msgs";
+
+Program setkey(who)
+    SendSysMessagePergon(who,
+        "Wählt zuerst einen Schlüssel.", "At first choose a key."
+    );
+
+    var key := Target(who);
+    If (!key)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+    var lockid := GetObjProperty(key, "lockid");
+    If (!lockid)
+        SendSysMessagePergon(who,
+            "Das ist entweder kein Schlüssel oder ein unbenutzter Rohling.",
+            "That's not a key or a unused blank key."
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Wählt nun eine Tür oder einen Container, dessen lock-id "+
+        "vom Schlüssel übernommen werden soll.",
+        "Choose a door or container, whose lock-id has to be changed."
+    );
+
+    var lockeditem := Target(who);
+    If (!lockeditem)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    SetObjProperty(lockeditem, "lockid", lockid);
+    SendSysMessagePergon(who,
+        "Das Schloss wurde geandert.", "Lock was changed."
+    );
+EndProgram

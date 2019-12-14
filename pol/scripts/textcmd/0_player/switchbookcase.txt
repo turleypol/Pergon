@@ -1,0 +1,6 @@
+<h3 id="switchbookcase">switchbookcase</h3>
+
+<p>Falls der Spieler ein Bibliothekar oder Seer ist, kann er mit diesem
+Befehl bei einem Bücherregal die globalisierte Aufnahme an oder
+abschalten. Regale mit globalisierter Buchaufnahme befüllen sich
+selbstständig.</p>

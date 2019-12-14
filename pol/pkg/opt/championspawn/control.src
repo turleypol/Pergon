@@ -1,0 +1,35 @@
+/////////////////////////////////////////////////////////
+//
+//   control - Resett nach Neustart
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     04.07.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+use uo;
+use os;
+
+Include "include/modifyskill";
+
+program control(idol)
+  ForEachItem(idol.getprop("platform"));  // zurücksetzen
+  SleepMS(2);
+  ForEachItem(idol.getprop("pentagram"));
+  SleepMS(2);  // Schädel überleben keinen Restart
+  idol.eraseprop("spawns");
+  idol.eraseprop("champion");
+endprogram
+
+Function ForEachItem(items)
+  ForEach item in items
+    item:=SystemFindObjectBySerial(item);
+    If (item)
+      item.deactivate();
+    EndIf
+  EndForEach
+EndFunction

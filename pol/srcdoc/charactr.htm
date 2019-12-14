@@ -1,0 +1,32 @@
+<title>charactr </title>
+<table border=0 width="100%">
+  <tr>
+    <td valign="top" width="100%"><strong><big><big><big>charactr </big></strong></td>
+    <td width="50%" valign="top" align="right" nowrap><a href="index.htm"><small>POL Core Doc<br>Home</small></a></td>
+  </tr>
+</table>
+<pre>
+
+ A Mobile's weight is 10 stones + the weight of their equipment.
+
+
+ A Mobile's carrying capacity is 40 + STR * 3.5 stones.
+
+
+ Clear a Mobile's ToBeReportable list when all of the following are true:
+     1) hits are at maximum
+     2) mobile is not poisoned
+     3) mobile is not paralyzed
+
+
+ When a Mobile is Healed
+
+   if Amy's hits are at maximum,
+       Clear Amy's ToBeReportable list
+
+     (note, poisoned and paralyzed flags are not checked)
+
+
+ Unequip scripts aren't honored when moving a dead mobile's equipment
+ onto a corpse
+

@@ -1,0 +1,22 @@
+/////////////////////////////////////////////////////////////
+//  ".refreshme" - Restore Hits, Mana, Stamina
+//
+//  Thanks to The Writer, from our Dev Board, for this one.
+
+Use file;
+use uo;
+Include "include/modifyskill";
+Include "include/msgs";
+Include "include/quests";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_RefreshMe(who)
+    SetHPPergon(who, GetMaxHPPergon(who));
+    SetManaPergon(who, GetMaxManaPergon(who));
+    SetStaminaPergon(who, GetMaxStaminaPergon(who));
+
+    QuestCharLog(who, "TextCMD RefreshMe");
+EndProgram

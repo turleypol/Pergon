@@ -1,0 +1,57 @@
+//
+// Fraggulus' Edition
+// angelehnt an pferdemist.src
+//
+// Stand: 22. November 2003
+//
+// Modifications:
+//   10.10.2006 Turley - Check auf .movable eingefügt
+
+use os;
+use uo;
+
+Include "include/client";
+Include "include/modifyskill";
+
+program snowball(character, item)
+	  If (!item.movable)
+    	SendSysMessagePergon(character, "Dies ist nicht zum Werfen geeignet.");
+    	Return;
+    EndIf
+
+    SendSysMessagePergon(character, "Wählt Euer Opfer.");
+    Var subject := Target(character);
+
+    If (!subject)
+      SendSysMessagePergon(character, "Zielen abgebrochen");
+      Return;
+    ElseIf (Distance(character, subject) >= 15)
+      SendSysMessagePergon(character, "So weit fliegen Schneebälle nicht!");
+      Return;
+    ElseIf (!CheckLineOfSight(character,subject))
+      SendSysMessagePergon(character, "Ihr könnt Euer Opfer nicht sehen.");
+      Return;
+    EndIf
+
+    If (character == subject)
+      PrintTextAbovePergon(character, character, "*klatscht sich einen Schneeball an den Kopf*");
+    Else
+      Detach();
+      If (subject.isa(POLCLASS_MOBILE))
+        SendSysMessagePergon(Character, "Ihr werft einen Schneeball auf " + subject.name + ".");
+      ElseIf (subject.isa(POLCLASS_ITEM))
+        SendSysMessagePergon(Character, "Ihr werft einen Schneeball auf " + subject.desc + ".");
+      EndIf
+      SubtractAmount(Item , 1);
+
+      PlayMovingEffectXYZ(character.x, character.y, character.z+15, subject.x, subject.y, subject.z, 0x36a0, 8, 0, 0,character.realm);
+      SleepMs(800);
+      PrintTextAbovePergon(character, subject, "*flatsch*");
+      Sleepms(1500);
+      If (subject.isa(POLCLASS_MOBILE))
+        SendSysMessagePergon(subject, character.name + " bewarf Euch mit einem Schneeball.");
+      EndIf
+    EndIf
+
+
+endprogram

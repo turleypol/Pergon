@@ -1,0 +1,164 @@
+// Brunnen -- mit Wassereimer aus Brunnenset Fässer füllen
+
+// $Log: not supported by cvs2svn $
+// Revision 1.6  2008/07/06 22:09:04  mehdorn
+// noch etwas veraendert, damit Fuellroutine selbst die Gefaesse wechselt
+//     -> Verkuerzt Zeit, in der leeres Fass mit "Voll"-Grafik existiert,
+//        gerade beim Brunnen
+//
+// Revision 1.5  2008/07/06 16:01:21  mehdorn
+// maximaler Fuellstand und Laenge der Sperrzeit nun per CProp einstellbar
+//
+// Revision 1.4  2008/07/06 15:05:09  mehdorn
+// nur entstecken falls versteckt
+//
+// Revision 1.3  2008/07/06 14:36:31  mehdorn
+// tut soweit, sogar mit Sound
+//
+// Revision 1.2  2008/07/04 04:11:51  mehdorn
+// 10 Sekunden Wartezeit zwischen Foerdervorgaengen mal ergaenzt
+//
+// Revision 1.1  2008/07/04 04:09:09  mehdorn
+// Brunnenscript angefangen
+// Include muss noch umgebaut werden, bevor es in Schleife genutzt werden kann
+//
+
+use uo;
+include "fill";
+include "include/msgs";
+
+// Maximalabstand zum Eimer
+Const DIST_MAX     := 2;
+Const GESPERRT_BIS := "sperrzeit";
+
+Program Brunnen(p)
+    var who := p.who;
+    var eimer := p.item;
+
+    If (Distance(who, eimer) > DIST_MAX)
+        SendSysMessagePergon(who,
+            "Ihr müsst näher heran!", "You are too far away!"
+        );
+        return;
+    EndIf
+
+    // Mehrfachbenutzung verhindern
+    var in_use := GetObjProperty(eimer, "#benutzt");
+    If (in_use)
+        SendSysMessagePergon(who,
+            "Dieser Brunnen wird gerade benutzt. Probiert es später erneut!",
+            "This well is currently in use. Try it later."
+        );
+        return;
+    EndIf
+    SetObjProperty(eimer, "#benutzt", who.serial);
+
+    var sperrzeit := GetObjProperty(eimer, GESPERRT_BIS);
+    If (!sperrzeit)
+        // Hauptsache ein Wert in der Vergangenheit
+        sperrzeit := 0;
+    EndIf
+
+    var fuellstand := GetObjProperty(eimer, FUELLSTAND);
+    // falls Sperrzeit abgelaufen ist, wird aufgefuellt
+    If (ReadGameClock() > sperrzeit)
+        fuellstand := GetPropOrSetDefault(eimer, "maximalfuellung", 300);
+    EndIf
+
+    If (fuellstand < 1)
+        SendSysMessagePergon(who,
+            "Ihr müsst warten, bis das Grundwasser nachgeströmt ist.",
+            "You have to wait for groundwater inflow."
+        );
+        EraseObjProperty(eimer, "#benutzt");
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Wählt das Gefäß, welches ihr füllen wollt.",
+        "Choose a vessel to fill."
+    );
+    var gefaess := Target(who, TGTOPT_CHECK_LOS);
+    If (!gefaess)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        EraseObjProperty(eimer, "#benutzt");
+        return;
+    EndIf
+
+    If (!ReserveItem(gefaess))
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        EraseObjProperty(eimer, "#benutzt");
+        return;
+    EndIf
+
+    // gesperrt bis jetzt+15 Minuten
+    // (eher sicherheitshalber, wird am Ende aufgefrischt)
+    var sperrlaenge := GetPropOrSetDefault(eimer, "sperrlaenge", 15*60);
+    SetObjProperty(eimer, GESPERRT_BIS, ReadGameClock()+sperrlaenge);
+    // Abfuellschleife
+    While (who.connected and fuellstand >= 1)
+        SendSysMessagePergon(who,
+            "Ihr lasst den Eimer hinab.",
+            "You dip the bucket into the water."
+        );
+        eimer.invisible := 1;
+        PlaySoundEffect(eimer, 0xf1);
+        Sleep(4);
+        eimer.invisible := 0;
+        If (who.hidden)
+            who.hidden := 0;
+        EndIf
+
+        // gucken, ob weggerannt
+        If (Distance(who, eimer) > DIST_MAX)
+            SendSysMessagePergon(who,
+                "Eure Arme sind zu kurz!",
+                "Your arms are not this long!"
+            );
+            break;
+        EndIf
+
+        // auf Wasserfinden vorbereiten
+        SetObjProperty(eimer, WASSERSTAND, 10);
+        var result := FuelleWasserGefaess(who, gefaess, eimer, NO_USE_SKILL);
+        // Verbrauch abziehen
+        fuellstand -= (10 - GetObjProperty(eimer, WASSERSTAND));
+        SetObjProperty(eimer, FUELLSTAND, fuellstand);
+
+        If (result == -1 or result.errortext)
+            // Zielgefaess voll oder Fehler beim Fuellen
+            break;
+        EndIf
+
+        Sleep(4);
+
+        // gucken, ob weggerannt
+        If (Distance(who, eimer) > DIST_MAX)
+            SendSysMessagePergon(who,
+                "Eure Arme sind zu kurz!",
+                "Your arms are not this long!"
+            );
+            break;
+        EndIf
+    EndWhile
+    ReleaseItem(gefaess);
+    If (fuellstand < 1)
+        SendSysMessagePergon(who,
+            "Die Wasservorräte des Brunnens sind erschöpft.",
+            "This well holds no more water."
+        );
+    EndIf
+    // gesperrt bis jetzt+15 Minuten
+    SetObjProperty(eimer, GESPERRT_BIS, ReadGameClock()+sperrlaenge);
+
+    EraseObjProperty(eimer, "#benutzt");
+EndProgram
+
+Function GetPropOrSetDefault(item, prop, def)
+    var result := GetObjProperty(item, prop);
+    If (result.errortext == "Property not found")
+        SetObjProperty(item, prop, def);
+        return def;
+    EndIf
+    return result;
+EndFunction

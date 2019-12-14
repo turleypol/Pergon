@@ -1,0 +1,35 @@
+/////////////////////////////////////////////////////////////////
+//
+//    TextCMD GetBaseSkillToRawSkill - Wandelt den Skillwert um
+//
+//      Author: Shinigami
+//
+//    Modification:
+//
+/////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonutil";
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_GetBaseSkillToRawSkill(who, param)
+  If (IsNumericDbl(param)) // Ist es eine Zahl?
+    param:=CDbl(param);
+    SendSysMessagePergon(who, param+"% BaseSkill entsprechen "+BaseSkillToRawSkillPergon(CInt(param*10))+" Punkte RawSkill.");
+  Else
+    SendSysMessagePergon(who, "Sie müssen eine BaseSkill-Zahl angeben!");
+  EndIf
+EndProgram

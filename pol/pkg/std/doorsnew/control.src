@@ -1,0 +1,29 @@
+/////////////////////////////////////////////////////////
+//
+//   control - Controlscript für Türen um sie Restartsicher zu machen
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     23.04.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+Use util;
+
+Program controlScript(door)
+  If (polcore().uptime<300)  // Ist nen Restart und nicht frisch Created
+    SleepMS(RandomInt(1000)*3+1000); // Bissle verteilen
+    If (!door.getprop("noautoclose"))  // Soll es Schließen?
+      If (!door.getprop("#ClosePid"))  // Hängt da schon nen Script dran?
+        If (door.IsOpen())
+          door.Close();
+        EndIf
+      EndIf
+    EndIf
+  EndIf
+EndProgram

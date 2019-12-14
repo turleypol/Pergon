@@ -1,0 +1,6 @@
+- Funktionen zur teilautomatisierten Löschung antiker Datenbestände eingeführt bzw. erweitert
+- Boote können jetzt den Pins einer Kartographiekarte folgen ["navigieren starten"]["weiter navigieren"]["navigiere #"]
+  (da Boote eh noch nicht herstellbar sind hat es die Player aber noch nicht zu interessieren)
+- weitere Optimierung der Boote und Fähren
+- .resource listet Ackerbausamen
+- reine Explosionstränke unterliegen nicht mehr einem Benutzungstimeout

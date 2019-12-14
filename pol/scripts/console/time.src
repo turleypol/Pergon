@@ -1,0 +1,5 @@
+include "include/clock";
+
+Program time()
+    print("System Message: The time in game is "+GetPergonTimeOfDay());
+EndProgram

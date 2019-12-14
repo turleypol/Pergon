@@ -1,0 +1,35 @@
+
+include "include/msgs";
+
+Program Open_Bank(who, mobileserial)
+  var bankbox;
+
+  If (mobileserial)
+    var mobile := SystemFindObjectBySerial(CInt(mobileserial), SYSFIND_SEARCH_OFFLINE_MOBILES);
+
+    If (mobile.isa(POLCLASS_MOBILE))
+      SendSysMessagePergon(who, "Die Bankbox von '"+mobile.name+"' wird geöffnet.");
+      bankbox := FindBankBox(mobile);
+    EndIf
+  Else
+    If (who.cmdlevel > CMDLEVEL_SEER)
+      SendSysMessagePergon(who, "Wählt den Spieler aus, dessen Bankbox ihr einsehen wollt!");
+
+      var player := Target(who, TGTOPT_NOCHECK_LOS);
+      If (player.isa(POLCLASS_MOBILE) && !player.isa(POLCLASS_NPC))
+        SendSysMessagePergon(who, "Die Bankbox von '"+player.name+"' wird geöffnet.");
+        bankbox := FindBankBox(player);
+      EndIf
+    EndIf
+    If (!bankbox)
+      SendSysMessagePergon(who, "Eure eigene Bankbox wird geöffnet.");
+      bankbox := FindBankBox(who);
+    EndIf
+  EndIf
+
+  If (bankbox)
+    SendOpenSpecialContainer(who, bankbox);
+  Else
+    SendSysMessagePergon(who, "Keine Bankbox gefunden!");
+  EndIf
+EndProgram

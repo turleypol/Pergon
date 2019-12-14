@@ -1,0 +1,37 @@
+///////////////////////////////////////////////////////////////////////
+//
+//   TextCMD Language - Zwischen den Sprachen des Spielers umschalten
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+///////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/client";
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_Language(who, param)
+  If (param=="0")
+    ChangeLanguage(who, 1);
+  ElseIf (!param)
+    ChangeLanguage(who);
+  Else
+    SendSysMessagePergon(who, "Als Parameter ist lediglich '0' zum Einschalten beider Sprachen zulässig!",
+      "U can use '0' only as additional parameter to activate both languages!");
+  EndIf
+EndProgram

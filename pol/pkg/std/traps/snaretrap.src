@@ -1,0 +1,67 @@
+// Autot:     Peter -pJOTTR- Straube
+// Date:    26.02.2004
+//
+//
+
+
+use vitals;
+use os;
+use util;
+use uo;
+use cfgfile;
+Use util;
+
+Include "include/poison";
+Include "traps";
+
+
+Program snaretrap(character, trapon)
+  Var cfg:=ReadConfigFile("traps");
+  Var trap:=FindConfigElem( cfg, GetObjProperty( trapon, "trap" ));
+  // Var buildersdex:=GetObjProperty(trapon, "buildersdex");
+  // Var buildersserial:=GetObjProperty(trapon, "buildersserial");
+  // Var buildersskill:=GetObjProperty(trapon, "buildersskill");
+  Var trap_strength:=GetObjProperty(trapon, "trap_strength");
+  // Var expiretime:=trapon.decayat;
+
+  If (character.cmdlevel>=CMDLEVEL_SEER) //CmdLevel aussortieren
+    SendSysMessagePergon(character, "Ihr betretet eine "+trapon.desc+", da ihr von göttlicher Gesinnung seit, tut sie Euch nichts.");
+    return;
+  EndIf
+
+  If (character.dead)         //kein Schaden an Toten
+    return;
+  Endif
+
+  If (GetStrPergon(character)> RandomInt(trap_strength))    //Staerke entscheidet ueber Haengenbleiben oder nicht
+    If (!character.isa(POLCLASS_NPC))
+      SendSysMessagePergon(character, "Diese Falle war nicht für Euch gedacht.", "");
+      return;
+    Endif
+  Else
+    If (!character.isa(POLCLASS_NPC))
+      SendSysMessagePergon(character, "Ihr seit gerade in eine Falle getreten.", "");
+    Endif
+
+    Var timetofreeze:=CInt(ReadGameClock() + trap_strength - GetStrPergon(character));
+    syslog("trap_strength: "+ trap_strength);
+    syslog("Str-Character: "+ GetStrPergon(character));
+    var oldfrozen:=character.frozen;
+    SetScriptController(character);
+    While (timetofreeze > ReadGameClock())         //solange gefreezed
+      character.frozen:=1;
+      IncRevision(character);
+      ApplyDamagePergon(character, RandomDiceRoll(trap.damage));
+      If (character.dead)
+        character.frozen:=oldfrozen;
+        IncRevision(character);
+        return;
+      Endif
+      //Effekt einbauen
+      Sleep(1);
+    EndWhile
+    character.frozen:=oldfrozen;
+    IncRevision(character);
+  Endif
+EndProgram
+

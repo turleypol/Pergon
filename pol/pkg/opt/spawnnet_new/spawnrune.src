@@ -1,0 +1,781 @@
+///////////////////////////////////////////////////////////////////////////
+// Spawnrunen UseScript (Einstellungen über Gump und melden an den Manager)
+//
+// Author: Turley
+
+Use os;
+Use uo;
+Include ":spawnnet_new:spawnnet";
+Include "include/client";
+Include "include/msgs";
+Include "include/npc";
+Include "include/pergonutil";
+Include "include/permissions";
+Include "include/place";
+
+//    "userdata": // Von Usern veränderbare
+//     .spawntype - Welcher Typ ist zu spawnen
+//     .mintime - MinSpawnTime
+//     .maxtime - MaxSpawnTime
+//     .template - Template falls Gruppe siehe spawnnetdata.templatearray (bei TypeItem Nr==groupspawn)
+//     .amount - Max Amount
+//     .group - Flag & GROUPING ->wieviel aufeinmal
+//     .range - Spawnbereich
+//     .flags - Flags siehe .inc Enum BinaryFlag
+//     .stackmenge - ItemType wenn nicht IN_CONTAINER
+//     .containertype - ContainerType
+//     .note - Beschreibung
+//     .linked - "Oder"-Verknüpfung zu einer anderen Rune
+//     .questnr - Questnummer für Questsystem
+
+Enum GumpReturns
+  SAVE:=0x1,
+  RESPAWN,
+  NOTE,
+  MIN_TIME,
+  MAX_TIME,
+  RANGE,
+  AMOUNT,
+  SPAWNTYPE,
+  TEMPLATE,
+  GROUPSPAWN,
+  STACKAMOUNT,
+  CONTAINERTYPE,
+  LINKED,
+  FLAG_GROUPING,
+  FLAG_SAVE_OLD_ITEMS,
+  FLAG_NPC_ANCHOR,
+  FLAG_NPC_FROZEN,
+  FLAG_ITEM_IN_CONTAINER_SPAWN,
+  FLAG_CONTAINER_MOVING_SPAWN,
+  FLAG_CONTAINER_FLUSH,
+  FLAG_CONTAINER_TRAP,
+  FLAG_LINKED,
+  TYPE_NPC,
+  TYPE_ITEM,
+  TYPE_CONTAINER,
+  BTNNOTE,
+  QUESTNR,
+EndEnum
+
+Enum GumpPos
+  DATA_MIN_TIME:=3,
+  DATA_MAX_TIME:=5,
+  DATA_RANGE:=7,
+  DATA_AMOUNT:=9,
+  DATA_TYPE:=11,
+  DATA_TEMPLATE:=13,
+  DATA_GROUPAMOUNT:=15,
+  DATA_STACKAMOUNT:=17,
+  DATA_LINKED:=19,
+  DATA_NOTE:=21,
+  DATA_CONTAINERTYPE:=15,
+  LAYOUT_CONTAINERTYPE:=31,
+  DATA_SPAWN:=24,
+EndEnum
+
+Var layoutorig:={"page 0",
+                 "nodispose",
+                 "resizepic 0 0 3600 655 270", //Hintergrund
+                 "resizepic 15 15 5054 625 25",  //überschrift
+                 "resizepic 15 45 5054 180 120", //hauptwerte
+                 "resizepic 200 45 5054 270 120", //spezielle werte
+                 "resizepic 475 45 5054 165 120", // flags
+                 "resizepic 15 170 5054 625 40", //hinweis
+                 "resizepic 15 215 5054 625 40", //buttons
+                 "htmlgump 15 18 625 20 0 0 0",
+
+                 "text 30 55 2100 1",  //min zeit
+                 "text 140 55 1000 2",
+                 "button 175 57 2117 2118 1 0 "+MIN_TIME,
+                 "text 30 75 2100 3",  //max zeit
+                 "text 140 75 1000 4",
+                 "button 175 77 2117 2118 1 0 "+MAX_TIME,
+                 "text 30 95 2100 5",  //range
+                 "text 140 95 1000 6",
+                 "button 175 97 2117 2118 1 0 "+RANGE,
+                 "text 30 115 2100 7",  //amount
+                 "text 140 115 1000 8",
+                 "button 175 117 2117 2118 1 0 "+AMOUNT,
+
+                 "text 215 55 2100 9", //spawntyp
+                 "text 305 55 1000 10",
+                 "button 450 57 2117 2118 1 0 "+SPAWNTYPE,
+                 "text 215 75 2100 11", //template
+                 "text 305 75 1000 12",
+                 "button 450 77 2117 2118 1 0 "+TEMPLATE,
+                 "text 215 95 2100 13", //Gruppenspawn
+                 "text 305 95 1000 14",
+                 "button 450 97 2117 2118 1 0 "+GROUPSPAWN,
+                 "text 215 135 2100 17", //Linked
+                 "text 305 135 1000 18",
+                 "button 450 137 2117 2118 1 0 "+LINKED,
+
+                 "button 30 182 2117 2118 1 0 "+BTNNOTE,
+                 "text 50 180 2100 19", //hinweis
+                 "textentry 100 180 530 20 1000 "+NOTE+" 20",
+
+                 "button 30 220 9720 9722 1 0 "+SAVE,
+                 "text 70 224 2100 21",
+                 "button 140 220 9726 9728 1 0 "+RESPAWN,
+                 "text 180 224 2100 22",
+
+                 "text 240 224 1000 25",  // Spawns
+                 "text 335 224 1000 23",  // LastSpawn
+                 "text 490 224 1000 24"   // NextSpawn
+                };
+
+Var dataorig:={"<basefont color="+HTML_DARKGRAY+"><center>Spawnnet - Unregistriert</center>",
+               "Min. Spawnzeit:",
+               "",
+               "Max. Spawnzeit:",
+               "",
+               "Spawnbereich:",
+               "",
+               "Gesamtzahl:",
+               "",
+               "Spawntyp:",
+               "",
+               "Template:",
+               "",
+               "Gruppenanzahl:",
+               "",
+               "Stack Menge:",  // ITEM
+               "",
+               "Verknuepft:",
+               "",
+               "Hinweis:",
+               "",
+               "Speichern",
+               "ReSpawn",
+               "LastSpawn: ",
+               "NextSpawn: ",
+               "Spawns: "
+              };
+
+Program spawnrune(who, item)
+  Var ret, oldtype, note, tar;
+  Var layout:=layoutorig;
+  Var data:=dataorig;
+  Var userdata:=item.getprop(CPROP_USER);
+
+  If (!userdata)
+    userdata := struct{
+      spawntype     := TYPE_NPC,
+      mintime       := 14,
+      maxtime       := 24,
+      template      := "<keine>",
+      amount        := 1,
+      group         := 1,
+      range         := 1,
+      stackamount   := 1,
+      containertype := "<keine>",
+      note          := "<keiner>",
+      flags         := 0x0,
+      questnr       := 0
+    };
+    item.setprop(CPROP_USER,userdata);
+  EndIf
+
+  If (!AllowedToRune(who))
+    // Rune verstecken
+    item.graphic:=0x1;
+    return;
+  EndIf
+
+    While (who.connected)
+      layout:=layoutorig;
+      data:=dataorig;
+      If (item.getprop(CPROP_DATA))
+        data[1]:="<basefont color="+HTML_WHITE+"><center>Spawnnet - "+Hex(item.serial)+"</center>";
+        data[DATA_SPAWN]+=CStr(CInt(item.getprop(CPROP_DATA).lastspawn));
+        data[DATA_SPAWN+1]+=CStr(CInt(item.getprop(CPROP_DATA).nextspawn));
+        If (userdata.spawntype==TYPE_CONTAINER)
+          If (item.getprop(CPROP_DATA).container)
+            data[DATA_SPAWN+2]+="1";
+          Else
+            data[DATA_SPAWN+2]+="0";
+          EndIf
+        Else
+          data[DATA_SPAWN+2]+=CStr(CInt(item.getprop(CPROP_DATA).serials.size()));
+        EndIf
+      Else
+        data[1]:="<basefont color="+HTML_DARKGRAY+"><center>Spawnnet - Unregistriert</center>";
+      EndIf
+      FillUserData(userdata,data,item.getprop(CPROP_DATA));
+      BuildTypeSpecificGump(userdata,layout,data);
+
+      ret:=SendDialogGump(who,layout,data,50,50);
+
+      If (ret[SAVE])
+        Case (userdata.spawntype)
+          TYPE_NPC:       SetName(item,"NPCSpawnRune ("+userdata.template+")");
+          TYPE_ITEM:      SetName(item,"ItemSpawnRune ("+userdata.template+")");
+          TYPE_CONTAINER: SetName(item,"ContainerSpawnRune ("+userdata.template+")");
+        EndCase
+
+        item.setprop(CPROP_USER,userdata);
+        If (!item.getprop(CPROP_DATA))
+          SendSysMessagePergon(who,struct{uc_text:=CAscz("Spawnrune ist noch nicht registriert!"),lang:="DEU"},
+                                   struct{uc_text:=CAscz("Spawnrune is not registered!"),lang:="ENU"});
+          SendSysMessagePergon(who,struct{uc_text:=CAscz("Warten bis Rune Registriert ist!"),lang:="DEU"},
+                                   struct{uc_text:=CAscz("Wait till rune is registered!"),lang:="ENU"});
+        Else
+          SendSpawnNet(item,CInt(item.serial),EVID_SPAWNPOINT_RESPAWN);
+          SendSysMessagePergon(who,struct{uc_text:=CAscz("Spawnrune gespeichert."),lang:="DEU"},
+                                   struct{uc_text:=CAscz("Spawnrune saved."),lang:="ENU"});
+        EndIf
+      ElseIf (ret[RESPAWN])
+        item.setprop(CPROP_USER,userdata);
+        If (!item.getprop(CPROP_DATA))
+          SendSysMessagePergon(who,struct{uc_text:=CAscz("Spawnrune ist noch nicht registriert!"),lang:="DEU"},
+                                   struct{uc_text:=CAscz("Spawnrune is not registered!"),lang:="ENU"});
+          SendSysMessagePergon(who,struct{uc_text:=CAscz("Warten bis Rune Registriert ist!"),lang:="DEU"},
+                                   struct{uc_text:=CAscz("Wait till rune is registered!"),lang:="ENU"});
+        Else
+          SendSpawnNet(item,CInt(item.serial),EVID_SPAWNPOINT_RESPAWN);
+          SendSysMessagePergon(who,struct{uc_text:=CAscz("Spawnrune resettet."),lang:="DEU"},
+                                   struct{uc_text:=CAscz("Spawnrune resetted."),lang:="ENU"});
+        EndIf
+      ElseIf (ret[MIN_TIME])
+        PromtAndTest(who,userdata,MIN_TIME);
+      ElseIf (ret[MAX_TIME])
+        PromtAndTest(who,userdata,MAX_TIME);
+      ElseIf (ret[RANGE])
+        PromtAndTest(who,userdata,RANGE);
+      ElseIf (ret[AMOUNT])
+        PromtAndTest(who,userdata,AMOUNT);
+      ElseIf (ret[SPAWNTYPE])
+        oldtype:=PromtAndTest(who,userdata,SPAWNTYPE);
+        If (item.getprop(CPROP_DATA))
+          If (oldtype<>"<keine>")
+            item.setprop(CPROP_USER,userdata);
+            SendSpawnNet(item,CInt(item.serial),EVID_SPAWNPOINT_RESPAWN, oldtype);
+          EndIf
+        EndIf
+      ElseIf (ret[TEMPLATE])
+        PromtAndTest(who,userdata,TEMPLATE);
+      ElseIf (ret[CONTAINERTYPE])
+        PromtAndTest(who,userdata,CONTAINERTYPE);
+      ElseIf (ret[GROUPSPAWN])
+        PromtAndTest(who,userdata,GROUPSPAWN);
+      ElseIf (ret[STACKAMOUNT])
+        PromtAndTest(who,userdata,STACKAMOUNT);
+      ElseIf (ret[QUESTNR])
+        PromtAndTest(who,userdata,QUESTNR);
+      ElseIf (ret[LINKED])
+        SendSysMessagePergon(who,struct{uc_text:=CAscz("Wähle eine Rune für die Verknüpfung."),lang:="DEU"},
+                                 struct{uc_text:=CAscz("Choose a rune to be linked with."),lang:="ENU"});
+        tar:=Target(who);
+        If (tar)
+          If ((tar.objtype==0xa300) && (tar.serial<>item.serial))
+            SendSpawnNet(item,tar.serial,EVID_SPAWNPOINT_LINK);
+            SendSysMessagePergon(who,struct{uc_text:=CAscz("Spawnrunen verknüpft."),lang:="DEU"},
+                                     struct{uc_text:=CAscz("Spawnrunes linked."),lang:="ENU"});
+          Else
+            SendSysMessagePergon(who,struct{uc_text:=CAscz("Abbruch"),lang:="DEU"},
+                                     struct{uc_text:=CAscz("Abort"),lang:="ENU"});
+          EndIf
+        Else
+          SendSysMessagePergon(who,struct{uc_text:=CAscz("Abbruch"),lang:="DEU"},
+                                   struct{uc_text:=CAscz("Abort"),lang:="ENU"});
+        EndIf
+      ElseIf (ret[FLAG_GROUPING])
+        If (userdata.spawntype in {TYPE_NPC,TYPE_ITEM})
+          userdata.flags:=userdata.flags ^ GROUPING;
+        EndIf
+      ElseIf (ret[FLAG_NPC_ANCHOR])
+        If (userdata.spawntype==TYPE_NPC)
+          userdata.flags:=userdata.flags ^ NPC_ANCHOR;
+        EndIf
+      ElseIf (ret[FLAG_NPC_FROZEN])
+        If (userdata.spawntype==TYPE_NPC)
+          userdata.flags:=userdata.flags ^ NPC_FROZEN;
+        EndIf
+      ElseIf (ret[FLAG_ITEM_IN_CONTAINER_SPAWN])
+        If (userdata.spawntype==TYPE_ITEM)
+          userdata.flags:=userdata.flags ^ ITEM_IN_CONTAINER_SPAWN;
+        EndIf
+      ElseIf (ret[FLAG_SAVE_OLD_ITEMS])
+        If (userdata.spawntype in {TYPE_ITEM,TYPE_CONTAINER})
+          userdata.flags:=userdata.flags ^ SAVE_OLD_ITEMS;
+        EndIf
+      ElseIf (ret[FLAG_CONTAINER_MOVING_SPAWN])
+        If (userdata.spawntype==TYPE_CONTAINER)
+          userdata.flags:=userdata.flags ^ CONTAINER_MOVING_SPAWN;
+        EndIf
+      ElseIf (ret[FLAG_CONTAINER_FLUSH])
+        If (userdata.spawntype==TYPE_CONTAINER)
+          userdata.flags:=userdata.flags ^ CONTAINER_FLUSH;
+        EndIf
+      ElseIf (ret[FLAG_CONTAINER_TRAP])
+        If (userdata.spawntype==TYPE_CONTAINER)
+          userdata.flags:=userdata.flags ^ CONTAINER_TRAP;
+        EndIf
+      ElseIf (ret[BTNNOTE])
+        note:=SplitWords(ret[NOTE],": ")[2];
+        userdata.note:=note;
+      Else
+        SendSysMessagePergon(who,"Abbruch", "Abort");
+        Return;
+      EndIf
+
+    EndWhile
+EndProgram
+
+///////////////////////////////////////////////////////
+// PromtAndTest - Gump zum Eintragen+Testen der Daten
+///////////////////////////////////////////////////////
+
+Function PromtAndTest(who,byref userdata,type)
+  Var ret, value, oldtype;
+  Var spawngroup,gtemplate, spawn;
+  Var layout:={"page 0",
+               "nodispose",
+               "resizepic 185 0 3600 300 160", //Hintergrund
+               "resizepic 200 15 5054 270 25",  //überschrift
+               "resizepic 200 45 5054 270 100", //spezielle werte
+               "htmlgump 200 18 270 20 0 0 0"};
+  Var data:={"<basefont color="+HTML_DARKGRAY+"><center>"};
+
+  If (type==SPAWNTYPE)
+    data[1]+="SpawnTyp aendern</center>";
+    layout+={"text 320 55 2100 1",
+             "text 320 75 2100 2",
+             "text 320 95 2100 3",
+             "button 300 57 2117 2118 1 0 "+TYPE_NPC,
+             "button 300 77 2117 2118 1 0 "+TYPE_ITEM,
+             "button 300 97 2117 2118 1 0 "+TYPE_CONTAINER};
+    data+={"NPC","Item","Container"};
+
+  ElseIf (type==TEMPLATE)
+    layout+={"gumppic 245 70 2446",
+             "textentry 260 72 200 20 1000 "+TEMPLATE+" 1",
+             "button 310 110 2450 2451 1 0 "+SAVE};
+    data[1]+="Template</center>";
+    data+={userdata.template};
+
+  ElseIf (type==CONTAINERTYPE)
+    layout+={"gumppic 245 70 2446",
+             "textentry 260 72 200 20 1000 "+CONTAINERTYPE+" 1",
+             "button 310 110 2450 2451 1 0 "+SAVE};
+    data[1]+="Container Template</center>";
+    data+={userdata.containertype};
+
+  Else
+    layout+={"gumppic 280 70 2445",
+             "textentry 320 72 100 20 1000 "+MIN_TIME+" 1",
+             "button 310 110 2450 2451 1 0 "+SAVE};
+    Case (type)
+      MIN_TIME:
+        data[1]+="Min Spawnzeit</center>";
+        data+={userdata.mintime};
+      MAX_TIME:
+        data[1]+="Max Spawnzeit</center>";
+        data+={userdata.maxtime};
+      RANGE:
+        data[1]+="Spawnbereich</center>";
+        data+={userdata.range};
+      AMOUNT:
+        data[1]+="Gesamtzahl</center>";
+        data+={userdata.amount};
+      GROUPSPAWN:
+        data[1]+="Gruppenanzahl</center>";
+        data+={userdata.group};
+      STACKAMOUNT:
+        data[1]+="Stackmenge</center>";
+        data+={userdata.stackamount};
+      QUESTNR:
+        data[1]+="Questnummer</center>";
+        data+={userdata.questnr};
+    EndCase
+  EndIf
+
+
+  ret:=SendDialogGump(who,layout,data,100,100);
+
+  If (type==SPAWNTYPE)
+    If (ret[TYPE_NPC])
+      If (userdata.spawntype<>TYPE_NPC)
+        oldtype:=userdata.spawntype;
+        userdata.spawntype:=TYPE_NPC;
+        userdata.flags:=0x0;
+        userdata.flags:=userdata.flags | NPC_ANCHOR; // Anker als Standart
+        SendSysMessagePergon(who,struct{uc_text:=CAscz("Spawntype auf NPC geändert."),lang:="DEU"},
+                                 struct{uc_text:=CAscz("Spawntype changed to NPC."),lang:="ENU"});
+        Return(oldtype);
+      EndIf
+    ElseIf (ret[TYPE_ITEM])
+      If (userdata.spawntype<>TYPE_ITEM)
+        oldtype:=userdata.spawntype;
+        userdata.spawntype:=TYPE_ITEM;
+        userdata.flags:=0x0;
+        SendSysMessagePergon(who,struct{uc_text:=CAscz("Spawntype auf Item geändert."),lang:="DEU"},
+                                 struct{uc_text:=CAscz("Spawntype changed to Item."),lang:="ENU"});
+        Return(oldtype);
+      EndIf
+    ElseIf (ret[TYPE_CONTAINER])
+      If (userdata.spawntype<>TYPE_CONTAINER)
+        oldtype:=userdata.spawntype;
+        userdata.spawntype:=TYPE_CONTAINER;
+        userdata.flags:=0x0;
+        userdata.flags:=userdata.flags | CONTAINER_FLUSH; // Container leeren als Standart
+        userdata.flags:=userdata.flags | CONTAINER_TRAP;  // Containerfalle als Standart
+        SendSysMessagePergon(who,struct{uc_text:=CAscz("Spawntype auf Container geändert."),lang:="DEU"},
+                                 struct{uc_text:=CAscz("Spawntype changed to Container."),lang:="ENU"});
+        Return(oldtype);
+      EndIf
+    EndIf
+
+  ElseIf (type==TEMPLATE)
+    If (ret[SAVE])
+      If (ret[TEMPLATE])
+        value:=SplitWords(ret[TEMPLATE],": ")[2];
+        If (userdata.spawntype==TYPE_NPC)
+          If (IsNumeric(value))  // Templategruppe
+            value:=CInt(value);
+            spawngroup:=FindConfigElem(ReadConfigFile("groups"), value);
+            If (spawngroup)
+              gtemplate:=GetConfigStringArray(spawngroup, "spawn");
+              If (!gtemplate)
+                SendSysMessagePergon(who,struct{uc_text:=CAscz("Leeres Group-Template ("+value+") !"),lang:="DEU"},
+                                         struct{uc_text:=CAscz("Empty Group-Template ("+value+") !"),lang:="ENU"});
+                Return(0);
+              EndIf
+              // Pruefen, ob NPC im Knast create-bar
+              spawn:=CreateNpcFromTemplatePergon(gtemplate[RandomInt(Len(gtemplate))+1], 5280+RandomInt(9), 1182+RandomInt(5), 0,0,0,0,REALM_BRITANNIA);
+              If (!spawn)
+                // auf Wasser-NPC noch testen, falls das createn im Knast nicht geklappt hat
+                spawn:=CreateNpcFromTemplatePergon(gtemplate[RandomInt(Len(gtemplate))+1], 5273+RandomInt(6), 1181+RandomInt(9), -5, 0,0,0,REALM_BRITANNIA);
+              EndIf
+              If (!spawn)
+                SendSysMessagePergon(who,struct{uc_text:=CAscz("Ungültiges NPC-Template ("+value+") !"),lang:="DEU"},
+                                         struct{uc_text:=CAscz("Wrong NPC-Template ("+value+") !"),lang:="ENU"});
+                Return (0);
+              EndIf
+              userdata.template:=value; // Alles geklappt
+              RevokePrivilege(spawn, "invul");
+              SetObjProperty(spawn, "guardkill", 1);
+              KillMobile(spawn, "spawnnet-test");
+              SendSysMessagePergon(who,struct{uc_text:=CAscz("NPC-Template neugesetzt. Aktualisierung nach Speichern."),lang:="DEU"},
+                                       struct{uc_text:=CAscz("NPC-Template reset. Updating after Save."),lang:="ENU"});
+              Return(1);
+            Else
+              SendSysMessagePergon(who,struct{uc_text:=CAscz("Group-Template ("+value+") existiert nicht!"),lang:="DEU"},
+                                       struct{uc_text:=CAscz("Group-Template ("+value+") doesn't exist!"),lang:="ENU"});
+              Return (0);
+            EndIf
+
+          Else //StringTemplate
+            // Pruefen, ob NPC im Knast create-bar
+            spawn:=CreateNpcFromTemplatePergon(value, 5280+RandomInt(9), 1182+RandomInt(5), 0);
+            If (!spawn)
+              // auf Wasser-NPC noch testen, falls das createn im Knast nicht geklappt hat
+              spawn:=CreateNpcFromTemplatePergon(value, 5273+RandomInt(6), 1181+RandomInt(9), -5);
+            EndIf
+            If (!spawn)
+              SendSysMessagePergon(who,struct{uc_text:=CAscz("Ungültiges NPC-Template ("+value+") !"),lang:="DEU"},
+                                       struct{uc_text:=CAscz("Wrong NPC-Template ("+value+") !"),lang:="ENU"});
+              Return (0);
+            EndIf
+            userdata.template:=value; // Alles geklappt
+            RevokePrivilege(spawn, "invul");
+            SetObjProperty(spawn, "guardkill", 1);
+            KillMobile(spawn, "spawnnet-test");
+            SendSysMessagePergon(who,struct{uc_text:=CAscz("NPC-Template neugesetzt. Aktualisierung nach Speichern."),lang:="DEU"},
+                                     struct{uc_text:=CAscz("NPC-Template reset. Updating after Save."),lang:="ENU"});
+            Return(1);
+          EndIf
+
+        ElseIf (userdata.spawntype==TYPE_ITEM)
+          If (IsNumeric(value))  // Templategruppe
+            value:=CInt(value);
+            spawngroup:=FindConfigElem(ReadConfigFile("igroups"), value);
+            If (spawngroup)
+              gtemplate:=GetConfigStringArray(spawngroup, "item");
+              If (!gtemplate)
+                SendSysMessagePergon(who,
+                  struct{uc_text:=CAscz("Leeres iGroup-Template ("+value+") !"),lang:="DEU"},
+                  struct{uc_text:=CAscz("Empty iGroup-Template ("+value+") !"),lang:="ENU"});
+                Return(0);
+              EndIf
+              spawn:=CreateItemAtLocationPergon(5273+RandomInt(16), 1181+RandomInt(7), 0, CInt(gtemplate.randomentry()), 1, REALM_BRITANNIA);
+              If (!spawn)
+                SendSysMessagePergon(who,
+                  struct{uc_text:=CAscz("Ungültiges Item-Template ("+value+") !"),lang:="DEU"},
+                  struct{uc_text:=CAscz("Wrong Item-Template ("+value+") !"),lang:="ENU"});
+                Return (0);
+              EndIf
+              DestroyItem(spawn);
+              userdata.template := value;
+              // Alles geklappt
+              SendSysMessagePergon(who,
+                struct{uc_text:=CAscz("Item-Group neugesetzt. Aktualisierung nach Speichern"),lang:="DEU"},
+                struct{uc_text:=CAscz("Item-Group reset. Updating after Save."),lang:="ENU"});
+              Return(1);
+            Else
+              SendSysMessagePergon(who,
+                struct{uc_text:=CAscz("Group-Template ("+value+") existiert nicht!"),lang:="DEU"},
+                struct{uc_text:=CAscz("Group-Template ("+value+") doesn't exist!"),lang:="ENU"});
+              Return (0);
+            EndIf
+          Else //String
+            spawn:=CreateItemAtLocationPergon(5273+RandomInt(16), 1181+RandomInt(7), 0, value, 1, REALM_BRITANNIA);
+            If (!spawn)
+              SendSysMessagePergon(who,struct{uc_text:=CAscz("Ungültiger ObjType! ("+value+")"),lang:="DEU"},
+                                       struct{uc_text:=CAscz("Wrong ObjType! ("+value+")"),lang:="ENU"});
+              Return (0);
+            EndIf
+            DestroyItem(spawn);
+            userdata.template:=value; // Alles geklappt
+            SendSysMessagePergon(who,struct{uc_text:=CAscz("Item-Template neugesetzt. Aktualisierung nach Speichern"),lang:="DEU"},
+                                     struct{uc_text:=CAscz("Item-Template reset. Updating after Save."),lang:="ENU"});
+            Return(1);
+          EndIf
+
+        ElseIf (userdata.spawntype==TYPE_CONTAINER)
+          If (!FindConfigElem(ReadConfigFile("::nlootgroup"), CInt(value)))
+            SendSysMessagePergon(who,struct{uc_text:=CAscz("Ungültige Lootgruppe! ("+value+")"),lang:="DEU"},
+                                     struct{uc_text:=CAscz("Wrong Lootgroup! ("+value+")"),lang:="ENU"});
+            Return(0);
+          EndIf
+          userdata.template:=CInt(value);
+          SendSysMessagePergon(who,struct{uc_text:=CAscz("Container Lootgruppe neugesetzt. Aktualisierung nach Speichern"),lang:="DEU"},
+                                   struct{uc_text:=CAscz("Container Lootgroup reset. Updating after Save."),lang:="ENU"});
+          Return(1);
+        EndIf
+      Else
+        SendSysMessagePergon(who,"Abbruch","Abort");
+        Return;
+      EndIf
+    Else
+      SendSysMessagePergon(who,"Abbruch","Abort");
+      Return;
+    EndIf
+
+  ElseIf (type==CONTAINERTYPE)
+    value:=SplitWords(ret[CONTAINERTYPE],": ")[2];
+    If (IsNumeric(value))
+      value:=CInt(value);
+    EndIf
+    spawn:=CreateItemAtLocationPergon(5273+RandomInt(16), 1181+RandomInt(7), 0, value, 1, REALM_BRITANNIA);
+    If ((!spawn) || (!spawn.isA(POLCLASS_CONTAINER)))
+      SendSysMessagePergon(who,struct{uc_text:=CAscz("Ungültiger ObjType! ("+value+")"),lang:="DEU"},
+                               struct{uc_text:=CAscz("Wrong ObjType! ("+value+")"),lang:="ENU"});
+      If (spawn)
+        DestroyItem(spawn);
+      EndIf
+      Return (0);
+    EndIf
+    DestroyItem(spawn);
+    userdata.containertype:=value; // Alles geklappt
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Container Type neugesetzt. Aktualisierung nach Speichern"),lang:="DEU"},
+                              struct{uc_text:=CAscz("Container Type reset. Updating after Save."),lang:="ENU"});
+    Return(1);
+
+  Else
+    If (ret[SAVE])
+      If (ret[MIN_TIME])
+        value:=SplitWords(ret[MIN_TIME],": ")[2];
+        If ((IsNumeric(value)) && (CInt(value)>=0))
+          value:=CInt(value);
+          Case (type)
+            MIN_TIME:
+              userdata.mintime:=value;
+              SendSysMessagePergon(who,struct{uc_text:=CAscz("MinSpawnTime neugesetzt. Aktualisierung nach Speichern"),lang:="DEU"},
+                                       struct{uc_text:=CAscz("MinSpawnTime reset. Updating after Save."),lang:="ENU"});
+            MAX_TIME:
+              If (value==0)
+                SendSysMessagePergon(who,struct{uc_text:=CAscz("Abbruch. MaxTime>0."),lang:="DEU"},
+                                         struct{uc_text:=CAscz("Abort. MaxTime>0."),lang:="ENU"});
+                Return;
+              EndIf
+              userdata.maxtime:=value;
+              SendSysMessagePergon(who,struct{uc_text:=CAscz("MaxSpawnTime neugesetzt. Aktualisierung nach Speichern"),lang:="DEU"},
+                                       struct{uc_text:=CAscz("MaxSpawnTime reset. Updating after Save."),lang:="ENU"});
+            RANGE:
+              userdata.range:=value;
+              SendSysMessagePergon(who,struct{uc_text:=CAscz("Range neugesetzt. Aktualisierung nach Speichern"),lang:="DEU"},
+                                       struct{uc_text:=CAscz("Range reset. Updating after Save."),lang:="ENU"});
+            AMOUNT:
+              If (userdata.spawntype==TYPE_CONTAINER)
+                userdata.amount:=1;
+                SendSysMessagePergon(who,struct{uc_text:=CAscz("Container immer nur einzeln."),lang:="DEU"},
+                                         struct{uc_text:=CAscz("Container always single amount."),lang:="ENU"});
+              Else
+                userdata.amount:=value;
+                SendSysMessagePergon(who,struct{uc_text:=CAscz("Amount neugesetzt. Aktualisierung nach Speichern"),lang:="DEU"},
+                                         struct{uc_text:=CAscz("Amount reset. Updating after Save."),lang:="ENU"});
+              EndIf
+
+            GROUPSPAWN:
+              If (userdata.amount<value)
+                SendSysMessagePergon(who,struct{uc_text:=CAscz("Fehler: Gruppenanzahl größer als SpawnAmount."),lang:="DEU"},
+                                         struct{uc_text:=CAscz("Error: Groupamount greater than Spawnamount."),lang:="ENU"});
+                Return(0);
+              EndIf
+              userdata.group:=value;
+              SendSysMessagePergon(who,struct{uc_text:=CAscz("Gruppenanzahl neugesetzt. Aktualisierung nach Speichern"),lang:="DEU"},
+                                       struct{uc_text:=CAscz("Gruppenanzahl reset. Updating after Save."),lang:="ENU"});
+            STACKAMOUNT:
+              userdata.stackamount:=value;
+
+              SendSysMessagePergon(who,struct{uc_text:=CAscz("StackAmount neugesetzt. Aktualisierung nach Speichern"),lang:="DEU"},
+                                       struct{uc_text:=CAscz("StackAmount reset. Updating after Save."),lang:="ENU"});
+
+            QUESTNR:
+              userdata.questnr:=value;
+
+              SendSysMessagePergon(who,struct{uc_text:=CAscz("Questnummer neugesetzt. Aktualisierung nach Speichern"),lang:="DEU"},
+                                       struct{uc_text:=CAscz("Questnumber reset. Updating after Save."),lang:="ENU"});
+
+          EndCase
+          Return(1);
+        Else
+          SendSysMessagePergon(who,struct{uc_text:=CAscz("Abbruch. Keine gültige Zahl."),lang:="DEU"},
+                                   struct{uc_text:=CAscz("Abort. No numeric value."),lang:="ENU"});
+          Return;
+        EndIf
+      Else
+        SendSysMessagePergon(who,"Abbruch","Abort");
+        Return;
+      EndIf
+    Else
+      SendSysMessagePergon(who,"Abbruch","Abort");
+      Return;
+    EndIf
+  EndIf
+EndFunction
+
+
+///////////////////////////////////////////////////////
+// FillUserData - Hauptgump mit Daten füllen
+///////////////////////////////////////////////////////
+
+Function FillUserData(userdata,byref data, spawndata)
+  data[DATA_MIN_TIME]:=userdata.mintime;
+  data[DATA_MAX_TIME]:=userdata.maxtime;
+  data[DATA_RANGE]:=userdata.range;
+  data[DATA_AMOUNT]:=userdata.amount;
+  Case (userdata.spawntype)
+    TYPE_NPC:        data[DATA_TYPE]:="NPC";
+    TYPE_ITEM:       data[DATA_TYPE]:="Item";
+    TYPE_CONTAINER:  data[DATA_TYPE]:="Container";
+  EndCase
+  data[DATA_TEMPLATE]:=userdata.template;
+  If (userdata.spawntype==TYPE_CONTAINER)
+    data[DATA_CONTAINERTYPE]:=Hex(userdata.containertype);
+  Else
+    data[DATA_GROUPAMOUNT]:=userdata.group;
+  EndIf
+  data[DATA_STACKAMOUNT]:=userdata.stackamount;
+  data[DATA_NOTE]:=userdata.note;
+  data[DATA_LINKED]:=Hex(CInt(spawndata.linked));
+EndFunction
+
+
+///////////////////////////////////////////////////////
+// BuildTypeSpecificGump - Flagdaten im Gump setzen
+///////////////////////////////////////////////////////
+
+Function BuildTypeSpecificGump(userdata,byref layout,byref data)
+  Case (userdata.spawntype)
+    TYPE_NPC:
+      layout.append("text 490 55 2100 "+data.size());
+      data.append("Gruppieren");
+      If (userdata.flags & GROUPING)
+        layout.append("button 610 55 211 210 1 0 "+FLAG_GROUPING);
+      Else
+        layout.erase(LAYOUT_CONTAINERTYPE-2);  // Gruppenanzahl löschen
+        layout.erase(LAYOUT_CONTAINERTYPE-2);
+        layout.erase(LAYOUT_CONTAINERTYPE-2);
+        layout.append("button 610 55 210 211 1 0 "+FLAG_GROUPING);
+      EndIf
+      layout.append("text 490 75 2100 "+data.size());
+      data.append("Anker");
+      If (userdata.flags & NPC_ANCHOR)
+        layout.append("button 610 75 211 210 1 0 "+FLAG_NPC_ANCHOR);
+      Else
+        layout.append("button 610 75 210 211 1 0 "+FLAG_NPC_ANCHOR);
+      EndIf
+
+      layout.append("text 490 135 2100 "+data.size());  // Neue Seite für wilde Sachen
+      data.append("Spezial Flags");
+      layout.append("page 1");
+      layout.append("button 610 137 2117 2118 0 10 0");
+      layout+={"page 10",
+               "button 610 137 2118 2117 0 1 0",
+               "resizepic 655 30 3600 195 150",
+               "resizepic 670 45 5054 165 120"};
+      layout.append("text 685 55 2100 "+data.size());
+      data.append("Frozen");
+      If (userdata.flags & NPC_FROZEN)
+        layout.append("button 805 55 211 210 1 0 "+FLAG_NPC_FROZEN);
+      Else
+        layout.append("button 805 55 210 211 1 0 "+FLAG_NPC_FROZEN);
+      EndIf
+      layout.append("text 685 75 2100 "+data.size());
+      data.append("QuestNr:");
+      layout.append("text 765 75 1000 "+data.size());
+      data.append(userdata.questnr);
+      layout.append("button 807 77 2117 2118 1 0 "+QUESTNR);
+
+    TYPE_ITEM:
+      data[DATA_TEMPLATE-1]:="Name/Gruppe:";
+      layout.append("text 215 115 2100 15"); //Stackmenge
+      layout.append("text 305 115 1000 16");
+      layout.append("button 450 117 2117 2118 1 0 "+STACKAMOUNT);
+
+      layout.append("text 490 55 2100 "+data.size());
+      data.append("Gruppieren");
+      If (userdata.flags & GROUPING)
+        layout.append("button 610 55 211 210 1 0 "+FLAG_GROUPING);
+      Else
+        layout.erase(LAYOUT_CONTAINERTYPE-2);  // Gruppenanzahl löschen
+        layout.erase(LAYOUT_CONTAINERTYPE-2);
+        layout.erase(LAYOUT_CONTAINERTYPE-2);
+        layout.append("button 610 55 210 211 1 0 "+FLAG_GROUPING);
+      EndIf
+      layout.append("text 490 75 2100 "+data.size());
+      data.append("Im Container");
+      If (userdata.flags & ITEM_IN_CONTAINER_SPAWN)
+        layout.append("button 610 75 211 210 1 0 "+FLAG_ITEM_IN_CONTAINER_SPAWN);
+      Else
+        layout.append("button 610 75 210 211 1 0 "+FLAG_ITEM_IN_CONTAINER_SPAWN);
+      EndIf
+      layout.append("text 490 95 2100 "+data.size());
+      data.append("Alte Items erhalten");
+      If (userdata.flags & SAVE_OLD_ITEMS)
+        layout.append("button 610 95 211 210 1 0 "+FLAG_SAVE_OLD_ITEMS);
+      Else
+        layout.append("button 610 95 210 211 1 0 "+FLAG_SAVE_OLD_ITEMS);
+      EndIf
+
+    TYPE_CONTAINER:
+      layout[LAYOUT_CONTAINERTYPE]:="button 450 97 2117 2118 1 0 "+CONTAINERTYPE;  // Gruppenanzahl mit Containertype ersetzen
+      data[DATA_CONTAINERTYPE-1]:="Container:";
+      data[DATA_TEMPLATE-1]:="Lootgroup:";
+
+      layout.append("text 490 55 2100 "+data.size());
+      data.append("Beweglicher Spawn");
+      If (userdata.flags & CONTAINER_MOVING_SPAWN)
+        layout.append("button 610 55 211 210 1 0 "+FLAG_CONTAINER_MOVING_SPAWN);
+      Else
+        layout.append("button 610 55 210 211 1 0 "+FLAG_CONTAINER_MOVING_SPAWN);
+      EndIf
+      layout.append("text 490 75 2100 "+data.size());
+      data.append("Containerfalle");
+      If (userdata.flags & CONTAINER_TRAP)
+        layout.append("button 610 75 211 210 1 0 "+FLAG_CONTAINER_TRAP);
+      Else
+        layout.append("button  610 75 210 211 1 0 "+FLAG_CONTAINER_TRAP);
+      EndIf
+      layout.append("text 490 95 2100 "+data.size());
+      data.append("Container leeren");
+      If (userdata.flags & CONTAINER_FLUSH)
+        layout.append("button 610 95 211 210 1 0 "+FLAG_CONTAINER_FLUSH);
+      Else
+        layout.append("button 610 95 210 211 1 0 "+FLAG_CONTAINER_FLUSH);
+      EndIf
+  EndCase
+EndFunction

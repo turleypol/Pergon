@@ -1,0 +1,54 @@
+Use uo;
+Use os;
+
+Include "include/client";
+Include "include/msgs";
+
+Program TextCMD_Arm(me, text)
+  if ( GetObjProperty(me,"weapon") )
+
+	  Var weapon := GetObjProperty(me,"weapon");
+
+	  Var lefthand := weapon[1];
+	  Var righthand := weapon[2];
+	  if (cint(text)==2)
+		  lefthand := weapon[3];
+		  righthand := weapon[4];
+	  endif
+
+	  Var weaponone := 0;
+	  Var weapontwo := 0;
+	  if (lefthand)
+		  weaponone := FindInInventory( lefthand, me );
+		  if ( weaponone )
+			  EquipItem(me,weaponone);
+		  endif
+	  endif
+	  if (righthand)
+		  weapontwo := FindInInventory( righthand, me );
+		  if ( weapontwo )
+			  EquipItem(me,weapontwo);
+		  endif
+	  endif
+
+	  return;
+
+  endif
+
+	SendSysMessagePergon(me,"Bewaffnet Euch und benutzt .disarm 1 oder .disarm 2");
+EndProgram
+
+function FindInInventory(thing, me)
+  var item:=SystemFindObjectBySerial(thing);
+  If (item)
+  	var test:=item.container;
+  	While (test)
+  		If (test.serial==me.backpack.serial)
+  			Return(item);
+  		Else
+  			test:=test.container;
+  		EndIf
+  	EndWhile
+  EndIf
+	return 0;
+endfunction

@@ -1,0 +1,5 @@
+In den Optionen kannst du Makros festlegen, um wiederkehrende Aufgaben zu automatisieren. Dazu solltest du eine Tastenkombination waehlen und eine oder mehrere Aktionen einstellen.
+
+Um zu scrollen, ziehe bei der geoeffneten Optionenauswahl die Maus nach unten bzw. oben aus dem Bereich. Die Pfeile dienen nicht zum Scrollen, sondern nur zur Anzeige, ob da noch etwas folgt.
+
+Mit einem Makro auf "LastObject" kannst du per Tastendruck das zuletzt benutzte Objekt noch einmal nutzen. Damit kannst du beispielsweise die Tuer schliessen, die du zuletzt geoeffnet hattest. Oder du kannst damit ein Werkzeug erneut benutzen.

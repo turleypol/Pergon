@@ -1,0 +1,122 @@
+///////////////////////////////////////////////////////////////////////////
+// osterblume - Script für die Pflanzenressource (Osterhase erscheint)
+//
+// Author: Turley
+
+use os;
+use uo;
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/msgs";
+
+Program osterblume(who, blume)
+  If (!blume.movable)
+    SendSysMessagePergon(who, "Das ist festgemacht!", "That's unmovable.");
+    return;
+  EndIf
+  If (!ReserveItem(blume))
+    SendSysMessagePergon(who,
+      "Das wird schon benutzt.", "That is being used."
+    );
+    return;
+  EndIf
+
+  If (who.multi)
+    SendSysMessagePergon(who,
+      "Hier könnt Ihr nicht pflanzen.",
+      "You cannot plant here."
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Wo wollt Ihr die Blume pflanzen?",
+    "Where do you want to plant this?"
+  );
+  var ground := TargetCoordinates(who);
+  If (!ground)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (CoordinateDistance(who.x, who.y, ground.x, ground.y) > 1)
+    SendSysMessagePergon(who,
+      "Das ist zu weit weg.", "That is too far away."
+    );
+    return;
+  EndIf
+
+  // Pruefen auf Erde
+  var tile := GetMapInfo(ground.x, ground.y, ground.realm);
+  If (
+    // Dirt tiles (map)
+    (tile.landtile >= 0x0071 and tile.landtile <= 0x0078) or
+    (tile.landtile >= 0x00e8 and tile.landtile <= 0x00eb) or
+    (tile.landtile >= 0x027e and tile.landtile <= 0x0281) or
+    (tile.landtile >= 0x0355 and tile.landtile <= 0x0358) or
+    (tile.landtile >= 0x0377 and tile.landtile <= 0x037a) or
+    (tile.landtile >= 0x03a5 and tile.landtile <= 0x03a8) or
+    (tile.landtile >= 0x03a5 and tile.landtile <= 0x03a8) or
+    (tile.landtile >= 0x0402 and tile.landtile <= 0x0405) or
+    (tile.landtile >= 0x0553 and tile.landtile <= 0x0556) or
+    (tile.landtile >= 0x0637 and tile.landtile <= 0x063a) or
+    (tile.landtile >= 0x07ae and tile.landtile <= 0x07b1) or
+    (tile.landtile >= 0x3f75 and tile.landtile <= 0x3f78) or
+    // Dirt/mud statics
+    (ground.objtype >= 0x0913) and (ground.objtype <= 0x0914) or
+    (ground.objtype >= 0x1e01) and (ground.objtype <= 0x1e02) or
+    (ground.objtype >= 0x31f4) and (ground.objtype <= 0x31fb) or
+    // Dirt/mud items
+    (ground.item.objtype >= 0x0913) and (ground.item.objtype <= 0x0914) or
+    (ground.item.objtype >= 0x1e01) and (ground.item.objtype <= 0x1e02) or
+    (ground.item.objtype >= 0x31f4) and (ground.item.objtype <= 0x31fb)
+  )
+    SendSysMessagePergon(who,
+      "Ihr steckt die Osterblume in den Dreck.",
+      "You put the easter plant in the dirt."
+    );
+    SubtractAmount(blume, 1);
+    ReleaseItem(blume);
+    Detach();
+    Osterhase(ground);
+  Else
+    SendSysMessagePergon(who, "Ungeeigneter Boden.", "Ground is unusable.");
+  EndIf
+EndProgram
+
+Function Osterhase(ground)
+  var holedesc := struct;
+  holedesc["Name"]     := "Hasibau";
+  holedesc["Desc"]     := "Hasibau";
+  holedesc["Movable"]  := 0;
+  holedesc["ObjClass"] := "Item";
+  holedesc["ObjType"]  := "0x2233";
+
+  var hole := CreateItemAtLocationPergon(
+    ground.x, ground.y, ground.z, holedesc, 1, ground.realm
+  );
+  // hole.name    := "Hasibau";
+  Sleep(1);
+  PrintTextAbovePergon(hole, "*plopp*", "*plopp*");
+  var hasi := CreateNPCFromTemplate(
+    "Osterhasi", hole.x, hole.y, hole.z, 0, hole.realm
+  );
+  Sleep(30);
+  DestroyItem(hole);
+  Sleep(30+4*60);
+
+  If (hasi)
+    // rennt viel herum, daher stoppen
+    hasi.frozen := 1;
+    // IncRevision(hasi);
+    PrintTextAbovePergon(hasi, "*scharr*", "*scratch*");
+    hole := CreateItemAtLocationPergon(
+      hasi.x, hasi.y, hasi.z, holedesc, 1, hasi.realm
+    );
+    // hole.name    := "Hasibau";
+    KillMobileSilent(hasi, "HasiControlScript");
+    PrintTextAbovePergon(hole, "*plopp*", "*plopp*");
+    Sleep(30);
+    DestroyItem(hole);
+  EndIf
+EndFunction

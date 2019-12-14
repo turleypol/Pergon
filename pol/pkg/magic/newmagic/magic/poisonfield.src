@@ -1,0 +1,83 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  poisonfield.src - Walkover Script for PoisonFields
+//
+//  Modifications:
+//
+//  21.01.2002 - Bihinos - Rewrite for new Magic
+//  09.02.2004 - Bihinos - removed creator as scriptcontroller (misused by players)
+//                         minor changes
+//  01.09.2004 - Seppel - maxposionlevel added
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use os;
+use uo;
+use cfgfile;
+
+Include "include/pergonutil";
+Include "include/client";
+Include "include/poison";
+
+Program PoisonField (mobile, tile)
+  Var dmg,int,maxlevel;
+  If (mobile.getprop("ignorefields"))  // DynDungeon Vieh ignoriert alle Felder
+    Return;
+  EndIf
+  If (mobile.cmdlevel>=CMDLEVEL_SEER)
+    Return;
+  EndIf
+  if (!mobile.dead)           // no damage or effect on ghosts
+    dmg:=tile.getprop("dmg");
+    int:=tile.getprop("int");
+    maxlevel:=tile.getprop("maxlevel");
+    If (!int)
+      Var fields:= ReadConfigFile("magicfields");   // read Config-File for magic fields
+
+      if (fields)
+
+        // Shinigami: ist kein sinnvoller Angriffszauber gegen Spieler (kann ja rumrennen), wird aber oft gegen die Magier ausgenutzt (krimell markieren)
+        // Var boss:= SystemFindObjectBySerial(CInt(GetObjProperty(tile, "creater"))); // get creator of field
+        // if (boss) // make creator attacker
+        //   SetScriptController(boss);
+        // endif
+
+        Var fielddata:= FindConfigElem(fields, "poison");                 // get field data from Config
+        dmg:= CInt(GetObjProperty(tile, "f") * fielddata.dmg / 100);        // read and calc fields base damage
+        maxlevel:= CInt(GetObjProperty(tile, "f") * fielddata.maxlevel / 100);  //read an calc fields max damage
+        int:= CInt(fielddata.int);                                // read interval of attack
+        tile.setprop("maxlevel",maxlevel);
+        tile.setprop("dmg",dmg);  // Speichern für nächstesmal
+        tile.setprop("int",int);
+      EndIf
+    EndIf
+
+    If (int)
+      Set_Priority(1);
+
+      if (dmg < 1)    // min damage
+        dmg:= 1;
+      endif
+      Var boss:= SystemFindObjectBySerial(CInt(GetObjProperty(tile, "creator"))); // get creator of field
+      repeat
+        PlayObjectCenteredEffect(mobile, FX_CURSE_EFFECT, 10, 5);
+        PrintTextAbovePrivatePergon(mobile, "Ihr wurdet vergiftet", "You have been poisoned", mobile);
+
+        if (GetPoisonLevel(mobile) < maxlevel)            // check if poisonlevel is below maxlevel
+          if ((GetPoisonLevel(mobile) + dmg) > maxlevel)  // check if poisonlevel would be raised above maxlevel
+            SetPoisonLevel(mobile, maxlevel, boss);       // set poisonlevel to maxlevel
+          else
+            AddPoisonLevel(mobile, dmg, boss);            // poison mobile
+          endif
+        endif
+
+        SleepMS(int);                    // sleep interval
+      Until ((!mobile) Or (mobile.x<>tile.x) Or (mobile.y<>tile.y) Or (mobile.dead)); // check if mobile has left field
+
+    else
+      SysLog("FEHLER: MagicFields-ConfigFile nicht gefunden!");
+    endif
+
+  endif
+
+EndProgram

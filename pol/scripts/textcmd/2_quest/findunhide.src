@@ -1,0 +1,55 @@
+///////////////////////////////////////////////////////////////////////////
+// Find(Un)hide - Zu suchende Items aufdecken/verstecken
+
+use uo;
+include ":questtools:common";
+include "include/msgs";
+
+Program FindUnHide(who, param)
+    var selected := array{CInt(param)};
+    If (!param)
+        SendSysMessagePergon(who,
+            "Itemtyp zum Verstecken/Aufdecken wählen!",
+            "Select item type to hide/unhide!"
+        );
+        var tgt := Target(who);
+        If (!tgt or !tgt.isa(POLCLASS_ITEM))
+            SendSysMessagePergon(who, "Abbruch", "Cancelled");
+            return;
+        EndIf
+        selected := array{tgt.objtype};
+    EndIf
+
+    var list := GetGlobalProperty(GPROP_FINDITEM_LIST);
+    If (param == "all")
+        selected := list.keys();
+    EndIf
+
+    var hide := -1;
+    ForEach key in (selected)
+        ForEach serial in (list[key].keys())
+            SleepMs(2);
+            var item := SystemFindObjectBySerial(serial);
+            If (!item)
+                continue;
+            EndIf
+
+            If (hide < 0)
+                hide := 1 - item.invisible;
+                If (hide)
+                    SendSysMessagePergon(who,
+                        "Items werden versteckt ...", "Hiding items ..."
+                    );
+                Else
+                    SendSysMessagePergon(who,
+                        "Items werden aufgedeckt ...", "Unhiding items ..."
+                    );
+                EndIf
+            EndIf
+
+            item.invisible := hide;
+        EndForEach
+    EndForEach
+
+    SendSysMessagePergon(who, "Fertig", "Done");
+EndProgram

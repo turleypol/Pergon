@@ -1,0 +1,4 @@
+<h3 id="letterbox">letterbox</h3>
+
+<p>Öffnet den Letterbox-Gump zur spielinternen asynchronen
+Kommunikation.</p>

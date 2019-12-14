@@ -1,0 +1,88 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD SwitchBookCase - De-/aktiviert die Aufnahme globalisierter
+// Buecher in ein Buecherregal
+//
+//     Author: Shinigami
+
+///////////////////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+// Revision 1.5  2008/09/05 14:27:32  mehdorn
+// - auf Konstanten umgestellt
+// - Buecherregale fuellen sich auf auf Multis
+//   (wegen Multipflanzung unter statischen (Rat-)Haeusern wichtig)
+// - Buchauswahl optimiert
+//   + doppelte Buecher werden verhindert
+// + bunte Bucheinbaende
+// + Neubefuell-GProp wird nach neubefuellen wieder geloescht
+// + Buecher werden ordentlich ausgerichtet (keine Ueberlappung)
+//
+// Revision 1.4  2008/08/04 04:27:50  mehdorn
+// - einige serverrelevante Konstanten aus modifyskill nach server verschoben
+// - fast alle Textcmds aus 0_player umgestellt
+// - diverse Includes dabei angepasst
+//
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+include "include/msgs";
+include "include/server";
+include ":sysbook:common";
+use os;
+use uo;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_SwitchBookCase(who)
+  If (
+    !GetObjProperty(who, TYPBIBLIOTHEKAR) and
+    (who.cmdlevel < CMDLEVEL_SEER)
+  )
+    SendSysMessagePergon(who,
+      "Ihr seit kein Bibliothekar!", "Your are not a librarian!"
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Bitte ein Bücherregal auswählen!", "Please choose a bookcase!"
+  );
+
+  var bookcase := Target(who);
+  If (!bookcase)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (!bookcase.isa(POLCLASS_ITEM))
+    SendSysMessagePergon(who,
+      "Dies ist kein Gegenstand!", "This is not an item!"
+    );
+    return;
+  EndIf
+
+  If (!bookcase.objtype in {0xa97, 0xa98, 0xa99, 0xa9a, 0xa9b, 0xa9c})
+    SendSysMessagePergon(who,
+      "Dies ist kein Bücherregal!", "This is not a bookcase!"
+    );
+    return;
+  EndIf
+
+  // Soll das Regal vollstaendig selbstverwaltet werden?
+  If (GetObjProperty(bookcase, PROP_CASE_AUTOSPAWN))
+    EraseObjProperty(bookcase, PROP_CASE_AUTOSPAWN);
+    SendSysMessagePergon(who,
+      "Das Bücherregal wird sich nicht selbst befüllen.",
+      "The bookcase will not fill itself."
+    );
+  Else
+    SetObjProperty(bookcase, PROP_CASE_AUTOSPAWN, 1);
+    SendSysMessagePergon(who,
+      "Das Bücherregal wird sich beim nächsten Neustart selbst befüllen.",
+      "The bookcase will automagically fill itself on next startup."
+    );
+  EndIf
+EndProgram

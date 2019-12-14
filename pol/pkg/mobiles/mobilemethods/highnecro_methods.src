@@ -1,0 +1,31 @@
+use uo;
+
+Include ":popuphook:popupmenu";
+Include "include/modifyskill";
+
+Program Install()
+	return 1;
+EndProgram
+
+Exported Function haspopup(mobile)
+	return 1;
+	mobile := mobile;
+EndFunction
+
+Exported Function popupinfo(mobile, who)
+	var info := {
+	  {ID_VENDOR_BUY, CLILOC_VENDOR_BUY},
+	  {ID_VENDOR_SELL, CLILOC_VENDOR_SELL},
+	  {ID_VENDOR_KARMA, CLILOC_VENDOR_KARMA}
+	};
+	
+	If (GetObjProperty(who, SKILLTYPKENNUNG+SKILLID_FLUCHEN))
+	  info.append({ID_VENDOR_BOOK, CLILOC_VENDOR_BOOK});
+	EndIf
+	If (GetObjProperty(who, SKILLTYPKENNUNG+SKILLID_VERFLUCHTEGEGENST))
+	  info.append({ID_VENDOR_ARTBOOK, CLILOC_VENDOR_ARTBOOK});
+	EndIf
+	
+	return info;
+	mobile := mobile;
+EndFunction

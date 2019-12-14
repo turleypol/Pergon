@@ -1,0 +1,30 @@
+////////////////////////////////////////////////////////////
+//
+// .reloadequip - reload a targetted character's equipment
+//
+//  Powered by Shinigami (gabs vorher nich!)
+//
+////////////////////////////////////////////////////////////
+
+Use uo;
+Use util;
+
+Include "include/vetement"; // Random Clothing
+Include "include/itemnpc";
+Include "include/msgs";
+
+Program TextCMD_ReLoadEquip(who)
+  SendSysMessagePergon(who, "Waehlt die Person, die eingekleidet werden soll, aus!");
+
+  Var whom:=Target(who);
+  If (whom)
+    Var equipt:=GetObjProperty(whom, "Equipt");
+    If (equipt)
+      SendSysMessagePergon(who, "Das Equipment wird geladen von '"+equipt+"'.");
+
+      Habille(whom, equipt); // Random Clothing
+    Else
+      SendSysMessagePergon(who, whom.name+" besitzt kein Equipment!");
+    EndIf
+  EndIf
+EndProgram

@@ -1,0 +1,83 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Vergiftete Bandagen
+//
+// Bandagen die das Ziel schädigen
+
+include ":newspells:resistance";
+include "common";
+include "include/modifyskill";
+include "include/packets";
+use cfgfile;
+use os;
+use uo;
+use util;
+
+Program PoisonBandages(who, item)
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Wen wollt ihr heilen?", "Who do you want to heal?"
+  );
+
+  var usedon := Target(who);
+  If (!usedon)
+    SendSysMessagePergon(who, "Zielen abgebrochen");
+    return;
+  ElseIf (Distance(who, usedon) >= 2)
+    SendSysMessagePergon(who, "Ihr müsst näher an euer Ziel heran");
+    return;
+  ElseIf (!CheckLineOfSight(who, usedon) or usedon.hidden)
+    SendSysMessagePergon(who, "Ihr könnt Euer Ziel nicht sehen.");
+    return;
+  ElseIf (!usedon.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(who,
+      "Ihr könnt nur Lebendes verarzten",
+      "You can only heal living things"
+    );
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var delay := artefact.delay;
+  // Delay zwischen Benutzung und "Heilung"
+  var healDelay := SplitWords(GetConfigString(artefact, "HealDelay"));
+  var minHealDelay := CInt(healDelay[1]);
+  var maxHealDelay := CInt(healDelay[3]);
+  // Staerke der "Heilung"
+  var damage := SplitWords(GetConfigString(artefact, "Damage"));
+  var minDamage := CInt(damage[1]);
+  var maxDamage := CInt(damage[3]);
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", (ReadGameClock() + delay + 6));
+
+  If (usedon == who)
+    SendSysMessagePergon(who, "Ihr beginnt Euch zu verarzten");
+  Else
+    SendSysMessagePergon(who, "Ihr beginnt "+usedon.name+" zu verarzten");
+    SendSysMessagePergon(usedon, who.name+" beginnt Euch zu verarzten");
+  EndIf
+
+  Sleep(RandomIntMinMax(minHealDelay, 1+maxHealDelay));
+
+  var resist := 1 - CDbl(GetResistance(usedon, "poison"));
+  var rawDamage := (minDamage + RandomInt(maxDamage - minDamage) * resist);
+
+  PlaySoundEffect(usedon, 0x0247);
+  ApplyRawDamagePergon(usedon, rawDamage);
+  SendSysMessagepergon(who,
+    "Die Bandagen waren vergiftet!", "The bandages were poisoned!"
+  );
+  If (usedon <> who)
+    SendSysMessagepergon(usedon,
+      "Die Bandagen waren vergiftet!", "The bandages where poisoned!"
+    );
+  EndIf
+
+  SubtractAmount(item, 1);
+EndProgram
+
+// vim: sw=2 sts=2

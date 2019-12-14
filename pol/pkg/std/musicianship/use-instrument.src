@@ -1,0 +1,96 @@
+/////////////////////////////////////////////////////////////////
+// use-instrument
+//
+// Klimpern auf Instrumenten, anfangs zum Skillen geeignet
+
+/////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.3  2010/01/28 12:04:33  Mentholia
+// Flöte
+//
+// Revision 1.2  2008/08/21 03:26:27  mehdorn
+// - auch mal drueberformatiert
+//
+// 2004-02-02 Mai:
+// anderes tambourin eingefuegt und schwierigkeit fuer klimpern auf
+// 20 gesetzt
+//
+// 17.01.2002 Fraggulus:
+// 5-Sekundenverzoegerung eingebaut
+//
+// 2001/05/23 Pauker:
+// Stehende Harfe (Haus-Add-On) eingebaut
+
+include "include/client";
+include "include/modifyskill";
+include "include/objtype";
+use attributes;
+use os;
+use uo;
+
+// Call this Function from other scripts to test musicianship
+// i.e. For the other bard skills. Do not check provocation If
+// you fail at playing your drum.
+
+Program Music(who, instrument)
+  
+  var song := GetObjProperty(who, PROP_MUSIC_BARDING);
+  If (song)
+    If (song[2] == instrument.serial or song == -1)
+      SetObjProperty(instrument, "endsong", 1);
+      return;
+    EndIf
+  EndIf
+  
+  If (GetObjProperty(instrument, "#playing"))
+    If (who.cmdlevel >= CMDLEVEL_SEER)
+      SendSysMessagePergon(who,
+        "CProp #playing loeschen ...", "", _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+      );
+      EraseObjProperty(instrument, "#playing");
+    EndIf
+    return;
+  EndIf
+  SetObjProperty(instrument, "#playing", 1);
+
+  var inst_id := instrument.objtype;
+  var ret := 0;
+
+  If (inst_id == UOBJ_HARP)
+    ret := play(who, SFX_HARP_SUCC, SFX_HARP_FAIL);
+  ElseIf (inst_id == 0x0EB1) // Stehende Harfe, Haus-Ad-On
+    ret := play(who, SFX_HARP_SUCC, SFX_HARP_FAIL);
+  ElseIf (inst_id == UOBJ_LUTE)
+    ret := play(who, SFX_LUTE_SUCC, SFX_LUTE_FAIL);
+  ElseIf (inst_id == UOBJ_DRUM)
+    ret := play(who, SFX_DRUM_SUCC, SFX_DRUM_FAIL);
+  ElseIf (inst_id == UOBJ_TAMB)
+    ret := play(who, SFX_TAMB_SUCC, SFX_TAMB_FAIL);
+  ElseIf (inst_id == 0x0e9e) //das Tambourin mit dem roten Band
+    ret := play(who, SFX_TAMB_SUCC, SFX_TAMB_FAIL);
+  ElseIf (inst_id == UOBJ_FLUT)
+    ret := play(who, SFX_FLUT_SUCC, SFX_FLUT_FAIL);
+  Else
+    PrintTextAbovePrivatePergon(who,
+      "Darauf könnt Ihr beim besten Willen nicht spielen.", "", who
+    );
+  EndIf
+
+  Sleep(5);
+  EraseObjProperty(instrument, "#playing");
+  return ret;
+EndProgram
+
+Function play(who, succeed_sound, fail_sound)
+  // auf 20 anstatt -1 testen, damit nicht jemand mit geklimper zum
+  // grossmeister skillen kann
+  var thepoints := GetSkillDefaultPoints(SKILLID_MUSIZIEREN);
+  If (CheckSkillPergon(who, SKILLID_MUSIZIEREN, 20, thepoints))
+    PlaySoundEffect(who, succeed_sound);
+    return 1;
+  Else
+    PlaySoundEffect(who, fail_sound);
+    return 0;
+  EndIf
+EndFunction

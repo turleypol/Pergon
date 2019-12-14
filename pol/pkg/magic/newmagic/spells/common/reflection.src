@@ -1,0 +1,50 @@
+//**************************************************************************************************
+// Script file reflection.src
+//
+//    implements spell 25 <Reflection> - "Magischer Spiegel"
+//
+//	reflects hostile spell
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.0	- 21.09.2003 Sebastian 'Bihinos' Giese - Zweisprachigkeit eingearbeitet
+//
+//**************************************************************************************************
+
+Include "include/packets";
+Include "../magicpergon";
+
+program cast_reflect (params)
+   Var caster;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+   else
+      caster:= params[1];
+   endif
+
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   if (GetObjProperty(caster, "spell_reflect"))									// check for current reflection
+      if (GetObjProperty(caster, "spell_reflect")[2] == "single")			// check if simple reflection lays on caster
+         SendSysMessagePergon(caster, "Ihr seid bereits geschützt",
+                                      "You are already protected");
+      elseif (GetObjProperty(caster, "spell_reflect")[2] == "mirror");	// check if holy mirror protects caster
+         SendSysMessagePergon(caster, "Ihr seid bereits oder wart vor kurzem durch einen heiligen Spiegel geschützt",
+                                      "You are already or have been recently protected by a holy mirror");
+      endif
+      return;																				// deny reflection
+   endif
+
+   Var tag:= array;
+
+   tag[1]:= -1;								// mark duration as 'eternal'
+   tag[2]:= "single";						// mark as simple reflection
+
+   PlaySoundEffect(caster, SFX_SPELL_MAGIC_REFLECTION);
+   PlayObjectCenteredEffect(caster, FX_BLESS_EFFECT, 10, 10);
+
+   SetObjProperty(caster, "spell_reflect", tag);		// set reflection
+   BuffIcons(caster, "mirror_single");
+endprogram

@@ -1,0 +1,50 @@
+///////////////////////////////////////////////////////////////////////////
+// npc-music
+//
+// NPC-Barden eine Weile zufaellige Klimpereien spielen lassen
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.1  2008/08/20 13:11:26  mehdorn
+// - Umbenennung
+// - leicht überarbeitet
+//
+// 05.11.2001 Fraggulus
+// gebaut
+
+include "include/client";
+use os;
+use uo;
+use util;
+
+Program BardenMusik(params)
+    SleepMS(5000);
+    var EndTime := ReadGameClock() + 120; // 120 Sekunden Spielzeit
+
+    While (
+        // solange er spielen soll ...
+        (GetObjProperty(params[1], "Playing") == 1) and
+        // ... und das Limit nicht ueberschreitet
+        (EndTime > ReadGameClock())
+    )
+        // "Lied" aussuchen
+        var Stueck;
+        Case (RandomInt(8))
+            0: Stueck := SFX_HARP_SUCC;
+            1: Stueck := SFX_HARP_FAIL;
+            2: Stueck := SFX_LUTE_SUCC;
+            3: Stueck := SFX_LUTE_FAIL;
+            4: Stueck := SFX_DRUM_SUCC;
+            5: Stueck := SFX_DRUM_FAIL;
+            6: Stueck := SFX_TAMB_SUCC;
+            7: Stueck := SFX_TAMB_FAIL;
+        EndCase
+
+        // Spielen und kurze Pause machen
+        PlaySoundEffect(params[1], Stueck);
+        SleepMS(RandomIntMinMax(4000,5500));
+    EndWhile
+
+    EraseObjProperty(params[1], "Playing");
+EndProgram

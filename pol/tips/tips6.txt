@@ -1,0 +1,1 @@
+Mit Strg-Q und Strg-W kann man zwischen den zuletzt gesagten Zeilen blaettern.

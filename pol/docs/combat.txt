@@ -1,0 +1,43 @@
+combat rules
+============
+
+
+weapon speed is calculated:
+
+    interattack delay:              15000 seconds
+                                  -----------------
+                            (dexterity+100) * weaponspeed
+
+attack timer restarts on:
+     - new opponent selected
+     - war mode toggled
+     - movement (projectile weapons only)
+     - a weapon is equipped
+     - armor is equipped
+     - a shield is unequipped
+
+     
+
+Combat operations:
+    1. wait for attack timer to time out
+    2. for projectile weapons, consume a projectile.  if none present,
+       reset attack timer.
+    3. determine if attack is successful:
+       hit chance:    attacker's weapon skill + 50
+                    ----------------------------------  * 100
+                    2 * (defender's weapon skill + 50)
+    4. calculate base damage
+    5. check for damage to the attacker's weapon
+    6. calculate damage multiplier:
+       damage multiplier: (attacker's tactics + 50) + (attacker's strength / 5)
+                          -----------------------------------------------------
+                                                 100
+    7. multiply damage by damage multiplier
+    8. Check for parry if defender has a shield equipped:
+        parry chance = defender's parry skill / 2
+        if parry is successful, subtract shield's AR from damage
+    9. armor absorbs some damage:
+        9.1 choose an armor zone randomly.
+        9.2 absorbed damage: from 50% to 100% of armor piece's AR
+    10.remaining damage is halved
+

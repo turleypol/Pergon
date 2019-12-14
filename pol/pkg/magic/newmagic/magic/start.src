@@ -1,0 +1,42 @@
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   Initialize Magic Package
+//					 SpellBook    v1.0 (2001/12/09)
+//					 SpellChecker v0.9 (2004/08/01)
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2001/12/09 Shinigami: First Write
+//		 2004/08/01 Bihinos:   Erweiterung um Spellchecker
+//     2005/03/20 Shinigami: Wegen bloeder ungespeicherter Mod's muss der Spellchecker einmal vorher durchlaufen
+//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+use os;
+use datafile;
+
+/////////////
+// Includes
+/////////////
+
+Include "spellbook";
+Include "../inscription/artefactbook";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Start_Magic()
+  Var datafile:=OpenDataFile("::spelldata");
+  If (!datafile)
+    datafile:=CreateDataFile("::spelldata",DF_KEYTYPE_STRING);
+  Else
+    ForEach elem_name in ( datafile.keys() )
+      datafile.DeleteElement(elem_name);
+    EndForEach
+  EndIf
+  InitSpellBook();							// initializing spellbooks
+  Start_ScriptPergon("spellcheck");				// starting spellchecker
+  Start_ScriptPergon("necrodungeoncontrol");	// starting mastermind script for necro dungeon
+EndProgram

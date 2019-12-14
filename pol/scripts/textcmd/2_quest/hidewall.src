@@ -1,0 +1,145 @@
+///////////////////////////////////////////////////////////////////////////
+// hidewall
+//
+// Steuerung einer oder mehrerer Hidewalls
+
+use uo;
+include ":QuestTools:hidecommon";
+include "include/msgs";
+
+Program HideWallControl(who, params);
+    var args := SplitWords(params);
+
+    If (args.size() < 1)
+        SendSysMessagePergon(who,
+            "Parameter: <Kommando> [<Wert> ...]",
+            "Parameters: <command> [<value> ...]"
+        );
+        SendSysMessagePergon(who,
+            "Kommandos/Commands: "+
+            "mark, select, up, down, visible, invisible, color, graphic"
+        );
+        return;
+    EndIf
+
+    var cmd := "A"+Lower(args[1]);
+
+    If (cmd["Am"]) // mark
+        If (args.size() < 2 or CInt(args[2]) == 0)
+            SendSysMessagePergon(who,
+                "Gebt als Wert einen Radius an!",
+                "Please enter a radius as value"
+            );
+            return;
+        EndIf
+        WallMark(who, CInt(args[2]));
+        return;
+
+    ElseIf (cmd["As"]) // select
+        SendSysMessagePergon(who,
+            "Wählt einen Wandstein!", "Select a wall stone!"
+        );
+        var item := Target(who);
+        // ist es eine Hidewall?
+        If (!item or item.objtype <> UOBJ_HIDEWALL)
+            SendSysMessagePergon(who, "Abbruch", "Abort");
+            return;
+        EndIf
+        var count := WallSelect(who, item);
+        If (count)
+            SendSysMessagePergon(who,
+                count+" Item(s) gewählt", count+" item(s) selected"
+            );
+        EndIf
+        return;
+
+    ElseIf (cmd["Au"]) // up
+        WallSignal(who, ACTION_WALLUP);
+        return;
+
+    ElseIf (cmd["Ad"]) // down
+        WallSignal(who, ACTION_WALLDOWN);
+        return;
+
+    ElseIf (cmd["Av"]) // visible
+        WallSignal(who, ACTION_WALLVIS, CInt(args[2]));
+        return;
+
+    ElseIf (cmd["Ai"]) // invisible
+        WallSignal(who, ACTION_WALLINVIS, CInt(args[2]));
+        return;
+
+    ElseIf (cmd["Ac"]) // color
+        WallSignal(who, ACTION_COLOR, CInt(args[2]));
+        return;
+
+    ElseIf (cmd["Ag"]) // graphic
+        WallSignal(who, ACTION_GRAPHIC, CInt(args[2]));
+        return;
+
+    EndIf
+EndProgram
+
+// Waende suchen und zusammenfassen
+Function WallMark(who, radius) // {{{
+    var walls := ListItemsNearLocationOfType(
+        who.x, who.y, who.z, radius, UOBJ_HIDEWALL, who.realm
+    );
+    If (!walls or walls.size() <= 0)
+        SendSysMessagePergon(who,
+            "Keine Wände in der Gegend gefunden",
+            "No walls found in this region"
+        );
+        return;
+    EndIf
+
+    // bautoolkompatibel markieren
+    var serials := array{};
+    ForEach wall in (walls)
+        SleepMs(2);
+        wall.setprop("bautoolinit", walls[1].serial);
+        serials.append(wall.serial);
+    EndForEach
+    walls[1].setprop("bautoolitems", serials);
+
+    SendSysMessagePergon(who,
+        walls.size()+" Wände markiert",
+        walls.size()+" walls marked"
+    );
+EndFunction // }}}
+
+// Wand oder Wandgruppe am Character sichern
+Function WallSelect(who, item) // {{{
+    var init := item.getprop("bautoolinit");
+    If (!init)
+        // nicht bautoolmarkiert
+        who.setprop(PREFERRED_WALLS, array{item.serial});
+        return 1;
+    EndIf
+
+    If (item.serial <> init)
+        // nicht das Init-Item erwischt
+        var inititem := SystemFindObjectBySerial(init);
+        If (!inititem)
+            SendSysMessagePergon(who,
+                "Fehler, bitte erst/erneut markieren",
+                "Error, please mark first/again"
+            );
+            return 0;
+        EndIf
+        item := inititem;
+    EndIf
+
+    // Init-Item auswerten
+    var group := item.getprop("bautoolitems");
+    If (!group)
+        SendSysMessagePergon(who,
+            "Fehler, bitte erst/erneut markieren",
+            "Error, please mark first/again"
+        );
+        return 0;
+    EndIf
+
+    who.setprop(PREFERRED_WALLS, group);
+    return group.size();
+EndFunction // }}}

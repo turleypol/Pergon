@@ -1,0 +1,18 @@
+///////////////////////////////////////////////////////////////////////////
+// template -- Vorlage fuer Walkonactions
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+
+include "teleport";
+use uo;
+
+Program DoSomething(p)
+    // If (p.who.isa(POLCLASS_NPC))
+    //     // NPC vom Teleport werfen
+    //     StepBack(p);
+    //     return;
+    // EndIf
+
+EndProgram

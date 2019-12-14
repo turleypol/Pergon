@@ -1,0 +1,99 @@
+///////////////////////////////////////////////////////////////////////////
+// housepickup
+//
+// Auswerten, ob Einsammeln eines Items auf einem Multi als Diebstahl
+// durchgehen kˆnnte
+
+use file;
+use os;
+use uo;
+
+include "include/diebesliste";
+include ":housing:house";
+
+// struct{who, pos, mul, info, amt, mat}
+Program HousePickUp(p)
+    // wir werden von einem Critical-Script aufgerufen,
+    // nur fuer den Fall, dass das erblich ist:
+    Set_Critical(0);
+
+    // nichts weggenommen, d. h. Menge in Auswahl auf 0 gesetzt
+    If (p.amt == 0)
+        return;
+    EndIf
+
+    // auf den Staff kann man sich hoffentlich verlassen
+    If (p.who.cmdlevel >= CMDLEVEL_SEER)
+        return;
+    EndIf
+
+    var house;
+    // damit es schneller geht, den Sonderfall vorher abfangen
+    If (p.mul.isa(POLCLASS_HOUSE))
+        If (IsHouseOwnerOrFriend(p.mul, p.who))
+            // gehoert ihm
+            return;
+        EndIf
+        house := p.mul;
+    Else
+        house := GetHouseContainingObject(p.pos);
+        If (!house)
+            // da ist kein Haus
+            return;
+        EndIf
+
+        If (IsHouseOwnerOrFriend(house, p.who))
+            // gehoert ihm
+            return;
+        EndIf
+    EndIf
+
+    var ownerserial := house.getprop(PROP_HS_C_OWNER);
+    If (!ownerserial)
+        // hat gar keinen Besitzer, also egal
+        return;
+    EndIf
+    If (house.objtype in {0x6133, 0x6172})
+      return; // leere Baupl‰tze sind auch egal (Murphys cprop wird sonst ewig groﬂ)
+    EndIf
+
+    // Besitzer fuer Diebesliste ermitteln
+    var owner := SystemFindObjectBySerial(
+        ownerserial, SYSFIND_SEARCH_OFFLINE_MOBILES
+    );
+    If (!owner)
+        // Owner geloescht?
+        syslog(
+            "FEHLER: "+ItemInfoStr(p.mul, COORDS_REALM)+
+            " hat ungueltigen Besitzer "+LHex(ownerserial)+
+            "; hat "+CharInfoStr(p.who)+" "+p.amt+" Stueck von "+
+            p.info+" gestohlen?"
+        );
+        return;
+    EndIf
+
+    // Diebesliste des Besitzers erweitern
+    AddThief(owner, p.who, p.info, HOUSEBREAK);
+
+    var material := "";
+    If (p.mat)
+        material := "["+p.mat+"] ";
+    EndIf
+
+    LogToFile(
+        "::log/stealing.log",
+        // was?
+        p.amt+" Stueck von "+p.info+" "+material+
+        // wer?
+        "Dieb: "+CharInfoStr(p.who)+" "+
+        // wem?
+        "Opfer: "+CharInfoStr(owner)+" (Einbruch)",
+        LOG_DATETIME
+    );
+
+    // Logging
+    // syslog(
+    //     "HINWEIS: "+CharInfoStr(p.who)+" schnappt sich "+
+    //     p.amt+" Stueck von "+p.info
+    // );
+EndProgram

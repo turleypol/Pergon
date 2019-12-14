@@ -1,0 +1,166 @@
+///////////////////////////////////////////////////////////////////////////
+// liftnewwalk -- auf Lift gelaufen, Zieletage abfragen und Lift informieren
+
+use os;
+use uo;
+include "include/eventid";
+include "include/logutil";
+include "include/msgs";
+include "include/properties";
+include "lift";
+
+Program LiftWalk(who, walked, x, y)
+    // nur auf Spieler reagieren
+    If (!who.isa(POLCLASS_MOBILE) or who.isa(POLCLASS_NPC))
+        return;
+    EndIf
+
+    If (who.x == x and who.y == y)
+        // Walkon ignorieren, wenn er schon auf Fahrstuhl war
+        // (durch MoveObjectToLocation vom Fahrstuhl ausgeloest)
+        return;
+    EndIf
+
+    who.setprop(PROP_LIFT_LAST, walked.serial);
+
+    var process := GetLiftProcess(who, walked);
+    If (!process)
+        return;
+    EndIf
+
+    var main := SystemFindObjectBySerial(CInt(walked.getprop(PROP_LIFT_MAIN)));
+    // If (!main) wird durch GetLiftProcess schon erledigt
+
+    var storey := SelectGump(who, main);
+    If (storey == error)
+        // keine Auswahl
+        return;
+    EndIf
+
+    // gucken, ob Benutzer noch auf dem Fahrstuhl ist
+    If (!StillOnLift(who, main))
+        SendSysMessagePergon(who,
+            "Ihr müsst auf dem Aufzug bleiben, um mit ihm zu fahren.",
+            "You have to stay on the lift to use it."
+        );
+        who.eraseprop(PROP_LIFT_LAST);
+        return;
+    EndIf
+
+    // Event zusammenbauen
+    var dest := struct;
+    dest["serial"] := 0;
+    dest["z"]      := storey;
+
+    var event := struct;
+    event["source"] := who;
+    event["storey"] := dest;
+    event["type"]   := EVID_LIFT_CALL;
+    process.sendevent(event);
+EndProgram
+
+// Etagen abklappern und Gump bauen
+Const LIFT_ENTRY_SIZE := 30;
+Function SelectGump(who, lift) // {{{
+    // Serials der Rufsteine auf den Etagen
+    var storeys    := GetObjPropOrDefault(lift, PROP_LIFT_FLOORS, array{});
+
+    // Etagenhoehen und Etagennamen holen
+    var sortstoreys  := dictionary{};
+    var validstoreys := array{};
+    ForEach storey in (storeys)
+        SleepMs(2);
+        var caller := SystemFindObjectBySerial(storey);
+        If (!caller)
+            // weggekommene Items gleich aussortieren
+            continue;
+        EndIf
+        validstoreys.append(storey);
+        If (caller.name)
+            sortstoreys.insert(caller.z, caller.name);
+        Else
+            sortstoreys.insert(caller.z, "Etage z = "+caller.z);
+        EndIf
+    EndForEach
+    // gesaeuberte Itemliste sichern
+    lift.setprop(PROP_LIFT_FLOORS, validstoreys);
+
+    // nach Hoehe sortieren
+    var sorted := sortstoreys.keys();
+    sorted.sort();
+    // hohe Etagen sind immer oben
+    sorted.reverse();
+
+    // Gump bauen
+    var layout := array{
+        "page 0",
+        "nodispose",
+        "resizepic 0 0 2620 310 "+(LIFT_ENTRY_SIZE*sorted.size()+112),
+        "gumppic 20 30 2621",
+        "checkertrans 5 6 300 "+(LIFT_ENTRY_SIZE*sorted.size()+100),
+        "text 20 10 40 0"
+    };
+    var data := array{
+        "Waehlt eine Etage!"
+    };
+    ForEach storey in (sorted)
+        layout.append(
+            "text 50 "+(_storey_iter*LIFT_ENTRY_SIZE+50)+" 40 "+data.size()
+        );
+        // aktuelle Etage anders darstellen
+        If (storey == lift.z)
+            layout.append(
+                "button 20 "+(_storey_iter*LIFT_ENTRY_SIZE+55)+
+                " 2362 2360 1 0 "+_storey_iter
+            );
+        Else
+            layout.append(
+                "button 20 "+(_storey_iter*LIFT_ENTRY_SIZE+55)+
+                " 2361 2360 1 0 "+_storey_iter
+            );
+        EndIf
+        data.append(sortstoreys[storey]);
+    EndForEach
+
+    var ret := CInt(SendDialogGump(who, layout, data, 10, 10)[0]);
+
+    If (ret >= 1 and ret <= sorted.size())
+        return sorted[ret];
+    EndIf
+
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return error{errortext := "Cancelled"};
+EndFunction // }}}
+
+// ist Spieler noch auf richtigem Lift?
+Function StillOnLift(who, main) // {{{
+    // inzwischen ausgeloggt
+    If (!who or !who.connected)
+        return error{errortext := "Player disconnected"};
+    EndIf
+
+    var lastpos := SystemFindObjectBySerial(CInt(who.getprop(PROP_LIFT_LAST)));
+    If (!lastpos)
+        // entweder Property existiert nicht mehr (per Rufstein verlassen),
+        // oder Aufzugitem ist weggekommen
+        return error{errortext := "Error getting PROP_LIFT_LAST"};
+    EndIf
+
+    If (Distance(who, lastpos) > 0)
+        // weggelaufen
+        return error{errortext := "Distance too big"};
+    EndIf
+
+    // zwar noch auf einem Liftitem, aber gehoert es zu anderem Lift?
+    var wholift := CInt(lastpos.getprop(PROP_LIFT_MAIN));
+    If (!wholift)
+        // letztes benutztes Liftitem ist kaputt
+        return error{errortext := "Lift item broken"};
+    EndIf
+    If (wholift <> main.serial)
+        // befindet sich inzwischen auf anderem Lift
+        return error{errortext := "Wrong lift"};
+    EndIf
+
+    return 1;
+EndFunction // }}}

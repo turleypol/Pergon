@@ -1,0 +1,2384 @@
+<html>
+
+<head>
+<title>UO Function Module </title>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+</head>
+
+<body>
+
+<h1>UO Function Module (UO.EM)</h1>
+
+<p>The UO function module defines the following functions: </p>
+
+<table border="1" width="100%" cellspacing="0" cellpadding="4">
+  <tr>
+    <td width="50%">Unclassified Functions</td>
+    <td width="50%">Recently Added</td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><ul>
+      <li><a href="#Accessible">Accessible</a></li>
+      <li><a href="#ApplyRawDamage">ApplyDamage</a></li>
+      <li><a href="#ApplyRawDamage">ApplyRawDamage</a></li>
+      <li><a href="#Broadcast">Broadcast</a></li>
+      <li><a href="#CheckLineOfSight">CheckLineOfSight</a></li>
+      <li><a href="#CheckLosAt">CheckLosAt</a></li>
+      <li><a href="#CreateItemAtLocation">CreateItemAtLocation</a></li>
+      <li><a href="#CreateItemInBackpack">CreateItemInBackpack</a></li>
+      <li><a href="#CreateItemInContainer">CreateItemInContainer</a></li>
+      <li><a href="#CreateMultiAtLocation">CreateMultiAtLocation</a></li>
+      <li><a href="#CreateNpcFromTemplate">CreateNpcFromTemplate</a></li>
+      <li><a href="#ApplyRawDamage">Damage</a></li>
+      <li><a href="#Detach">Detach</a></li>
+      <li><a href="#Distance">Distance</a></li>
+      <li><a href="#EnumerateItemsInContainer">EnumerateItemsInContainer</a></li>
+      <li><a href="#EnumerateOnlineCharacters">EnumerateOnlineCharacters</a></li>
+      <li><a href="#GetAmount">GetAmount</a></li>
+      <li><a href="#GetPosition">GetPosition</a></li>
+      <li><a href="#GetStats">GetStats</a></li>
+      <li><a href="#GetStatus">GetStatus</a></li>
+      <li><a href="#HealDamage">HealDamage</a></li>
+      <li><a href="#ListGhostsNearLocation">ListGhostsNearLocation</a></li>
+      <li><a href="#ListItemsNearLocation">ListItemsNearLocation</a></li>
+      <li><a href="#ListItemsNearLocationOfType">ListItemsNearLocationOfType</a></li>
+      <li><a href="#ListMobilesInLineOfSight">ListMobilesInLineOfSight</a></li>
+      <li><a href="#ListMobilesNearLocation">ListMobilesNearLocation</a></li>
+      <li><a href="#ListMobilesNearLocationEx">ListMobilesNearLocationEx</a></li>
+      <li><a href="#MoveCharacterToLocation">MoveCharacterToLocation</a></li>
+      <li><a href="#Resurrect">Resurrect</a></li>
+      <li><a href="#SendSysMessage">SendSysMessage</a></li>
+      <li><a href="#Target">Target</a></li>
+      <li><a href="#TargetCoordinates">TargetCoordinates</a></li>
+      <li><a href="#TargetMultiPlacement">TargetMultiPlacement</a></li>
+    </ul>
+    </td>
+    <td width="50%" valign="top"><ul>
+      <li><a href="#EnableEventType">EnableEvents</a></li>
+      <li><a href="#EquipFromTemplate">EquipFromTemplate</a></li>
+      <li><a href="#EquipItem">EquipItem</a></li>
+      <li><a href="#GetHarvestDifficulty">GetHarvestDifficulty</a></li>
+      <li><a href="#GrantPrivilege">GrantPrivilege</a></li>
+      <li><a href="#HarvestResource">HarvestResource</a></li>
+      <li>ListEquippedItems</li>
+      <li><a href="#MoveItemToContainer">MoveItemToContainer</a></li>
+      <li><a href="#MoveItemToLocation">MoveItemToLocation</a></li>
+      <li><a href="#PrintTextAbove">PrintTextAbove</a></li>
+      <li><a href="#PrintTextAbovePrivate">PrintTextAbovePrivate</a></li>
+      <li><a href="#ReadGameClock">ReadGameClock</a></li>
+      <li><a href="#RegisterForSpeechEvents">RegisterForSpeechEvents</a></li>
+      <li><a href="#RequestInput">RequestInput</a></li>
+      <li><a href="#RestartScript">RestartScript</a></li>
+      <li><a href="#RevokePrivilege">RevokePrivilege</a></li>
+      <li><a href="#SetRegionLightLevel">SetRegionLightLevel</a></li>
+      <li><a href="#SaveWorldState">SaveWorldState</a></li>
+      <li><a href="#SystemFindObjectBySerial">SystemFindObjectBySerial</a></li>
+      <li>&nbsp;</li>
+    </ul>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">Menu-related Functions:<ul>
+      <li><a href="#AddMenuItem">AddMenuItem</a></li>
+      <li><a href="#CreateMenu">CreateMenu</a></li>
+      <li><a href="#SelectMenuItem2">SelectMenuItem2</a></li>
+    </ul>
+    </td>
+    <td width="50%" valign="top">Skill-related functions:<ul>
+      <li><a href="#CheckSkill">CheckSkill</a></li>
+      <li><a href="#GetRawSkill">GetRawSkill</a></li>
+      <li><a href="#GetSkill">GetSkill</a></li>
+      <li><a href="#SetRawSkill">SetRawSkill</a></li>
+    </ul>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">Custom Per-object Properties:<ul>
+      <li><a href="#EraseObjProperty">EraseObjProperty</a></li>
+      <li><a href="#GetObjProperty">GetObjProperty</a></li>
+      <li><a href="#SetObjProperty">SetObjProperty</a></li>
+    </ul>
+    </td>
+    <td width="50%" valign="top">Custom Global Properties:<ul>
+      <li><a href="#EraseGlobalProperty">EraseGlobalProperty</a></li>
+      <li><a href="#GetGlobalProperty">GetGlobalProperty</a></li>
+      <li><a href="#SetGlobalProperty">SetGlobalProperty</a></li>
+    </ul>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">Effects:<ul>
+      <li><a href="#PerformAction">PerformAction</a></li>
+      <li><a href="#PlayLightningBoltEffect">PlayLightningBoltEffect</a></li>
+      <li><a href="#PlayMovingEffect">PlayMovingEffect</a></li>
+      <li><a href="#PlayObjectCenteredEffect">PlayObjectCenteredEffect</a></li>
+      <li><a href="#PlaySoundEffect">PlaySoundEffect</a></li>
+    </ul>
+    </td>
+    <td width="50%" valign="top">Object Manipulation:<ul>
+      <li><a href="#DestroyItem">DestroyItem</a></li>
+      <li><a href="#EquipItem">EquipItem</a></li>
+      <li><a href="#GetObjType">GetObjType</a></li>
+      <li><a href="#MoveItemToContainer">MoveItemToContainer</a></li>
+      <li><a href="#MoveItemToLocation">MoveItemToLocation</a></li>
+      <li><a href="#SetName">SetName</a></li>
+      <li><a href="#SubtractAmount">SubtractAmount</a></li>
+    </ul>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">House/Ship Placement/Creation:<ul>
+      <li><a href="#TargetMultiPlacement">TargetMultiPlacement</a></li>
+      <li><a href="#CreateMultiAtLocation">CreateMultiAtLocation</a></li>
+    </ul>
+    </td>
+    <td width="50%" valign="top">Event-Related:<ul>
+      <li><a href="#RegisterForSpeechEvents">RegisterForSpeechEvents</a></li>
+      <li><a href="#EnableEventType">EnableEventType</a></li>
+    </ul>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">Resource Management<ul>
+      <li><a href="#GetHarvestDifficulty">GetHarvestDifficulty</a></li>
+      <li><a href="#HarvestResource">HarvestResource</a></li>
+    </ul>
+    </td>
+    <td width="50%" valign="top">&nbsp;</td>
+  </tr>
+</table>
+
+<p>(These could be organized better, probably.&nbsp; Suggestions welcome.)</p>
+
+<p>Functions to be probably renamed: 
+
+<ul>
+  <li>find_storage_area (FindStorageArea)</li>
+  <li>create_storage_area (CreateStorageArea)</li>
+  <li>find_root_item_in_storage (FindRootItemInStorageArea)</li>
+  <li>create_root_item_in_storage (CreateRootItemInStorageArea)</li>
+  <li>send_open_special_container (SendOpenSpecialContainer)</li>
+</ul>
+
+<p><br>
+</p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="Accessible"><big><big><big><strong>Accessible</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>Accessible( Character, item );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Determines if an <strong>item</strong> falls into one of the following categories for
+    a <strong>character</strong>:<ol>
+      <li>An item on the ground, within two squares</li>
+      <li>An item equipped by the character</li>
+      <li>An item inside the character's backpack</li>
+      <li>A temporarily accessible item</li>
+    </ol>
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Zero</strong> if item does not fall into one of the above categories, <strong>nonzero</strong>
+    if the item does.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Does not check that <strong>character</strong> has line-of-sight to <strong>item</strong>.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><big><big><big><strong><a name="ApplyRawDamage">ApplyDamage</a> </strong></big></big></big></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>ApplyDamage( Character, Hits : real);</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Decreases a character's hit points, after reducing damage due to armor.&nbsp; The
+    steps taken are as follows:<ol>
+      <li>A piece of armor is chosen randomly, based on probabilities in ARMRZONE.CFG.</li>
+      <li>Damage is reduced by 50% to 100% of the armor's AR.</li>
+      <li>Remaining damage is halved.</li>
+      <li>&quot;I'm Hit&quot; animation is played.</li>
+      <li>Damage is applied.</li>
+      <li>Mobile is killed if hit points are now zero.</li>
+    </ol>
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Parameters:</td>
+    <td><table border="0">
+      <tr>
+        <td align="right"><strong>Character:</strong></td>
+        <td>A mobile</td>
+      </tr>
+      <tr>
+        <td align="right"><strong>Hits:</strong></td>
+        <td>An real amount of damage to be applied</td>
+      </tr>
+    </table>
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero</strong> if the damage could be applied..<br>
+    An<strong> error</strong> if damage could not be applied. (Character does not refer to a
+    mobile, Hits is negative);</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><big><big><big><strong><a name="ApplyRawDamage">ApplyRawDamage</a> (was:
+    Damage)</strong></big></big></big></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>ApplyRawDamage( Character, Hits );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Decreases a character's hit points.&nbsp; If this causes hit points to drop to zero,
+    kills the character.</td>
+  </tr>
+  <tr>
+    <td align="right">Parameters:</td>
+    <td><table border="0">
+      <tr>
+        <td align="right"><strong>Character:</strong></td>
+        <td>A mobile</td>
+      </tr>
+      <tr>
+        <td align="right"><strong>Hits:</strong></td>
+        <td>An integer amount of damage to be applied</td>
+      </tr>
+    </table>
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero</strong> if the damage could be applied..<br>
+    An<strong> error</strong> if damage could not be applied. (Character does not refer to a
+    mobile, Hits is negative);</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Armor is ignored.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="Broadcast"><big><big><big><strong>Broadcast</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>Broadcast( text );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sends text as a System Message to every online player.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>unimportant</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp;</p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="CheckLineOfSight"><big><big><big><strong>CheckLineOfSight</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>CheckLineOfSight( object1, object2 );</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero</strong> if object1 and object2 have line-of-sight to each other.<br>
+    <strong>Zero</strong> if object1 and object2 do not have line-of-sight.<br>
+    An <strong>error</strong> if parameters are invalid.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp;</p>
+
+<p>&nbsp;</p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="CheckLosAt"><big><big><big><strong>CheckLosAt</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>CheckLosAt( character, x, y, z );</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero</strong> if character has line-of-sight to (x,y,z)<br>
+    <strong>Zero</strong> if character does not have line-of-sight to (x,y,z)<br>
+    An <strong>error</strong> if parameters are invalid.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="CreateItemAtLocation"><big><big><big><strong>CreateItemAtLocation</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>CreateItemAtLocation( x, y, z, objtype, amount );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates an <strong>item</strong> at an arbitrary location.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>An<strong> Item </strong>if the item could be created.<br>
+    An<strong> error</strong> if item could not be created (parameters invalid)</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td><strong>Amount</strong> specifies how large the stack should be.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="CreateItemInBackpack"><big><big><big><strong>CreateItemInBackpack</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>CreateItemInBackpack( Character, ObjType, Amount );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates an <strong>item</strong> in a <strong>character</strong>'s backpack.</td>
+  </tr>
+  <tr>
+    <td align="right">Parameters:</td>
+    <td><strong>Amount</strong> specifies how large the stack should be.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>An<strong> Item </strong>if the item could be created.<br>
+    An<strong> error</strong> if item could not be created</td>
+  </tr>
+  <tr>
+    <td align="right">Errors:</td>
+    <td>That is not a container<br>
+    That container is full<br>
+    Failed to create that item type<br>
+    A parameter was invalid</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Adds to an existing stack in the top level of the container, if an appropriate stack
+    can be found.&nbsp; If no stack is found that can hold the entire amount, creates a new
+    stack.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="CreateItemInContainer"><big><big><big><strong>CreateItemInContainer</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>CreateItemInContainer( Container, ObjType, Amount <strong>:= 1</strong>);</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates an <strong>item</strong> in a <strong>container</strong>.</td>
+  </tr>
+  <tr>
+    <td align="right">Parameters:</td>
+    <td><strong>Amount</strong> specifies how large the stack should be.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>An<strong> Item </strong>if the item could be created.<br>
+    An<strong> error</strong> if item could not be created (container was full).</td>
+  </tr>
+  <tr>
+    <td align="right">Errors:</td>
+    <td>That is not a container<br>
+    That container is full<br>
+    Failed to create that item type<br>
+    A parameter was invalid</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Adds to an existing stack in the top level of the container, if an appropriate stack
+    can be found.&nbsp; If no stack is found that can hold the entire amount, creates a new
+    stack.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="CreateNpcFromTemplate"><big><big><big><strong>CreateNpcFromTemplate</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>CreateNpcFromTemplate( template, x,y,z, override_properties <strong>:= 0</strong>);</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates an NPC from a template.</td>
+  </tr>
+  <tr>
+    <td align="right">Parameters:</td>
+    <td>override_template: a structure containing members to override values in the NPC
+    template (found in NPCDESC.CFG).&nbsp; This can be used only to override built-in
+    properties (facing, color, gender etc), but not custom properties.&nbsp; To override
+    custom properties, use SetObjProperty after the NPC has been created.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>A <strong>character reference</strong> to the NPC if the NPC was created.<br>
+    An<strong> error</strong> if unable to create the NPC.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td><a name="Damage"><big><big><big><strong>Damage</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td>Damage has been renamed to <a href="#ApplyRawDamage">ApplyRawDamage</a>.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="Detach"><big><big><big><strong>Detach</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>Detach();</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Disassociates the current script from the character that it is attached to.&nbsp; If
+    the current script is not attached to a character, does nothing.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero</strong> if the script was attached to a character, and is no longer.<br>
+    An<strong> error</strong> if the script was not attached to a character.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="Distance"><big><big><big><strong>Distance</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>Distance( object1, object2 );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Determines the distance between two objects.&nbsp; If either object is in a container,
+    uses the world-position of its ultimate-parent container.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>This distance is defined as the greater of the x-distance and the y-distance. &nbsp;
+    z-distance is not taken into account.&nbsp; (This is neither Pythagorean distance nor
+    Manhattan distance)</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>The<strong> distance </strong>if the distance could be calculated.<br>
+    An<strong> error</strong> if parameters were invalid.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="EnumerateItemsInContainer"><big><big><big><strong>EnumerateItemsInContainer</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>EnumerateItemsInContainer( container );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Enumerates the contents of a container.&nbsp; Recurses into unlocked subcontainers.
+    &nbsp; If 'container' is itself locked, its contents will be enumerated.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>An <strong>array of object references</strong> if container could be found and is a
+    container.<br>
+    An<strong> error</strong> if container could not be found or is not a container.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="EnumerateOnlineCharacters"><big><big><big><strong>EnumerateOnlineCharacters</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>EnumerateOnlineCharacters();</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>An <strong>array of character references</strong> to player characters that are
+    currently logged-in.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="EquipFromTemplate"><big><big><big><strong>EquipFromTemplate</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>EquipFromTemplate( character, template )</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates equipment for a character, using EQUIP.CFG.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Element properties in EQUIP.CFG can have the following formats:<br>
+    Equip [hex_objtype] [hex_color]<br>
+    Armor [armor_template_name]<br>
+    Weapon [weapon_template_name]<br>
+    Note that object type and color must be in <strong>hex format</strong> (0xHHHH)</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero</strong> if equipment was created</td>
+  </tr>
+  <tr>
+    <td align="right">Errors:</td>
+    <td>Equipment template not found<br>
+    Invalid parameter</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="GetAmount"><big><big><big><strong>GetAmount</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>GetAmount( item );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Access data in Item</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>The size of item's stack.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; &nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="GetPosition"><big><big><big><strong>GetPosition</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>GetPosition(object);</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>A structure containing the position of the object, relative to its parent.<br>
+    Format of the structure:<br>
+    <strong>position.x</strong><br>
+    <strong>position.y</strong><br>
+    <strong>position.z</strong></td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="GetStats"><big><big><big><strong>GetStats</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>GetStats(character);</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>A structure containing the stats of a character:<br>
+    <strong>stats.strength</strong><br>
+    <strong>stats.intelligence</strong><br>
+    <strong>stats.dexterity</strong></td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="GetStatus"><big><big><big><strong>GetStatus</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>GetStatus( character );</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>A structure containing the dynamic status of a character:<br>
+    <strong>status.hp</strong><br>
+    <strong>status.mana</strong><br>
+    <strong>status.stamina</strong><br>
+    <strong>status.ar</strong></td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>This function name is too close to GetStats().&nbsp; Any suggestions?</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="GrantPrivilege"><big><big><big><strong>GrantPrivilege</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>GrantPrivilege( character, privilege );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Grants a <a href="../setpriv.htm">privilege</a> to a character.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>Nonzero if the privilege was granted</td>
+  </tr>
+  <tr>
+    <td align="right">Errors:</td>
+    <td>Invalid parameter</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="HealDamage"><big><big><big><strong>HealDamage</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>HealDamage( Character, Hits );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Increases a character's hit points, up to the character's maximum.</td>
+  </tr>
+  <tr>
+    <td align="right">Parameters:</td>
+    <td><table border="0">
+      <tr>
+        <td align="right"><strong>Character:</strong></td>
+        <td>A mobile</td>
+      </tr>
+      <tr>
+        <td align="right"><strong>Hits:</strong></td>
+        <td>An integer amount of damage to be applied</td>
+      </tr>
+    </table>
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero</strong> if some part of the damage could be healed.<br>
+    An<strong> error</strong> if damage could not be healed. (Character does not refer to a
+    mobile, Hits is negative or &gt;65535);</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="ListEquippedItems"><big><big><big><strong>ListEquippedItems</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>ListEquippedItems( Character );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>// Returns an array of itemrefs of character equipment, including<br>
+    &nbsp;&nbsp;&nbsp; // only layers where items are actually equipped. Only includes<br>
+    &nbsp;&nbsp;&nbsp; // layers 1 through 24, even if other layers are used internally<br>
+    &nbsp;&nbsp;&nbsp; // for other purposes.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>&nbsp;</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="248">
+  <tr>
+    <td colspan="2" height="36"><a name="ListGhostsNearLocation"><big><big><big><strong>ListGhostsNearLocation</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19">ListGhostsNearLocation( x, y, z, range );</td>
+  </tr>
+  <tr>
+    <td align="right" height="57">Function:</td>
+    <td height="57">Searches the world for ghosts within <strong>range</strong> squares of (<strong>x</strong>,<strong>y</strong>,<strong>z</strong>).
+    &nbsp; 19 is used for the z-range.&nbsp; Rectangular range is used - x-range and y-range
+    are compared independently</td>
+  </tr>
+  <tr>
+    <td align="right" height="57">Returns:</td>
+    <td height="57">An <strong>array of object references</strong> of ghosts found near the
+    location.</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Errors:</td>
+    <td height="19">Invalid parameter</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Notes:</td>
+    <td height="19">This call is equivalent to ListMobilesNearLocationEx( x,y,z, range,
+    LISTEX_GHOST ).&nbsp; For this reason, this function may be phased out.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="ListItemsNearLocation"><big><big><big><strong>ListItemsNearLocation</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>ListItemsNearLocation( x, y, z, range );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Searches the world for items within <strong>range</strong> squares of (<strong>x</strong>,<strong>y</strong>,<strong>z</strong>).
+    &nbsp; 10 is used for the z-range.&nbsp; Rectangular range is used - x-range and y-range
+    are compared independently</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>An <strong>array of item references</strong> of items found near the location.<br>
+    An<strong> error</strong> if parameters are invalid.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="ListItemsNearLocationOfType"><big><big><big><strong>ListItemsNearLocationOfType</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>ListItemsNearLocationOfType( x, y, z, range, objtype );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Searches the world for items within <strong>range</strong> squares of (<strong>x</strong>,<strong>y</strong>,<strong>z</strong>)
+    of type <strong>objtype</strong>. &nbsp; 19 is used for the z-range.&nbsp; Rectangular
+    range is used: distance is the greater of x-distance and y-distance.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>An <strong>array of item references</strong> of items found near the location.</td>
+  </tr>
+  <tr>
+    <td align="right">Errors:</td>
+    <td>Invalid parameter</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="ListMobilesInLineOfSight"><big><big><big><strong>ListMobilesInLineOfSight</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>ListMobilesInLineOfSight( object, range );</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>An <strong>array of object references</strong> of living, non-hidden mobiles within <strong>range</strong>
+    tiles of <strong>object</strong>, that have LOS with it.</td>
+  </tr>
+  <tr>
+    <td align="right">Errors:</td>
+    <td>Invalid parameter</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="248">
+  <tr>
+    <td colspan="2" height="36"><a name="ListMobilesNearLocation"><big><big><big><strong>ListMobilesNearLocation</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19">ListMobilesNearLocation( x, y, z, range );</td>
+  </tr>
+  <tr>
+    <td align="right" height="57">Function:</td>
+    <td height="57">Searches the world for mobiles within <strong>range</strong> squares of (<strong>x</strong>,<strong>y</strong>,<strong>z</strong>).
+    &nbsp; 19 is used for the z-range.&nbsp; Rectangular range is used - x-range and y-range
+    are compared independently</td>
+  </tr>
+  <tr>
+    <td align="right" height="57">Returns:</td>
+    <td height="57">An <strong>array of object references</strong> of living, non-hidden
+    mobiles found near the location.</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Errors:</td>
+    <td height="19">Invalid parameter</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="248">
+  <tr>
+    <td colspan="2" height="36"><a name="ListMobilesNearLocationEx"><big><big><big><strong>ListMobilesNearLocationEx</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19">ListMobilesNearLocation( x, y, z, range, flags );</td>
+  </tr>
+  <tr>
+    <td align="right" height="57">Function:</td>
+    <td height="57">Searches the world for mobiles within <strong>range</strong> squares of (<strong>x</strong>,<strong>y</strong>,<strong>z</strong>).
+    &nbsp; 19 is used for the z-range.&nbsp; Rectangular range is used - x-range and y-range
+    are compared independently</td>
+  </tr>
+  <tr>
+    <td align="right" height="57">Parameters:</td>
+    <td height="57"><strong>flags</strong> is the sum of one or more of the following (found
+    in LISTEX.INC):<br>
+    <strong>LIST_NORMAL</strong>: include visible, living mobiles<br>
+    <strong>LIST_HIDDEN</strong>: include hidden mobiles<br>
+    <strong>LIST_GHOST</strong>: include ghosts</td>
+  </tr>
+  <tr>
+    <td align="right" height="57">Returns:</td>
+    <td height="57">An <strong>array of object references</strong> of mobiles found matching
+    the search criteria.</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Errors:</td>
+    <td height="19">Invalid parameter</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="MoveCharacterToLocation"><big><big><big><strong>MoveCharacterToLocation</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>MoveCharacterToLocation( character, x, y, z );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Transports a character to any location.&nbsp; Informs all clients of this. </td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero</strong> if character could be transported.<br>
+    An<strong> error</strong> if parameters are invalid.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Does not check that the target location is unoccupied, either by mobiles, items, or
+    statics, or that it is in any way a valid place to be.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="2" height="36"><a name="PrintTextAbove"><big><big><big><strong>PrintTextAbove</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19" nowrap>PrintTextAbove( above_object, text );</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Function:</td>
+    <td height="19">Causes <strong>text</strong> to be displayed above an <strong>object</strong>,
+    as if spoken.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38"><strong>Nonzero</strong> if the text was displayed<br>
+    <strong>Zero</strong> if text is too long<br>
+    An <strong>error</strong> if parameters were invalid.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="2" height="36"><a name="PrintTextAbovePrivate"><big><big><big><strong>PrintTextAbovePrivate</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19" nowrap>PrintTextAbovePrivate( above_object, text, character );</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Function:</td>
+    <td height="19">Causes <strong>text</strong> to be displayed above an <strong>object</strong>,
+    as if spoken. This text will only be seen by a single <strong>character</strong>.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38"><strong>Nonzero</strong> if the text was displayed<br>
+    <strong>Zero</strong> if text is too long<br>
+    An <strong>error</strong> if parameters were invalid.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="2" height="36"><a name="ReadGameClock"><big><big><big><strong>ReadGameClock</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19" nowrap>ReadGameClock();</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Notes:</td>
+    <td height="19">The Game Clock is a seconds-counter.&nbsp; It is started after all data is
+    read, and is stopped just before writing data.&nbsp; It has no relationship to real-world
+    calendar time.&nbsp; It counts real-time seconds - if the system is running slow, it will
+    reliably tell you how many real-time seconds have passed while the game was running.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38">The current value of the game clock.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="2" height="36"><a name="RequestInput"><big><big><big><strong>RequestInput</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19" nowrap>RequestInput(character, item, prompt );</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Function:</td>
+    <td height="19">Prompts a player for input, and waits for the player to type a line of
+    text.</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Notes:</td>
+    <td height="19"><strong>item</strong> is a placeholder - the client needs it, but it is
+    not used internally.&nbsp; Typically some related item will be passed.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38">A string containing the next line of text from the client's keyboard</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="2" height="36"><a name="RestartScript"><big><big><big><strong>RestartScript</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19" nowrap>RestartScript( npc );</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Function:</td>
+    <td height="19">Stops the current master script for an NPC, and starts a new one.</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Notes:</td>
+    <td height="19">npc.script can be assigned before calling this, to change the master
+    script for an NPC.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38"><strong>Nonzero</strong> if the script was started. (er, it can fail and
+    return nonzero, at the moment)<br>
+    <strong>An error </strong>if unable to restart:<br>
+    &quot;RestartScript only operates on NPCs&quot;<br>
+    &quot;Invalid parameter type&quot;</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="2" height="36"><a name="Resurrect"><big><big><big><strong>Resurrect</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19" nowrap>Resurrect( ghost );</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Function:</td>
+    <td height="19">Resurrects a ghost.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38"><strong>Nonzero</strong> if the ghost was resurrected.<br>
+    <strong>An error </strong>if unable to resurrect:<br>
+    &quot;That is not dead&quot;<br>
+    &quot;Invalid parameter type&quot;</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="RevokePrivilege"><big><big><big><strong>RevokePrivilege</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>RevokePrivilege( character, privilege );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Revokes a <a href="../setpriv.htm">privilege</a> from a character.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>Nonzero if the privilege was revoked, or if it was not previously granted.</td>
+  </tr>
+  <tr>
+    <td align="right">Errors:</td>
+    <td>Invalid parameter</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="2" height="36"><a name="SaveWorldState"><big><big><big><strong>SaveWorldState</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19" nowrap>SaveWorldState();</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Function:</td>
+    <td height="19">Saves the current world state.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38"><strong>Nonzero</strong></td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="SendSysMessage"><big><big><big><strong>SendSysMessage</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>SendSysMessage( character, text );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Displays a System Message in the lower-left corner of character's player's screen.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero </strong>if the message was displayed.<br>
+    <strong>Zero</strong> if the message could not be displayed (character not found, or no
+    client connected) </td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="SetRegionLightLevel"><big><big><big><strong>SetRegionLightLevel</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>SetRegionLightLevel( regionname, lightlevel );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sets the light level of a region by name.&nbsp; The name must match a region name from
+    <font face="Courier New">REGIONS\LIGHT.CFG</font>.</td>
+  </tr>
+  <tr>
+    <td align="right">Parameters:</td>
+    <td>lightlevel must be a value between 0 and 15, where 0 is daylight and 15 is near-total
+    darkness.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero </strong>if the light level was set.<br>
+    An<strong> error</strong> if the light level could not be set:<br>
+    &quot;Invalid Parameter type&quot;<br>
+    &quot;Light Level is out of range&quot;<br>
+    &quot;Light region not found&quot;</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="SystemFindObjectBySerial"><big><big><big><strong>SystemFindObjectBySerial</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>SystemFindObjectBySerial( serial );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Searches the world for an item or mobile by serial number. This could be used if the
+    serial number of an object was saved with SetObjProperty, for example.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>A <strong>character reference</strong> if a character was found.<br>
+    An <strong>item reference</strong> if an item was found.<br>
+    An <strong>error</strong> if no object count be found.</td>
+  </tr>
+  <tr>
+    <td align="right">Errors:</td>
+    <td>Character not found<br>
+    Item not found<br>
+    Invalid parameter</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp;</p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="Target"><big><big><big><strong>Target</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>Target( Character, options);</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sends a target cursor to a character's client, and waits for the player to target
+    something.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>The<strong> Object targetted </strong>if an object was selected.<strong><br>
+    Zero</strong> if the target cursor was cancelled or the client disconnected.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Line-of-sight is checked.&nbsp; Zero is returned if the character does not have
+    line-of-sight to the object.<p><strong>Options</strong> is not yet used.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+
+<p>&nbsp;</p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="TargetCoordinates"><big><big><big><strong>TargetCoordinates</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>TargetCoordinates( Character );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sends a target cursor to a character's client, and waits for the player to target a
+    tile</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>A <strong>structure (members: x,y,z)</strong> containing the location targetted.<strong><br>
+    Zero</strong> if the target cursor was cancelled or the client disconnected.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Line-of-sight is not checked.</td>
+  </tr>
+</table>
+</center></div>
+
+<h2>Menu-Related Functions</h2>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="AddMenuItem"><big><big><big><strong>AddMenuItem</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>AddMenuItem( menu, objtype, text );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Adds a <strong>menu item</strong> to a <strong>menu</strong>.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero</strong> if the item could be added.<br>
+    An<strong> error</strong> if the parameters are invalid.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>The 'objtype' field of a mobile is not appropriate here.&nbsp; There is special art
+    for mobiles for use in menus.&nbsp; Human Males (object type: 0x190) use 0x2106, females
+    0x2107.&nbsp; Use InsideUO to determine other values.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="CreateMenu"><big><big><big><strong>CreateMenu</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>CreateMenu( title : string );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates an empty dynamic menu.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>A <strong>menu</strong> if the menu could be created.<br>
+    An<strong> error</strong> if title is not a string.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="SelectMenuItem2"><big><big><big><strong>SelectMenuItem2</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>SelectMenuItem2( character, menuname );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Displays an object menu on the character's client for the player to select from.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Zero</strong> if the menu was cancelled, or the character's client
+    disconnected.<br>
+    A <strong>structure</strong> containing information on the item selected.&nbsp; If the
+    variable returned is called 'selection', the structure members are as follows:<br>
+    <strong>selection.objtype</strong>: The Object Type of the selection.<br>
+    <strong>selection.index</strong>: The 1-based index, within the menu, of the selection.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>This function will be re-re-named to SelectMenuItem in the future.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+
+<h2>Skill-Related Functions</h2>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="CheckSkill"><big><big><big><strong>CheckSkill</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>CheckSkill( character, skillid, difficulty, pointvalue );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Tests a character's skill against a difficulty-based task.&nbsp; Advances that skill
+    if the test succeeds, proportional to how likely the character was to succeed.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Zero</strong> if the skill check failed.<br>
+    <strong>Greater than zero</strong> if the skill check succeeded.<br>
+    An <strong>error</strong> if parameters are invalid</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>A character has a 100% chance of succeeding at a task with difficulty 20 points below
+    his skill level, which decreases linearly to a 0% chance of succeeding at a task of
+    difficulty 20 points greater than his skill level.&nbsp; The points awarded will scale
+    from 0% to 100% inverse to this rule.<p>The return value may be changed in the future to:
+    -100 to 0, failure, more negative indicates worse failure, or 1 to +100, success, higher
+    indicates greater success.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="GetRawSkill"><big><big><big><strong>GetRawSkill</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>GetRawSkill( character, skillid );</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>The<strong> <a href="../concepts.htm#RawSkill">Raw Skill</a></strong> of a character,
+    for a skill, as an integer.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>See SKILLS.CFG for <strong>skillid</strong> values.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="SetRawSkill"><big><big><big><strong>SetRawSkill</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>SetRawSkill( character, skillid, rawskill );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sets the <a href="../concepts.htm#RawSkill"><strong>Raw Skill</strong></a>&nbsp; of a
+    character for a given skill. Updates displays on the client if connected.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero</strong> if the skill could be set.<br>
+    An <strong>error</strong> if the skill value could not be set:<br>
+    &quot;Raw Skill Values must be positive&quot;<br>
+    &quot;Invalid parameter&quot;</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>See SKILLS.CFG for <strong>skillid</strong> values.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="GetSkill"><big><big><big><strong>GetSkill</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>GetSkill( character, skillid );</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>The<strong> <a href="../concepts.htm#EffectiveSkill">Effective Skill</a></strong> of a
+    character, for a skill, as an integer.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>See SKILLS.CFG for <strong>skillid</strong> values.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+
+<h2>Custom Per-Object Properties</h2>
+
+<p>&nbsp;</p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="EraseObjProperty"><big><big><big><strong>EraseObjProperty</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>EraseObjProperty( object, propertyname );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Removes a <strong>property</strong> from the custom-property list of an <strong>object</strong>.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero</strong> if the property was erased or did not exist.<br>
+    An <strong>error</strong> if parameters were invalid.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; &nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="GetObjProperty"><big><big><big><strong>GetObjProperty</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>GetObjProperty( object, propertyname );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Retrieves custom data associated with an object.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>A <strong>string</strong>, <strong>integer</strong> or <strong>real</strong>
+    containing the value of the named property<br>
+    An <strong>error</strong> if the property could not be found.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; &nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="SetObjProperty"><big><big><big><strong>SetObjProperty</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>SetObjProperty( object, propertyname, propertyvalue );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Associates data with an object.&nbsp; This data will be saved with the object, for
+    later retrieval with GetObjProperty.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero </strong>if the value could be associated.<br>
+    <strong>Zero</strong> if the value could not be associated (propertyname is not a string,
+    propertyvalue is not a string, integer, or real, or object not found) </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td><strong>propertyvalue</strong> may be a <strong>string</strong>, an <strong>integer</strong>,
+    or a <strong>real</strong>.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+
+<h2>Custom Global Properties</h2>
+
+<blockquote>
+  <p>Global properties are named variables which are saved with game state.&nbsp; They can
+  be strings, integers, or reals.</p>
+  <p>No attempt is made to disallow concurrent access to these properties, so it is
+  recommended to set_critical(1) around Get/Modify/Set calls.</p>
+</blockquote>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="EraseGlobalProperty"><big><big><big><strong>EraseGlobalProperty</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>EraseGlobalProperty( propertyname );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Removes a <strong>property</strong> from the global property list.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero</strong> if the property was erased or did not exist.<br>
+    An <strong>error</strong> if parameters were invalid.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; &nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="GetGlobalProperty"><big><big><big><strong>GetGlobalProperty</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>GetGlobalProperty( propertyname );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Retrieves the value of a global property.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>A <strong>string</strong>, <strong>integer</strong> or <strong>real</strong>
+    containing the value of the named property<br>
+    An <strong>error</strong> if the property could not be found.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; &nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="SetGlobalProperty"><big><big><big><strong>SetGlobalProperty</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>SetGlobalProperty( propertyname, propertyvalue );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sets the value of a global property.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero </strong>if the value could be associated.<br>
+    <strong>Zero</strong> if the value could not be associated (propertyname is not a string,
+    propertyvalue is not a string, integer, or real) </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td><strong>propertyvalue</strong> may be a <strong>string</strong>, an <strong>integer</strong>,
+    or a <strong>real</strong>.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp;</p>
+
+<h2>Effects</h2>
+
+<p>&nbsp;</p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="PerformAction"><big><big><big><strong>PerformAction</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>PerformAction( character, action );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Causes <strong>character</strong> to perform an <strong>action</strong>, such as Bow
+    or Salute.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Zero</strong> if the action could not be performed.<br>
+    <strong>Nonzero</strong> if the action could be performed.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="2" height="36"><a name="PlayLightningBoltEffect"><big><big><big><strong>PlayLightningBoltEffect</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19">PlayLightningBoltEffect( victim );</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Function:</td>
+    <td height="19">Plays a lightning bolt effect centered on <strong>victim</strong>.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38"><strong>Zero</strong> if the effect could not be played.<br>
+    <strong>Nonzero</strong> if the effect could be played.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="4" height="36"><a name="PlayMovingEffect"><big><big><big><strong>PlayMovingEffect</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19" colspan="3">PlayMovingEffect( source, destination, effect, speed, loop<strong>
+    := 0</strong>, explode <strong>:= 0</strong>);</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Function:</td>
+    <td height="19" colspan="3">Causes a moving <strong>effect</strong> to be played,
+    travelling from <strong>source</strong> to <strong>destination</strong></td>
+  </tr>
+  <tr>
+    <td align="right" height="21" rowspan="7">Parameters:</td>
+    <td height="3">&nbsp; Parameter</td>
+    <td height="3">Description</td>
+    <td height="3">Default</td>
+  </tr>
+  <tr>
+    <td height="3">Source</td>
+    <td height="3">source object</td>
+    <td height="3"><font color="#808080">n/a</font></td>
+  </tr>
+  <tr>
+    <td height="3">Destination</td>
+    <td height="3">destination object</td>
+    <td height="3"><font color="#808080">n/a</font></td>
+  </tr>
+  <tr>
+    <td height="3">Effect</td>
+    <td height="3"></td>
+    <td height="3"><font color="#808080">n/a</font></td>
+  </tr>
+  <tr>
+    <td height="3">Speed</td>
+    <td height="3">How fast the effect should travel.</td>
+    <td height="3"><font color="#808080">n/a</font></td>
+  </tr>
+  <tr>
+    <td height="3">Loop</td>
+    <td height="3">?</td>
+    <td height="3">0</td>
+  </tr>
+  <tr>
+    <td height="3">Explode</td>
+    <td height="3">Shows an explosion at destination at the end of the effect.</td>
+    <td height="3">0</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38" colspan="3"><strong>Zero</strong> if the effect could not be played.<br>
+    <strong>Nonzero</strong> if the effect could be played.</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Notes:</td>
+    <td height="19" colspan="3">A list of valid values for <strong>effect</strong> needs to be
+    catalogued.<br>
+    Detail is needed on exactly what speed, loop, and explode do.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp;</p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="4" height="36"><a name="PlayObjectCenteredEffect"><big><big><big><strong>PlayObjectCenteredEffect</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19" colspan="3">PlayObjectCenteredEffect( uobject, effect, speed, loop <strong>:=
+    0</strong>);</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Function:</td>
+    <td height="19" colspan="3">Causes an <strong>effect</strong> to be played, centered on
+    uobject, which follows uocject if it moves.</td>
+  </tr>
+  <tr>
+    <td align="right" height="21" rowspan="5">Parameters:</td>
+    <td height="3">&nbsp; Parameter</td>
+    <td height="3">Description</td>
+    <td height="3">Default</td>
+  </tr>
+  <tr>
+    <td height="3">uobject</td>
+    <td height="3">object to center effect on</td>
+    <td height="3"><font color="#808080">n/a</font></td>
+  </tr>
+  <tr>
+    <td height="3">Effect</td>
+    <td height="3"></td>
+    <td height="3"><font color="#808080">n/a</font></td>
+  </tr>
+  <tr>
+    <td height="3">Speed</td>
+    <td height="3">?</td>
+    <td height="3"><font color="#808080">n/a</font></td>
+  </tr>
+  <tr>
+    <td height="3">Loop</td>
+    <td height="3">?</td>
+    <td height="3">0</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38" colspan="3"><strong>Zero</strong> if the effect could not be played.<br>
+    <strong>Nonzero</strong> if the effect could be played.</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Notes:</td>
+    <td height="19" colspan="3">This is used for effects like flame strike and reactive armor.<p>A
+    list of valid values for <strong>effect</strong> needs to be catalogued.<br>
+    Detail is needed on exactly what speed, loop, and explode do.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="2" height="36"><a name="PlaySoundEffect"><big><big><big><strong>PlaySoundEffect</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19">PlaySoundEffect( character, effect );</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Function:</td>
+    <td height="19">Causes a sound <strong>effect</strong> to be played, centered on a <strong>character</strong>.</td>
+  </tr>
+  <tr>
+    <td align="right" height="18">Parameters:</td>
+    <td height="18">The variable <strong>effect</strong> is an integer value.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38"><strong>Zero</strong> if the effect could not be played.<br>
+    <strong>Nonzero</strong> if the effect could be played.</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Notes:</td>
+    <td height="19">See <a href="sndlist.txt">sndlist.txt</a> for possible sound effects to
+    play. (All values are in hex; prefix with 0x)</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+
+<h2>Object Manipulation</h2>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="DestroyItem"><big><big><big><strong>DestroyItem</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>DestroyItem( Item );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Removes an <strong>item</strong> from the world.&nbsp; Transmits commands to each
+    client in range of <strong>item</strong> to reflect this.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero</strong> if the item was destroyed<br>
+    An<strong> error</strong> if the item could not be destroyed (incorrect parameter, or item
+    has already been destroyed)</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="EquipItem"><big><big><big><strong>EquipItem</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>EquipItem( mobile, item );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Equips an item on a mobile.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>If the item is equipped on a character,it will be unequipped.&nbsp; If it is in a
+    container, it will be removed from the container.<p>&quot;Equippable&quot; means that the
+    character does not have a similar item equipped, and that the item is an equipment-type
+    item.&nbsp; Carrying-capacity and strength requirements will fall under this category as
+    well.</p>
+    <p>To &quot;unequip&quot; an item, move it to another location (typically a backpack)</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero </strong>if the item could be equipped.</td>
+  </tr>
+  <tr>
+    <td align="right">Errors:</td>
+    <td>That item is not equippable by that character<br>
+    Invalid parameter type</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="GetObjType"><big><big><big><strong>GetObjType</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>GetObjType( object );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>&nbsp;</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>The<strong> Object Type </strong>of object.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="MoveItemToContainer"><big><big><big><strong>MoveItemToContainer</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>MoveItemToContainer( item, container, x <strong>:= -1</strong>, y <strong>:= -1</strong>
+    )</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Moves an item into a container.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>If the default values for x and y are passed, or if x or y does not fall within the
+    legal bounds for a container as found in ITEMDESC.CFG, then a random location within the
+    container will be chosen.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero </strong>if the item could be placed in the container.<br>
+    An error if unable to place the item in the container.</td>
+  </tr>
+  <tr>
+    <td align="right">Errors:</td>
+    <td>Non-container selected as target<br>
+    Container is too full to add that<br>
+    Invalid parameter type<br>
+    Item cannot be removed from its container<br>
+    Couldn't find that item</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="MoveItemToLocation"><big><big><big><strong>MoveItemToLocation</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>MoveItemToLocation( item, x, y, z );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Moves an item to a location on the ground, after removing it from its previous
+    location.</td>
+  </tr>
+  <tr>
+    <td align="right">Parameters:</td>
+    <td><strong>z: </strong>The z-coordinate passed is used as a hint.&nbsp; The item will be
+    placed on the the ground, or on another item, or on a ship, just as if a character had
+    tried to walk there.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>If the item is equipped on a character, it will be unequipped.&nbsp; If it is in a
+    container, it will be removed from the container.<br>
+    If the location selected is on a ship, the item will henceforth move with the ship.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero </strong>if the item was moved.</td>
+  </tr>
+  <tr>
+    <td align="right">Errors:</td>
+    <td>Invalid location selected<br>
+    Item cannot be removed from its container<br>
+    Invalid parameter type</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="SetName"><big><big><big><strong>SetName</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>SetName( object, name );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sets the Name of an object.&nbsp; Single-clicking the object will then return this
+    name.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero </strong>if the name was set<br>
+    <strong>Zero</strong> if the name could not be set (incorrect parameter) </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>This can set names of items or mobiles.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="SubtractAmount"><big><big><big><strong>SubtractAmount</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>SubtractAmount( item, amount );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Decreases the stack size of an item.&nbsp; If nothing is left, deletes the item.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Nonzero </strong>if the amount could be subtracted.<br>
+    <strong>Zero</strong> if the item could not be found. </td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+
+<h2>House/Ship Placement/Creation</h2>
+
+<p>&nbsp;</p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="CreateMultiAtLocation"><big><big><big><strong>CreateMultiAtLocation</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>CreateMultiAtLocation( x,y,z, objtype );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates a &quot;multi&quot; at a location.&nbsp; Currently the only type of multi
+    supported is that of ships. </td>
+  </tr>
+  <tr>
+    <td align="right">Parameters:</td>
+    <td>objtype must be a multi type (0x4000 to 0x4fff - although not all of those are valid)</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>A<strong> ship reference </strong>or <strong>multi reference</strong> if the object
+    was created.<br>
+    An<strong> error </strong>if the object could not be created. </td>
+  </tr>
+  <tr>
+    <td align="right">Errors:</td>
+    <td>Object Type out of range for Multis<br>
+    No known multi definition for that objtype<br>
+    Unable to create Multi<br>
+    Position indicated is impassable <em>(ships only)</em><br>
+    Invalid parameter type</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>A location is &quot;passable&quot; for a ship if every part of the hull sits on water,
+    and no hull location is occupied by the hull of another ship, nor a static or dynamic
+    blocking item.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><a name="TargetMultiPlacement"><big><big><big><strong>TargetMultiPlacement</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>TargetMultiPlacement( character, objtype );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Requests a character place a multi-gump.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>A<strong> structure (x,y,z) </strong>containing the location targetted.<br>
+    <strong>Zero</strong> if targetting was cancelled.</td>
+  </tr>
+  <tr>
+    <td align="right">Errors:</td>
+    <td>No client attached<br>
+    Client busy with another target cursor<br>
+    Object Type is out of range for Multis<br>
+    Invalid parameter type</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+
+<h2>Event-Related:</h2>
+
+<p>&nbsp;</p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="2" height="36"><a name="RegisterForSpeechEvents"><big><big><big><strong>RegisterForSpeechEvents</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19" nowrap>RegisterForSpeechEvents( at_object, range );</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Function:</td>
+    <td height="19">Player-character speech spoken within <strong>range</strong> tiles of <strong>at_object</strong>
+    will generate <strong><a href="events.htm#speech">speech</a> <a href="events.htm">events</a></strong>,
+    which must be read using <strong>wait_for_event</strong>.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38"><strong>Nonzero</strong> if registration was successful.<br>
+    An<strong> error </strong>if unable to register:<br>
+    &quot;Already registered for speech events&quot;<br>
+    &quot;Invalid parameter type&quot;</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="2" height="36"><a name="EnableEventType"><big><big><big><strong>EnableEvents</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19" nowrap>EnableEvents( events, range );</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Function:</td>
+    <td height="19">Enables <a href="events.htm">events</a> specified.&nbsp; When enabled
+    events occur, they will be placed on the script's event queue, and must be read with
+    wait_for_event.&nbsp; Events that were previously enabled will remain enabled.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Notes:</td>
+    <td height="38">See include/eventid.inc for event type constants.&nbsp; <br>
+    &quot;speech&quot; events are by default enabled.&nbsp; This will change.<br>
+    This function is useful only to NPCs.<br>
+    Range is only used for certain events.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38"><strong>Nonzero</strong> if the event type was enabled.<br>
+    An<strong> error </strong>if the event type is unknown.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Errors:</td>
+    <td height="38"><br>
+    Invalid parameter</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+
+<h2>Resource Management</h2>
+
+<p>See <a href="../resource.htm">../resource.htm</a> for details on resource management
+and resource pools.</p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="2" height="36"><a name="GetHarvestDifficulty"><big><big><big><strong>GetHarvestDifficulty</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19" nowrap>GetHarvestDifficulty( x, y, resource, tiletype );</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Function:</td>
+    <td height="19">Determines the difficulty of harvesting a <strong>resource</strong> from
+    location (<strong>x,y</strong>).</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Parameters:</td>
+    <td height="38"><strong>tiletype</strong> will typically be .objtype from
+    TargetCoordinates()</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Notes:</td>
+    <td height="38">Checks the location for an object of type 'tiletype'.&nbsp; Since this
+    tiletype may be a landtile or an object tile, there may be some room for ambiguity; we'll
+    work on this.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38">A<strong> difficulty level </strong>if resources exist.<br>
+    An<strong> error </strong>if the event type is unknown.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Errors:</td>
+    <td height="38">No resource by that name<br>
+    No resource-bearing landmark there<br>
+    No resource region at that location<br>
+    Resource is depleted<br>
+    Invalid parameter</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%" height="221">
+  <tr>
+    <td colspan="2" height="36"><a name="HarvestResource"><big><big><big><strong>HarvestResource</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" height="19"><small>Declaration:</small></td>
+    <td height="19" nowrap>HarvestResource( x, y, resource, b, n );</td>
+  </tr>
+  <tr>
+    <td align="right" height="19">Function:</td>
+    <td height="19">Attempts to harvest a resource from a location.&nbsp; </td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Notes:</td>
+    <td height="38">Harvests a*b resource units, where 0 &lt;= a &lt;= n.&nbsp; Thus you can
+    request 0-40 units in groups of 5, etc.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Returns:</td>
+    <td height="38">The<strong> number of resource units harvested </strong>if resources were
+    harvested, or if no resources were available.<br>
+    An<strong> error </strong>if an error occurred.</td>
+  </tr>
+  <tr>
+    <td align="right" height="38">Errors:</td>
+    <td height="38">Invalid parameter</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+</body>
+</html>

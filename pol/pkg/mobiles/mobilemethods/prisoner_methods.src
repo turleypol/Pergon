@@ -1,0 +1,24 @@
+use uo;
+
+Include ":popuphook:popupmenu";
+
+Program Install()
+	return 1;
+EndProgram
+
+Exported Function haspopup(mobile)
+	return 1;
+	mobile := mobile;
+EndFunction
+
+Exported Function popupinfo(mobile, who)
+	var info := array;
+	If (!GetObjProperty(mobile, "hilfe"))
+	  info.append({ID_PRISONER_HELP, CLILOC_PRISONER_HELP});
+	Else
+	  info.append({ID_PRISONER_GO, CLILOC_PRISONER_GO});
+	EndIf
+	
+	return info;
+	who := who;
+EndFunction

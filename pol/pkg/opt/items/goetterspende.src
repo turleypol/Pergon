@@ -1,0 +1,45 @@
+///////////////////////////////////////////////////////////////////
+// Goetterspende
+//
+// Ein Player wirft etwas in die Spendenkiste
+//
+// Author: Fraggulus
+// Date:   28.11.2002
+
+///////////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+// Revision 1.4  2008/08/02 00:34:28  mehdorn
+// - unbenutze Variablen entfernt/Warnungen deswegen unterdrueckt
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+include "include/pergonutil";
+use os;
+use uo;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program Spende(who, kiste, tmp, insert_type, new_trash, existing_trash)
+    // Compilerwarnung unterdruecken
+    tmp := tmp;
+
+    var params := struct{
+        who := who,
+        chest := kiste
+    };
+
+    If (insert_type == INSERT_INCREASE_STACK)
+        params.+item := existing_trash;
+    ElseIf (insert_type==INSERT_ADD_ITEM)
+        params.+item := new_trash;
+    Else
+        return 0;
+    EndIf
+
+    // Ausgelagert, weil dieses Script hier ein critical ist
+    // Set_Debug(1);
+    return Start_ScriptPergon("dogoetterspende", params);
+EndProgram

@@ -1,0 +1,41 @@
+Known Bugs
+==========
+
+Broadcast() and text squelching don't work with Unicode
+
+Certain uses of start_script() and run_script_to_completion() seem to be buggy;
+  please report any guaranteed way to reproduce the problem.
+
+A mobile's AR should cover all layers.
+mobile.ar should show default AR.
+Dropping items in caves doesn't work right.
+When you climb a ladder POL still thinks your z is the bottom of the ladder.
+Walkspeed not checked properly (related to UOGEAR exploits)
+Secure Trade Window bugs (various -- ugh!)
+Attacker/defender and weapon/armor sometimes reverse when sending to a hitscript.
+Core doesn't prevent something/someone from moving diagonally, even with solid objects on either side.
+If player A consumes somethng in his backpack, other players get update packets.
+container.weight -should- return total weight including items in the container.
+Dropping an item on the paperdoll's backpack doesn't fire onInsertScript or canInsertScript.
+item.multi should not return 0 for items which block movement and are on multis.
+Some sounds that should be private aren't and the "gold dropping" sound is wrong.
+Item heights for piling items upon one another don't work.
+Core currently sends human pain cries for nonhuman NPCs.
+Multi placement cursor needs tweaking.
+If you tab out of combat you don't stop fighting things that are attacking you.
+Living players can trade with warmode ghosts if AllowSecureTradingInWarMode is
+  set to 1 in SERVSPECOPT(.LOCAL).CFG
+
+Web server is susceptible to DoS attacks
+Hitting Ctrl-C early in startup can cause an AV on exit
+Clients sometimes lockup on teleports into areas with lots of items (blackholing)
+
+Linux
+=====
+If a client closes without hitting logout, they are instalogged and logofftest and logoff are not run
+
+Unexplained crashes
+===================
+    in the drop item handler, dropping an item in another.  looks like it happened
+     in toplevel_owner, getting item->container.
+    in undo_get_item, trying to move the dragged item into a backpack

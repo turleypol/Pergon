@@ -1,0 +1,31 @@
+///////////////////////////////////////////////////////////////////////////
+// blocknonnewbie -- Verhindert den Durchgang fuer Festlaender
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.1  2008/08/26 21:37:35  mehdorn
+// - neuer Stein, der nur Newbies (und NPCs) durchlaesst
+//
+
+include "include/msgs";
+include "include/server";
+include "common";
+use uo;
+
+Program BlockNonNewbie(p)
+    If (p.who.isa(POLCLASS_NPC))
+        // NPCs duerfen immer
+        return;
+    EndIf
+
+    If (GetObjProperty(p.who, TYPNEWBIE))
+        return;
+    EndIf
+
+    SendSysMessagePergon(p.who,
+        "Dieser Bereich ist nur für Neulinge gedacht. Bitte geht wieder.",
+        "This zone is for newbies only. Please go away."
+    );
+    StepBack(p);
+EndProgram

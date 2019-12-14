@@ -1,0 +1,80 @@
+//**************************************************************************************************
+// Script file bonebreaker.src
+//
+//    implements spell 318 <Bone Breaker> - "Knochenbrecher"
+//
+//	deals damage to spelltarget (by breaking them bones)
+//		[ Reflected / Resisted (Magic) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use vitals;
+
+Include "../magicpergon";
+Include "../resistance";
+Include "../spellattack";
+include "include/packets";
+
+program cast_bonebreaker (params)
+
+   Var caster;
+   Var caston;
+   Var spelltarget;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_NECRO_BONEBREAKER);
+   Var difficulty:= spell.skill;
+   Var resist:= spell.resist;
+   Var dmg:=    spell.primary;
+   Var mindmg:= spell.primarymin;
+   Var maxdmg:= spell.primarymax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+      send_attack(caston, caster, 318);
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_NECRO_BONEBREAKER);
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+																	// get spelltarget -> possible spell reflection
+   spelltarget:= ReflectSpell(caster, caston, dmg, 1, FX_GLOW_SPIKE, 10, 5, 0, SFX_1C8);
+
+   if (spelltarget)
+      if (resist)		// calc spell damage according to spelltargets magic resistance and casting power
+         dmg:= CInt(MagicResistance(spelltarget, difficulty, resist, power*dmg/100.0, 1));
+      else
+         dmg:= CInt(power*dmg/100.0);
+      endif
+
+      if (mindmg and mindmg > dmg)
+         dmg:= mindmg;
+      elseif (maxdmg and maxdmg < dmg)
+         dmg:= maxdmg;
+      endif
+
+      ApplyRawDamagePergon(spelltarget, dmg);				// deal damage to spelltarget
+   endif
+
+endprogram

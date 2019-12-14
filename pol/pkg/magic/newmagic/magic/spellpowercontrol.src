@@ -1,0 +1,110 @@
+//////////////////////////////////////////////////////////////////////////////
+//
+//   spellpowercontrol - Hauptscript für Gumpanzeige spellpowergump.src
+//                       um automatische Aktualisierung zu gewährleisten
+//
+//
+//     Author: Turley
+//
+//
+//   Modification:
+//     25.09.07 Turley - Init
+//
+//////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+
+Include "include/pergonutil";
+Include "include/modifyskill";
+Include ":newspells:magicpergon";
+Include "include/packets";
+
+Program spellpowercontrol(params)
+  Var who:=params[1];
+  Var whocmdlvl:=params[2];  // Sonderaufruf
+  Var skills:={};
+  Var script, ev;
+  Var reset:=0, oldscript;
+  
+  If (!whocmdlvl)
+    If (who.getprop("#spellpowergump"))
+      Return;
+    Else
+      who.setprop("#spellpowergump",GetPID());
+    EndIf
+  EndIf
+
+  While (who.connected)
+    skills:={};  // Castpower über Beispielsprüche bestimmen
+    skills.append(CInt(GetCastPowerPergon(who, SPELLID_COMMON_CREATEFOOD)));  // Allgemein
+    If ((GetObjProperty(who, SKILLTYPKENNUNG+SKILLID_SEGNEN)) || (who.cmdlevel>CMDLEVEL_GM) || (who.isA(POLCLASS_NPC)))
+      skills.append({SKILLID_SEGNEN,
+                     CInt(GetCastPowerPergon(who, SPELLID_CLERIC_BLESS)),  //Segen
+                     CInt(GetCastPowerPergon(who, SPELLID_CLERIC_HEAL)),  // Heilung
+                     CInt(GetCastPowerPergon(who, SPELLID_CLERIC_PARALYZE)),  // Vergeltung
+                     CInt(GetCastPowerPergon(who, SPELLID_CLERIC_DISPELFIELD))});//Antimagie
+
+    EndIf
+    If ((GetObjProperty(who, SKILLTYPKENNUNG+SKILLID_MAGIE)) || (who.cmdlevel>CMDLEVEL_GM) || (who.isA(POLCLASS_NPC)))
+      skills.append({SKILLID_MAGIE,
+                     CInt(GetCastPowerPergon(who, SPELLID_MAGE_FIREBALL)),  //Feuer
+                     CInt(GetCastPowerPergon(who, SPELLID_MAGE_ICEBOLT)),  // Wasser
+                     CInt(GetCastPowerPergon(who, SPELLID_MAGE_STONESPLINTER)),  // Erde
+                     CInt(GetCastPowerPergon(who, SPELLID_MAGE_ENERGYBOLT))});//Luft
+    EndIf
+    If ((GetObjProperty(who, SKILLTYPKENNUNG+SKILLID_FLUCHEN)) || (who.cmdlevel>CMDLEVEL_GM) || (who.isA(POLCLASS_NPC)))
+      skills.append({SKILLID_FLUCHEN,
+                     CInt(GetCastPowerPergon(who, SPELLID_NECRO_POISON)),  //Gift
+                     CInt(GetCastPowerPergon(who, SPELLID_NECRO_CURSE)),  // Fluchen
+                     CInt(GetCastPowerPergon(who, SPELLID_NECRO_RAISESKELETON)),  // Beschwörung
+                     CInt(GetCastPowerPergon(who, SPELLID_NECRO_PUSH))});//Tod
+    EndIf
+    
+    If (whocmdlvl)  // Sonderaufruf
+      SendSysMessagePergon(whocmdlvl,"Allg: "+skills[1]);
+      If (skills[2])
+        SendSysMessagePergon(whocmdlvl,skills[2][1]+": "+skills[2][2]+"/"+skills[2][3]+"/"+skills[2][4]+"/"+skills[2][5]);
+      EndIf
+      If (skills[3])
+        SendSysMessagePergon(whocmdlvl,skills[3][1]+": "+skills[3][2]+"/"+skills[3][3]+"/"+skills[3][4]+"/"+skills[3][5]);
+      EndIf
+      If (skills[4])
+        SendSysMessagePergon(whocmdlvl,skills[4][1]+": "+skills[4][2]+"/"+skills[4][3]+"/"+skills[4][4]+"/"+skills[4][5]);
+      EndIf
+      Return;
+    EndIf
+
+    If (skills.size()>1)
+      If (reset)
+        If (script)
+          oldscript:=script;
+        EndIf
+      EndIf
+      script:=Start_ScriptPergon(":newmagic:spellpowergump",{who,skills});  // Gumpscript starten
+      If (reset)
+        reset:=0;
+        SleepMS(10);  // Einwenig warten damit kein "flackern" entsteht
+        CloseGumpPergon(who, oldscript.pid, 99);  // Altes Gump schließen (Script beendet sich dann automatisch)
+        Sleep(1); // Da der Client komischerweise nicht immer antwortet nach ner Zeit per Hand killen
+        If (oldscript)
+          oldscript.kill();
+        EndIf
+      EndIf
+    Else
+      who.eraseprop("#spellpowergump");
+      Return;
+    EndIf
+
+    While (who.connected)  // Schleife für Aktualisierungsevent
+      ev:=Wait_For_Event(999);
+      If (ev)
+        reset:=1;  // CastPower hat sich geändert
+        Break;
+      EndIf
+      SleepMS(2);
+    EndWhile
+
+  EndWhile
+  who.eraseprop("#spellpowergump");
+EndProgram

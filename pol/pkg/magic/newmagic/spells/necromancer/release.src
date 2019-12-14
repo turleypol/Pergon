@@ -1,0 +1,65 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file release.src
+//
+// implements spell 322 <Release> - "Entlassen"
+//
+// destroys creatures formerly summoned or raised by caster
+
+use uo;
+include "../magicpergon";
+
+Program cast_release(params)
+  var caster;
+  var caston;
+  var power;
+  If (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetSpell(caster, TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_NECRO_RELEASE);
+    caston := TargetSpell(caster, TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  If (!caster or caster.dead)
+    // bei Zielauswahl ausgeloggt, verstorben etc.
+    return;
+  EndIf
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_DIR);
+
+  // check if spelltarget is summoned
+  If (!GetObjProperty(caston, PROP_SUMMONED))
+    SendSysMessagePergon(caster,
+      "Das wurde nicht beschworen", "This has not been summoned"
+    );
+    return;
+  EndIf
+
+    // check if caster is spelltargets master
+  If (GetObjProperty(caston, "master") <> caster.serial)
+    SendSysMessagePergon(caster,
+      "Das wird nicht von Euch kontrolliert", "You do not control that"
+    );
+    return;
+  EndIf
+
+  PlaySoundEffect(caston, SFX_SPELL_MANA_VAMPIRE);
+  PlayStationaryEffect(
+    caston.x, caston.y, caston.z, FX_SMOKE, 10, 10, 0, caston.realm
+  );
+
+  // hide and kill critter
+  caston.hidden := 1;
+  KillNPC(caston, "necro-release", KILLNPC_NOCORPSE);
+EndProgram

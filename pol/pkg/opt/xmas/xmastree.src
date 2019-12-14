@@ -1,0 +1,78 @@
+/////////////////////////////////////////////////////////////////////////////
+// - xmas tree
+// updated November 19, 2000
+
+/////////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.6  2008/09/09 16:10:22  mehdorn
+// - Include house
+//
+// Revision 1.5  2008/09/04 19:45:44  mehdorn
+// - in Housing mal Konstanten fuer viel Props eingefuehrt
+// - entsprechend in anderen Scripten verwendet
+//
+// 07.01.2003 Fraggulus:
+// Baum besteht nun aus dem Set "WeihnachtsbaumKerzeKugel",
+// welches seinerseits mit dem Script "xmastreepresent" verknuepft ist
+//
+// 03.12.2003 Fraggulus: (provisorisches) Abbauscript fuer Weihnachtsbaum
+
+use uo;
+
+include ":housing:house";
+include "include/set";
+
+Program XmasTree(who, deed)
+  If (!ReserveItem(deed))
+    return;
+  EndIf
+
+  SendSysMessagePergon(who, "Wo wollt Ihr Euren Weihnachtsbaum aufstellen?");
+  var where := TargetCoordinates(who);
+  If (!where)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (who.cmdlevel < CMDLEVEL_SEER)
+    var house := GetHouseContainingObject(who);
+    If (!house)
+      SendSysMessagePergon(who,
+        "Ihr müsst Euch in einem Haus befinden, um den Baum aufzustellen."
+      );
+      return;
+    EndIf
+
+    If (!IsHouseOwner(house, who))
+      SendSysMessagePergon(who,
+        "Nur der Eigentümer des Hauses kann den Baum aufstellen."
+      );
+      return;
+    EndIf
+
+    ForEach item in ListItemsNearLocation(who.x, who.y, who.z, 2, who.realm)
+      If (
+        UOBJECT_DOORS_START <= item.objtype and
+        item.objtype <= UOBJECT_DOORS_END
+      )
+        SendSysMessagePergon(who,"Das ist zu nah an einer Tür.");
+        return;
+      EndIf
+    EndForEach
+  EndIf
+
+  // Weihnachtsbaumset nutzen
+  var item := MakeSet(where, "WeihnachtsbaumKerzeKugel");
+  If (!item)
+    SendSysMessagePergon(who,
+      "Euer Weihnachtsbaum konnte nicht aufgestellt werden."
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who, "Ihr stellt Euren Weihnachtsbaum auf.");
+  SetName(deed, "Abbauplan fuer Weihnachtsbaum");
+  SetObjProperty(deed, "Set_Name", "WeihnachtsbaumKerzeKugel");
+  deed.usescript := ":xmas:xmastreedestroy";
+EndProgram

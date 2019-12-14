@@ -1,0 +1,63 @@
+///////////////////////////////////////////////////////////////////////////
+//
+//						Bountpaper - Steckbrief fuer Gesuchte (neues Konzept der verwundbaren Townguards
+//
+//						Author: Hotny
+//						06.08.2006
+//
+//						Modifikations:
+//
+//
+//						CProps - CityWanted -> Dictionary mit Stadtname als Key und
+//																								 Ablaufzeit als Value
+//
+///////////////////////////////////////////////////////////////////////////
+
+use uo;
+
+Include "include/objtype";
+Include "include/msgs";
+Include "include/modifyskill";
+Include "include/npc";
+Include "include/bountbox";
+
+VAR CITIES:={"yew","cove","vesper","minoc","jhelom","nirdana"};
+CONST PAPER_WANTED_TIME:=36*60*60;
+
+program UserBountPaper(who,paper)
+	  if (IsPersonBMorGM(who))
+	  	var timeout:=paper.getprop("wanted_timeout");
+	  	if (timeout < ReadGameClock())
+	  		DestroyItem(paper);
+	  		SendSysMessagePergon(who,"Dieser Steckbrief ist nicht mehr gültig","This Bountpaper isn't longer valid");
+	  		return;
+	  	endif
+	  	//So jetzt darf das Paper noch was machen
+	  	var verfolgterserial:=paper.getprop("wanted_Serial");
+	  	var verfolgter:=SystemFindObjectBySerial(verfolgterserial);
+	  	var wanted:=verfolgter.getprop("city_wanted");
+	  	if (!wanted)
+	  		wanted:=dictionary;
+	  	endif
+	  	//Suchlevel fuer jede Stadt hochsetzen
+	  	foreach city in cities
+	  		var timeout:=CInt(wanted[CStr(city)]);
+	  		if (timeout)
+	  			if (timeout < ReadGameClock())
+	  				wanted[CStr(city)]:=ReadGameClock() + PAPER_WANTED_TIME;
+	  			else
+	  				wanted[CStr(city)]:=timeout + PAPER_WANTED_TIME;
+	  			endif
+	  		else
+	  			wanted[CStr(city)]:=ReadGameClock() + PAPER_WANTED_TIME;
+	  		endif
+	  	endforeach
+	  	verfolgter.setprop("city_wanted",wanted);
+	  	// 36h Criminal und verfolgt
+	  	verfolgter.setcriminal(36);
+	  	SendSysMessagePergon(who,verfolgter.name + " wird nun in allen Städten gesucht!",verfolgter.name + " will be wanted in every city!");
+	  	DestroyItem(paper);
+	  else
+	  	SendSysMessagePergon(who,"Ihr seid dazu nicht berechtigt","That isn't allowed to you");
+	  endif
+endprogram

@@ -1,0 +1,56 @@
+//////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD HarvestInfo v1.0 (23.12.2002)
+//
+//     Liefert Infos ueber das Vorhandensein einer Ressource an einer Stelle
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+//////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+////////////
+// Include
+////////////
+
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_HarvestInfo(who, params)
+  If (params)
+    SendSysMessagePergon(who, "Bitte eine Stelle am Boden auswählen!");
+
+    Var use_on:=TargetCoordinates(who); // Welche Stelle will ich untersuchen?
+    If (use_on)
+      Var difficulty:=GetHarvestDifficulty(params, use_on.x, use_on.y, GetMapInfo(use_on.x, use_on.y,use_on.realm).landtile,use_on.realm);
+      SendSysMessagePergon(who, "GetHarvestDifficulty ["+Lower(Hex(GetMapInfo(use_on.x, use_on.y,use_on.realm).landtile))+"] = "+difficulty);
+      SendSysMessagePergon(who, "GetHarvestDifficulty ["+Lower(Hex(use_on.objtype))+"] = "+GetHarvestDifficulty(params, use_on.x, use_on.y, use_on.objtype,use_on.realm));
+      SendSysMessagePergon(who, GetMapInfo(use_on.x, use_on.y,use_on.realm)+" / "+use_on);
+
+      If (difficulty<>error)
+        If (difficulty)
+          SendSysMessagePergon(who, "Hier könnte man was finden.");
+        Else
+          SendSysMessagePergon(who, "Hier ist grad alles weggeschürft!");
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Hier könnte man nie irgendwas finden!");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Aufruf: .harvestinfo ressourcename");
+    SendSysMessagePergon(who, "Hiermit ermittelt ihr Infos über das Vorhandensein der Ressource an dieser Stelle.");
+  EndIf
+EndProgram

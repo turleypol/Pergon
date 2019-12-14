@@ -1,0 +1,53 @@
+///////////////////////////////////////////////////////////////////////////
+// telenomagic --
+//
+// Teleportiert, wenn kein Magie-Skill vorhanden (Magierturm)
+
+include "common";
+include "include/client";
+include "include/modifyskill";
+include "include/msgs";
+use os;
+use uo;
+
+Program TeleNoMagic(p)
+    // menschenaehnliche NPCs bleiben drin, Rest raus
+    If (p.who.isa(POLCLASS_NPC))
+        If (!p.who.graphic in (array{
+            CID_HUMAN_MALE, CID_HUMAN_MALE, CID_ELF_MALE, CID_ELF_FEMALE
+        }))
+            PrintTextAbovePergon(p.who, p.who, "Hinfort damit!");
+            Sleep(1);
+            Rauswerfen(p);
+        Else
+            // vom Item schubsen
+            StepBack(p);
+        EndIf
+        return;
+    EndIf
+
+    // ein Player also
+    If (!HasPlayerSkill(p.who, SKILLID_MAGIE))
+        PrintTextAbovePrivatePergon(p.who,
+            "Ihr wagt es, die Kreise der Weisen zu stören, Unwissender?! "+
+            "Hinfort mit Euch!", "", p.who
+        );
+        Rauswerfen(p);
+    EndIf
+EndProgram
+
+Function Rauswerfen(p)
+    var dest := GetTeleDest(p.item);
+    If (dest == error)
+        PrintTextAbovePergon(p.who, p.who,
+            "Der Durchgang ist fehlerhaft. Ruft einen GM!",
+            "Bad passage. Ask a GM for help."
+        );
+        StepBack(p.who);
+        return;
+    EndIf
+
+    MoveObjectToLocation(p.who, dest.x, dest.y, dest.z, dest.realm);
+    // drehen, z. B. vom Turm/Tor weg
+    p.who.facing := dest.facing;
+EndFunction

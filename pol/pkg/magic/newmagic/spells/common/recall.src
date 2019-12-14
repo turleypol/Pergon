@@ -1,0 +1,82 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file recall.src
+//
+// implements spell 23 <Recall> - "Zurueckkehren"
+//
+// casted on rune, caster recalls
+
+/////////////
+// Bibliotheken&Includes
+/////////////
+use uo;
+use os;
+include "../../runebook/rune";
+include "../magicpergon";
+
+Program CastSpellRecall(params)
+  var caster;
+  var caston;
+  var power;
+  If (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_COMMON_RECALL);
+  EndIf
+
+  SendSysMessagePergon(caster,
+    "Wählt eine Rune zum Beschwören aus",
+    "Choose a rune to cast on"
+  );
+
+  // choose rune
+  caston := TargetThing(caster, TGTOPT_CHECK_LOS);
+  // waehrend Auswahl gestorben/ausgeloggt etc.?
+  If (!caster or caster.dead)
+    return;
+  EndIf
+  If (!caston)
+    SendSysMessagePergon(caster, "Kein Ziel", "No target");
+    return;
+  EndIf
+
+  // target is inaccessible
+  If (!AccessiblePergon(caster, caston))
+    SendSysMessagePergon(caster,
+      "Ihr kommt da nicht ran", "You cannot reach that"
+    );
+    return;
+  EndIf
+
+  // target is no rune
+  If (caston.objtype <> UOBJ_RUNE)
+    SendSysMessagePergon(caster,
+      "Diesen Zauber könnt Ihr nur auf Runen anwenden",
+      "This spell can only be casted on runes"
+    );
+    return;
+  EndIf
+
+  // check If rune is marked
+  If (!IsRuneMarked(caston))
+    SendSysMessagePergon(caster,
+      "Diese Rune ist noch nicht markiert", "This rune is not marked yet"
+    );
+    return;
+  EndIf
+
+  PerformAction(caster, ANIM_CAST_AREA);
+  ReserveItem(caston);
+  SleepMS(250);
+
+  // teleport caster to rune location
+  If (CastRecallRune(caster, caston, power) == RUNE_CANCEL_NORUNE)
+    DestroyItem(caston);
+    SendSysMessagePergon(caster,
+      "Die Rune wurde zerstört", "The rune has been destroyed"
+    );
+  EndIf
+EndProgram
+
+// vim: sw=2 sts=2

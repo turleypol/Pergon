@@ -1,0 +1,55 @@
+///////////////////////////////////////////////////////
+// TextCMD GoSerial - Zu einem Objekt mit bestimmter Serial teleportieren
+//
+// Author: Shinigami
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use uo;
+include "include/msgs";
+include "include/place";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program GoSerial(who, serial)
+  If (!serial)
+    SendSysMessagePergon(who,
+      "Ihr müsst eine Serial angeben!", "You have to define a serial number."
+    );
+    return;
+  EndIf
+
+  Var object := SystemFindObjectBySerial(
+    CInt(serial), SYSFIND_SEARCH_OFFLINE_MOBILES
+  );
+  If (!object)
+    SendSysMessagePergon(who,
+      "Das Objekt " + Lower(Hex(serial)) + " existiert nicht!",
+      "Object " + Lower(Hex(serial)) + " doesn't exist!"
+    );
+    return;
+  EndIf
+
+  JumpLocationAdd(who);
+  If (object.container)
+    var cont := object.container;
+    While (cont.container)
+      cont := cont.container;
+    EndWhile
+    MoveObjectToLocation(
+      who, cont.x, cont.y, cont.z, cont.realm, MOVEOBJECT_FORCELOCATION
+    );
+    SendSysMessagePergon(who,
+      "Springe zu Rootcontainer. Serial ("+hex(cont.serial)+")"
+    );
+  Else
+    MoveObjectToLocation(
+      who, object.x, object.y, object.z, object.realm, MOVEOBJECT_FORCELOCATION
+    );
+  EndIf
+EndProgram
+
+// vim: sw=2 sts=2

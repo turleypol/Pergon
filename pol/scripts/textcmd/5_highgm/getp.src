@@ -1,0 +1,34 @@
+use uo;
+include "include/msgs";
+
+Program TextCMD_GetP(who, param)
+  If (!param)
+    SendSysMessagePergon(who, "Ihr müsst eine Property angeben!");
+    return;
+  EndIf
+
+  SendSysMessagePergon(who, "Wählt ein Objekt!");
+  var tgt := Target(who, TGTOPT_NOCHECK_LOS);
+  If (!tgt)
+    SendSysMessagePergon(who,
+      "Kein normales Item - Wählt ein Paperdoll-Item!"
+    );
+    tgt := TargetCoordinates(who);
+    If (tgt.item)
+      tgt := tgt.item;
+    EndIf
+  EndIf
+  If (!tgt)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  var value := GetObjProperty(tgt, param);
+  If (value == error)
+    SendSysMessagePergon(who, "Die Property '"+param+"' gibt es nicht!");
+  Else
+    SendSysMessagePergon(who,
+      "Die Property '"+param+"' hat den Wert "+value+" ("+TypeOf(value)+")"
+    );
+  EndIf
+EndProgram

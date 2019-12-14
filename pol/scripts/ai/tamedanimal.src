@@ -1,0 +1,346 @@
+////////////////////////////////////////////////////////////////////////////
+// TamedAnimal - Besaenftigtes Tier v1.0 (2000/11/xx)
+//
+// Dieses Script laeuft bei dem Viech, sobald der Zaehmer seine Arbeit
+// erfolgreich beendet hat. Jetzt könnte man das Tier abrichten. Wenn
+// man das nicht tut, rennt es bloss hinter einem her und wird nach
+// einer Weile wieder wild.
+//
+// Author: DeMohn
+// eMail:  ?
+//
+// Modificator: Shinigami
+//
+// Benutzte CProp's
+//   CInt(npc.roamsfreeat) - Wann verliert das Tier sein Interesse?
+//   CInt(npc.tametimer)   - Wie lange laesst sich das Tier nicht zaehmen?
+// Benutzte zusaetzliche Prop's
+//   CInt(npc.attackhitsound) - Sound, gespielt beim Angriff
+//   CInt(npc.idlesound)      - Sound, gespielt, wenn's nix zu tun gibt
+//   CInt(npc.senserange)     - Sicht-Bereich (ENTERED_AREA etc.)
+
+use cfgfile;
+use npc;
+use os;
+use uo;
+use util;
+include "include/animal";
+include "include/eventid";
+include "include/modifyskill";
+include "include/party";
+
+// Globale Variablen
+var attackhitsound;           // Sound, gespielt beim Angriff
+var lastsighted    := 0;      // Wann wurde der Meister zuletzt gesehen?
+var me             := Self(); // Referenz auf sich selbst
+var senserange;               // Sicht-Bereich (ENTERED_AREA etc.)
+var tametimer      := 60;     // Wie lange laesst sich Tier nicht zaehmen?
+
+Program TamedAnimal()
+  // Initialisierung
+  // Konstanten [aus dem Template] auslesen
+  var mytemplate := GetNPCConfig(me.npctemplate);
+
+  // Master ermitteln/setzen (Restartsicherheit)
+  var master := me.getprop("master");
+  If (master)
+    me.setmaster(master);
+  EndIf
+  If (me.master)
+    me.setprop("master", me.master.serial);
+  EndIf
+
+  // Sicht-Bereich (ENTERED_AREA etc.)
+  senserange := mytemplate.senserange;
+  If (!senserange)
+    senserange := 10;
+  EndIf
+
+  // Sound, gespielt beim Angriff und wenn's nix zu tun gibt
+  attackhitsound := CInt(mytemplate.attackhitsound);
+  var idlesound := CInt(mytemplate.idlesound);
+
+  // Wann verliert das Tier sein Interesse?
+  var roamsfreeat := GetObjProperty(me, "RoamsFreeAt");
+  If (!roamsfreeat)
+    roamsfreeat := ReadGameClock()+300;
+  EndIf
+
+  SetWarMode(0);
+
+  // Events aktivieren
+  EnableEvents(SYSEVENT_ENGAGED+SYSEVENT_DAMAGED);
+  EnableEvents(SYSEVENT_DOUBLECLICKED, 3);
+  EnableEvents(SYSEVENT_ENTEREDAREA, senserange);
+
+  // Hauptschleife
+  var wandertimer := 0; // Wann wandert das Tier mal wieder rum?
+  var distracted := 0;  // Wurde das Tier abgelenkt?
+  While (
+    // Interesse verloren
+    (roamsfreeat > ReadGameclock()) And
+    // abgelenkt
+    (!distracted)
+  )
+    // Event holen und bearbeiten
+    var ev := Wait_for_EventLogging(1);
+    Case (ev.type)
+      SYSEVENT_ENGAGED: // Angriff
+      SYSEVENT_DAMAGED: // Verletzen
+        // Wer war's? Etwa der eigene Meister?
+        If (ev.source == me.master)
+          SendSysMessagePergon(me.master,
+            me.master.name+", Ihr seid solch ein boshafter Mensch!",
+            "", 3, 0x22
+          );
+          tametimer := 21600; // Wie lange laesst sich das Tier nicht zaehmen?
+        Else
+          If (me.master.connected)
+            SendSysMessagePergon(me.master,
+              me.name+" wird nervös und scheint jetzt wahrlich "+
+              "andere Probleme zu haben", "", 3, 0x22
+            );
+          EndIf
+          tametimer := 600;   // Wie lange laesst sich das Tier nicht zaehmen?
+          SetWarMode(1);
+        EndIf
+
+        distracted := 1;      // Tier wurde somit abgelenkt
+
+      SYSEVENT_ENTEREDAREA: // Jemand ist ins Sichtfeld gelaufen
+        TurnToward(ev.source);
+        // Hasse ich mein Gegenueber oder fuerchte ich mich davor?
+        If (CheckHateLove(me, ev.source) in {1, 2})
+          If (me.master)
+            If (me.master.connected)
+              SendSysMessagePergon(me.master,
+                me.name+" sieht "+(ev.source).name+
+                " und wird sichtlich nervöser.", "", 3, 0x22
+              );
+            EndIf
+          EndIf
+
+          // Angriffs-Sound spielen
+          If (attackhitsound)
+            PlaySoundEffect(me, attackhitsound);
+          EndIf
+
+          tametimer := 120; // Wie lange laesst sich das Tier nicht zaehmen?
+          // SetWarMode(1);
+
+          distracted := 1;  // Tier wurde somit abgelenkt
+        EndIf
+      SYSEVENT_DOUBLECLICKED:
+        // nur auf eigenen Meister reagieren
+        If (ev.source == me.master)
+          If (Distance(ev.source, me) <= 2)
+            If (IsWasPackAnimal(me))
+              SendSysMessagePergon(ev.source,
+                "Ihr traut euch nicht, dem unabgerichteten Tier "+
+                "an die Packtaschen zu fassen."
+              );
+            Else
+              SendSysMessagePergon(ev.source,
+                "Ihr könnt das Tier nicht reiten, solange es nicht "+
+                "abgerichtet ist."
+              );
+            EndIf
+          Else
+            SendSysMessagePergon(ev.source, "Das ist zu weit weg.");
+          EndIf
+        EndIf
+
+      default: // Sonst
+        // Sehe ich meinen Meister noch? Mal hinlaufen...
+        If (CheckLineOfSight(me, me.master))
+          // Ich hab ihn gesehen
+          lastsighted := ReadGameClock();
+          KeepDistanceToMaster(me, me.master, 0, 3);
+        ElseIf (ReadGameclock()<=lastsighted+2)
+          // Vor 2 Sekunden war er noch da
+          KeepDistanceToMaster(me, me.master, 0, 3);
+        EndIf
+    EndCase
+
+    // Wurde das Tier noch nicht abgelenkt?
+    If (!distracted)
+      // Sollte das Tier mal wieder rumwandern?
+      wandertimer += 1;
+      If (wandertimer>=20)
+        WanderPergon();
+        wandertimer := 0;
+      EndIf
+
+      SleepMS(200);
+
+      // Mit 20% nochmal rumwandern und mit 5% der 20% IdleSound spielen
+      If (!RandomInt(5))
+        WanderPergon();
+        If (!RandomInt(20))
+          If (idlesound)
+            PlaySoundEffect(me, idlesound);
+          EndIf
+        EndIf
+      EndIf
+
+      // Mal umschauen, ob da nicht doch ein Grund zum Ablenken ist
+      distracted := LookAround();
+    EndIf
+  EndWhile
+
+  //////////////////////////////////////////////////////
+  // Tier hat Interessse verloren oder wurde abgelenkt
+  //////////////////////////////////////////////////////
+
+  // Tier akzeptiert Meister nicht mehr
+  If (me.master)
+    If (me.master.connected)
+      SendSysMessagePergon(me.master,
+        me.name+" verliert das Interesse an Euch.", "", 3, 0x58
+      );
+    EndIf
+  EndIf
+
+  // ggf. Master rotieren und "schon einmal gezaehmt" setzen
+  If (me.master)
+    me.setprop("ExMaster", me.master);
+    me.setprop("PrevTamed", 1);
+  EndIf
+  me.eraseprop("master");
+  me.setmaster(0);
+
+  // Wie lange laesst sich das Tier nicht zaehmen?
+  SetObjProperty(me, "TameTimer", ReadGameClock()+tametimer);
+  // Wann verliert das Tier sein Interesse?
+  EraseObjProperty(me, "RoamsFreeAt");
+
+  // Wieder urspruengliches Script und Namen setzen
+  me.name := mytemplate.name;
+  me.script := mytemplate.script;
+  RestartScript(me);
+EndProgram
+
+//////////////////////////////////////////////////////
+// KeepDistanceToMaster - Abstand zum Meister halten
+//////////////////////////////////////////////////////
+Function KeepDistanceToMaster(me, master, mindist := 10, maxdist := 0) // {{{
+  // Sehe ich meinen Meister noch?
+  If (CheckLineOfSight(me, master))
+    lastsighted := ReadGameclock();
+  Else
+    var dist := Distance(me, master);
+
+    // Bewegt sich mein Meister schneller als der Wind (z.B. Teleporter)?
+    If (
+      ((dist>25) And (ReadGameclock()<=lastsighted+1)) Or
+      ((dist>50) And (ReadGameclock()<=lastsighted+2))
+    )
+      MoveObjectToLocation(me, master.x, master.y, master.z, master.realm);
+    EndIf
+  EndIf
+
+  // Dexterity hochsetzen, das Adrenalin des Tiers steigt...
+  var olddexterity_mod := GetDexModPergon(me);
+  SetDexModPergon(me, 500);
+
+  // TimeOut fuer den Fall der Faelle bestimmen
+  var timeout := ReadGameClock()+CInt(GetStaminaPergon(me)/20);
+
+  // [Mindest]Distanz aufbauen, also ggf. weglaufen
+  While (master And (Distance(me, master) < mindist))
+    If ((ReadGameClock() >= timeout) or Events_Waiting())
+      // da kam etwas dazwischen
+      break;
+    EndIf
+
+    // Sehe ich meinen Meister noch?
+    If (CheckLineOfSight(me, master))
+      lastsighted := ReadGameClock();
+    Else
+      // Bewegt sich mein Meister schneller als der Wind (z.B. Teleporter)?
+      If ((Distance(me, master)>25) And (ReadGameclock()<=lastsighted+1))
+        MoveObjectToLocation(me, master.x, master.y, master.z, master.realm);
+      EndIf
+    EndIf
+
+    // Wenn ich sehr nah bin, dann rennen
+    If (Distance(me, master) < mindist/2)
+      RunAwayFrom(master);
+    Else
+      WalkAwayFrom(master);
+    EndIf
+
+    SleepMS(100);
+  EndWhile
+
+  // Soll ich dem Meister folgen?
+  If (maxdist)
+    // [Maximal]Distanz abbauen, also ggf. hinlaufen
+    While (master And (Distance(me, master) > maxdist))
+      If ((ReadGameClock() >= timeout) or Events_Waiting())
+        // da kam etwas dazwischen
+        break;
+      EndIf
+
+      // Sehe ich meinen Meister noch?
+      If (CheckLineOfSight(me, master))
+        lastsighted := ReadGameClock();
+      Else
+        // Bewegt sich mein Meister schneller als der Wind (z.B. Teleporter)?
+        If ((Distance(me, master) > 25) And (ReadGameclock() <= lastsighted+1))
+          MoveObjectToLocation(me, master.x, master.y, master.z, master.realm);
+        EndIf
+      EndIf
+
+      // Rennen, wenn direkt aufschliessen und wenn sehr weit entfernt
+      If (
+        (mindist == 0) or
+        (maxdist <= senserange) and (Distance(me, master) >= senserange)
+      )
+        RunToward(master);
+      Else
+        WalkToward(master);
+      EndIf
+
+      SleepMS(100);
+    EndWhile
+  EndIf
+
+  // Dexterity zuruecksetzen, das Adrenalin des Tiers nimmt ab...
+  SetDexModPergon(me, olddexterity_mod);
+EndFunction // }}}
+
+//////////////////////////////////////////////////////////////////
+// LookAround - Mal umschauen, was da noch kraeucht und fleucht
+//////////////////////////////////////////////////////////////////
+Function LookAround() // {{{
+  ForEach critter in ListMobilesInLineOfSight(me, senserange)
+    SleepMS(50);
+
+    // Hasse ich mein Gegenueber oder fuerchte ich mich davor?
+    If (CheckHateLove(me, critter) in {1, 2})
+      // Blick zum Tier schweifen lassen
+      TurnToward(critter);
+      If (me.master)
+        If (me.master.connected)
+          SendSysMessagePergon(me.master,
+          me.name+" schaut nervös zu "+critter.name+".", "", 3, 0x22
+          );
+        EndIf
+      EndIf
+
+      // Angriffs-Sound spielen
+      If (attackhitsound)
+        PlaySoundEffect(me, attackhitsound);
+      EndIf
+
+      // Wie lange laesst sich das Tier nicht zaehmen?
+      tametimer := 120;
+      // SetWarmode(1);
+      // Tier wurde somit abgelenkt
+      return 1;
+    EndIf
+  EndForEach
+EndFunction // }}}
+
+// vim: sw=2 sts=2

@@ -1,0 +1,48 @@
+//Wolfsmist
+//By Eddy
+
+use os;
+use uo;
+
+Include "include/client";
+Include "include/modifyskill";
+
+program wolfsmist( character, item )
+	  If ((!item.movable) && (!item.getprop("usable")))
+    	SendSysMessagePergon(character, "Dies ist nicht zum Werfen geeignet.");
+    	Return;
+    EndIf
+
+    SendSysMessagePergon( character, "Ziel wählen." );
+    Var subject := Target(character);
+
+    if (!subject)
+        SendSysMessagePergon(character, "Zielen abgebrochen");
+        return;
+    elseif (Distance(character, subject) >= 16 )
+        SendSysMessagePergon(character, "So weit fliegt der Wolfsmist nicht!");
+        return;
+    elseif (!CheckLineOfSight(character,subject))
+	SendSysMessagePergon(character,"Ihr könnt Euer Opfer nicht sehen.");
+	return;
+    elseif (!GetMaxStaminaPergon(subject))
+	SendSysMessagePergon(character,"Sowas bewirft man nicht mit Wolfsmist!.");
+	return;
+    EndIf
+
+    if (character == subject)
+        PrintTextAbovePergon(character, character, character.name + " findet Gefallen daran, sich mit Wolfsmist zu beschmieren!");
+    else
+        SendSysMessagePergon(Character, "Ihr bewerft " + subject.name + " mit Wolfsmist.");
+        SubtractAmount( Item , 1 );
+
+        PlayMovingEffectXYZ( character.x, character.y, character.z+15,
+                         subject.x, subject.y, subject.z, 0xF3C, 8, 0, 0 ,character.realm);
+        SleepMs(800);
+        PrintTextAbovePergon(character, subject, "*WATSCH!*");
+        Sleepms(1500);
+        SendSysMessagePergon(subject,   character.name + " bewirft Euch mit Wolfsmist.");
+    EndIf
+
+
+endprogram

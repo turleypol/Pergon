@@ -1,0 +1,11 @@
+use uo;
+use polsys;
+
+program squelch( gm, duration )
+    duration := CInt( duration );
+    var who := Target( gm, TGTOPT_NOCHECK_LOS );
+    if (who)
+        who.squelch( duration );
+        IncRevision(who);
+    endif
+endprogram

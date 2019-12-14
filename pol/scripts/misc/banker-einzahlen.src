@@ -1,0 +1,148 @@
+// kleines Programm fuer Kontoeinzahlungen, aufgerufen vom Baenker
+
+use uo;
+use util;
+include "include/bank";
+include "include/itemnpc";
+include "include/msgs";
+include "include/stringcalc";
+
+Program Einzahlen(param)
+    var acct := GetAccountBalance(param.bankbox);
+
+    PrintTextAbovePrivatePergon(
+        param.banker,
+        "Zeigt mir Euer Gold, das Ihr einzahlen wollt!", "",
+        param.customer
+    );
+    var tgt := Target(param.customer);
+    If (!tgt)
+        SendSysMessagePergon(param.customer, "Abbruch", "Abort");
+        return;
+    EndIf
+    If (tgt.isa(POLCLASS_MOBILE))
+        // Support fuer Packtiere etc.
+        tgt := tgt.backpack;
+    EndIf
+
+    If (!IsMine(param.customer, tgt))
+        PrintTextAbovePrivatePergon(
+            param.banker,
+            "Ihr könnt kein Gold einzahlen, dass Euch nicht gehört!", "",
+            param.customer
+        );
+        return;
+    EndIf
+
+    var potential_gold := array{};
+    If (tgt.isa(POLCLASS_CONTAINER))
+        If (!IsMine(param.customer, tgt))
+            PrintTextAbovePrivatePergon(
+                param.banker,
+                "Ich bin nicht sicher, ob das Euer Gold ist.", "",
+                param.customer
+            );
+            return;
+        EndIf
+
+        potential_gold := EnumerateItemsInContainer(tgt);
+    Else
+        potential_gold.append(tgt);
+    EndIf
+
+    If (GetObjProperty(param.customer, CPROP_GOLD_TRANS))
+        PrintTextAbovePrivatePergon(
+            param.banker,
+            "Es läuft doch bereits eine Transaktion!", "",
+            param.customer
+        );
+        return;
+    EndIf
+    SetObjProperty(param.customer, CPROP_GOLD_TRANS, 1);
+
+    If (!ReserveItem(tgt))
+        StopTransaction(param.customer, tgt);
+        return;
+    EndIf
+
+    var gold := array{};
+    var freigeben := array{};
+    ForEach item in (potential_gold)
+        SleepMS(2);
+        If (
+            // lose mus es sein
+            item.movable and
+            // Gold oder ein Scheck?
+            item.objtype in array{UOBJ_GOLD_COIN, 0x66b2} and
+            // wenn reservierbar, dann einzahlbar
+            ReserveItem(item)
+        )
+            gold.append(item);
+        EndIf
+        If (item.isa(POLCLASS_CONTAINER) and ReserveItem(item))
+            // Core reserviert Container mit reserviertem Inhalt nicht selbst
+            freigeben.append(item);
+        EndIf
+    EndForEach
+
+    // ein wenig Muenzgeklimper
+    If (RandomInt(2))
+        PlaySoundEffectPrivate(param.banker, 0x37, param.customer);
+    Else
+        PlaySoundEffectPrivate(param.banker, 0x38, param.customer);
+    EndIf
+
+    var eingezahlt := "0";
+    ForEach item in (gold)
+        var amount;
+        If (item.objtype == UOBJ_GOLD_COIN)
+          amount := item.amount;
+        Else
+          amount := StrMultiplikation(item.amount, GetObjProperty(item, CPROP_GOLD_ACCT));
+        EndIf
+        If (DestroyItem(item))
+            acct :=       StrAddition(acct,       amount);
+            eingezahlt := StrAddition(eingezahlt, amount);
+            // sicherheitshalber immer wegschreiben
+            SetObjProperty(param.bankbox, CPROP_GOLD_ACCT, acct);
+        EndIf
+
+        // falls Verbindungsabbruch
+        If (!param.customer.connected)
+            StopTransaction(param.customer, tgt, gold+freigeben);
+            return;
+        EndIf
+
+        SleepMS(STACK_CONSUME_DELAY);
+        // geht leider nicht, weil der Core bei der Goldzaehlung reservierte
+        // Haufen ignoriert
+        // SendStatus(param.customer);
+
+        // Abbruch, falls Person (oder Banker) weggelaufen ist
+        If (Distance(param.banker, param.customer) >= MAXDIST_BANKCUST)
+            PrintTextAbovePrivatePergon(
+                param.banker,
+                "Wo wollt ihr denn hin? Dann behaltet Euer Gold eben!", "",
+                param.customer
+            );
+            break;
+        EndIf
+    EndForEach
+
+    PrintTextAbovePrivatePergon(
+        param.banker,
+        "Ihr habt "+eingezahlt+" Goldstücke eingezahlt.", "",
+        param.customer
+    );
+    PrintTextAbovePrivatePergon(
+        param.banker,
+        "Euer Kontostand beträgt nun "+acct+" Goldstücke.", "",
+        param.customer
+    );
+    syslog(
+        "GOLDKONTO: Stand "+acct+" (eingezahlt: "+eingezahlt+") durch "+
+        param.customer.name+" ("+Hex(param.customer.serial)+")"
+    );
+    StopTransaction(param.customer, tgt, gold+freigeben);
+    return;
+EndProgram

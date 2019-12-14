@@ -1,0 +1,74 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+//   InitStaticBooks - Sucht nach neuen statischen Buechern und traegt sie ein
+//
+//     based on Bookcase Spawning System v0.3 (2000/12/08)
+//       Author: Syzygy, Zulu, Bishop Ebonhand
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2002/04/25 Shinigami: ReWrite
+//     2002/05/02 Shinigami: ZuluBooks abgeschaltet
+//
+////////////////////////////////////////////////////////////////////////////////
+//
+// Benutzte DataFile-Prop's
+//   String(book.title)   - Titel des Buches
+//   String(book.author)  - Autor des Buches
+//   Array(book.contents) - Inhalt des Buches (String-Array)
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use cfgfile;
+Use datafile;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program InitStaticBooks()
+ // Var books:=ReadConfigFile("zulubooks");
+ // If (books)
+    Var staticbooks:=CreateDataFile("staticbooks", DF_KEYTYPE_INTEGER);
+    If (staticbooks)
+     // ForEach bookitem in GetConfigIntKeys(books)
+     //   If (!staticbooks.findelement(bookitem)) // Gibts dieses Buch noch nicht im DataFile?
+     //     Var book:=books[bookitem];
+     //     Var contents:={};
+     //     Var text;
+     //
+     //     For page:=1 To CInt(book.pages) // Content des Buches zusammenbauen
+     //       For line:=1 To 8
+     //         text:=book["p"+page+"l"+line];
+     //         If (text)
+     //           contents.append(text);
+     //         Else
+     //           contents.append(" ");
+     //         EndIf
+     //       EndFor
+     //     EndFor
+     //
+     //     Var newbook:=staticbooks.createelement(bookitem); // Buch im DataFile anlegen
+     //     If (newbook)
+     //       newbook.setprop("title", book.title);
+     //       newbook.setprop("author", book.author);
+     //       newbook.setprop("contents", contents);
+     //     Else
+     //       SysLog("FEHLER: Im DataFile 'staticsbooks' konnte kein neues Buch angelegt werden!");
+     //     EndIf
+     //   EndIf
+     // EndForEach
+    Else
+      SysLog("FEHLER: DataFile 'staticsbooks' konnte nicht erzeugt werden!");
+    EndIf
+
+ //   UnloadConfigFile("zulubooks");
+ // Else
+ //   SysLog("FEHLER: Konnte 'zulubooks.cfg' nicht oeffnen!");
+ // EndIf
+EndProgram

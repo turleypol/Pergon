@@ -1,0 +1,104 @@
+// ********************************************************************************
+// ***
+// ***	SOS Bottle Script
+// ***
+// ***
+// ***	This script is the item handler that is called when the user double-clicks
+// ***	on an SOS bottle.
+// ***
+// ***	I altered this script to remove the use of the SOS tile because I don't
+// ***	use that method to detect the target of an SOS.  I compare the target of
+// ***	a fishing attempt to the coordinates of any SOS messages in the players
+// ***	pack instead.  I felt the small amount of extra overhead in the script
+// ***	was worth getting rid of the extra world objects represented by the tiles.
+// ***
+// ********************************************************************************
+//
+// 07.01.2002 - Fraggulus - leere Flasche erzeugen beim Benutzen
+// 2008-04-03 - mehdorn   - festgemachte Flaschen können nicht mehr aus
+//                          Angeldors Laden "weggeoeffnet" (quasi geklaut)
+//                          werden, und auch anderswo nicht
+//
+
+// ********************************************************************************
+//	function modules that will be used
+// ********************************************************************************
+
+use os;
+use util;
+use cfgfile;
+use uo;
+
+// ********************************************************************************
+//	included modules that will be used
+// ********************************************************************************
+
+include "include/client";
+include "include/objtype";
+include "include/starteqp";
+include "include/itemnpc";
+include "fishing";
+
+// ********************************************************************************
+//	Main program
+//
+//	This is the main SOS bottle handler.  It is called when the player
+//	double-clicks on an SOS bottle.
+// ********************************************************************************
+program use_bottle( who, bottle )
+	If (!bottle.movable)
+		SendSysMessagePergon(who, "Ihr bekommt den Korken nicht heraus.");
+		Return;
+	EndIf
+	// indicate the bottle is in use
+	reserveitem(bottle);
+	// load sosarea.cfg to find a target location for the SOS bottle
+	Var cfg := ReadConfigFile("sosarea");
+	if (!cfg)
+		// Error, we could not read sosarea.cfg file
+		SendSysMessagePergon(who, "Could not read sosarea.cfg");
+	endif
+	// find out how many defined areas there are
+	Var maxI := GetConfigMaxIntKey(cfg);
+	// debug message
+	// SendSysMessagePergon(who, "There are " + maxI + " SOS areas defined");
+	// randomly pick one of the defined SOS areas
+	Var elem := cfg[randomint(maxI)+1];
+	// debug message
+	// SendSysMessagePergon(who, "Using area " + elem);
+	// Select a random spot inside the selected SOS area
+	Var X := cint(elem.x)+Randomint(cint(elem.range)*2) - cint(elem.range);
+	Var Y := cint(elem.y)+Randomint(cint(elem.range)*2) - cint(elem.range);
+	// we don't need susarea.cfg any more
+	UnloadConfigFile( "sosarea");
+	// write a log entry (commented out by default)
+	// syslog("New SOS bottle targeted at "+X+","+Y);
+	// Set the properties of the new SOS bottle
+	// tileX,tileY is the location of the SOS treasure
+	// tileart is the artwork that will
+	SetObjProperty(bottle, "tileX", X);
+	SetObjProperty(bottle, "tileY", Y);
+	// create the message in player's backpack
+	Var message := CreateItemInContainerPergon(who.backpack, UOBJ_SOS_MESSAGE);
+	// if SOS message could not be created then display an error message
+	if(!message)
+		syslog("Failed to create SOS message from bottle");
+		destroyitem(bottle);
+		SendSysMessagePergon(who, "Die Schrift ist zu unleserlich, um etwas zu erkennen!");
+		return;
+	endif
+	// Set the Cprops of the SOS message
+	// tileX,tileY are the coordinates of the SOS treasure
+	// msgnum is the index of the SOS message that will be displayed
+	SetObjProperty(message, "tileX", X);
+	SetObjProperty(message, "tileY", Y);
+	SetObjProperty(message, "msgnum", RandomInt(MSG_COUNT));
+	// display success message
+	SendSysMessagePergon(who, "Ihr zieht eine Nachricht aus der Flasche!");
+	// log message is commented out by default
+	// syslog("SOS message was created from SOS bottle");
+	// get rid of the used SOS bottle
+	destroyitem(bottle);
+	// neue leere Flasche erzeugen
+	CreateItemInBackpackPergon(who, 0xe25, 1);
+endprogram

@@ -1,0 +1,550 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Forest - Wälder
+//
+//  Graphische Bedienoberfläche für forestscript.
+//  Legt globale Prop "forest" fest
+//
+//  Erstanlage: 25.12.2005  Unforgiven
+//  2006.02.07 Unforgiven:	Mischwald
+//  2006.03.07 Unforgiven:      Status des Forestscriptes wird aus GlobalProp "forestscript" bezogen
+//                              Möglichkeit des Pausieren des Forestscriptes
+//  2006.04.27  Turley:     Kleiner Fehler behoben bei Parametern (debug.log)
+//
+/////////////////////////////////////////////////////////////////////////////
+
+
+use os;
+use uo;
+
+Include "include/set";
+Include "include/msgs";
+
+program textcmd_forest( who )
+
+//    print( "Property Name: " + tparams[1] );
+//    print( "Property Wert: " + tparams[2] );
+
+// benötigt:
+//	1 Name
+//	2 Dichte:       1...100, 1 ^= 1 Feld von 100 mit Wald, 100 = alle Felder belegt
+//	3,4,5,6 Area:   {X1,realm},Y1, X2,Y2 Koordinaten Anfang / Ende Rechteck des Bewuchses
+//	7 Wachstumsgeschwindigkeit: in durchschnittliche Minuten, die ein Baum stehen soll
+//	8 Wood, Holzmenge im Baum;
+//      9 Settyp:       Baumtyp1
+
+//      10 Settyp:      Baumtyp2
+//      11 Varscheinlichkei Baum 2
+//
+// Beispiel Deklaration:
+// var forest1 := { "Aussenposten1" , 60, 2070 , 840, 2090, 860, 1 , 0 , "ebenbaum", "buchenbaum", 30 } ;
+// var forest2 := { "Aussenposten2" , 30, 2060 , 840, 2070, 860, 2 , 5 , "elfenbeinbaum"} ; -- kein Mischwald
+// var forest := {forest1 , forest2} ;
+
+var layout := {
+// "noclose",
+// "nodispose",
+// "nomove",
+"page 0",
+"resizepic 50 100 3600 780 700",
+"text 145 120 32 0",
+
+
+"page 1",
+
+"text 80 160 50 1",   // Goto
+"text 120 160 50 2",  // Name
+"text 250 160 50 3",  // Gebiet
+"text 400 160 50 4",  // Baumtyp
+"text 530 160 50 5",  // Dichte
+"text 600 160 50 6",  // Holzmenge
+"text 660 160 50 7",  // Geschw.
+"Text 130 740 32 8",  // neuen Wald anlegen
+"Text 760 160 32 9",  // Wald löschen
+"Text 300 740 50 10", // Status
+"button 105 743 2362 2361 1 0 11" // Button Neu
+
+};
+
+var data := {
+"TextCmd .forest  Uebersicht ueber Waelder",
+"goto",
+"Name",				// 2
+"Gebiet: X1:Y1,X2:Y2",		// 3
+"Baumtyp",			// 4
+"Dichte",			// 5
+"Holzmenge",			// 6
+"Standzeit (min)", 		// 7
+"Neuen Wald Anlegen",           // 8
+"Loeschen",                     // 9
+"Status: "                      // 10
+};
+
+var status:=CInt(GetGlobalProperty( "forestscript" ));
+
+//data.append(  "aktiv - deaktivieren,  anhalten:");
+//layout.append("Text 350 740 50 11");
+
+
+Case (status)
+  0:      data.append("aktiv spawnt");
+          data.append("anhalten");
+          layout.append("Text 350 740 66 11");
+          layout.append("button 550 743 11411 11412 1 0 12");
+  1:      data.append("aktiv pause");
+          data.append("anhalten");
+          layout.append("Text 350 740 67 11");
+          layout.append("button 550 743 11411 11412 1 0 12");
+  2:      data.append("aktiv Gump");
+          data.append("anhalten");
+          layout.append("Text 350 740 42 11");
+          layout.append("button 550 743 11411 11412 1 0 12");
+  default: data.append("angehalten");
+          data.append("starten");
+          layout.append("Text 350 740 32 11");
+          layout.append("button 550 743 11401 11402 1 0 12");
+EndCase
+
+layout.append("Text 500 740 50 12");  // Starten oder Anhalten
+
+
+var forest:=GetGlobalProperty( "forest" );
+Var y := 190 ;
+Var n := 13 ;
+Var klick := 0 ;
+var page := 1 ;
+foreach area in forest
+
+  layout.append("button 85 " + (y+3) + " 2362 2361 1 0 " + (klick + 1) ); // Goto
+
+  layout.append(" text 135 " + y + " 50 "+n); 		// Name
+  data.append( area[1] );
+  layout.append("button 120 " + (y+3) + " 2362 2361 1 0 " + (klick + 2) );
+
+  layout.append(" text 265 " + y + " 50 "+ (n+1));		// Gebiet
+  data.append( area[3][1] + ":" + area[4] + "," + area[5] + ":" + area[6]);
+  layout.append("button 250 " + (y+3) + " 2362 2361 1 0 " + (klick + 3) );
+
+  layout.append(" text 415 " + y + " 50 "+ (n+2));		// Baumtyp
+  data.append( area[9] );
+  layout.append("button 400 " + (y+3) + " 2362 2361 1 0 " + (klick + 4) );
+
+  layout.append(" text 545 " + y + " 50 "+ (n+3));		// Dichte
+  data.append( area[2] );
+  layout.append("button 530 " + (y+3) + " 2362 2361 1 0 " + (klick + 5) );
+
+  layout.append(" text 615 " + y + " 50 "+ (n+4));		// Holzmenge
+  data.append( area[8] );
+  layout.append("button 600 " + (y+3) + " 2362 2361 1 0 " + (klick + 6) );
+
+  layout.append(" text 725 " + y + " 50 "+ (n+5));		// Geschw.
+  data.append( area[7] );
+  layout.append("button 710 " + (y+3) + " 2362 2361 1 0 " + (klick + 7) );
+
+  layout.append("button 780 " + (y+3) + " 2362 2361 1 0 " + (klick + 8) );	// löschen
+
+  if (! area[10] )
+     area.append(area[9]);
+     area.append( 0 );
+  EndIf
+
+  layout.append(" text 415 " + (y+16) + " 50 "+ (n+6));		// Baumtyp2
+  data.append( area[11] + "% "+ area[10] );
+  layout.append("button 400 " + (y+19) + " 2362 2361 1 0 " + (klick + 9) );
+  
+  layout.append(" text 265 " + (y+16) + " 50 "+(n+7));		// Gebiet
+  data.append(area[3][2]);
+
+
+  y += 40 ;
+  n += 8 ;
+  klick += 100 ;
+
+  If ( y > 700 )
+     y := 190 ;
+     page += 1 ;
+     layout.append("button 800 800 2648 2647 0 " + page + " 0 ");			// neue Seite, weil erste voll
+     layout.append("page "+ page);							// wird eh nie passieren...
+     layout.append("button 800 150 2650 2651 0 " + (page - 1) + " 0 ");
+  EndIf
+
+EndForEach;
+
+var result := SendDialogGump( who, layout, data );
+Var IntRes := result[0];
+Var forest_nr := 1 ;
+
+while ( intres > 100 )
+  intres -= 100 ;
+  forest_nr += 1 ;
+  sleepms(1);
+EndWhile
+
+
+
+case (intres)
+    1   :   Var res:=MoveObjectToLocation(who, CInt(forest[forest_nr][3][1]) , CInt(forest[forest_nr][4]) , 5 , forest[forest_nr][3][2], MOVEOBJECT_FORCELOCATION);
+            If (!res)
+               SendSysMessagePergon(who, "Nicht moeglich dorthin zu gehen: "+res.errortext);
+            EndIf
+
+    2   :   change_forest(who, forest_nr, 1 ); 	   // ändert Name des Gebietes
+    3   :   change_forestcoor(who, forest_nr );    // ändert Koordinaten des Gebietes
+    4   :   change_foresttyp(who, forest_nr, 1 );  // ändert Baumtyp1 des Gebietes
+    5   :   change_forest(who, forest_nr, 2 ); 	   // ändert Dichte des Gebietes
+    6   :   change_forest(who, forest_nr, 8 ); 	   // ändert Holzmenge des Gebietes
+    7   :   change_forest(who, forest_nr, 7 ); 	   // ändert Wachstumsgeschwindigkeit des Gebietes
+    8   :   delete_forest(forest_nr);              // löscht Wald
+    9   :   change_foresttyp(who, forest_nr, 2 );  // ändert Baumtyp2 des Gebietes
+            change_forest(who, forest_nr, 11 );    // ändert Prozentzahl des 2. Baumes
+    11  :   make_new(who);                         // erstellt neuen Wald
+    12  :   change_status(status, who);                 // Pausiert oder startet Waldscript
+endcase
+
+EndProgram
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function change_status
+//
+//  Pausiert oder startet Waldscript
+//
+/////////////////////////////////////////////////////////////////////////////
+
+function change_status( status , who)
+
+if (status == 3 )
+   SetGlobalProperty("forestscript", "1");
+   SendSysMessagePergon( who, "Forestscript gestartet");
+Else
+   SetGlobalProperty("forestscript", "3");
+   SendSysMessagePergon( who, "Forestscript angehalten");
+EndIf
+
+EndFunction
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function make_new
+//
+//  Erstellt neuen Wald
+//
+/////////////////////////////////////////////////////////////////////////////
+
+function make_new( who )
+
+var arraydummy := {
+"neuer wald", 		// 1 Name
+0,			// 2 Dichte
+{0,_DEFAULT_REALM},			// 3 X1,Realm
+0,			// 4 Y1
+0,			// 5 X2
+0,			// 6 Y2
+0,			// 7 geschwindigkeit
+0,			// 8 Holzmenge
+"bauma"			// 9 set
+};
+
+var forest:=GetGlobalProperty( "forest" );
+
+if (forest)
+   forest.append(arraydummy);
+Else
+   forest:={arraydummy};
+EndIf
+
+
+Var res := SetGlobalProperty( "forest",forest);
+If (!res)
+   SendSysMessagePergon( who, "Fehler beim Setzen der Property: " + res.errortext );
+EndIf
+
+var forest_nr := forest.size();
+
+change_forest(who, forest_nr, 1 ); 	   // ändert Name des Gebietes
+change_forestcoor(who, forest_nr );    	   // ändert Koordinaten des Gebietes
+change_foresttyp(who, forest_nr, 1 ); 	   // ändert Baumtyp des Gebietes
+change_forest(who, forest_nr, 2 ); 	   // ändert Dichte des Gebietes
+change_forest(who, forest_nr, 8 ); 	   // ändert Holzmenge des Gebietes
+change_forest(who, forest_nr, 7 ); 	   // ändert Wachstumsgeschwindigkeit des Gebietes
+
+EndFunction
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function delete_forest
+//
+//  Löscht einen Wald aus dem Array
+//
+/////////////////////////////////////////////////////////////////////////////
+
+function delete_forest( forest_nr )
+
+while (  GetGlobalProperty("forestscript") == 0 ) 	// Wartet bis forestscriptdurchlauf beendet ist
+  Sleep(10);
+EndWhile
+
+
+SetGlobalProperty("forestscript", 2);
+
+var forest:=GetGlobalProperty( "forest" );
+
+dest_forest(forest_nr, forest);
+forest.erase(forest_nr);
+
+SetGlobalProperty( "forest",forest);
+
+SetGlobalProperty("forestscript", 1);
+
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function change_forestcoor
+//
+//  Ändert die Koordinaten im Forestarray
+//
+/////////////////////////////////////////////////////////////////////////////
+
+function change_forestcoor (who, forest_nr )
+
+var nX1,nY1,nX2,nY2 := 0 ;
+var realm:=who.realm;
+var forest:=GetGlobalProperty( "forest" );
+
+  if ( gump_ok(who , "Gehe zur neuen noerd-westlichen Ecke des Waldes und bestaetige Position mit OK ") )
+     nX1 := who.x ;
+     nY1 := who.y ;
+     realm:= who.realm;
+  Else
+     nX1 := forest[forest_nr][3] ;
+     nY1 := forest[forest_nr][4] ;
+  EndIf
+
+  if ( gump_ok(who , "Gehe zur neuen sued-oestlichen Ecke des Waldes und bestaetige Position mit OK ") )
+     nX2 := who.x ;
+     nY2 := who.y ;
+     realm:= who.realm;
+  Else
+     nX2 := forest[forest_nr][5] ;
+     nY2 := forest[forest_nr][6] ;
+  EndIf
+
+  if (nX1 < nX2)
+     if ( (nX2 - nX1) < 100 )
+        if (nY1 < nY2)
+           if ( (nY2 - nY1) < 100 )
+              forest[forest_nr][3] := {nX1,realm} ;
+              forest[forest_nr][4] := nY1 ;
+              forest[forest_nr][5] := nX2 ;
+              forest[forest_nr][6] := nY2 ;
+              dest_forest(forest_nr, forest);
+           Else
+              SendSysMessagePergon( who, "Wald zu gross: Begrenzung auf 99 Felder Kantenlaenge. ABBRUCH !");
+              return ;
+           EndIf
+        Else
+           SendSysMessagePergon( who, "Wohl nicht die richtige Himmelsrichtung gefunden? ABBRUCH !");
+           return ;
+        EndIf
+     Else
+        SendSysMessagePergon( who, "Wald zu gross: Begrenzung auf 99 Felder Kantenlaenge. ABBRUCH !!");
+        return ;
+     EndIf
+  Else
+     SendSysMessagePergon( who, "Wohl nicht die richtige Himmelsrichtung gefunden? ABBRUCH !!");
+     return ;
+  EndIf
+
+SetGlobalProperty( "forest",forest);
+SetGlobalProperty("forestscript", 1);
+
+
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function change_foresttyp
+//
+//  Ändert den Baumtyp im Wald
+//
+/////////////////////////////////////////////////////////////////////////////
+
+function change_foresttyp(who, forest_nr, what )
+
+var sets := {"bauma","apfelbaum1","birnenbaum1","walnussbaum1","tannenbaum1","zypressenbaum1",
+"erlenbaum1","eichenbaum1","zederbaum1","pfirsichbaum1","weidenbaum","fichtenbaum","buchenbaum",
+"tropenbaum","mahagonibaum","grosserbaum1","ebenbaum","elfenbeinbaum"} ;
+
+var layout := {
+// "noclose",
+// "nodispose",
+// "nomove",
+"page 0",
+"resizepic 50 100 3600 250 500",
+"text 80 120 32 0",
+"page 1"
+} ;
+
+var data;
+if ( what == 1  )
+  data := {"Set fuer den Wald waehlen!"} ;
+Else
+  data := {"2. Set fuer den Mischwald waehlen!"} ;
+EndIf
+
+var y := 190 ;
+var i := 0 ;
+
+foreach set in sets
+
+  layout.append(" text 135 " + y + " 50 "+ (i+1));
+  data.append( set );
+  layout.append("button 120 " + (y+3) + " 2362 2361 1 0 " + (i + 1) );
+  i += 1 ;
+  y += 20 ;
+
+EndForEach
+
+var result := SendDialogGump( who, layout, data );
+
+If ( result[0] )
+   var forest:=GetGlobalProperty( "forest" );
+   If (what == 1 )
+      forest[forest_nr][9] := sets[result[0]] ;
+      SetGlobalProperty ( "forest", forest );
+   Else
+      If ( forest[forest_nr][10] )
+         forest[forest_nr][10] := sets[result[0]] ;
+         SetGlobalProperty ( "forest", forest );
+      Else
+         forest[forest_nr].append(sets[result[0]]) ;
+         SetGlobalProperty ( "forest", forest );
+      EndIf
+   EndIf
+Else
+   SendSysMessagePergon( who, "Abbruch, Baumart wurde nicht verändert.");
+EndIf
+
+EndFunction
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function change_forest
+//
+//  Ändert diverse Waldeigenschaften
+//
+/////////////////////////////////////////////////////////////////////////////
+
+function change_forest(who, forest_nr , what)
+
+var res := 0;
+var forest:=GetGlobalProperty( "forest" );
+
+
+case (what)
+  1 : 	res := SendTextEntryGump( who, "Name des Waldes eingeben!" , 1 , 1 , 15, "" );			// Name Bereich
+        If (res <> 0)
+           forest[forest_nr][1] := res ;
+           SetGlobalProperty ( "forest", forest );
+        EndIf
+  2 :  	res := SendTextEntryGump( who, "Dichte des Waldes eingeben!" , 1 , 2 , 100, "0% .. 100%" );	// Dichte Bereich
+        If (res <> 0)
+           forest[forest_nr][2] := res ;
+           SetGlobalProperty ( "forest", forest );
+        EndIf
+
+  7 :	res := SendTextEntryGump( who, "Standzeit der Baeume eingeben" , 1 , 2 , 600, "in Minuten" );	// Geschwindigkeit
+        If (res <> 0)
+           forest[forest_nr][7] := res ;
+           SetGlobalProperty ( "forest", forest );
+        EndIf
+  8 : 	res := SendTextEntryGump( who, "Holzmenge der Baeume eingeben" , 1 , 2 , 30, "" );		// Holzmenge
+        If (res <> 0)
+           forest[forest_nr][8] := res ;
+           SetGlobalProperty ( "forest", forest );
+        EndIf
+
+  11 : 	res := SendTextEntryGump( who, "Dichte des 2. Baumtyps eingeben!" , 1 , 2 , 100, "0% .. 100%" );	// Dichte Bereich
+        If (res <> 0)
+           If ( forest[forest_nr][11] )
+              forest[forest_nr][11] := res ;
+           Else
+              forest[forest_nr].append(res);
+           EndIf
+           SetGlobalProperty ( "forest", forest );
+        EndIf
+
+EndCase
+
+
+
+
+
+
+EndFunction
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function gump_ok
+//
+//  Gibt ein Gump mit einem Text und einem "OK" Button aus, bei gedrücktem "OK" wird "1" übergeben
+//
+/////////////////////////////////////////////////////////////////////////////
+
+
+function gump_ok(who, text)
+
+var laenge := len(text) * 7 ;
+
+var respic := ("resizepic 50 100 3600 " + laenge + " 100");
+var buttonplace := ("button " + CInt(laenge/2) + " 160 249 248 1 0 1");
+
+var layout := {
+"page 0",
+respic,
+buttonplace,
+"text 70 125 50 0"
+};
+
+var data := {
+text
+};
+
+var result := SendDialogGump( who, layout, data );
+return result[0] ;
+
+endfunction;
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function dest_forest
+//
+//  Räumt die Fläche eines Waldes wenn Forestscript in Idle
+//
+/////////////////////////////////////////////////////////////////////////////
+
+
+function dest_forest(forest_nr, forest)
+
+forest := forest[forest_nr] ;
+
+ForEach item in ListObjectsInBox(forest[3][1], forest[4], -10, forest[5], forest[6], +10,forest[3][2])
+   If (item.objtype)
+      If ( GetObjProperty(item, "ttl" )  )
+         var set:= GetObjProperty(item, "set" );
+         var fserial:= GetObjProperty(item, "fserial" );
+         // DestroySet(set, fserial);
+         DestroySet(fserial);
+         sleepms(50);
+      EndIf
+   EndIf
+EndForEach
+
+EndFunction
+
+

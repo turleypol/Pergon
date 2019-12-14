@@ -1,0 +1,5 @@
+<h3 id="vote">vote</h3>
+
+<p>Startet einen Browser mit der
+<a data-href="http://www.topsites24.de/ts/ts.cgi?klick=62&tl=ultimaonline"
+>Topsites24</a>, wo man für Pergon stimmen kann.</p>

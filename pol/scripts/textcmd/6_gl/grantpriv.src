@@ -1,0 +1,51 @@
+
+Include "include/msgs";
+
+Program TextCMD_GrantPriv(who, param)
+  var params := SplitWords(Lower(param));
+  If (!param || params.size() > 2 || param["help"] || param["?"])
+    SendSysMessagePergon(who, "Usage: .grantpriv {priv} [serial]");
+    return;
+  EndIf
+  
+  var priv := param, whom;
+  If (params.size() > 1)
+    priv := params[1];
+    whom := SystemFindObjectBySerial(CInt(params[2]), SYSFIND_SEARCH_OFFLINE_MOBILES);
+  EndIf
+  
+  If (!IsValidPrivilege(priv))
+    SendSysMessagePergon(who, "Unbekanntes Privileg. Vertippt?");
+    return;
+  EndIf
+
+  If (!whom)
+    SendSysMessagePergon(who, "Wem soll das Privileg '"+priv+"' verliehen werden?");  
+    whom := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!whom)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+  
+    If (!whom.isa(POLCLASS_MOBILE))
+      SendSysMessagePergon(who, "Privilegen bitte nur an Mobiles vergeben!");
+      return;
+    EndIf
+  EndIf
+
+  If (whom.privileges()[priv])
+    SendSysMessagePergon(who, whom.name+" hat Privileg '"+priv+"' bereits!");
+  Else
+    GrantPrivilege(whom, priv);
+    // bei NPCs auch gleich einschalten, Spieler können .enable benutzen
+    If (whom.isa(POLCLASS_NPC))
+      whom.enable(priv);
+      IncRevision(whom);
+    EndIf
+    
+    SendSysMessagePergon(who, whom.name+" hat Privileg '"+priv+"' erhalten!");
+  
+    // Logging
+    SysLog(CharInfoStr(who)+" gewaehrt "+CharInfoStr(whom)+" das Privileg '"+priv+"'");
+  EndIf
+EndProgram

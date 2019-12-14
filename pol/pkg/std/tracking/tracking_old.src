@@ -1,0 +1,220 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+// - Removed some debugging code
+// - Fixed display directions
+// - Fixed tracking time setting
+// - Fixed skill so it could be used
+// - Adjust tracking time
+//
+//  14.11.2001 Fraggulus: Ueberarbeitung und Korrektur der Richtungsangaben
+//  03.01.2002 Fraggulus: Mobiles fuer die kein Cfg-Eintrag existiert werden trotzdem in die Liste mit aufgenommen (no-draw-Grafik)
+//  30.01.2002 Fraggulus: gesonderte Grafiken fuer Player (zwecks besserer Unterscheidung zu human NPCs)
+//  02.04.2003 Fraggulus: Ist der DetectHidden-Skill des Suchenden ca. 10% hoeher als der Versteckskill des Versteckten,
+//                        hat ersterer eine 50%-Chance, den Versteckten per Spurensuche aufzuspueren
+//                        (Funktion Found() entnommen aus DetectHidden.Src)
+//  08.11.2003 Fraggulus: Check auf DetectHidden nur noch, wenn das potentielle Opfer versteckt ist
+//  09.11.2003 Fraggulus: Fehler bei range-Berechnung und in Found() wieder korrigiert
+//  17.11.2003 Fraggulus: Gesamtzahl der gefundenen Kreaturen wird kund getan
+//  01.12.2003 Fraggulus: Wenn tot, dann nix Spurenlesen
+//  11.02.2004 Fraggulus: versteckte Npc werden nicht per default vom Finden ausgeschlossen
+//                        Found() auf Basis von Found() in detecthidden.src angepasst (nutzt nun CProp hiding_diff, falls vorhanden)
+//  08.04.2005 Fraggulus: CommandLevel werden nicht mehr gefunden
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use os;
+use cfgfile;
+use attributes;
+use uo;
+include "include/modifyskill";
+
+program track(character)
+
+  If (character.dead)
+    SendSysMessagePergon(character, "Ihr seid tot und könnt keine Spuren lesen.", "You are dead and cannot do this.");
+    Return;
+  EndIf
+
+  Var critter;    // the creature being tracked
+
+  If (!GetObjProperty(character, "trackingtimeout"))
+      SetObjProperty(character, "trackingtimeout", ReadGameClock() - 1);
+  EndIf
+
+  If (GetObjProperty(character, "trackingtimeout") >= ReadGameClock())
+      SendSysMessagePergon(character, "Ihr müsst Euch noch etwas konzentrieren, bevor Ihr wieder suchen könnt.",
+                                      "You have to concentrate before searching again.");
+      Return;
+  EndIf
+
+
+  If (CheckSkillPergon(character, SKILLID_SPUREN_LESEN, -1, CInt(GetSkillDefaultPoints(SKILLID_SPUREN_LESEN) * 3)))
+      Var config := ReadConfigFile("tracking");
+      Var range  := Cint(GetSkillPergon(character, SKILLID_SPUREN_LESEN) / 3.0);
+      Var nearby := ListMobilesNearLocationEx(character.x, character.y, character.z, range, LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN,character.realm);
+
+      // Array von versteckten Pcs/Npcs bereinigen, die zu gut versteckt sind; ausserdem fallen CmdLevel raus
+      Var i;
+
+      for (i:=1; i <= len(nearby); i += 1)
+          If (nearby[i].acctname && !Found(character, nearby[i], range))
+              nearby.erase(i);
+              i -= 1;
+          EndIf
+      endfor
+
+      If (len(nearby) == 0)
+          SendSysMessagePergon (character, "In der Nähe befinden sich keine Spuren.", "There are no tracks nearby.");
+          EraseObjProperty(character, "trackingtimeout");
+          Return;
+      EndIf
+
+      Var track_menu;
+      If (GetLanguage(character) == LANGUAGE_GERMAN)
+          track_menu := CreateMenu("Waehlt eine Kreatur");
+      Else//If (GetLanguage(character) == LANGUAGE_ENGLISH)
+          track_menu := CreateMenu("Choose a creature");
+      EndIf
+
+      Var critter_ids := array;
+      Var menucount := 0;
+
+      ForEach mobile in nearby
+          If ((mobile.serial != character.serial) && (!mobile.dead))
+              Var elem := FindConfigElem(config, mobile.objtype);
+              If (elem)
+                  menucount += 1;
+                  critter_ids[menucount] := mobile;
+                  Var tiletype := GetConfigInt(elem, "tile");
+
+                  // gesonderte Grafiken fuer Player mit Grafik 0x190 und 0x191
+                  If (!mobile.isa(POLCLASS_NPC))
+                      If (tiletype == 0x2106)
+                          tiletype := 0x20cd;
+                      ElseIf (tiletype == 0x2107)
+                          tiletype := 0x20ce;
+                      EndIf
+                  EndIf
+
+                  AddMenuItem(track_menu, tiletype, mobile.name);
+              Else    // Wenn kein Cfg-Eintrag gefunden wird, dann trotzdem den Mobile mit NoDraw-Grafik in die Liste aufnehmen
+
+                  menucount += 1;
+                  critter_ids[menucount] := mobile;
+                  AddMenuItem(track_menu, 0x1, mobile.name);
+              EndIf
+          EndIf
+      EndForEach
+      If (menucount == 1)
+        SendSysMessagePergon(character, "Insgesamt findet Ihr eine Kreatur.", "All in all there is only one creature.");
+      Else
+      	SendSysMessagePergon(character, "Insgesamt findet Ihr " + menucount + " Kreaturen.", "All in all there are " + menucount + " creatures.");
+      EndIf
+
+      If (menucount > 0)
+          Var thetarget := SelectMenuItem2(character, track_menu);
+          If (!thetarget)
+              SendSysMessagePergon (character, "Zielen abgebrochen", "Abort");
+              EraseObjProperty(character, "trackingtimeout");
+              Return;
+          EndIf
+          critter := critter_ids[thetarget.index];
+          SetObjProperty(character, "trackingtimeout", ReadGameClock() + GetSkillPergon(character, SKILLID_SPUREN_LESEN));
+          detach();
+
+          While((Distance(character, critter) <= range) && (critter.dead == 0) && (GetObjProperty(character, "trackingtimeout") >= ReadGameClock()))
+              Var dir := Get_direction(character, critter);
+              If (dir[1] == "arschnah")
+                  SendSysMessagePergon(character, critter.name + " ist in Eurer unmittelbaren Umgebung.", critter.name + " is adjacent to you.");
+              Else
+                  SendSysMessagePergon(character, critter.name + " befindet sich in " + dir[1] + " Richtung.",
+                                                  critter.name + " is in " + dir[2] + " direction.");
+              EndIf
+              sleep(5);
+          EndWhile
+
+          If (Distance(character, critter) <= 1)
+              SendSysMessagePergon(character, critter.name + " ist zum Greifen nahe.",
+                                                             " is very close to you.");
+          Else
+              SendSysMessagePergon(character, "Ihr habt die Spur verloren.", "You've lost the track.");
+          EndIf
+          EraseObjProperty(character, "trackingtimeout");
+      EndIf
+  Else
+      SendSysMessagePergon (character, "Ihr seid Euch nicht sicher...", "You're not sure...");
+      EraseObjProperty(character, "trackingtimeout");
+  EndIf
+endprogram
+
+function get_direction(character, critter)
+
+  Var thedesc, thedesc_e;
+  Var desc_ct := 0;
+
+
+  If ((Distance(character, critter) <= 1))
+      thedesc := "arschnah";
+  Else
+
+    If (critter.y < character.y)
+        desc_ct := 1;
+    ElseIf (critter.y > character.y)
+        desc_ct := 2;
+    EndIf
+
+    If (critter.x < character.x)
+        desc_ct := desc_ct + 4;
+    ElseIf (critter.x > character.x)
+        desc_ct := desc_ct + 8;
+    EndIf
+
+    case(desc_ct)
+      1:  thedesc   := "nördlicher";
+          thedesc_e := "northern";
+      2:  thedesc   := "südlicher";
+          thedesc_e := "southern";
+      4:  thedesc   := "westlicher";
+          thedesc_e := "western";
+      5:  thedesc   := "nordwestlicher";
+          thedesc_e := "northwestern";
+      6:  thedesc   := "südwestlicher";
+          thedesc_e := "southwestern";
+      8:  thedesc   := "östlicher";
+          thedesc_e := "eastern";
+      9:  thedesc   := "nordöstlicher";
+          thedesc_e := "northeastern";
+      10: thedesc   := "südöstlicher";
+          thedesc_e := "southeastern";
+      default: thedesc   := "irgendeiner";
+               thedesc_e := "any one";
+    endcase
+  EndIf
+
+  Return ({thedesc, thedesc_e});
+endfunction
+
+function Found(finder, hider, range)
+  If ((finder.serial != hider.serial) && (hider.cmdlevel < CMDLEVEL_SEER))
+    If (hider.hidden)
+      Var hide_diff := GetObjProperty(hider, "hiding_diff");
+      Var dist      := Distance(finder, hider);
+      Var skill;
+      If (hide_diff) // hide_diff: also Skill auf dessen Basis berechnen // angelehnt an detecthidden.src
+        skill := CInt(hide_diff + ((dist - 1) * 20 ) / range);
+      Else           // Keine hide_diff: Skill wie urspruenglich berechnen
+        skill := CInt((GetSkillPergon(hider, SKILLID_VERSTECKEN)+10)*2/5);
+      EndIf
+
+      If (CheckSkillPergon(finder, SKILLID_VERSTECKTES_FINDEN, CInt(skill*5/2), CInt(GetSkillDefaultPoints(SKILLID_VERSTECKTES_FINDEN)/2.0)))
+        Return 1;
+      Else
+        Return 0;
+      EndIf
+    Else
+      Return 1;
+    EndIf
+  Else
+    Return 0;
+  EndIf
+endfunction

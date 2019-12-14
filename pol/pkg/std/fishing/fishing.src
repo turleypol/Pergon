@@ -1,0 +1,476 @@
+///////////////////////////////////////////////////////////////////////////
+// Fishing Skill Script
+//
+//      - as of 04/18/00
+
+// TODO:
+//      - tweak the chest spawns for SOS messages
+
+use attributes;
+use math;
+use math;
+use os;
+use uo;
+use util;
+
+include "fishing";
+include "include/client";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/objtype";
+include "include/starteqp";
+include "include/packets";
+
+// what to do if a fishing pole was used?
+Program fishing(who, fishingpole) // {{{
+    ReserveItem(fishingpole);
+
+    // make sure the fishing pole is equipped in order to fish
+    If (!IsFishingPoleEquipped(who , fishingpole))
+        // nope, the pole was not equipped, return
+        SendSysMessagePergon(
+            who,
+            "Ihr m¸sst das in die Hand nehmen, um zu fischen!",
+            "To fish, you will have to take that in your hand!"
+        );
+        return;
+    EndIf
+
+    // get the tile that was squareted
+    var square := TargetCoordinates(who);
+    If (!square)
+        // error getting the squareed square, return
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    var locinfo:= GetMapInfo(square.x, square.y, square.realm);
+
+    // debug messages {{{
+    // SendSysMessagePergon(who, "The square coordinates are X:" + square.x + ", Y:" + square.y + ", Z:" + square.z);
+    // SendSysMessagePergon(who, "The square serial is " + square.serial);
+    // SendSysMessagePergon(who, "The square objtype is " + square.objtype);
+    // SendSysMessagePergon(who, "The square landtile is " + locinfo.landtile);
+    // SendSysMessagePergon(who, "The square graphic is " + square.graphic);
+    // }}}
+
+    // make sure that the squareed location is valid
+    If (!IsValidTarget(who, square, locinfo))
+        return;
+    EndIf
+
+    // used to check for movement
+    var fishing_x := who.x;
+    var fishing_y := who.y;
+    var fishing_z := who.z;
+
+    // Show fishing animations
+    PerformAction(who, UACTION_FISHING);
+    SleepMS(800); // Bis kurz vor Ende der Anim
+    PlaySoundEffect(who, SFX_SKILL_FISHING);
+
+    SplashAnimation(square);
+
+    var skillconfig:=GetSkillInfo(SKILLID_ANGELN);
+    // 2 seconds were used for the animation
+    Sleep(CInt(min(1, skillconfig.delay - 2)));
+
+    // Check for an SOS in our backpack and deal with it
+    If (IsSOSRegion(who, square))
+        return;
+    EndIf
+
+    // There was not an SOS near the square square, just go fishing
+    var difficulty;
+    If (square.objtype)
+        difficulty := GetHarvestDifficulty(
+            "fish", square.x, square.y, square.objtype, square.realm
+        );
+    Else
+        difficulty := GetHarvestDifficulty(
+            "fish", square.x, square.y, locinfo.landtile,square.realm
+        );
+    EndIf
+
+    If (difficulty == error)
+        SendSysMessagePergon(
+            who,
+            "Hier scheint es keinen Fisch mehr zu geben.",
+            "You will find no more fish here."
+        );
+        return;
+    EndIf
+
+    // debug messages {{{
+    // If (who.cmdlevel >= CMDLEVEL_SEER)
+    //     print("Tool_skill:"+tool_skill);
+    //     print("Tool_hp:"+tool_hp);
+    //     print("Tool_Maxhp:"+tool_maxhp);
+    //     print("Skill: "+cint(difficulty-tool_skill));
+    //     print("Rohpoints: "+cint(difficulty * tool_skill));
+    // EndIf
+    // }}}
+
+    // we have a successful attempt to use the skill
+    var fishreturned :=
+        CInt(HarvestResource("fish", square.x, square.y, 1, 1, square.realm));
+    If (!fishreturned)
+        // I'm not sure if this is possible, but I will deal with it anyway
+        SendSysMessagePergon(
+            who,
+            "Ups, Ihr habt losgelassen!",
+            "Oops, something wicked happened!"
+        );
+        return;
+    EndIf
+
+    // Player bestrafen, die beim Fischen rumlaufen
+    If (
+        (fishing_x != who.x) ||
+        (fishing_y != who.y) ||
+        (fishing_z != who.z)
+    )
+        SendSysMessagePergon(
+            who, "Euer Rumgelaufe hat die Fische verscheucht."
+        );
+        return;
+    EndIf
+
+    // Werkzeug-Eigenschaften auslesen
+    var angel := GetPropertyItem(fishingpole);
+
+    var points := CInt(max(1, CInt(difficulty + angel.quality)));
+    If (!points)
+        points := 1;
+        // syslog("HINWEIS: difficulty = "+difficulty+
+        // ", tool_skill = "+angel.quality);
+    EndIf
+
+    var success := CheckSkillPergon(
+        who, SKILLID_ANGELN, CInt(difficulty-angel.quality), points,
+        QUALIFIZIERT
+    );
+    var chance := GetSkillPergon(who, SKILLID_ANGELN) + angel.quality;
+
+    // syslog("Success: "+success+ " Chance: "+chance);
+
+    var catch;
+    If (success >= CHANCE_NOFISH*10)
+        // Fische, Seegras ...
+        catch := GetTheCatch(chance, GoodCatches());
+    Else
+        If (SetWerkzeugSchaden(
+            who, fishingpole,
+            "Eure Angel hat gelitten!",
+            "Eure Angel ist stark besch‰digt!",
+            "Eure Angel ist zerbrochen!"
+        ))
+            // Angel kaputt
+            return;
+        EndIf
+        IncRevision(fishingpole);
+
+        If (success <= 0)
+            SendSysMessagePergon(
+                who,
+                "Die Fische beiﬂen nicht.", "The fish does not bite."
+            );
+            return;
+        EndIf
+
+        // Schuhe, Elementare, Delphine ...
+        catch := GetTheCatch(chance, BadCatches());
+    EndIf
+
+    // fuer aktuellen Skill-Level ist kein Fang definiert?
+    If (!catch.text)
+        SendSysMessagePergon(
+            who,
+            "Euer Fang hat sich von der Angel losgerissen.",
+            "Your catch has broken away from your fishing pole."
+        );
+        return;
+    EndIf
+
+    // PlaySoundEffect(who, 0x4d2);
+    PlaySoundEffect(who, 0x365);
+    PerformAction(
+        who, UACTION_FISHING, 5, 1, ACTION_DIR_BACKWARD, ACTION_NOREPEAT, 1
+    );
+
+    // Fangtext
+    If (catch.npc)
+        SleepMS(800); // Zeit fuer Angel-Animation
+        If (CreateNPCAtPosition(catch.what, square, catch.limit))
+            SendSysMessagePergon(who, catch.text);
+        Else
+            SendSysMessagePergon(who,
+                "Ein fetter Brocken. Leider bekommt Ihr ihn nicht "+
+                "aus dem Wasser."
+            );
+        EndIf
+    Else
+        SendSysMessagePergon(who, catch.text);
+        PlayMovingEffectXYZEx(
+            square.x, square.y, square.z,
+            who.x, who.y, who.z+5, who.realm,
+            GetItemDescriptor(catch.what).graphic, 6, 0,
+            GetItemDescriptor(catch.what).color
+        );
+
+        SleepMS(800); // Zeit fuer Angel-Animation und Effekt
+
+        // Item erzeugen
+        var item := CreateItemInBackpackPergon(who, catch.what);
+
+        If (catch.age)
+            // Item kuenstlich altern
+            var state := GetPropertyItem(item);
+            item.hp := CInt(Max(1, RandomInt(CInt(state.maxhp * 2/3))));
+            IncRevision(item);
+        EndIf
+    EndIf
+
+    // Fangbonus
+    If (catch.plus)
+        CheckSkillPergon(
+            who, SKILLID_ANGELN,
+            CInt(difficulty-angel.quality), catch.plus
+        );
+    EndIf
+EndProgram // }}}
+
+// returns random integer value between start (included) and end
+Function RandIntBetween(start, end) // {{{
+    If (start>end)
+        var swap := start;
+        start := end;
+        end := swap;
+    EndIf
+
+    return RandomInt(CInt(end - start + 1)) + CInt(start);
+EndFunction // }}}
+
+// creates NPC from template at given position
+Function CreateNPCAtPosition(template, pos, limit) // {{{
+    limit := CInt(limit);
+    If (limit >= 1)
+        // enforce NPC limit
+        var count := 0;
+        ForEach mob in (ListMobilesNearLocation(
+                pos.x, pos.y, LIST_IGNORE_Z, 2*FISHING_RANGE, pos.realm
+        ))
+            SleepMs(2);
+            If (mob.isa(POLCLASS_NPC))
+                count += 1;
+                If (count >= limit)
+                    // limit reached, don't create
+                    return 0;
+                EndIf
+            EndIf
+        EndForEach
+    EndIf
+
+    return CreateNPCfromTemplate(
+        template, pos.x, pos.y, pos.z, 0, pos.realm
+    );
+EndFunction // }}}
+
+// generates treasure chest or various other items depending on skill,
+// luck (random) and the MISC_SOS_TREASURE_PCT percentage
+Function GetSOSTreasure(who, sosmsg) // {{{
+    If (!CheckSkillPergon(
+        who, SKILLID_ANGELN, SOS_SKILL_THRESHOLD, SOS_SKILL_POINTS)
+    )
+        // Skill check failed
+        SendSysMessagePergon(
+            who,
+            "Etwas sehr groﬂes befreit sich von Eurer Angel "+
+            "und verschwindet in den Fluten!"
+        );
+        return;
+    Endif
+
+    // Skill test was successful
+    If (RandomInt(100) < MISC_SOS_TREASURE_PCT)
+        // you fish up a miscellaneous item
+        var newitem;
+        Case (RandomInt(NUM_SOS_MISC))
+        0:
+            newitem := RandIntBetween(BEGINSHELL,  ENDSHELL);
+        1:
+            newitem := RandIntBetween(BEGINART,    ENDART);
+        2:
+            newitem := RandIntBetween(BEGINWIRE,   ENDWIRE);
+        3:
+            newitem := RandIntBetween(BEGINPILLOW, ENDPILLOW);
+        EndCase
+
+        CreateItemInBackpackPergon(who, newitem);
+        SendSysMessagePergon(who, "Ihr fangt etwas interessantes!");
+    Else
+        // get the treasure chest
+        var chest := CreateItemInBackpackPergon(who, UOBJ_TREASURE_CHEST);
+        chest.movable := 1;
+        MakeLoot(chest , RandomInt(5)+2);
+        // you have the chest, destroy the SOS message
+        DestroyItem(sosmsg);
+        SendSysMessagePergon(
+            who, "Ihr entdeckt eine versunkene Schatztruhe!"
+        );
+    EndIf
+    return;
+EndFunction // }}}
+
+// draws the splash "animation"
+Function SplashAnimation(square) // {{{
+    // PlayStationaryEffect(
+    //     square.x, square.y, square.z, FX_SPLASH, 0, 0, 0
+    // );
+    ForEach graphic in ({0x352d, 0x352e, 0x352f, 0x3530})
+        var splash := CreateItemAtLocationPergon(
+            square.x, square.y, square.z, graphic, 1, square.realm
+        );
+        splash.movable := 0;
+        SleepMS(500);
+        DestroyItem(splash);
+    EndForEach
+EndFunction // }}}
+
+// determines what kind of object is caught, depending on "chance"
+Function GetTheCatch(chance, catches) // {{{
+    var catcharray := array{};
+
+    // alle Fangmoeglichkeiten durchgehen
+    ForEach level in (catches.keys())
+        // die, der Chance entsprechen ...
+        If (chance >= level)
+            var i;
+            // gemaess der Findefrequenz mehr oder weniger oft notieren
+            For (i := 0; i <= catches[level].freq; i += 1)
+                catcharray.append(catches[level]);
+                SleepMS(5);
+            EndFor
+        Else
+            SleepMS(5);
+        EndIf
+    EndForEach
+
+    // einen Fang zufaellig auswaehlen
+    var catch := catcharray[RandomInt(catcharray.size())+1];
+    If (TypeOfInt(catch.what) == OT_ARRAY)
+        // sofern verschiedene Items moeglich sind, zufaellig eines waehlen
+        catch.what := catch.what[RandomInt(catch.what.size())+1];
+    EndIf
+
+    return catch;
+EndFunction // }}}
+
+// checks for SOS messages in the backpack within the current fishing
+// location;  if true, calls GetSOSTreasure and returns 1, otherwise 0
+Function IsSOSRegion(who, square) // {{{
+    // get all of the items in the players pack
+    var packitems :=
+        FindSubstance(who.backpack,UOBJ_SOS_MESSAGE,1,0,FINDSUBSTANCE_FIND_ALL+FINDSUBSTANCE_ROOT_ONLY);
+
+    // look through the items for SOS messages
+    ForEach item in (packitems)
+        // see if the SOS messages' coordinates are close to the
+        // fishing square
+        If (
+            CoordinateDistance(
+                square.x, square.y,
+                GetObjProperty(item, "tileX"),
+                GetObjProperty(item, "tileY")
+            ) <= FISHING_RANGE
+        )
+            SendSysMessagePergon(
+                who, "Aus der Gegend, wo Ihr fischt, stammt "+
+                "eine Eurer SOS-Nachrichten."
+            );
+            Sleep(2);
+            SendSysMessagePergon(who, "Leider kommt Ihr zu sp‰t.");
+            // we are within range of this SOS
+            GetSOSTreasure(who, item);
+            // go back to caller and indicate an SOS was fished
+            return 1;
+        EndIf
+        SleepMS(2);
+    EndForEach
+EndFunction // }}}
+
+// checks if fishing pole is equipped;  if not, try to equip it
+Function IsFishingPoleEquipped(who, fishingpole) // {{{
+    If (
+        (!AccessiblePergon(who, fishingpole)) or
+        (distance(who, fishingpole) > 1)
+    )
+        return 0;
+    EndIf
+
+    ForEach item in ListEquippedItems(who)
+        If (fishingpole.serial == item.serial)
+            return 1;
+        EndIf
+    EndForEach
+    return EquipItem(who, fishingpole);
+EndFunction // }}}
+
+// checks if the targetted square is a water tile
+// (only flat water tiles, otherwise the animation would look bad)
+Function IsWater(thistile, locinfo) // {{{
+    If (thistile.objtype)
+        If ((thistile.objtype >= 0x1797) and (thistile.objtype <= 0x179C))
+            return 1;
+        ElseIf ((thistile.objtype >= 0x346E) and (thistile.objtype <= 0x3485))
+            return 1;
+        ElseIf ((thistile.objtype >= 0x3490) and (thistile.objtype <= 0x34AB))
+            return 1;
+        ElseIf ((thistile.objtype >= 0x34B5) and (thistile.objtype <= 0x34D5))
+            return 1;
+        EndIf
+    Else
+        If ((locinfo.landtile >= 0x00A8) and (locinfo.landtile <= 0x00AB))
+            return 1;
+        ElseIf ((locinfo.landtile >= 0x0136) and (locinfo.landtile <= 0x0137))
+            return 1;
+        ElseIf ((locinfo.landtile >= 0x3FF0) and (locinfo.landtile <= 0x3FF3))
+            return 1;
+        EndIf
+    EndIf
+    return 0;
+EndFunction // }}}
+
+// checks for water, range and LoS; returns 1 unless failure; issues errors
+Function IsValidTarget(who, square, locinfo) // {{{
+    // Make sure that the squareed location is the correct terrain
+    If (!IsWater(square, locinfo))
+        SendSysMessagePergon(
+            who,
+            "Hier kˆnnt Ihr nicht fischen!", "You cannot fish here!"
+        );
+        return 0;
+
+    // Make sure that the squareed location is within the allowed range
+    ElseIf (
+        CoordinateDistance(who.x, who.y, square.x, square.y) >
+        FISHING_RANGE
+    )
+        SendSysMessagePergon(
+            who,
+            "Das ist zu weit weg!", "That is too far away!"
+        );
+        return 0;
+
+    // Make sure that the squareted location is within the line of sight
+    ElseIf (!CheckLosAt(who, square.x, square.y, square.z))
+        SendSysMessagePergon(
+            who,
+            "Das befindet sich nicht in Eurem Blickfeld!",
+            "You cannot see that."
+        );
+        return 0;
+    EndIf
+
+    return 1;
+EndFunction // }}}

@@ -1,0 +1,138 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Flakons
+//
+// Flakons setzen cProps die in GetCastPowerPergon abgefragt werden
+
+//////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.9  2008/09/01 17:07:15  mehdorn
+// - Ueberarbeitung weitgehend fertig
+//   - Komet, Meteor und Asteroid sollte man zusammenfassen
+//
+// 2007-04-01 Seppel
+// erbaut
+
+include ":newspells:magicpergon";
+include "common";
+include "include/effects";
+include "include/modifyskill";
+include "include/msgs";
+use cfgfile;
+use os;
+use uo;
+use util;
+
+Program MagicFlask(who, item)
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var delay := artefact.delay;
+  var useSkill := artefact.useskill;
+  var useSkillStep := artefact.useskillstep;
+  var flaskType := Lower(GetConfigString(artefact, "FlaskType"));
+
+  var skill := 0;
+  Case (flaskType)
+  "fire": "water": "earth": "air": "mage":
+    skill := GetSkillPergon(who, SKILLID_MAGIE);
+
+  "heal": "bless": "vengeance": "antimagic": "cleric":
+    skill := GetSkillPergon(who, SKILLID_SEGNEN);
+
+  "poison": "curse": "death": "conjuration": "necro":
+    skill := GetSkillPergon(who, SKILLID_FLUCHEN);
+
+  "common":
+    // "besten" Skill auswaehlen
+    var skfluch := GetSkillPergon(who, SKILLID_FLUCHEN);
+    var skmagie := GetSkillPergon(who, SKILLID_MAGIE);
+    var sksegen := GetSkillPergon(who, SKILLID_SEGNEN);
+    If (skfluch > skill)
+      skill := skfluch;
+    ElseIf (skmagie > skill)
+      skill := skmagie;
+    ElseIf (sksegen > skill)
+      skill := sksegen;
+    EndIf
+  EndCase
+
+  // Da allgemeine Beschreibung ->
+  // erstmal auf Magieklasse und danach auf Spruchklasse testen, ansonsten 0
+  var usedFlasks := GetCastPowerProperty(who, "Flakon", flaskType, "", 0);
+  If (!usedFlasks)
+    usedFlasks := GetCastPowerProperty(who, "Flakon", "", flaskType, 0);
+  EndIf
+  If (!usedFlasks)
+    usedFlasks := 0;
+  EndIf
+
+  If (((usedFlasks * useSkillStep) + useSkill) > skill)
+    If (usedFlasks == 0)
+      SendSysMessagePergon(who, "Ihr würdet diesen Trank nicht vertragen");
+    Else
+      SendSysMessagePergon(who,
+        "Ihr seid nicht mächtig genug um einen weiteren Trank zu vertragen"
+      );
+    EndIf
+    return;
+  EndIf
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", (ReadGameClock() + delay));
+
+  SendSysMessagePergon(who, "Ihr trinkt den Flakon aus");
+
+  PerformAction(who, ANIM_EAT);
+  SubtractAmount(item, 1);
+
+  If (RandomInt(2) == 1)
+    PlaySoundEffect(who, SFX_31);
+  Else
+    PlaySoundEffect(who, SFX_32);
+  EndIf
+
+  Sleep(2);
+
+  SendSysMessagePergon(who, "Ihr spürt die Macht durch Eure Adern strömen");
+
+  Sleep(2);
+
+  ModifyCastPowerProperty(who, "Flakon", 1, "", flaskType);
+  RefreshSpellPowerGump(who);
+
+  SendSysMessagePergon(who, GetFlaskEffect(flaskType));
+
+  // evtl nen bissl Effektkram, hab jetzt aber keine Lust,
+  // weil es eh ewig dauert bis es jemand sieht ...
+  ExplodeInCircle(
+    who.x, who.y, who.z+5, who.realm, 3, 1000, 50, 20, array{0x3728}
+  );
+EndProgram
+
+Function GetFlaskEffect(type) // {{{
+  var types := dictionary{
+    "air"         -> "Eure Blitze werden heller",
+    "antimagic"   -> "Eure Antimagie wird stärker",
+    "bless"       -> "Eure Segen werden stärker",
+    "cleric"      -> "Euer Gott schenkt euch mehr Macht!",
+    "common"      -> "Eure Allgemeinzauber werden stärker",
+    "conjuration" -> "Eure Kreaturen werden stärker",
+    "curse"       -> "Eure Flüche werden stärker",
+    "death"       -> "Eure Todeszauber werden stärker",
+    "earth"       -> "Eure Steine werden härter",
+    "fire"        -> "Euer Feuer brennt nun heißer",
+    "heal"        -> "Eure Heilung wird stärker",
+    "mage"        -> "Die Kraft Eurer Elemente verstärkt sich!",
+    "necro"       -> "Das Böse gewährt Euch mehr Macht!",
+    "poison"      -> "Eure Gifte werden stärker",
+    "vengeance"   -> "Eure Vergeltungzauber werden stärker",
+    "water"       -> "Euer Eis wird kälter"
+  };
+  return types[type];
+EndFunction // }}}
+
+// vim: sw=2 sts=2

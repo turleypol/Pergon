@@ -1,0 +1,117 @@
+//////////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD guild - GuildChat Einstellung 
+//                   Nachricht verschicken per .gc
+//
+//     Author: Turley
+//
+//   Modification
+//     16.02.05 Turley - Abbruch wenn nicht Gildenmitglied
+//     21.02.05 Turley - Radiobuttons bessere Grafik verpasst
+//
+//////////////////////////////////////////////////////////////////////////////////
+//
+//  CProps:
+//  "guild_hear": 1 - Hört nur auf eigene Gilde
+//                2 - Hört auf Ally und eigene Gilde
+//                3 - Hört auf alle Gilden
+//                4 - keine Gilde
+//  "guild_talk": 1 - Verschickt nur an eigene Gilde
+//                2 - Verschickt an Ally und eigene Gilde
+//                3 - Verschickt an alle Gilden
+//////////////////////////////////////////////////////////////////////////////////
+
+use uo;
+
+Include "include/msgs";
+
+Program guild(who)
+  If (!who.guild)
+    SendSysMessagePergon(who,"Ihr gehört keiner Gilde an.");
+    Return;
+  EndIf
+  Var guildicon:=who.guild.getprop("guildicon");
+  If (!guildicon)
+    guildicon:=5545;
+  EndIf
+  Var hear_array:={0,0,0,0}, talk_array:={0,0,0};
+  Var hear:=who.getprop("gc_hear");
+  Var talk:=who.getprop("gc_talk");
+  If (hear)
+    hear_array[CInt(hear)]:=1;
+  Else
+    hear_array[4]:=1;
+  EndIf
+  If (talk)
+    talk_array[CInt(talk)]:=1;
+  EndIf
+  Var layout:={"nodispose",
+               "page 0",
+               "resizepic 50 50 2600 400 400",
+             	 "gumppic 132 28 1419",                             // obeere Kante
+	             "gumppic 209 10 1417",                             // leeres Symbol
+	             "gumppic 218 19 "+guildicon,
+  	           "gumppic 0 20 10440",                              // linker Drache
+	             "gumppic 418 20 10441",                            // rechter Drache
+	             "htmlgump 50 100 400 20 0 0 0",                    // "Gilden Chat Optionen"
+	             "text 100 120 0 1",                                // Gilde:
+	             "text 155 120 0 2",                                // Gildenname
+	             "group 1",                                         // erste Gruppe "gc_hear"
+	             "Radio 80 150 9720 9723 "+hear_array[1]+" 2",
+  	           "text 115 154 0 3",
+	             "Radio 80 180 9720 9723 "+hear_array[2]+" 3",
+	             "text 115 184 0 4",
+	             "Radio 80 210 9720 9723 "+hear_array[3]+" 4",
+	             "text 115 214 0 5",
+	             "Radio 80 240 9720 9723 "+hear_array[4]+" 5",
+	             "text 115 244 0 6",
+  	           "group 2",                                         // zweite Gruppe "gc_talk"
+	             "Radio 80 270 9720 9723 "+talk_array[1]+" 6",
+	             "text 115 274 0 7",
+	             "Radio 80 300 9720 9723 "+talk_array[2]+" 7",
+	             "text 115 304 0 8",
+	             "Radio 80 330 9720 9723 "+talk_array[3]+" 8",
+	             "text 115 334 0 9",
+  	           "button 115 380 9721 9724 1 0 1",
+	             "text 150 384 0 10"}; 
+
+
+  Var data:={"<center><B>Gilden Chat Optionen</center>",
+             "Gilde:",
+	           who.guild.getprop("name"),
+	           "Nur auf eigene Gilde hoeren",
+	           "Auf Allierte und eigene Gilde hoeren",
+	           "Auf alle Gilden hoeren",
+	           "Auf keine Gilde hoeren",
+	           "Zur eigenen Gilde sprechen",
+	           "Zur eigenen und allierten Gilde sprechen",
+	           "Zu allen Gilden sprechen",
+	           "Ok"};
+
+  Var res:= SendDialogGump(who,layout,data,50,50);
+
+  If (res.keys[2]==1)  // OK
+    ForEach key in (res.keys)
+      Case (key) 
+        // "gc_hear"
+        2: who.setprop("gc_hear",1);
+           SendSysMessagePergon(who,"Ihr hoert nun auf die eigene Gilde.");
+        3: who.setprop("gc_hear",2);
+           SendSysMessagePergon(who,"Ihr hoert nun auf die eigene und allierte Gilden.");
+        4: who.setprop("gc_hear",3);
+           SendSysMessagePergon(who,"Ihr hoert nun auf alle Gilden.");
+        5: who.eraseprop("gc_hear");
+           SendSysMessagePergon(who,"Ihr hoert nun auf keine Gilde.");
+        // "gc_talk"
+        6: who.setprop("gc_talk",1);
+           SendSysMessagePergon(who,"Ihr sprecht nun zur eigenen Gilde.");
+        7: who.setprop("gc_talk",2);
+           SendSysMessagePergon(who,"Ihr sprecht nun zu den eigenen und allierten Gilden.");
+        8: who.setprop("gc_talk",3);
+           SendSysMessagePergon(who,"Ihr sprecht nun zu allen Gilden.");
+      EndCase
+    EndForEach
+  Else
+    SendSysMessagePergon(who,"Abbruch", "Abort");
+  EndIf
+EndProgram

@@ -1,0 +1,7 @@
+Mit dem Befehl ".msg" kannst du Nachrichten an andere Spieler senden, die sich gerade im Spiel befinden. Das ist nuetzlich, wenn sie ausserhalb der Hoerweite sind.
+
+Gibst du einfach ".msg" ein, musst du den zu kontaktierenden Spieler aus einer Liste auswaehlen. Schreibst du hingegen einen eindeutigen Namensbestandteil dahinter, kannst du direkt mit deiner Nachricht loslegen.
+
+Mit ".status config" kannst du den Hinweiston bei eingehenden Nachrichten ein- und ausschalten.
+
+Die Verwendung des Befehls wird manchmal auch als "eine Brieftaube schicken" bezeichnet.

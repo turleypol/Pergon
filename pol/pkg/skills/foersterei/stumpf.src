@@ -1,0 +1,7 @@
+Use uo;
+Use os;
+
+Program Wood(item)
+  Sleep(300);
+  DestroyItem(item);
+EndProgram

@@ -1,0 +1,234 @@
+/////////////////////////////////////////////////////////
+// script_profiles - ScriptProfile anzeigen
+//
+// Author: Turley
+
+use http;
+use os;
+use uo;
+include "header";
+
+var chr22 := CChr(0x22); // "
+var chr5C := CChr(0x5C); // \
+
+Program HTMLPage()
+  var reload := QueryParam("Action");
+  If (reload == "Reset Counters")
+    If (isALLOWED_STRICT)
+      POLCore().clear_script_profile_counters();
+      WriteHTML("<META HTTP-EQUIV='REFRESH' CONTENT='1; URL=?"+A_PARAM+"'>");
+      WriteHTML("Counters have been reset.<BR><BR>");
+      WriteHTML("Reloading page ...");
+      return;
+    EndIf
+  EndIf
+
+  DoHeader("Script Profiles");
+  WriteHTML("<div id='container'>");
+  WriteHTML("<div id='header'></div>");
+  WriteHTML("<div id='content'>");
+  TableHeader("Script Profiles");
+  
+  DenyAccess(isALLOWED_STRICT);
+
+  var core := polcore();
+  WriteHTML("<p>");
+  If (isALLOWED_STRICT)
+    WriteHTML(
+      "<form>"+
+      "<input type='submit' name='action' value='Reset Counters'>"+
+      "<input type=hidden name=user value='"+user+"'>"+
+      "<input type=hidden name=pass value='"+pass+"'>"+
+      "</form>"
+    );
+  EndIf
+  WriteHTML("<a href='script_profiles.ecl?"+A_PARAM+"'>Reload Page</a>");
+  WriteHTML("</p>");
+
+  WriteHTML("<dl>");
+  WriteHTML(
+    "<dt>Online Players</dt><dd>"+EnumerateOnlineCharacters().Size()+"</dd>"
+  );
+  WriteHTML("<dt>NPCs</dt><dd>"+polcore().mobilecount+"</dd>");
+  WriteHTML("<dt>Current Load</dt><dd>"+core.sysload+"%</dd>");
+  WriteHTML(
+    "<dt>Scripts Late Per Minute</dt><dd>"+core.scripts_late_per_min+"<dd>"
+  );
+  WriteHTML(
+    "<dt>Scripts On Time Per Minute</dt><dd>"+
+    core.scripts_ontime_per_min+"<dd>"
+  );
+  WriteHTML("</dl>");
+
+  ShowScriptProfiles(core.script_profiles);
+  DoFooter();
+EndProgram
+
+Function ShowScriptProfiles(byref script_profiles)
+  WriteHtml("<div id="+chr22+"PropertyTabelle"+chr22+"></div>");
+  WriteHtml("<script type="+chr22+"text/javascript"+chr22+">");
+  WriteHtml("<!--");
+  WriteHtml("var Tabellendaten = new Array(");
+  var i := 1;
+  ForEach value in script_profiles
+    WriteHtmlRaw("Array(");
+    WriteHtmlRaw(chr22+value.name+chr22+","
+                +chr22+value.instr+chr22+","
+                +chr22+value.invocations+chr22+","
+                +chr22+value.instr_per_invoc+chr22+","
+                +chr22+value.instr_percent+chr22);
+    WriteHtmlRaw(")");
+    If (i<script_profiles.size())
+      WriteHtml(",");
+    EndIf
+    i+=1;
+    SleepMS(2);
+  EndForEach
+
+  WriteHtml(");");
+
+  WriteHtml("var sortierte_Tabellendaten = new Array(Tabellendaten.length);");
+
+  WriteHtml("var Spaltenueberschriften = new Array(");
+  WriteHtml(""+chr22+"<B>Name</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>Instructions</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>Invocations</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>Instr Per Invoc</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>% of sysload</B>"+chr22);
+  WriteHtml(");");
+
+  WriteHtml("var Spalten = Spaltenueberschriften.length;");
+
+  WriteHtml("var Spaltensortierungen = new Array(");
+  WriteHtml(""+chr22+"alphabetisch"+chr22+","+chr22+"numerisch"+chr22+","+chr22+"numerisch"+chr22+","+chr22+"numerisch"+chr22+","+chr22+"numerisch"+chr22);
+  WriteHtml(");");
+
+  WriteHtml("var Sortierzeile = "+chr22+""+chr22+";");
+
+  WriteHtml("function Erzeuge_Sortierzeile(Nummer,Richtung) {");
+  WriteHtml("  Sortierzeile = "+chr22+"<tr>"+chr22+";");
+  WriteHtml("  for(var j = 0; j < Spalten; ++j) {");
+  WriteHtml("    Sortierzeile += "+chr22+"<th>"+chr22+";");
+  WriteHtml("    if(Richtung == "+chr22+"aufsteigend"+chr22+" && j == Nummer) {");
+  WriteHtml("      Sortierzeile += "+chr22+"auf "+chr22+";");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','absteigend')"+chr5C+""+chr22+">ab</a>"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    else if(Richtung == "+chr22+"absteigend"+chr22+" && j == Nummer) {");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','aufsteigend')"+chr5C+""+chr22+">auf</a>"+chr22+";");
+  WriteHtml("      Sortierzeile += "+chr22+" ab"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    else {");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','aufsteigend')"+chr5C+""+chr22+">auf</a> "+chr22+";");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','absteigend')"+chr5C+""+chr22+">ab</a><"+chr5C+"/td>"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    Sortierzeile += "+chr22+"<"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  }");
+  WriteHtml("  Sortierzeile += "+chr22+"</tr>"+chr22+";");
+  WriteHtml("}");
+
+  WriteHtml("function Sortiere_nach_Spalte(Nummer,Art,Richtung) {");
+  WriteHtml("  sortierte_Tabellendaten=Tabellendaten;");
+  WriteHtml("  sortierte_Tabellendaten.sort(cmpWrapper(Nummer,Art,Richtung));");
+  WriteHtml("  Erzeuge_Sortierzeile(Nummer,Richtung);");
+  WriteHtml("  Schreibe_TabelleScript(sortierte_Tabellendaten);");
+  WriteHtml("}");
+
+  WriteHtml("function Schreibe_TabelleScript(Array) {");
+  WriteHtml("  var Tabelleninhalt = "+chr22+""+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<table WIDTH='100%' CELLSPACING='1' CELLPADDING='2'>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<thead>"+chr22+";");
+//  WriteHTML("  Tabelleninhalt += "+chr22+"<TR>"+chr22+";");
+//  WriteHTML("  Tabelleninhalt += "+chr22+"<TH COLSPAN='5' ALIGN='LEFT'>RawPoint Infos</TH>"+chr22+";");
+//  WriteHTML("  Tabelleninhalt += "+chr22+"</TR>"+chr22+";");
+  WriteHtml("  for(var j = 0; j < Spalten; ++j)");
+  WriteHtml("    Tabelleninhalt += "+chr22+"<th>"+chr22+" + Spaltenueberschriften[j] + "+chr22+"<"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/tr>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += Sortierzeile;");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/thead>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<tbody>"+chr22+";");
+
+  WriteHtml("  for(var i = 0; i < Array.length; ++i) {");
+  WriteHtml("    Tabelleninhalt += "+chr22+"<tr>"+chr22+";");
+  WriteHtml("    for(var j = 0; j < Array[i].length; ++j)");
+  WriteHtml("      Tabelleninhalt += "+chr22+"<td>"+chr22+" + Array[i][j] + "+chr22+"<"+chr5C+"/td>"+chr22+";");
+  WriteHtml("    Tabelleninhalt += "+chr22+"<"+chr5C+"/tr>"+chr22+";");
+  WriteHtml("  }");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/tbody>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/table>"+chr22+";");
+  WriteHtml("  if(document.getElementById)");
+  WriteHtml("    document.getElementById("+chr22+"PropertyTabelle"+chr22+").innerHTML = Tabelleninhalt;");
+  WriteHtml("  else if(document.all)");
+  WriteHtml("    document.all.PropertyTabelle.innerHTML = Tabelleninhalt;");
+  WriteHtml("  else if(document.layers) {");
+  WriteHtml("    document.PropertyTabelle.document.open();");
+  WriteHtml("    document.PropertyTabelle.document.write(Tabelleninhalt);");
+  WriteHtml("    document.PropertyTabelle.document.close();");
+  WriteHtml("  }");
+  WriteHtml("}");
+
+  WriteHtml("function Numsort(a,b)");
+  WriteHtml("  { return a-b; }");
+
+  WriteHtml("function cmpWrapper(i,Art,Richtung)");
+  WriteHtml("{");
+  WriteHtml("  return function(a, b) {");
+  WriteHtml("    if (a[i] == b[i])");
+  WriteHtml("    {");
+  WriteHtml("      return 0;");
+  WriteHtml("    }");
+  WriteHtml("    else");
+  WriteHtml("    {");
+  WriteHtml("      var a2 = [a[i], b[i]];");
+  WriteHtml("      if (Art=="+chr22+"alphabetisch"+chr22+")");
+  WriteHtml("      {");
+  WriteHtml("        a2[0]=a2[0].toLowerCase();");
+  WriteHtml("        a2[1]=a2[1].toLowerCase();");
+  WriteHtml("        a2.sort();");
+  WriteHtml("      }");
+  WriteHtml("      else");
+  WriteHtml("        a2.sort(Numsort);");
+  WriteHtml("      if (Richtung=="+chr22+"aufsteigend"+chr22+")");
+  WriteHtml("        a2.reverse();");
+  WriteHtml("      if (a2[0] == a[i].toLowerCase())");
+  WriteHtml("      {");
+  WriteHtml("        return 1;");
+  WriteHtml("      }");
+  WriteHtml("      else");
+  WriteHtml("      {");
+  WriteHtml("        return -1;");
+  WriteHtml("      }");
+  WriteHtml("    }");
+  WriteHtml("  };");
+  WriteHtml("} ");
+
+  WriteHtml("Sortiere_nach_Spalte(0,Spaltensortierungen[0],'aufsteigend');");
+  WriteHtml("//-->");
+
+  WriteHtml("</script>");
+
+  WriteHtml("<noscript>");
+  WriteHtml("<table>");
+  WriteHtml("<tr>");
+  WriteHtmlRaw("<th>Name</th>");
+  WriteHtmlRaw("<th>Instructions</th>");
+  WriteHtmlRaw("<th>Invocations</th>");
+  WriteHtmlRaw("<th>Instr Per Invoc</th>");
+  WriteHtml("<th>% of sysload</th>");
+  WriteHtml("</tr>");
+  ForEach value in script_profiles
+    SleepMs(2);
+    WriteHtml("<tr>");
+    WriteHtmlRaw("<td>"+value.name+"</td>");
+    WriteHtmlRaw("<td class='num'>"+value.instr+"</td>");
+    WriteHtmlRaw("<td class='num'>"+value.invocations+"</td>");
+    WriteHtmlRaw("<td class='num'>"+value.instr_per_invoc+"</td>");
+    WriteHtml("<td class='num'>"+value.instr_percent+"</td>");
+    WriteHtml("</tr>");
+  EndForEach
+  WriteHtml("</table>");
+  WriteHtml("</noscript>");
+
+  WriteHTML("</div>");
+EndFunction
+
+// vim: sw=2 sts=2

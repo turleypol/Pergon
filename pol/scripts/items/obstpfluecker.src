@@ -1,0 +1,201 @@
+///////////////////////////////////////////////////////////////////////////
+// Obstpfluecker -- von Obstbaeumen Fruechte ernten
+//
+// by Fraggulus
+
+use os;
+use uo;
+use util;
+include "include/client";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/msgs";
+
+Program Obstpfluecker(who, tool)
+  If (!ToolEquipped(who, tool))
+    SendSysMessagePergon(who,
+      "Ihr müsst den Obstpflücker in die Hand nehmen.",
+      "You have to take the fruit picker in your hand."
+    );
+    return;
+  EndIf
+
+  // Im Winter waechst kein Obst
+  If (GetGlobalProperty("Season") == 2)
+    SendSysMessagePergon(who,
+      "Im Winter wächst kein Obst. Wartet noch ein Weilchen."
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who, "Was ist das Objekt Eurer Begierde?");
+  var baumkrone := TargetCoordinates(who);
+  If (!baumkrone)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (CoordinateDistance(who.x, who.y, baumkrone.x, baumkrone.y) > 2)
+    SendSysMessagePergon(who, "Das ist zu weit weg.");
+    return;
+  EndIf
+
+  var ernte := 0;
+  Case (baumkrone.objtype)
+  0xd96: 0xd9a: // Apfel
+    ernte := 0x09d0;
+  0xda6: 0xdaa: // Birne
+    ernte := 0x0994;
+  0xd9e: 0xda2: // Pfirsich
+    ernte := 0x172c;
+  // deaktiviert wegen Ackerbau
+  // 0xc95: // Kokosnuss
+  //   ernte := 0x1726;
+  // 0xc96: // Dattel
+  //   ernte := 0x1727;
+  // 0xca8: 0xcaa: // Banane
+  //   ernte := 0x1720;
+  default:
+    SendSysMessagePergon(who,
+      "Das scheint nicht die Krone eines geeigneten Obstbaumes zu sein."
+    );
+    return;
+  EndCase
+
+  PflueckeObst(who, baumkrone, ernte, tool);
+EndProgram
+
+// ausser Betrieb
+Function StammSchlagen(who, krone, obst) // {{{
+// zur baumkrone wird der richtige stamm gesucht und verwendet
+  SendSysMessagePergon(who, "Nungut, schlagt vor den Stamm.");
+
+  var stamm := TargetCoordinates(who);
+
+  If (!stamm)
+    return;
+  EndIf
+
+  If (Distance(who, stamm) > 2)
+    SendSysMessagePergon(who, "Das ist zu weit weg.");
+    return;
+  EndIf
+
+
+  // Baumkrone und Stamm muessen zusammenpassen
+  // ich hoffe nicht, dass einige statische Baeume falsch zusammengebaut sind
+  Case (obst)
+    0x09d0: If ((stamm.x == krone.x) && (stamm.y == krone.y) && (((stamm.objtype) == 0xd94) || ((stamm.objtype) == 0xd98)))
+              pfluecke_obst(who, stamm, obst);
+            Else
+              SendSysMessagePergon(who, "Das ging wohl daneben.");
+              return;
+            EndIf
+
+    0x0994: If ((stamm.x == krone.x) && (stamm.y == krone.y) && (((stamm.objtype) == 0xda4) || ((stamm.objtype) == 0xda8)))
+              pfluecke_obst(who, stamm, obst);
+            Else
+              SendSysMessagePergon(who, "Das ging wohl daneben.");
+              return;
+            EndIf
+
+    0x172c: If ((stamm.x == krone.x) && (stamm.y == krone.y) && (((stamm.objtype) == 0xd9c) || ((stamm.objtype) == 0xda0)))
+              pfluecke_obst(who, stamm, obst);
+            Else
+                SendSysMessagePergon(who, "Das ging wohl daneben.");
+                return;
+            EndIf
+
+    0x1726: If ((stamm.x == krone.x) && (stamm.y == krone.y) && ((stamm.objtype) == 0xc95))
+              pfluecke_obst(who, stamm, obst);
+            Else
+              SendSysMessagePergon(who, "Das ging wohl daneben.");
+              return;
+            EndIf
+
+    0x1727: If ((stamm.x == krone.x) && (stamm.y == krone.y) && ((stamm.objtype) == 0xc96))
+              pfluecke_obst(who, stamm, obst);
+            Else
+              SendSysMessagePergon(who, "Das ging wohl daneben.");
+              return;
+            EndIf
+
+    0x1720: If ((stamm.x == krone.x) && (stamm.y == krone.y) && (((stamm.objtype) == 0xca8) || ((stamm.objtype) == 0xcaa)))
+              pfluecke_obst(who, stamm, obst);
+            Else
+              SendSysMessagePergon(who, "Das ging wohl daneben.");
+              return;
+            EndIf
+
+    default: SendSysMessagePergon(who, "Das ging wohl daneben!");
+  EndCase
+EndFunction // }}}
+
+Function PflueckeObst(who, where, fruit, tool)
+  var diff := GetHarvestDifficulty(
+    "fruit", where.x, where.y, where.objtype, where.realm
+  );
+  If (diff == error)
+    SendSysMessagePergon(who,
+      "Hier gibt es kein Obst mehr.", "There is no more fruit."
+    );
+    return;
+  EndIf
+
+  var obst := HarvestResource(
+    "fruit", where.x, where.y, 1, 1+RandomInt(3), where.realm
+  );
+
+  If (obst == 0)
+    SendSysMessagePergon(who,
+      "Das Obst ist ziemlich fest angewachsen und fällt nicht herab.",
+      "The fruit is firmly attached to the tree and did not fall."
+    );
+    return;
+  EndIf
+
+  For i := 1 To obst
+    // ein gewisser Teil wird direkt geerntet
+    If (RandomInt(5) >= 2)
+      PlaySoundEffect(who, SFX_FRUITPICKER);
+      Sleep(1);
+      var result := CreateItemInBackpack(who, fruit, 1);
+      If (result)
+        continue;
+      EndIf
+    EndIf
+
+    // der Rest faellt auf den Boden
+
+    // Koordinaten ermitteln
+    var x, y, z;
+    While (who)
+      SleepMs(2);
+      // in Umgebung der Krone faellt das Obst
+      x := where.x+RandomIntMinMax(-1, 3);
+      y := where.y+RandomIntMinMax(-1, 3);
+      // Obst sollte an erreichbarer Stelle liegen (nicht im Stamm etc.)
+      // ist Position nicht benutzbar, kommt uninit heraus
+      z := GetStandingHeight(x, y, where.z-5, where.realm).z;
+      If (TypeOfInt(z) == OT_LONG)
+        break;
+      EndIf
+    EndWhile
+
+    PlayMovingEffectXYZ(x, y, z+15, x, y, z, fruit, 1, 0, 0, where.realm);
+    SleepMS(300);
+    CreateItemAtLocation(x, y, z, fruit, 1, where.realm);
+    PlaySoundEffect(who, SFX_FRUITDROP);
+    SleepMS(RandomInt(200) + 100);
+  EndFor
+
+  If (RandomInt(100) <= 3)
+    SetWerkzeugSchaden(who, tool,
+      "Euer Pflücker hat gelitten!",
+      "Euer Pflücker ist stark beschädigt!",
+      "Euer Pflücker ist zerbrochen!"
+    );
+  EndIf
+EndFunction
+
+// vim: sw=2 sts=2

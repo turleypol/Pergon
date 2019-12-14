@@ -1,0 +1,267 @@
+///////////////////////////////////////////////////////////////////////////
+// Vital-Definitionen der Stats
+//
+// Author: Shinigami
+
+use attributes;
+use cfgfile;
+use os;
+use uo;
+include "include/berufe";
+include "include/modifyskill";
+include "include/npc";
+
+///////////////
+// Konstanten
+///////////////
+
+Const LIFEREGENDEFAULTRATE:=1200;
+Const MANAREGENDEFAULTRATE:=1200;
+Const STAMINAREGENDEFAULTRATE:=1200;
+
+///////////////////////////////////////////////////
+//                                               //
+//   Exportierte Funktionen (siehe vitals.cfg)   //
+//                                               //
+///////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////
+// GetLifeMaximumValue - Liefert die maximalen HitPoints
+//////////////////////////////////////////////////////////
+
+Exported Function GetLifeMaximumValue(mobile) // result = CInt(1,00..100000,00)
+  If (mobile.isa(POLCLASS_NPC)) // NPC
+    Var hitpoints:=GetObjProperty(mobile, "OverrideHits");
+    If (hitpoints Or (hitpoints==0))
+      Return (CInt(hitpoints)*100);
+    Else
+      Var templatename:=mobile.npctemplate;
+      If (templatename) // Beim Serverhochfahren ist das manchmal leer
+        Var template:=GetNPCConfig(templatename);
+        If (template)
+          hitpoints:=template.hits;
+          If (hitpoints Or (hitpoints==0))
+            Return (CInt(hitpoints)*100);
+          Else
+            SysLog("FEHLER: NPC-Template '"+templatename+"' besitzt keine HITS!");
+          EndIf
+        Else
+          SysLog("FEHLER: NPC-Template '"+templatename+"' ist nicht in der NPCDesc enthalten!");
+        EndIf
+      EndIf
+    EndIf
+
+    Return (GetStrPergon(mobile)*100);
+  Else // Player
+    If (mobile.cmdlevel<CMDLEVEL_QUESTCHAR)
+      Case (GetObjProperty(mobile, SKKLASSE))
+        KLASSE_HANDWERKER: Return (GetStrPergon(mobile)*100);
+        KLASSE_KRIEGER:    Return (GetStrPergon(mobile)*200);
+        KLASSE_MAGIER:     Return (GetStrPergon(mobile)* 75);
+
+        default: Return (GetStrPergon(mobile)*100);
+      EndCase
+    Else
+      Return (10000000);
+    EndIf
+  EndIf
+EndFunction
+
+////////////////////////////////////////////////////
+// GetManaMaximumValue - Liefert die maximale Mana
+////////////////////////////////////////////////////
+
+Exported Function GetManaMaximumValue(mobile) // result = CInt(1,00..100000,00)
+  If (mobile.isa(POLCLASS_NPC)) // NPC
+    Var mana:=GetObjProperty(mobile, "OverrideMana");
+    If (mana Or (mana==0))
+      Return (CInt(mana)*100);
+    Else
+      Var templatename:=mobile.npctemplate;
+      If (templatename) // Beim Serverhochfahren ist das manchmal leer
+        Var template:=GetNPCConfig(templatename);
+        If (template)
+          mana:=template.mana;
+          If (mana Or (mana==0))
+            Return (CInt(mana)*100);
+          Else
+            SysLog("FEHLER: NPC-Template '"+templatename+"' besitzt keine MANA!");
+          EndIf
+        Else
+          SysLog("FEHLER: NPC-Template '"+templatename+"' ist nicht in der NPCDesc enthalten!");
+        EndIf
+      EndIf
+    EndIf
+
+    Return (GetIntPergon(mobile)*100);
+  Else // Player
+    If (mobile.cmdlevel<CMDLEVEL_QUESTCHAR)
+      Case (GetObjProperty(mobile, SKKLASSE))
+        KLASSE_HANDWERKER: Return (GetIntPergon(mobile)*100);
+        KLASSE_KRIEGER:    Return (GetIntPergon(mobile)* 75);
+        KLASSE_MAGIER:     Return (GetIntPergon(mobile)*200);
+
+        default: Return (GetIntPergon(mobile)*100);
+      EndCase
+    Else
+      Return (10000000);
+    EndIf
+  EndIf
+EndFunction
+
+//////////////////////////////////////////////////////////
+// GetStaminaMaximumValue - Liefert die maximale Stamina
+//////////////////////////////////////////////////////////
+
+Exported Function GetStaminaMaximumValue(mobile) // result = CInt(1,00..100000,00)
+  If (mobile.isa(POLCLASS_NPC)) // NPC
+    Var stamina:=GetObjProperty(mobile, "OverrideStamina");
+    If (stamina Or (stamina==0))
+      Return (CInt(stamina)*100);
+    Else
+      Var templatename:=mobile.npctemplate;
+      If (templatename) // Beim Serverhochfahren ist das manchmal leer
+        Var template:=GetNPCConfig(templatename);
+        If (template)
+          Var stamina:=template.stam;
+          If (stamina Or (stamina==0))
+            Return (CInt(stamina)*100);
+          Else
+            SysLog("FEHLER: NPC-Template '"+templatename+"' besitzt keine STAM!");
+          EndIf
+        Else
+          SysLog("FEHLER: NPC-Template '"+templatename+"' ist nicht in der NPCDesc enthalten!");
+        EndIf
+      EndIf
+    EndIf
+
+    Return (GetDexPergon(mobile)*100);
+  Else // Player
+    If (mobile.cmdlevel<CMDLEVEL_QUESTCHAR)
+      Case (GetObjProperty(mobile, SKKLASSE))
+        KLASSE_HANDWERKER: Return (GetDexPergon(mobile)*175);
+        KLASSE_KRIEGER:    Return (GetDexPergon(mobile)*100);
+        KLASSE_MAGIER:     Return (GetDexPergon(mobile)*100);
+
+        default: Return (GetDexPergon(mobile)*100);
+      EndCase
+    Else
+      Return (10000000);
+    EndIf
+  EndIf
+EndFunction
+
+///////////////////////////////////////////////////////////////
+// GetLifeRegenRate - Liefert die HitPoints-Regenerationsrate
+///////////////////////////////////////////////////////////////
+
+Exported Function GetLifeRegenRate(mobile) // result = -30000..30000 [0,01 Punkte pro Minute]
+  If (mobile.isa(POLCLASS_NPC)) // NPC
+    Var templatename:=mobile.npctemplate;
+    If (mobile.getprop(PROP_SUMMONED))  //Beschworene Regenerieren nicht
+    	Return(0);
+    EndIf
+    If (templatename) // Beim Serverhochfahren ist das manchmal leer
+      Var template:=GetNPCConfig(templatename);
+      If (template)
+        Var hitpoints_regen:=template.hitsregen;
+        If (hitpoints_regen Or (hitpoints_regen==0))
+          Return (CInt(hitpoints_regen));
+        Else
+          Return (LIFEREGENDEFAULTRATE);
+        EndIf
+      Else
+        SysLog("FEHLER: NPC-Template '"+templatename+"' ist nicht in der NPCDesc enthalten!");
+      EndIf
+    EndIf
+
+    Return (LIFEREGENDEFAULTRATE);
+  Else // Player
+    If ((mobile.cmdlevel<CMDLEVEL_QUESTCHAR) Or GetObjProperty(mobile, "NormalRegen"))
+      Return (LIFEREGENDEFAULTRATE);
+    Else
+      Return (0);
+    EndIf
+  EndIf
+EndFunction
+
+//////////////////////////////////////////////////////////
+// GetManaRegenRate - Liefert die Mana-Regenerationsrate
+//////////////////////////////////////////////////////////
+
+Exported Function GetManaRegenRate(mobile) // result = -30000..30000 [0,01 Punkte pro Minute]
+  If (mobile.isa(POLCLASS_NPC)) // NPC
+    Var templatename:=mobile.npctemplate;
+    If (templatename) // Beim Serverhochfahren ist das manchmal leer
+      Var template:=GetNPCConfig(templatename);
+      If (template)
+        Var mana_regen:=template.manaregen;
+        If (mana_regen Or (mana_regen==0))
+          Return (CInt(mana_regen));
+        Else
+          Return (MANAREGENDEFAULTRATE);
+        EndIf
+      Else
+        SysLog("FEHLER: NPC-Template '"+templatename+"' ist nicht in der NPCDesc enthalten!");
+      EndIf
+    EndIf
+
+    Return (MANAREGENDEFAULTRATE);
+  Else // Player
+    If ((mobile.cmdlevel<CMDLEVEL_QUESTCHAR) Or GetObjProperty(mobile, "NormalRegen"))
+      Return (MANAREGENDEFAULTRATE);
+    Else
+      Return (0);
+    EndIf
+  EndIf
+EndFunction
+
+////////////////////////////////////////////////////////////////
+// GetStaminaRegenRate - Liefert die Stamina-Regenerationsrate
+////////////////////////////////////////////////////////////////
+
+Exported Function GetStaminaRegenRate(mobile) // result = -30000..30000 [0,01 Punkte pro Minute]
+  If (mobile.isa(POLCLASS_NPC)) // NPC
+    Var templatename:=mobile.npctemplate;
+    If (templatename) // Beim Serverhochfahren ist das manchmal leer
+      Var template:=GetNPCConfig(templatename);
+      If (template)
+        Var stamina_regen:=template.stamregen;
+        If (stamina_regen Or (stamina_regen==0))
+          Return (CInt(stamina_regen));
+        Else
+          Return (STAMINAREGENDEFAULTRATE);
+        EndIf
+      Else
+        SysLog("FEHLER: NPC-Template '"+templatename+"' ist nicht in der NPCDesc enthalten!");
+      EndIf
+    EndIf
+
+    Return (STAMINAREGENDEFAULTRATE);
+  Else // Player
+    If ((mobile.cmdlevel<CMDLEVEL_QUESTCHAR) Or GetObjProperty(mobile, "NormalRegen"))
+      Return (STAMINAREGENDEFAULTRATE);
+    Else
+      Return (0);
+    EndIf
+  EndIf
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////
+// GetDexIntrinsicMod - Liefert den intrinsischen Modificator der Dexterity
+/////////////////////////////////////////////////////////////////////////////
+
+Exported Function GetDexIntrinsicMod(mobile)
+  Return (0);
+  // Compilerwarnung meiden
+  mobile := mobile;
+EndFunction
+
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Vitals_Regen()
+  Return(1);
+EndProgram

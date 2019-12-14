@@ -1,0 +1,7 @@
+<h3 id="changeinvul">changeinvul</h3>
+
+<h4>Parameter: keiner oder <kbd>i</kbd> oder <kbd>u</kbd></h4>
+
+<p>Schaltet eigene Unverwundbarkeit an oder ab. Bei Parameter
+&bdquo;i&rdquo; wird angeschaltet, bei &bdquo;u&rdquo; wird abgeschaltet.
+Ohne Parameter wird umgeschaltet.</p>

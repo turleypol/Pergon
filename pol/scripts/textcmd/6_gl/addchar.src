@@ -1,0 +1,41 @@
+use uo;
+
+include "include/onlinesearch";
+
+Program TextCMD_AddChar(who, params)
+  params := SplitWords(params);
+  If (!params || Len(params) > 2)
+    SendSysMessagePergon(who,
+      "Aufruf: .addchar {account} [cmdlevel]",
+      "Usage:.addchar {account} [cmdlevel]"
+    );
+    return;
+  EndIf
+  
+  var cmdlvl := 0;
+  If (Len(params) == 2)
+    cmdlvl := CInt(params[2]);
+  EndIf
+  If (cmdlvl < CMDLEVEL_PLAYER || cmdlvl > CMDLEVEL_DEVELOPER)
+    SendSysMessagePergon(who,
+      "Das CMDLevel muss sich zwischen "+CMDLEVEL_PLAYER+" - "+GetCMDLevelTitle(CMDLEVEL_PLAYER)+
+      " und "+CMDLEVEL_DEVELOPER+" - "+GetCMDLevelTitle(CMDLEVEL_DEVELOPER)+" bewegen!",
+      "The CMDLevel needs to be between "+CMDLEVEL_PLAYER+" - "+GetCMDLevelTitle(CMDLEVEL_PLAYER)+
+      " and "+CMDLEVEL_DEVELOPER+" - "+GetCMDLevelTitle(CMDLEVEL_DEVELOPER)
+    );
+    return;
+  EndIf
+  
+  var account := FindAccount(params[1]);
+  If (account)
+    account.setProp(ACCT_NEWCHAR_CMDLVL, cmdlvl);
+    SendSysMessagePergon(who,
+      GetCMDLevelTitle(cmdlvl)+"-Character-Daten eingetragen.",
+      GetCMDLevelTitle(cmdlvl)+"-Character-Data set.");
+  Else
+    SendSysMessagePergon(who,
+      "Der Account '"+params[1]+"' konnte nicht gefunden werden!",
+      "Account '"+params[1]+"' could not be found!"
+    );
+  EndIf
+EndProgram

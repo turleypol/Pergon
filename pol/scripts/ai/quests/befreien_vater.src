@@ -1,0 +1,194 @@
+///////////////////////////////////////////////////
+//
+//   Quest "Befreie meine Tochter" Script - Vater
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+///////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+use util;
+use os;
+use uo;
+use npc;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/animal";
+Include "include/client";
+Include "include/clock";
+Include "include/eventid";
+Include "include/itemnpc";
+Include "include/msgs";
+Include "include/names";
+Include "include/npc";
+Include "include/place";
+Include "include/vetement"; // Random Clothing
+
+///////////////
+// Konstanten
+///////////////
+
+Const SPEECH_RANGE := 3;
+Const ENTERED_RANGE:= 7;
+Const GUARDS_RANGE :=21;
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+Var me:=Self();
+
+////////////////////////////
+// Vater - Initialisierung
+////////////////////////////
+
+Program Vater()
+  If (me.name["<random>"])
+    SetObjProperty(me, "myname", me.name);
+
+    SetName(me, RandomName(me));
+    EquipNPC(me);
+  EndIf
+
+  SetWarMode(0);
+  DropAnchor();
+
+  Vater_MainLoop(); // Hauptschleife aufrufen
+EndProgram
+
+///////////////////////////////////
+// Vater_MainLoop - Hauptschleife
+///////////////////////////////////
+
+Function Vater_MainLoop()
+  Set_Priority(10);
+
+  EnableEvents(SYSEVENT_SPEECH+SYSEVENT_ENGAGED+SYSEVENT_DISENGAGED+SYSEVENT_DAMAGED, SPEECH_RANGE);
+  EnableEvents(SYSEVENT_ENTEREDAREA, ENTERED_RANGE);
+  EnableEvents(SYSEVENT_LEFTAREA, ENTERED_RANGE+1);
+  EnableEvents(SYSEVENT_OPPONENT_MOVED);
+
+  Var next_wander:=ReadGameClock()+10;
+
+  Var myname:=GetObjProperty(me, "myname");
+  Var talktome;
+
+  While (1)
+    PerformAction(me, UACTION_LOOK_AROUND);
+
+    Var ev:=Wait_for_Event(120);
+    If ((ev.source).isa(POLCLASS_MOBILE))
+      If ((ev.source).isa(POLCLASS_NPC)) // NPC-Events
+        Case (ev.type)
+          SYSEVENT_ENGAGED:
+            CallGuards(ev.source, "");
+            Run(ev.source, ENTERED_RANGE);
+
+          SYSEVENT_DAMAGED:
+            CallGuards(ev.source, "");
+            If (ev.source)
+              Run(ev.source, ENTERED_RANGE);
+            EndIf
+        EndCase
+      ElseIf (!(ev.source).dead) // Player-Events
+        If (GetObjProperty(ev.source, "talkto")==myname)
+          talktome:=1;
+        Else
+          talktome:=0;
+        EndIf
+
+        Var los:=CheckLineOfSight(me, ev.source);
+        If (los)
+          If (ev.type<>SYSEVENT_SPEECH)
+            If (ev.type==SYSEVENT_ENTEREDAREA)
+              SleepMS(RandomInt(2000));
+            EndIf
+            TurnToward(ev.source);
+          EndIf
+        EndIf
+
+        Case (ev.type)
+          SYSEVENT_ENTEREDAREA:
+            If (los)
+              NPCSayText(
+                me, Answering("seid_gegruesst", PlaceName(me), me), ""
+              );
+            EndIf
+
+          SYSEVENT_LEFTAREA:
+            If (talktome)
+              If (los)
+                SleepMS(RandomInt(1000));
+                NPCSayText(me, "Es war nett, mit Euch zu plaudern", "");
+              EndIf
+
+              EraseObjProperty(ev.source, "talkto");
+              talktome:=0;
+            EndIf
+
+          SYSEVENT_SPEECH:
+            If (los)
+             // Event_Speech(me, medata, ev);
+            EndIf
+
+          SYSEVENT_ENGAGED:
+            CallGuards(ev.source, "Aaahhh! Hilfe! Hilfe! Man greift mich an!");
+            Run(ev.source, ENTERED_RANGE);
+
+          SYSEVENT_DAMAGED:
+            CallGuards(ev.source, "Was habe ich nur getan. Zu Hilfe, Wachen!!!");
+            If (ev.source)
+              Run(ev.source, ENTERED_RANGE);
+            Else
+              SayPergon(ev.source, "So viele gegen mich alleine? Hilfe!!!");
+            EndIf
+        EndCase
+      EndIf
+    EndIf
+
+    If (ReadGameClock()>=next_wander)
+      next_wander:=ReadGameClock()+10;
+      If (!talktome)
+        WanderPergon();
+      EndIf
+    EndIf
+  EndWhile
+EndFunction
+
+////////////////////////////////////
+// CallGuards - Wachen herbeirufen
+////////////////////////////////////
+
+Function CallGuards(who, text)
+  If (text<>"")
+    SayPergon(who, text);
+  EndIf
+
+  Var event:=struct;
+  event.+type:=EVID_GUARDS_HELP;
+  event.+source:=me;
+
+  ForEach mobile in ListMobilesNearLocation(me.x, me.y, me.z, GUARDS_RANGE,me.realm)
+    If (mobile.isa(POLCLASS_NPC))
+      SendEvent(mobile, event);
+    EndIf
+  EndForEach
+EndFunction
+
+//////////////////////////////////////////////////
+// NPCSayText - Stellt die Sprache des NPC's dar
+//////////////////////////////////////////////////
+
+Function NPCSayText(npc, text, texteng)
+  ForEach mobile in ListMobilesNearLocationEx(npc.x, npc.y, npc.z, SPEECH_RANGE*2, LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN,npc.realm)
+    PrintTextAbovePrivatePergon(npc, text, texteng, mobile);
+  EndForEach
+EndFunction

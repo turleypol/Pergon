@@ -1,0 +1,69 @@
+//
+// baumlueckenfinder.src - nur ein (temporaerer) baumlueckenfinder
+//
+// 13.12.1999 niere
+
+use os;
+use npc;
+use uo;
+
+include "include/eventid";
+include "include/animal";
+include "include/msgs";
+
+EnableEvents(SYSEVENT_ENTEREDAREA + SYSEVENT_LEFTAREA, 5);
+EnableEvents(SYSEVENT_SPEECH,10);
+
+Var naechster_schritt:=ReadGameClock()+2;
+
+Var a:=struct;
+a.+x:=2194;
+a.+y:=854;
+Var b:=struct;
+b.+x:=2184;
+b.+y:=854;
+
+Var punkt:=a;
+
+Var me:=Self();
+me.name:="Hans-Dieter";
+gehZuPunkt(punkt);
+
+while (1)
+  Var ev:=Wait_for_EventLogging(2);
+  if (ev)
+    case (ev.type)
+      SYSEVENT_SPEECH:
+        SayPergon(ev.source, "Ja, seid Ihr nicht auch meiner Meinung, dass diese Lücke sofort gefüllt werden müsste?!");
+      SYSEVENT_ENTEREDAREA:
+        SayPergon(ev.source, "So schaut Euch nur diese Baumreihenlücke an. Schrecklich!");
+      SYSEVENT_LEFTAREA:
+        SayPergon(ev.source, "So holt doch endlich Firefox, den großen Förster...");
+    endcase
+  else
+    if (naechster_schritt<ReadGameClock())
+      gehZuPunkt(punkt);
+      if (punkt==a)
+        punkt:=b;
+      else
+        punkt:=a;
+      endif
+    else
+      naechster_schritt:=ReadGameClock()+2;
+    endif
+  endif
+endwhile
+
+function nahdran(punkt)
+  if (me.x==punkt.x and me.y==punkt.y)
+    return 1;
+  else
+    return 0;
+  endif
+endfunction
+
+function gehZuPunkt(zielPunkt)
+  while (!nahdran(zielPunkt))
+    WalkTowardLocation(zielPunkt.x,zielPunkt.y);
+  endwhile
+endfunction

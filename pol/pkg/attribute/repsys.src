@@ -1,0 +1,254 @@
+////////////////////////////////////////////////////////////////////////////////////////
+//
+//   RepSys - Reputationsystem Farb und Highlight Steuerung
+//
+//     Author: Turley
+//
+//   Modifications:
+//     23.04.07 Turley - Erste Version, Vogelfreie haben gesonderte Farbe
+//
+//
+////////////////////////////////////////////////////////////////////////////////////////
+
+Use cfgfile;
+Use os;
+Use uo;
+
+Include "include/server";
+
+Enum ColorArrayIndex
+  MurdererHighLight:=1,
+  Murderer,
+  CriminalHighLight,
+  Criminal,
+  AttackableHighLight,
+  Attackable,
+  InnocentHighLight,
+  Innocent,
+  InvulnerableHighLight,
+  Invulnerable,
+  GuildAllyHighLight,
+  GuildAlly,
+  GuildEnemyHighLight,
+  GuildEnemy,
+  GuildHighLight,
+  Guild,
+  OutLawHighLight,
+  OutLaw
+EndEnum
+
+Var namecolors:=array;
+
+Program Install()
+  Var repcfg:=ReadConfigFile("::repsys");
+  If (!repcfg)
+    SysLog("FEHLER: Repsys.cfg konnte nicht geladen werden!");
+    Return(0);
+  EndIf
+  Var namecolorcfg:=repcfg["NameColoring"];
+  If (!namecolorcfg)
+    SysLog("FEHLER: Repsys.cfg Element NameColoring konnte nicht geladen werden!");
+    Return(0);
+  EndIf
+
+  // HighlightTag
+  namecolors[MurdererHighLight]     := CInt(namecolorcfg.MurdererHighLight);
+  namecolors[CriminalHighLight]     := CInt(namecolorcfg.CriminalHighLight);
+  namecolors[AttackableHighLight]   := CInt(namecolorcfg.AttackableHighLight);
+  namecolors[InnocentHighLight]     := CInt(namecolorcfg.InnocentHighLight);
+  namecolors[InvulnerableHighLight] := CInt(namecolorcfg.InvulnerableHighLight);
+  namecolors[GuildAllyHighLight]    := CInt(namecolorcfg.GuildAllyHighLight);
+  namecolors[GuildEnemyHighLight]   := CInt(namecolorcfg.GuildEnemyHighLight);
+  namecolors[GuildHighLight]        := CInt(namecolorcfg.GuildHighLight);
+  namecolors[OutLawHighLight]       := CInt(namecolorcfg.OutlawHighLight);
+
+  // NameColor
+  namecolors[Murderer]     := CInt(namecolorcfg.Murderer);
+  namecolors[Criminal]     := CInt(namecolorcfg.Criminal);
+  namecolors[Attackable]   := CInt(namecolorcfg.Attackable);
+  namecolors[Innocent]     := CInt(namecolorcfg.Innocent);
+  namecolors[Invulnerable] := CInt(namecolorcfg.Invulnerable);
+  namecolors[GuildAlly]    := CInt(namecolorcfg.GuildAlly);
+  namecolors[GuildEnemy]   := CInt(namecolorcfg.GuildEnemy);
+  namecolors[Guild]        := CInt(namecolorcfg.Guild);
+  namecolors[OutLaw]       := CInt(namecolorcfg.Outlaw);
+
+  UnloadConfigFile("::repsys");
+
+  SysLog("RepSys Hook ist aktiviert");
+  Return(1);
+EndProgram
+
+///////////////////////////////////
+// HighLightColor - HighLight Tag
+///////////////////////////////////
+
+Const DEBUG_COUNTER:=1;
+Const GPROP_COUNTER1:="#ExportCounter_HighLightColor";
+
+Exported Function HighLightColor(mobile, visible_to)
+
+  If (DEBUG_COUNTER)
+    Var counter:=GetGlobalProperty(GPROP_COUNTER1);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER1, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER1, 1);
+    EndIf
+  EndIf
+
+  Var color:=0;
+  If (mobile.master.serial)  //Bin ich ein Vieh das zujemandem gehört, dann nochmal mit dem Master
+    mobile:=mobile.master;
+  EndIf
+
+  If (mobile.isA(POLCLASS_NPC))  // NPC's
+
+    If (mobile.Enabled("invul")) // Invul
+      color:=namecolors[InvulnerableHighLight];
+
+    ElseIf (mobile.alignment==ALIGNMENT_EVIL)
+      color:=namecolors[MurdererHighLight];
+
+    ElseIf (mobile.alignment==ALIGNMENT_NEUTRAL)
+      color:=namecolors[AttackableHighLight];
+
+    Else
+      color:=namecolors[InnocentHighLight];
+    EndIf
+
+  Else  // PLAYER
+
+    If (mobile.Enabled("invul")) // Invul
+      color:=namecolors[InvulnerableHighLight];
+
+    ElseIf ((mobile.getprop("longmurders")>4) && (!mobile.getprop(TYPKILLER)))  // Vogelfreier
+      color:=namecolors[OutLawHighLight];
+
+    ElseIf (mobile.murderer)  // PK
+      color:=namecolors[MurdererHighLight];
+
+    ElseIf (mobile.criminal) // Criminal
+      color:=namecolors[CriminalHighLight];
+
+    ElseIf ((mobile.guild) && (visible_to.guild))
+      If (mobile.guildid==visible_to.guildid) // GuildMember
+        color:=namecolors[GuildHighLight];
+
+      ElseIf ((mobile.guild).isallyguild(visible_to.guild))  // GuildAlly
+        color:=namecolors[GuildAllyHighLight];
+
+      ElseIf ((mobile.guild).isenemyguild(visible_to.guild)) // GuildEnemy
+        color:=namecolors[GuildEnemyHighLight];
+
+      Else
+        color:=namecolors[InnocentHighLight];
+      EndIf
+    Else
+      ForEach elem in (mobile.aggressorto)
+        If (elem.serial==visible_to.serial)
+          Return(namecolors[AttackableHighLight]);
+        EndIf
+      EndForEach
+      ForEach elem in (visible_to.lawfullydamaged)
+        If (elem.serial==mobile.serial)
+          Return(namecolors[AttackableHighLight]);
+        EndIf
+      EndForEach
+      color:=namecolors[InnocentHighLight];
+    EndIf
+  EndIf
+
+  If (color.errortext)
+    SysLog("HighLightColor() - "+color.errortext);
+  EndIf
+
+  Return(color);
+EndFunction
+
+///////////////////////////////////
+// NameColor - Farbe des Names
+///////////////////////////////////
+
+Const GPROP_COUNTER2:="#ExportCounter_NameColor";
+
+Exported Function NameColor(mobile, visible_to)
+
+  If (DEBUG_COUNTER)
+    Var counter:=GetGlobalProperty(GPROP_COUNTER2);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER2, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER2, 1);
+    EndIf
+  EndIf
+
+  Var color:=0;
+
+  If (mobile.master.serial)  //Bin ich ein Vieh das zujemandem gehört, dann nochmal mit dem Master
+    mobile:=mobile.master;
+  EndIf
+
+  If (mobile.isA(POLCLASS_NPC)) // NPC's
+    //  If (mobile.Enabled("invul")) // Invul
+    //    color:=namecolors[Invulnerable];  // Damit InvulLeute nicht dauergrau sind
+
+    If (mobile.alignment==ALIGNMENT_EVIL)
+      color:=namecolors[Murderer];
+
+    ElseIf (mobile.alignment==ALIGNMENT_NEUTRAL)
+      color:=namecolors[Attackable];
+
+    Else
+      color:=namecolors[Innocent];
+    EndIf
+
+  Else  // PLAYER
+
+    //  If (mobile.Enabled("invul")) // Invul
+    //    color:=namecolors[Invulnerable];  // Damit InvulLeute nicht dauergrau sind
+
+    If ((mobile.getprop("longmurders")>4) && (!mobile.getprop(TYPKILLER)))  // Vogelfreier
+      color:=namecolors[OutLaw];
+
+    ElseIf (mobile.murderer)  // PK
+      color:=namecolors[Murderer];
+
+    ElseIf (mobile.criminal) // Criminal
+      color:=namecolors[Criminal];
+
+    ElseIf ((mobile.guild) && (visible_to.guild))
+      If (mobile.guildid==visible_to.guildid) // GuildMember
+        color:=namecolors[Guild];
+
+      ElseIf ((mobile.guild).isallyguild(visible_to.guild))  // GuildAlly
+        color:=namecolors[GuildAlly];
+
+      ElseIf ((mobile.guild).isenemyguild(visible_to.guild)) // GuildEnemy
+        color:=namecolors[GuildEnemy];
+
+      Else
+        color:=namecolors[Innocent];
+      EndIf
+
+    Else
+      ForEach elem in (mobile.aggressorto)
+        If (elem.serial==visible_to.serial)
+          Return(namecolors[Attackable]);
+        EndIf
+      EndForEach
+      ForEach elem in (visible_to.lawfullydamaged)
+        If (elem.serial==mobile.serial)
+          Return(namecolors[Attackable]);
+        EndIf
+      EndForEach
+      color:=namecolors[Innocent];
+    EndIf
+  EndIf
+
+  If (color.errortext)
+    SysLog("NameColor() - "+color.errortext);
+  EndIf
+
+  Return(color);
+EndFunction

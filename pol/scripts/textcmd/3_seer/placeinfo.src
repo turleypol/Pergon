@@ -1,0 +1,81 @@
+//
+// Shinigami' Edition
+//
+// Stand: 11. Oktober 2000
+//
+
+Use os;
+Use uo;
+Include "include/msgs";
+Include "include/place";
+
+Const ZONE_SHIFT:=2; // Interne Zonengröße (binary) 4x4Felder
+
+Program TextCMD_PlaceInfo(who)
+  Var place:=PlaceInfos(who);
+  place.realm[1]:=Upper(place.realm[1]);
+
+  SendSysMessagePergon(who, "PlaceInfo zu "+place.name+" ("+place.realm+")", "", _DEFAULT_TEXT_FONT, 38);
+  SendSysMessagePergon(who, "  Ecke1 = "+place.x1+", "+place.y1, "", _DEFAULT_TEXT_FONT, 68);
+  SendSysMessagePergon(who, "  Ecke2 = "+place.x2+", "+place.y2, "", _DEFAULT_TEXT_FONT, 68);
+  SendSysMessagePergon(who, "  Zone = "+(who.x>>ZONE_SHIFT)+", "+(who.y>>ZONE_SHIFT),"", _DEFAULT_TEXT_FONT, 68);
+
+  Var flags;
+  If (place.guarded)
+    flags:="  Guarded, ";
+  Else
+    flags:="  NotGuarded, ";
+  EndIf
+  If (place.nocast)
+    flags+="NoCast, ";
+  Else
+    flags+="Cast, ";
+  EndIf
+  If (place.norune)
+    flags+="NoRune, ";
+  Else
+    flags+="Rune, ";
+  EndIf
+  If (place.noescape)
+    flags+="NoEscape, ";
+  Else
+    flags+="Escape, ";
+  EndIf
+  If (place.noholywarrior)
+    flags+="NoHolyWarrior, ";
+  Else
+    flags+="HolyWarrior, ";
+  EndIf
+  If (place.nohouse)
+    flags+="NoHouse, ";
+  Else
+    flags+="House, ";
+  EndIf
+  If (place.nolight)
+    flags+="NoLight, ";
+  Else
+    flags+="Light, ";
+  EndIf
+  If (place.town)
+    flags+="Town, ";
+  Else
+    flags+="NoTown, ";
+  EndIf
+  If (place.evilzone)
+    flags+="EvilZone, ";
+  Else
+    flags+="NoEvilZone, ";
+  EndIf
+  If (place.newbie)
+    flags+="Newbie, ";
+  Else
+    flags+="NoNewbie, ";
+  EndIf
+  If (place.noskill)
+    flags+="NoSkillAward";
+  Else
+    flags+="SkillAward";
+  EndIf
+
+  SendSysMessagePergon(who, flags, "", _DEFAULT_TEXT_FONT, 68);
+EndProgram

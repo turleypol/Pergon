@@ -1,0 +1,26 @@
+////////////////////////////////////////////////////////
+// Trash - Ein Player wirft etwas in den Abfalleimer
+//
+// based on Trash (1999/12/08)
+// Author: Zulu
+//
+// Author: Shinigami
+
+////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+// 2001/10/04 Shinigame: Complete ReWrite
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use os;
+use uo;
+include "include/pergonutil";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program Trash(who, trashcan)
+  Start_ScriptPergon("trash-it", {who, trashcan});
+EndProgram

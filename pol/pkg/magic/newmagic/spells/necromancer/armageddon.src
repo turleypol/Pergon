@@ -1,0 +1,138 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file armageddon.src
+//
+// implements spell 332 <Armageddon> - "Armageddon"
+// summons the armageddon thus killing everything at once except caster
+//
+
+use os;
+include "include/logutil";
+include "include/party";
+include "include/spellcheck";
+include "../magicpergon";
+
+Program cast_armageddon(params)
+  var caster;
+  var victims;
+
+  // load spelldata
+  var spells       := ReadConfigFile("::spells");
+  var spell        := FindConfigElem(spells, SPELLID_NECRO_ARMAGEDDON);
+  var power;
+
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  := params[3];
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_NECRO_ARMAGEDDON);
+  EndIf
+
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  // calc spellrange according to casting power
+  var range := power * spell.range / 100.0;
+  If (spell.rangemax)
+    range := Min(spell.rangemax, range);
+  EndIf
+  If (spell.rangemin)
+    range := Max(spell.rangemin, range);
+  EndIf
+
+  // get victims
+  victims := ListMobilesNearLocationEx(
+    caster.x, caster.y, caster.z, CInt(range),
+    LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN, caster.realm
+  );
+
+  PlaySoundEffect(caster, 0x44c);
+
+  // for each victim
+  ForEach victim in victims
+    SleepMS(2);
+    // preserve caster, ghosts and staff
+    If (victim == caster or victim.dead or victim.cmdlevel >= CMDLEVEL_SEER)
+      continue;
+    EndIf
+
+    PlaySoundEffect(victim, 0x307);
+    PlayStationaryEffect(
+      victim.x, victim.y, victim.z, 0x36b0, 10, 15, 0, victim.realm
+    );
+
+    // alles bis auf PlayerVendoren wird gekillt
+    If (victim.isa(POLCLASS_NPC))
+      If (victim.script == "playermerchant")
+        // Es ist ein Playervendor, also erstmal nur verstecken
+        victim.hidden := 1;
+      Else
+        If (IsWasPackAnimal(victim))
+          // Packlamas und -pferde nicht verschieben, lokal toeten
+          KillNPC(victim, "necro-armagedon", KILLNPC_CORPSE);
+        Else
+          KillNPC(victim, "necro-armagedon", KILLNPC_NOCORPSE);
+        EndIf
+      EndIf
+    Else
+      // ist nen Player
+      // check auf invul (statue oder totesritter) (wegen klamotten und co
+      // vorher rückgängig machen
+      If (victim.getprop("spell_statue"))
+        var tag:= GetObjProperty(victim, "spell_statue");
+        // update spelltag for spellchecker
+        tag[1]:= ReadGameClock();
+        tag[5]+=1;
+        SetObjProperty(victim, "spell_statue", tag);
+        SendSpellWaiter(victim, "spell_statue", 1, tag[5], victim);
+        ForEach equip in (ListEquippedItems(victim))
+          SleepMS(2);
+          tag:=GetObjProperty(equip, "spell_statue");
+          If (tag)
+            tag[1]:= ReadGameClock();
+            tag[5]+=1;
+            SetObjProperty(equip, "spell_statue", tag);
+            SendSpellWaiter(equip, "spell_statue", 1, tag[5], victim);
+            if (equip.isa(POLCLASS_WEAPON) or equip.isa(POLCLASS_ARMOR))
+              equip.movable:= 1;
+            endif
+          EndIf
+        EndForEach
+        // falls Spellchecker nicht schnell genug ist
+        victim.disable("invul");
+
+      ElseIf (victim.getprop("spell_curse"))
+        var tag := victim.getprop("spell_curse");
+        If (tag[3]=="dead knight")
+          // er ist totesritter
+          // make spelltarget vulnerable again
+          victim.disable("invul");
+          IncRevision(victim);
+          RevokePrivilege(victim, "invul");
+          victim.color:= tag[4];
+          // remove spelltag
+          // restore original color
+          EraseObjProperty(victim, "spell_curse");
+        EndIf
+      EndIf
+      // kill victim
+      KillMobile(victim, "necro-armagedon");
+    EndIf
+  EndForEach
+
+  // use up casters karma
+  SetObjProperty(caster, "karma", "");
+
+  syslog(
+    "INFO: "+CharInfoStr(caster, COORDS_REALM)+" beschwor das Armageddon"
+  );
+  // inform all others ;)
+  BroadcastPergon(
+    caster.name+" beschwor das Armageddon",
+    caster.name+" summoned the Armageddon"
+  );
+EndProgram
+
+// vim: sts=2 sw=2

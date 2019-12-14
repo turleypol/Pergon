@@ -1,0 +1,251 @@
+///////////////////////////////////////////////////////////////////////////
+// guildstone - Gildenscript
+//
+// Author: Turley
+
+///////////////////////////////////////////////////////////////////////////
+//  Members:
+//   who:
+//    .title_guild       - GildenTag
+//    .title_prefix      - Gilden Prefix
+//    .title_race        - Gilden Bezeichnung
+//    .guild             - GildenRef
+//   guild:
+//    .guildid           - GildenID
+//    .allyguilds        - Allierte GildenRef
+//    .enemyguilds       - Enemies GildenRef
+//    .members           - MobileRefs
+//
+//  CProps:
+//   Gildenstein:
+//    guild_id           - GildenID
+//   who:
+//    guildtitle         - Gildentitel
+//   guild:
+//    name               - Name
+//    leaders            - Leader
+//    guildicon          - GildenSymbol
+//    guild_tag          - Gildenkürzel
+//    charta             - Gildenprofil
+//    wannabe_allies     - Angebot für Verbünden
+//    wannabe_enemies    - Angebot für Krieg
+
+///////////////////////////////////////////////////////////////////////////
+// TODO:
+//   page Auswahl merken
+
+use cfgfile;
+use guilds;
+use math;
+use os;
+use uo;
+include "guildstone";
+include "guildutil";
+include "include/client";
+include "include/msgs";
+include "include/string";
+
+const MAX_GUILD_NAME_SIZE := 30;
+const MAX_GUILD_LEADERS := 5;
+const MAX_GUILD_TAG_SIZE := 4;
+
+Var layouthintergrund:={"nodispose",
+                        "page 0",
+                        "resizepic 50 50 2600 400 400",
+                        "gumppic 132 28 1419",  // obere Kante
+                        "gumppic 209 10 1417",  // leeres Symbol
+                        "gumppic 0 20 10440",   // linker Drache
+                        "text 100 100 0 0"};
+Var layoutleader:={"button 80 376 9721 9724 0 2 0",  // Gildenmeister menü
+                   "text 115 380 0 9",
+                   "page 2",
+                   "button 80 136 9721 9724 1 0 9",  // Gildenprofil editieren
+                   "text 115 140 0 10",
+                   "button 80 166 9721 9724 1 0 10", // Mitgliedschaft editieren
+                   "text 115 170 0 11",
+                   "button 80 196 9721 9724 1 0 12", // Diplomatie
+                   "text 115 200 0 13",
+                   "button 80 226 9721 9724 1 0 14", // Gildensymbol
+                   "text 115 230 0 15",
+                   "button 80 376 9721 9724 0 1 0",  // Zurück
+                   "text 115 380 0 16"};
+Var layoutdefault:= {"page 1",
+                     "button 80 136 9721 9724 1 0 1", // Gildenprofil
+                     "text 115 140 0 1",
+                     "button 80 166 9721 9724 1 0 2", // Mitgliederliste
+                     "text 115 170 0 2",
+                     "button 80 196 9721 9724 1 0 4", // gildenkürzel an/aus
+                     "text 115 200 0 4",
+                     "button 80 226 9721 9724 1 0 5", // mitglied werben/einladen
+                     "text 115 230 0 5",
+                     "button 80 256 9721 9724 1 0 6", // aus der gilde austreten
+                     "text 115 260 0 6",
+                     "button 80 286 9721 9724 1 0 7", // feindliche gilden
+                     "text 115 290 0 7",
+                     "button 80 316 9721 9724 1 0 8", // freundliche gilden
+                     "text 115 320 0 8"};
+Var layoutgl:={"button 80 346 9721 9724 0 3 0",  // GL Menü
+               "text 115 350 0 3",
+               "page 3",
+               "button 80 136 9721 9724 1 0 11", // Gildenkürzel setzen
+               "text 115 140 0 12",
+               "button 80 166 9721 9724 1 0 18", // Gildenname setzen
+               "text 115 170 0 14",
+               "button 80 376 9721 9724 0 2 0",  // Zurueck
+               "text 115 380 0 16"};
+Var data:={"Gilde:",
+           "Gilden-Profil anzeigen",
+           "Gilden-Mitglieder anzeigen",
+           "GL-Menue",
+           "Gildenkuerzel An/Aus",
+           "Neues Mitglied anwerben",
+           "Aus der Gilde austreten",
+           "Feindlich gesinnte Gilden anzeigen",
+           "Freundlich gesinnte Gilden anzeigen",
+           "Gildenmeister-Menue",
+           "Gildenprofil editieren",
+           "Mitgliedschaft editieren",
+           "Gildenkuerzel aendern",
+           "Diplomatie",
+           "Gildenname aendern",
+           "Gildensymbol editieren",
+           "Zurueck"};
+
+Var guild, layoutback;
+
+Program guildstone(who, stone)
+  Var stone_id, name, err, choice, layout, mem, mems:={}, gilden:={}, gilde, tag;
+  If (!ReserveItem(stone))
+    SendSysMessagePergon(who,"Der Stein wird bereits genutzt. Versucht es doch später wieder.");
+    Return;
+  EndIf
+
+  stone_id:=CInt(GetObjProperty(stone,"guild_id"));
+  guild:=FindGuild(stone_id);
+  If ((!stone_id) || (!guild))// Wenn der Stein noch keiner Gilde zugeordnet ist
+    If (!who.guild) // Wenn der Benutzer noch keiner Gilde angehört
+      Repeat
+        SendSysMessagePergon(who,"Wie soll die Gilde heissen?");
+        name:=SendTextEntryGump(who, "Gildenname:", TE_CANCEL_ENABLE, TE_STYLE_NORMAL, MAX_GUILD_NAME_SIZE);
+        If (!name)
+          SendSysMessagePergon(who, "Abgebrochen");
+          Return;
+        Else
+          SendSysMessagePergon(who,"Wie soll der Gildetag heissen?");
+          tag:=SendTextEntryGump(who, "Gildentag:", TE_CANCEL_ENABLE, TE_STYLE_NORMAL, MAX_GUILD_TAG_SIZE);
+          If (!tag)
+            SendSysMessagePergon(who, "Abgebrochen");
+            Return;
+          Else
+            err:=0;
+            // Gibt es den Namen schon bei einer anderen Gilde?
+            Foreach guildx in ListGuilds()
+              If (guildx.getprop("name")==name)
+                err:=1;
+                Break;
+              EndIf
+            EndForEach
+
+            If (!err) // Keine Fehler? Dann wird die Gilde jetzt erstellt und der Benutzer als Gildenmeister eingetragen.
+              guild:=CreateGuild();
+              If (guild)
+                guild.setprop("name", name);
+                guild.setprop("guild_tag", tag);
+                guild.addmember(who);
+                guild.setprop(PROP_GUILD_LEADERS, {who.serial});
+                stone.setprop("guild_id", guild.guildid);
+                stone.name:=name;
+                SendSysMessagePergon(who, "Neue Gilde '"+name+"' erfolgreich gegründet!");
+              Else
+                SendSysMessagePergon(who, "Fehler beim Erstellen der Gilde: CreateGuild return: "+guild);
+                Return;
+              EndIf
+            Else
+              SendSysMessagePergon(who, "Es existiert bereits eine Gilde mit diesem Namen, bitte wählt einen anderen!");
+            EndIf
+          EndIf
+        EndIf
+      Until(guild);
+    Else
+      SendSysMessagePergon(who, "Ihr gehört schon einer Gilde an und könnt keine Neue gründen!");
+      Return;
+    EndIf
+  Else // Der Stein gehört schon einer Gilde.
+    If ((!guild.ismember(who)) && (who.cmdlevel<CMDLEVEL_GL)) // Wenn die Person nicht Mitglied dieser Gilde ist, werden nur die allgemeinen Infos angezeigt.
+      Show_Quick_Info(who);
+      Return;
+    EndIf
+  EndIf
+  layoutback:=layouthintergrund;
+  layoutback.append("gumppic 418 20 10441");  // rechter Drache
+  Repeat
+    If (guild.getprop("guildicon"))
+      layoutback.append("gumppic 218 19 "+ guild.getprop("guildicon"));
+    EndIf
+    layoutback.append("text 155 100 0 "+data.size());  // Gildenname
+    data.append(guild.getprop("name"));
+    layout:=layoutback+layoutdefault;
+    If (IsGuildLeader(who, guild)) // Darf er dann angezeigt werden?
+      layout+=layoutleader;
+      If (who.cmdlevel>=CMDLEVEL_GL)
+        layout+=layoutgl;
+      EndIf
+    EndIf
+
+    choice:=SendDialogGump(who, layout, data, 50, 50);
+    If (!(choice.keys[2] in {15,16}))
+      layoutback:=layouthintergrund;
+    EndIf
+    Case(choice.keys[2])
+      1:  show_charta();
+      2:  show_members();
+//    3:
+      4:  toggle_abbrev(who);
+      5:  invite_mobile(who);
+      6:  leave_guild(who);
+      7:  enemy_guilds();
+      8:  friendly_guilds();
+      9:  If (IsGuildLeader(who, guild)) edit_charta(); EndIf
+      10: If (IsGuildLeader(who, guild)) mems:=edit_members(); EndIf
+      11: If (who.cmdlevel>=CMDLEVEL_GL) set_tag(who); EndIf
+      12: If (IsGuildLeader(who, guild)) gilden:=diplomacy(); EndIf
+      13: If (IsGuildLeader(who, guild)) gilde:=edit_diplomacy(who,gilden,choice[55]); EndIf
+      14: If (IsGuildLeader(who, guild)) change_symbol(); EndIf
+      15: If (IsGuildLeader(who, guild)) set_symbol(2); EndIf
+      16: If (IsGuildLeader(who, guild)) set_symbol(-2); EndIf
+      17: If (IsGuildLeader(who, guild)) charta_new(who); EndIf
+      18: If (who.cmdlevel>=CMDLEVEL_GL) set_name(who, stone); EndIf
+      19: If (IsGuildLeader(who, guild)) mem:=edit_member(who, mems, choice[51]); EndIf
+      20: If (IsGuildLeader(who, guild)) edit_membersave(who, mem, "Anfuehrer"); EndIf
+      21: If (IsGuildLeader(who, guild)) edit_membersave(who, mem, "Mitglied"); EndIf
+//    22:
+      23: If (IsGuildLeader(who, guild)) edit_membersave(who, mem, "Mitglied entfernen"); EndIf
+      24: If (IsGuildLeader(who, guild)) edit_membersave(who, mem, {choice[52], choice[53], choice[54]}); EndIf
+      25: If (IsGuildLeader(who, guild)) save_diplo(who, gilde, "Verbuenden"); EndIf
+      26: If (IsGuildLeader(who, guild)) save_diplo(who, gilde, "Neutral"); EndIf
+      27: If (IsGuildLeader(who, guild)) save_diplo(who, gilde, "Krieg"); EndIf
+    EndCase
+  Until ((!choice.keys[2]) || (choice.keys[2] == 6));
+EndProgram
+
+
+/////////////////////////////////////////////////////
+// Show_Quick_Info - QuickInfo für Nichtmitglieder
+/////////////////////////////////////////////////////
+
+Function Show_Quick_Info(byref who)
+  layouthintergrund.erase(layouthintergrund.size());
+  layouthintergrund.append("gumppic 418 20 10441");  // rechter Drache
+  If (guild.getprop("guildicon"))
+    layouthintergrund.append("gumppic 218 19 "+ guild.getprop("guildicon"));
+  EndIf
+  layouthintergrund.append("htmlgump 100 100 300 20 "+data.size()+" 0 0");  // Gildenname
+  data.append("<basefont color=#00000F><center>["+guild.getprop("guild_tag")+"] "+guild.getprop("name")+"</center>");
+  layouthintergrund.append("HtmlGump 100 155 300 255 "+data.size()+" 0 1");
+  If (guild.getprop("charta"))
+    data.append(guild.getprop("charta"));
+  Else
+    data.append("");
+  EndIf
+  SendDialogGump(who,layouthintergrund,data,50,50);
+EndFunction

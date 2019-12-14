@@ -1,0 +1,88 @@
+/////////////////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD NoCorpse - Schaltet bei NPCs die Erzeugung des Corpse beim Tod an oder aus
+//                      Loot etc. sind davon nicht betroffen!
+//
+//     Author: Shinigami
+//
+//   Modification
+//     2005/05/23 Shinigami: MultiRange hinzugefuegt
+//     21.10.2005 Fraggulus: Dateiname angepasst
+//		 26.02.2006 Fox: statt das Flag zu wechseln, wird jetzt per Parameter festgelegt wozu gewechselt werden soll
+//
+/////////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_NoCorpse(who, text)
+  Var params:=SplitWords(text);
+  Var range := CInt(params[1]);
+  Var bCorpse := CINT(params[2]);
+  
+  If (bCorpse > 0)
+  	bCorpse:=1;
+  	SendSysMessagePergon(who, "Corps wird aktiviert.", "Activate Corps.");
+  Else
+  	bCorpse:=0;
+  	SendSysMessagePergon(who, "Corps wird deaktiviert.", "Deactivate Corps.");
+  EndIf
+  
+  If (range > 0)
+    If (range > 10)
+      range := 10;
+    EndIf
+    SendSysMessagePergon(who, "Wählt den zentralen NPC für den Umkreis von " + range + " Feldern aus!",
+                              "Choose a central npc for the circumference of " + range + " fields!");
+  Else
+    range := 0;
+    SendSysMessagePergon(who, "Wählt einen NPC aus!", "Choose an npc!");
+  EndIf
+
+  Var mobiles := Target(who);
+  If (mobiles.isa(POLCLASS_NPC))
+    If (range)
+      ForEach mobile in ListMobilesNearLocationEx(mobiles.x, mobiles.y, mobiles.z, range, LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN,who.realm)
+        If (mobile.isa(POLCLASS_NPC))
+          NoCorpse(who, mobile, bCorpse);
+        EndIf
+        SleepMS(2);
+      EndForEach
+    Else
+      NoCorpse(who, mobiles, bCorpse);
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram
+
+////////////////////////////////////
+// NoCorpse - Schaltet das Flag um
+////////////////////////////////////
+
+Function NoCorpse(who, mobile, bCorpse)
+	If (bCorpse==0)
+		If (!GetObjProperty(mobile, "nocorpse"))
+			SetObjProperty(mobile, "nocorpse", 1);
+    	PrintTextAbovePrivatePergon(mobile, "NoCorpse", "NoCorpse", who);
+    EndIF
+	Else
+		If (GetObjProperty(mobile, "nocorpse"))
+  	  EraseObjProperty(mobile, "nocorpse");
+	    PrintTextAbovePrivatePergon(mobile, "Corpse", "Corpse", who);
+		EndIf
+	EndIf
+EndFunction

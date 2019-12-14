@@ -1,0 +1,232 @@
+///////////////////////////////////////////////////////////////////////////////////
+//
+//   Spectator - Protokolliert bestimmte Informationen mit
+//               (kann nur einfach von aussen angesprochen werden)
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2003/05/19 Shinigami: Neue Botschaft "lag" zur Anzeige von Server-Haengern
+//
+///////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use datafile;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/string";
+Include "include/npc";
+Include "include/clock";
+Include "include/modifyskill";
+Include "include/onlinesearch";
+
+///////////////
+// Konstanten
+///////////////
+
+Const SPEC_ACCOUNT:="test";
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+Var connection:=0;
+Var logfile;
+Var logelement:=0;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Spectator(spec_connection)
+  If (!GetGlobalProperty("#Spectator"))
+    SetGlobalProperty("#Spectator", GetPID());
+
+    // Fall 1: Wird als AUX-Interface aufgerufen -> spec_connection ist gesetzt und transmit wird benutzt
+    // Fall 2: Wird so aufgerufen                -> spec_connection ist null    und logfile  wird benutzt
+    If (spec_connection)
+      connection:=spec_connection;
+    Else
+      spec_connection:=1; // Endlosschleife
+
+      logfile:=CreateDataFile("spectator", DF_KEYTYPE_STRING);
+      If (logfile)
+        logelement:=logfile.createelement("Log"+ReadGameClock()); // Neuen Datensatz anlegen
+        If (!logelement)
+          SysLog("FEHLER: Im DataFile 'spectator' konnte kein neuer Datensatz angelegt werden!");
+        EndIf
+      Else
+        SysLog("FEHLER: DataFile 'spectator' konnte nicht erzeugt/geoeffnet werden!");
+      EndIf
+    EndIf
+
+    // Variablen deklarieren und initialisieren
+    Var spec_char:=Find_Spec_Char();
+    Var ev;
+
+    // Event-Queue (so lange die Verbindung steht, oder endlos)
+    While (spec_connection)
+      ev:=Wait_for_Event(120);
+      If (ev)
+        Case (ev.type)
+          "recv":      Case (ev.value)
+                         "Ping":   Logging("00Pong");
+                         "Online": Show_Online();
+                       EndCase
+
+          "logon":     If (ev.value[1]==SPEC_ACCOUNT)
+                         spec_char:=Find_Spec_Char();
+                       EndIf
+                       Logging("90"+ev.value[3]);
+
+          "logoff":    If (ev.value[1]==SPEC_ACCOUNT)
+                         spec_char:=0;
+                       EndIf
+                       Logging("91"+ev.value[3]);
+
+          "statistik": If (spec_char)
+                         Var deltax:=ev.value[1]-spec_char.x;
+                         Var deltay:=ev.value[2]-spec_char.y;
+
+                         If (deltax*deltax+deltay*deltay<400)
+                           Logging("92"+ev.value[3]);
+                         EndIf
+                       EndIf
+
+          "msg":       If ((ev.value[1]==SPEC_ACCOUNT) Or (ev.value[2]==SPEC_ACCOUNT))
+                         Logging("93"+ev.value[3]);
+                       EndIf
+
+          "sayabove":  If ((ev.value[1]==SPEC_ACCOUNT) Or (ev.value[2]==SPEC_ACCOUNT))
+                         Logging("94"+ev.value[3]);
+                       EndIf
+
+          "lag":       Logging("95"+ev.value);
+
+          default:     SysLog("FEHLER: Unbekannter Typ = "+ev.type);
+        EndCase
+      EndIf
+
+      // Pol094-Linux-BUG - dort wird logoff nicht aufgerufen, also so Ueberwachung beenden...
+     // If (!spec_char.ip)
+     //   spec_char:=0;
+     // EndIf
+    EndWhile
+
+    EraseGlobalProperty("#Spectator");
+  EndIf
+EndProgram
+
+////////////////////////////////////////////////////////////////////////
+// Find_Spec_Char - Schauen, ob die zu ueberwachende Person online ist
+////////////////////////////////////////////////////////////////////////
+
+Function Find_Spec_Char()
+  Var spec_char:=0;
+
+  Var account:=FindAccount(SPEC_ACCOUNT);
+  If (account)
+    For charnr:=1 To 5
+      Var char:=account.getcharacter(charnr);
+      If (char.ip)
+        spec_char:=char;
+      EndIf
+    EndFor
+  EndIf
+
+  Return (spec_char);
+EndFunction
+
+////////////////////////////////////////////////////
+// Show_Online - Zeigt alle eingeloggten Character
+////////////////////////////////////////////////////
+
+Function Show_Online()
+  Var onlinechars:=EnumerateVisibleOnlineCharacters(developertemplate, LIST_ME); // Liste mit {char.name, char}
+  If (onlinechars.size())
+    Var gameclock:=ReadGameClock();
+    Var playerinfo:={};
+    Var cmdinfo:={};
+
+    // Anzahl der eingeloggten Character ausgeben
+    If (onlinechars.size()==1)
+      Logging("01Auf Pergon befindet sich 1 Character");
+    Else
+      Logging("01Auf Pergon befinden sich "+onlinechars.size()+" Character");
+    EndIf
+
+    // Informationen ueber jeden Character ausgeben
+    ForEach char in onlinechars
+      // Online-Zeit ermitteln
+      Var time:=GetObjProperty(char[2], "lifetime_session");
+      If (time)
+        time:=Format_Time(gameclock-time);
+      Else
+        SetObjProperty(char[2], "lifetime_session", gameclock);
+        time:="";
+      EndIf
+
+      // CommandoLevel ermitteln
+      If (char[2].cmdlevel >= CMDLEVEL_SEER)
+        cmdinfo.append({char[1], char[2].acctname, GetCMDLevelTitle(char[2].cmdlevel), KONTINENT, time});
+      Else
+        Var playerlevel;
+        If (char[2].gender)
+          playerlevel:="weibl.";
+        Else
+          playerlevel:="maennl.";
+        EndIf
+
+        If (char[2].dead)
+          playerinfo.append({char[1], char[2].acctname, playerlevel, TOTENREICH}, time);
+        Else
+          playerinfo.append({char[1], char[2].acctname, playerlevel, PlaceName(char[2]), time});
+        EndIf
+      EndIf
+    EndForEach
+
+    // CommandLevel - Character-Informationen ausgeben
+    ForEach player in SortMultiArrayByIndexNotCase(cmdinfo, 1)
+      Logging("02"+player[1]+" ["+player[2]+"] - "+player[3]+" - "+player[4]+" - "+player[5]);
+    EndForEach
+
+    // Character-Informationen ausgeben
+    ForEach player in SortMultiArrayByIndexNotCase(playerinfo, 1)
+      Logging("03"+player[1]+" ["+player[2]+"] - "+player[3]+" - "+player[4]+" - "+player[5]);
+    EndForEach
+  Else
+    Logging("01Die Welt ist leer.   Wuss ?");
+  EndIf
+EndFunction
+
+////////////////////////////////////////////////
+// Logging - Den Text gewissermassen mitloggen
+////////////////////////////////////////////////
+
+Function Logging(text)
+  If (connection)
+    connection.transmit(text);
+  Else
+   // SysLog(text);
+
+    // Zeile ins DataFile schreiben
+    If (logelement)
+      Var linename:="Log"+ReadGameClock();
+
+      Var oldline:=logelement.getprop(linename);
+      If (oldline)
+        logelement.setprop(linename, oldline+" / "+text); // Zeile anhaengen
+      Else
+        logelement.setprop(linename, text);               // Neue Zeile erzeugen
+      EndIf
+    EndIf
+  EndIf
+EndFunction

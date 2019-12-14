@@ -1,0 +1,41 @@
+/////////////////////////////////////////////////////////
+//
+//   packethookStatLock - Wegen möglichem Crash in extra
+//     Script gepackt, wenn innerhalb eines anderen Hooks
+//     Updatepacket geschickt wird dann kann es Crashen
+//
+/////////////////////////////////////////////////////////
+
+Use os;
+Use uo;
+Use polsys;
+
+Const DEBUG_COUNTER := 1;
+
+Program PacketHook()
+  Syslog("PacketHook StatLock aktiviert ...");
+  Return(1);
+EndProgram
+
+/////////////////////////////////////////////////
+// RecvStatLock - StatModeButtons in der Statusbar
+//  gedrückt -> Wie die 3 Buttons im Skillwin
+/////////////////////////////////////////////////
+// Subcommand: 0x1a: Extended stats
+// BYTE[1] stat // 0: str, 1: dex, 2:int
+// BYTE[1] status // 0: up, 1:down, 2: locked
+Const GPROP_COUNTER14 := "#HookCounter_RecvStatLock";
+Exported Function RecvStatLock(who, byref packet)
+  If (DEBUG_COUNTER)
+    var counter := GetGlobalProperty(GPROP_COUNTER14);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER14, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER14, 1);
+    EndIf
+  EndIf
+  SendStatus(who);// Reine Anzeige keine Veränderung deswegen grad wieder schicken
+  return(1);  //CoreIgnoReturn
+  // Compilerwarnung unterdruecken
+  packet := packet;
+EndFunction

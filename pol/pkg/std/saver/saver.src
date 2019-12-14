@@ -1,0 +1,191 @@
+///////////////////////////////////////////////////////////////////////////
+// saver - Saves world state periodically
+//
+//      complains, via syslog and BroadcastPergon, If it can't.
+//      If this script dies, saverchk should notice and complain.
+
+use os;
+use uo;
+include "include/msgs";
+include "include/string";
+include "saveopts";
+
+Program Saver()
+  var interval := 0;
+  While (1)
+    var newinterval := GetSaveInterval();
+    If (newinterval <> interval)
+        interval := newinterval;
+        syslog("HINWEIS: Weltsicherung alle "+CInt(interval/60)+" Minuten");
+    EndIf
+
+    // warten
+    Sleep(interval - WARN_BEFORE_SECONDS);
+
+    BroadcastPergon(
+      "Die Welt wird in "+WARN_BEFORE_SECONDS+" Sekunden gesichert.",
+      "The world will be saved in "+WARN_BEFORE_SECONDS+" seconds.",
+      _DEFAULT_TEXT_FONT, COLOR_GOOD
+    );
+
+    Sleep(WARN_BEFORE_SECONDS);
+
+    SetGlobalProperty(SAVER_GPROP, 1);
+    BroadcastPergon(
+      "Sichere Welt. Einen Augenblick bitte ...",
+      "Saving the world. One moment please ...",
+      _DEFAULT_TEXT_FONT, COLOR_GOOD
+    );
+    syslog("Sichere Welt");
+    Sleep(1);
+
+    // Startzeit merken
+    var begintime := PolCore().systime;
+
+    // alle eingeloggten Spieler abklappern
+    var onlinechars := EnumerateOnlineCharacters();
+    syslog("  "+onlinechars.size()+" Spieler eingeloggt.");
+
+    // sortieren
+    // If (onlinechars.size())
+    //   var playerinfo := {};
+    //   ForEach char in onlinechars
+    //     SleepMS(2);
+    //     playerinfo.append({char.name, char});
+    //   EndForEach
+    //   onlinechars := SortMultiArrayByIndexNotCase(playerinfo, 1);
+    // EndIf
+
+    Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+    // Alle Counter richtig setzen
+    var gameclock := ReadGameClock();
+    ForEach char in (onlinechars)
+      // var char    := sortedchar[2];
+      var account := char.acct;
+
+      // Ein vorschneller WorldSave (bevor LogOn fertig ist)
+      // wuerde Datenmuell produzieren
+      var lifetime_counter := char.getprop("lifetime_counter");
+      If (lifetime_counter)
+        // Zeit seit dem letzten WorldSave
+        var counter := gameclock - lifetime_counter;
+        // Onlinezeit-Zaehler des Characters erhoehen
+        char.setprop("lifetime", char.getprop("lifetime")+counter);
+        // Onlinezeit-Zaehler des Accounts erhoehen
+        account.setprop("lifetime", account.getprop("lifetime")+counter);
+      EndIf
+      // Zeit seit dem letzten WorldSave zuruecksetzen
+      char.setprop("lifetime_counter", gameclock);
+      // Wann wurde der Account zuletzt benutzt?
+      account.setprop("lastused", gameclock);
+
+      syslog(
+        "    "+char.name+" ["+char.acctname+"] ("+
+        char.x+", "+char.y+", "+char.z+" / "+char.ip+")"
+      );
+    EndForEach
+
+    Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 0);
+
+    var res := SaveWorldState();
+    If (res)
+      SetGlobalProperty("#:saver:lastsave", ReadGameClock());
+      syslog(
+        "Welt gesichert (CleanObjects = "+res.cleanobjects+
+        " / DirtyObjects = "+ res.dirtyobjects+" / ElapsedMilliseconds = "+
+        res.elapsedmilliseconds+")"
+      );
+    Else
+      BroadcastPergon(
+        "Fehler beim Sichern der Welt!",
+        "Error while saving the world!",
+        _DEFAULT_TEXT_FONT, COLOR_BAD
+      );
+      syslog("Fehler beim Sichern der Welt! ("+res+")");
+    EndIf
+
+    LogGPROPCounter("#HookCounter_PartyCMD", "             ");
+    LogGPROPCounter("#HookCounter_GetStatusCMD", "         ");
+    LogGPROPCounter("#HookCounter_MenuRequest", "          ");
+    LogGPROPCounter("#HookCounter_MenuSelect", "           ");
+    LogGPROPCounter("#HookCounter_Profile", "              ");
+    LogGPROPCounter("#HookCounter_SingleClick_0x09", "     ");
+    LogGPROPCounter("#HookCounter_OpenDoorMacro_0x12", "   ");
+    LogGPROPCounter("#HookCounter_PartyMagic", "           ");
+    LogGPROPCounter("#HookCounter_ChatButton", "           ");
+    LogGPROPCounter("#HookCounter_GuildButton", "          ");
+    LogGPROPCounter("#HookCounter_QuestButton", "          ");
+    LogGPROPCounter("#HookCounter_SpeechRequest", "        ");
+    LogGPROPCounter("#HookCounter_RequestMessage", "       ");
+    LogGPROPCounter("#HookCounter_RequestMessageSummary", "");
+    LogGPROPCounter("#HookCounter_PostMessage", "          ");
+    LogGPROPCounter("#HookCounter_RemoveMessage", "        ");
+    LogGPROPCounter("#HookCounter_BandageMacro", "         ");
+    LogGPROPCounter("#HookCounter_RecvTarg", "             ");
+    LogGPROPCounter("#HookCounter_RecvStatLock", "         ");
+    LogGPROPCounter("#HookCounter_PaperdollVirtueButton", "");
+    LogGPROPCounter("#HookCounter_AccountLoginRequest", "  ");
+    LogGPROPCounter("#HookCounter_MegaCliloc", "           ");
+    LogGPROPCounter("#HookCounter_ActivateAoS", "          ");
+    LogGPROPCounter("#HookCounter_StatusBarInfo_0x11", "   ");
+    LogGPROPCounter("#HookCounter_DrawObject_0x78", "      ");
+    LogGPROPCounter("#HookCounter_SendTarg", "             ");
+    LogGPROPCounter("#HookCounter_AccountLoginFailed", "   ");
+    LogGPROPCounter("#ExportCounter_HighLightColor", "     ");
+    LogGPROPCounter("#ExportCounter_NameColor", "          ");
+
+    // Internen Speicherstatus in debug.log eintragen
+    PolCore().internal(1);
+    // Internen Speicherverbrauch in memoryusage.log eintragen
+    PolCore().internal(2);
+
+    // Endzeit merken
+    var endtime  := PolCore().systime;
+    var difftime := endtime - begintime;
+
+    Sleep(1);
+    EraseGlobalProperty(SAVER_GPROP);
+    BroadcastPergon(
+      "Welt gesichert in "+difftime+" Sekunden.",
+      "World saved in "+difftime+" seconds.",
+      _DEFAULT_TEXT_FONT, COLOR_GOOD
+    );
+    syslog(
+        "HINWEIS: Weltsicherung dauerte "+difftime+" Sekunden ("+
+        onlinechars.size()+" Spieler eingeloggt)"
+    );
+    SetGlobalProperty(SAVER_LAST, endtime);
+    SetGlobalProperty(SAVER_DUR, difftime);
+  EndWhile
+EndProgram
+
+// GlobalProperty-Counter loggen, falls vorhanden
+Function LogGPROPCounter(gprop, spaces)
+  var counter := GetGlobalProperty(gprop);
+  If (!counter)
+    return;
+  EndIf
+
+  syslog("  "+gprop+" "+spaces+" = "+counter);
+EndFunction
+
+// Weltsicherungsintervall ermitteln
+Function GetSaveInterval()
+  // Intervall in Minuten laden
+  var interval := CInt(GetGlobalProperty(PROP_MINUTES));
+  If (interval <= 0)
+    // kein Wert oder viel zu klein; Standard benutzen
+    return MINUTES_BETWEEN_SAVES * 60;
+  EndIf
+
+  // in Sekunden umrechnen
+  interval *= 60;
+
+  If (interval <= WARN_BEFORE_SECONDS*2)
+    // zu haeufig Sichern ist nicht gut; Standard benutzen
+    return MINUTES_BETWEEN_SAVES * 60;
+  EndIf
+
+  return interval;
+EndFunction

@@ -1,0 +1,72 @@
+//**************************************************************************************************
+//
+//   Anziehen des Inkognitoitems Maske
+//
+//	   Setzt den Namen des Charakters auf den Wert der Maske
+//     Die Maske wird bei Erstellung einem Char zugeordnet, der sie alleinig tragen darf
+//     Basiert auf incogitemequip
+//
+//		 21.11.2005 Fox:       Erstellung
+//     28.11.2005 Fraggulus: Nur CommandLevel bzw. Mitglieder einer bestimmten Gilde duerfen die Masken tragen
+//     23.06.2006 Turley:    Umstellung auf neues Gildensystem
+//
+//**************************************************************************************************
+
+use math;
+use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonutil";
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Const GUILD_ID := 8; // Gilden-ID der Nerkzuls                 
+
+Program IncognitoMask_Equip(who, incogitem, startup)
+  If (!who.isa(POLCLASS_NPC)) // NPCs brauchen die Maske eh nich...
+    If (GetObjProperty(incogitem, "incogused")) // Sollte eigentlich nich aufgerufen werden
+      SendSysMessagePergon(who, "Dieser Gegenstand hat nun keine Funktion mehr.", "This item is no longer usable.");
+      Start_ScriptPergon("::misc/waitdestroyitem", incogitem); // Um einen Crash des Servers zu verhindern...
+    EndIf
+
+    If (!startup) // Nur beim "frischen" anziehen...
+      // bei Inkognitozauber oder einem anderen Inkognitoitem wird abgeblockt. Es kann immer nur eins aktiv sein.
+      If (GetObjProperty(who, "spell_incognito") Or GetObjProperty(who, "realrname"))
+        SendSysMessagePergon(who, "Ihr steht bereits unter der Einwirkung eines Inkognitos.", "You already are under incognito.");
+        Return (0);
+      EndIf
+
+      // Nur CommandLevel bzw. Mitglieder einer bestimmten Gilde duerfen die Masken tragen
+      If ((who.cmdlevel < CMDLEVEL_SEER) && (who.guild.guildid != GUILD_ID))
+        SendSysMessagePergon(who, "Ihr seid nicht befähigt, diesen Gegenstand anzuziehen.", "You're not qualified to wear this item.");
+        Return (0);
+      EndIf
+
+      Var newname:=GetObjProperty(incogitem, "incogname");
+      Var serial:=GetObjProperty(incogitem, "maskownerserial");
+      If (newname)
+      	If (serial==who.serial)
+	        SetObjProperty(incogitem, "incogmasterserial", who.serial);
+	        SetObjProperty(who, "realrname", who.name);
+	        SetNamePergon(who, newname, "IncognitoMaske - Set");
+	        PrintTextAbovePrivatePergon(who, "Euer neuer Name ist nun "+newname, "Your new name is "+newname, who);
+	        Return (1);
+	      Else
+	      	SendSysMessagePergon(who, "Dies ist nicht eure Maske.", "This is not your Mask");
+	      	Return (0);
+	      EndIF
+      Else
+        SendSysMessagePergon(who, incogitem.desc+" wurde kein Inkognitoname zugewiesen.", incogitem.desc+" wasn't attached an incognito name.");
+        Return (0);
+      EndIf
+    EndIf
+  Else
+    Return (0);
+  EndIf
+EndProgram

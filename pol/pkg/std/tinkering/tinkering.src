@@ -1,0 +1,909 @@
+///////////////////////////////////////////////////////////////////////////
+// tinkering.src (was carpentry.src - carpentry tool doubleclick script)
+//
+// NOTE: Furnature only faces one way, the "open" armoire gfx doesnt
+//       open as a Container and wont switch to the closed gfx.
+
+use attributes;
+use cfgfile;
+use file;
+use os;
+use polsys;
+use uo;
+use util;
+include ":doorsnew:common";
+include "include/clock";
+include "include/itemnpc";
+include "include/manufacturegump";
+include "include/modifyskill";
+include "include/objtype";
+include "include/resources";
+
+var UOBJ_tinkerstacks := {
+  0x14fb, 0x104f, 0x1053, 0x1055, 0x1059, 0x105d,  0x105b, 0xe24, 0x0f0e
+};
+
+var Mat_Cfg    := ReadConfigFile(":crafting:materials");
+var metall_cfg := ReadConfigFile(":blacksmithy:materials_local");
+
+Program MaketinkeringItems(who, Tool)
+  If (!AccessiblePergon(who, Tool))
+    SendSysMessagePergon(who, "Ihr kommt nicht an das Werkzeug heran!");
+    return 0;
+  EndIf
+
+  If (distance(who, Tool) > 1)
+    SendSysMessagePergon(who, "Das Werkzeug ist zu weit entfernt!");
+    return 0;
+  EndIf
+  ReserveItem(Tool);
+
+  var retval;
+  var maxhp;
+  var maxhp_item;
+  var meister_hp;
+  var quality;
+  var quality_mod;
+
+  var ok1;
+  var i;
+
+  var skill_1;          //skill needed to create the item
+  var skill_2;
+  var SkillID_1;
+  var SkillID_2;
+  var material_1;
+  var material_2;
+  var material_1obj;
+  var material_2obj;
+  var Objtype;
+  var werkzeug_feinschmieden := 0; //commander, hilfsvariable
+
+  // Material 1 auswaehlen
+  SendSysMessagePergon(who,
+    "Wählt das Rohmaterial, mit dem Ihr arbeiten wollt.",
+    "Select the raw material you want to work with."
+  );
+  var use_on := target(who);
+
+  var material1 := Mat_Cfg[use_on.objtype];
+
+  // Commander; keine wirklich schöne variante, aber so allgemeine scripte wie
+  // das sind halt much
+  If (use_on.objtype in GetUobjMetalle())
+    werkzeug_feinschmieden := 1;
+    // laden der materials_local von blacksmithy
+    // dort sind die difficulties für die metalle enthalten
+    material1 := metall_cfg[use_on.objtype];
+  EndIf
+
+  If (!material1)
+    SendSysMessagePergon(who,
+      "Mit diesem Material könnt Ihr nichts anfangen!",
+      "You can't make anything with this material!"
+    );
+    return;
+  EndIf
+
+  // Commander, analog zu Waffen schmieden.
+  // Eventuell dasselbe noch fuer Hoelzer...
+  If (werkzeug_feinschmieden == 1)
+    If (tool.objtype == UOBJ_TINKER_TOOLS)  // Werkzeugschmieden
+      // Besteht ueberhaupt die Chance, das Metall zu verarbeiten?
+      If (!CheckSkillForDifferentMetals(who, SKILLID_WERKZEUGSCHMIEDEN, use_on))
+        SendSysMessagePergon(who,
+          "Ihr habt nicht die geringste Chance, "+
+          "etwas mit dem Material anzufangen!"
+        );
+        return;
+      EndIf
+    EndIf
+    // Besteht ueberhaupt die Chance, das Metall zu verarbeiten?
+    If (tool.objtype == 0x102a)  // Feinschmieden
+      If (!CheckSkillForDifferentMetals(who, SKILLID_KUNST_FEINSCHMIEDEN, use_on))
+        SendSysMessagePergon(who,
+          "Ihr habt nicht die geringste Chance, "+
+          "etwas mit dem Material anzufangen!"
+        );
+        return;
+      EndIf
+    EndIf
+  EndIf
+
+  // Werkzeug-Eigenschaften auslesen
+  var werkzeug := GetPropertyItem(tool);
+
+  var werkzeugqual;
+  If (!werkzeug.quality)
+    // NPC - Werkzeug
+    werkzeugqual := 0.5;
+  Else
+    werkzeugqual := werkzeug.quality;
+  EndIf
+
+  If (
+    // commander: werkzeug gut genug fuer material?
+    (material1.quality > werkzeugqual) and
+    // kein check bei mischholz oder eisenbarren
+    !((use_on.objtype == 0x1bdd) or (use_on.objtype == 0x6300))
+  )
+    SendSysMessagePergon(who,
+      "Euer Werkzeug ist nicht gut genug für dieses Material!"
+    );
+    return;
+  EndIf
+
+  // --- Auswahlmenü ---
+
+  var menuName;
+  var ConfigFile := "tinker";
+
+  // Metallbarren
+  If (use_on.objtype in GetUobjMetalle())
+    // Fein- und Werkzeugschmied sind in toolmaker.cfg, der Rest in tinker.cfg
+
+    // lose Werkzeuge (Werkzeugschmied)
+    If (tool.objtype == UOBJ_TINKER_TOOLS)
+      ConfigFile := "toolmaker";
+      menuName := "werkzeug";
+    EndIf
+    // Kleiner Hammer (Feinschmied)
+    If (tool.objtype == 0x102a)
+      ConfigFile := "toolmaker";
+      menuName := "feinschmied";
+    EndIf
+  EndIf
+
+  If (
+    (use_on.objtype in GetUobjHoelzer()) and
+    (tool.objtype == UOBJ_TINKER_TOOLS)
+  )
+    // kleiner Werkzeugkasten auf Hoelzer
+    menuName := "holz";
+  EndIf
+  If ((use_on.objtype in GetUobjGlas()) and (tool.objtype == 0x7050))
+    // Glasrohr und Schneidemesser auf Glasblock
+    menuName := "glas";
+  EndIf
+  If ((use_on.objtype == UOBJ_CLAY) and (tool.objtype == UOBJ_TINKER_TOOLS))
+    // kleiner Werkzeugkasten auf Lehmblock
+    menuName := "lehm";
+  EndIf
+  If ((use_on.objtype in GetUobjSteine()) and (tool.objtype == 0x12b3))
+    // Hammer und Meissel auf Steinblock
+    menuName := "stein";
+  EndIf
+  If (
+    (use_on.objtype in GetUobjBretter()) and
+    (tool.objtype == UOBJ_TINKER_TOOLS)
+  )
+    // kleiner Werkzeugkasten auf Bretter
+    menuName := "bretter";
+  EndIf
+
+  If (!menuName)
+    SendSysMessagePergon(who,
+      "Mit dem Material könnt Ihr nichts anfangen.",
+      "You can't make anything out of this material!"
+    );
+    return;
+  EndIf
+
+  // Laden der passenden Config für die Material/Skillwerte
+  var cfg := ReadConfigFile(ConfigFile);
+
+  var skillMod := (material1.difficulty/100.0) -1-werkzeugqual;
+
+  // Commander, keine wirklich schöne variante, aber so allgemeine scripte wie
+  // das sind halt much
+  If (werkzeug_feinschmieden == 1)
+    skillMod := material1.difficulty - werkzeugqual;
+  EndIf
+
+  var menu := MGCreateMenuFromCFG(who, ConfigFile, menuName, Tool, SKILLID_BASTELN, skillMod);
+  If (!menu)
+    SendSysMessagePergon(who, "Ihr könnt mit dem Material nichts anfangen.");
+    return;
+  EndIf
+
+  var Auswahl_item := MGSelect(who, menu);
+  If (!Auswahl_item)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (!Auswahl_item.amount || Auswahl_item.amount < 0)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (Auswahl_item.amount > 10)
+    Auswahl_item.amount := 10;
+  EndIf
+  var number := Auswahl_item.amount;
+
+  // --- Defaults im Tool speichern ---
+  MGSetDefault(Tool, menuName, Auswahl_item);
+
+  // Auslesen des angewaehlten Items aus der tinker.cfg
+  var elm := cfg[Auswahl_item.key];
+  // Werte aus der Config auslesen
+  Skill_1 := CDbl(elm.skill1);
+  Skill_2 := CDbl(elm.skill2);
+  SkillID_1 := GetAttributeName_(elm.attribute1);
+  SkillID_2 := GetAttributeName_(elm.attribute2);
+
+  Objtype := CInt(elm.objtype);
+  Material_1 := CInt(elm.material1);
+  Material_2 := CInt(elm.material2);
+  Material_1Obj := CInt(elm.material1obj);
+  Material_2Obj := CInt(elm.material2obj);
+
+  // Auslesen von Item.maxhp var aus beliebiger itemdesc.cfg
+  var itemdescs  := ReadConfigFile("::itemdesc");
+  var item_maxhp := itemdescs[Objtype];
+  MaxHP := item_maxhp.maxhp;
+
+  var material2;
+  var use_on2;
+  If (material_2obj)
+    // wenn, dann welches 2. material
+    If (material_2obj == 0x1bdd)
+      SendSysMessagePergon (who,
+        "Wählt die Hölzer, mit denen Ihr arbeiten wollt.",
+        "Select the woods you want to work with."
+      );
+    EndIf
+    If (material_2obj == 0x6300)
+      SendSysMessagePergon (who,
+        "Wählt die Metallbarren, mit denen Ihr arbeiten wollt.",
+        "Select the metal ingots you want to work with."
+      );
+    EndIf
+    If (material_2obj == UOBJ_SANDSTONE)
+      SendSysMessagePergon (who,
+        "Wählt die Steine, mit denen Ihr arbeiten wollt.",
+        "Choose the stones to work with."
+      );
+    EndIf
+    If (material_2obj == 0x1bd7)
+      SendSysMessagePergon (who,
+        "Wählt die Bretter, mit denen Ihr arbeiten wollt.",
+        "Choose the boards to work with."
+      );
+    EndIf
+    If (material_2obj == 0x0f0f)
+      SendSysMessagePergon (who,
+        "Wählt die Edelsteine, mit denen Ihr arbeiten wollt.",
+        "Select the gems you want to work with."
+      );
+    EndIf
+    If (material_2obj == UOBJ_GLASS)
+      SendSysMessagePergon (who,
+        "Wählt die Glasblöcke, mit denen Ihr arbeiten wollt.",
+        "Select the glass ingots you want to work with."
+      );
+    EndIf
+    // Fadenkreuz fuer die Auswahl
+    use_on2 := target(who);
+
+    material2 := Mat_Cfg[use_on2.objtype];
+    If (!material2)
+      SendSysMessagePergon (who,
+        "Mit diesem Material könnt Ihr nichts anfangen!",
+        "You can't make anything with this material!"
+      );
+      return;
+    EndIf
+
+    // ob auch das richtige gewaehlt wurde
+    If ((material_2obj==0x1bdd) and (use_on2.objtype in GetUobjHoelzer()))
+      ok1 := 1;
+    EndIf
+    If ((material_2obj==0x6300) and (use_on2.objtype in GetUobjMetalle()))
+      ok1 := 1;
+    EndIf
+    If (
+      (material_2obj==UOBJ_SANDSTONE) and
+      (use_on2.objtype in GetUobjSteine())
+    )
+      ok1 := 1;
+    EndIf
+    If ((material_2obj==0x1bd7) and (use_on2.objtype in GetUobjBretter()))
+      ok1 := 1;
+    EndIf
+    If ((material_2obj==0x0F0F) and (use_on2.objtype in GetUobjEdelsteine()))
+      ok1 := 1;
+    EndIf
+    If ((material_2obj==UOBJ_GLASS) and (use_on2.objtype in GetUobjGlas()))
+      ok1 := 1;
+    EndIf
+
+    If (!(ok1==1))
+      SendSysMessagePergon(who,
+        "Mit diesem Material könnt Ihr nichts anfangen!",
+        "You can't make anything with this material!"
+      );
+      return;
+    EndIf
+
+  EndIf
+
+  var TX := who.x;
+  var TY := who.y;
+
+  var Near_Items;
+  var Sound1, Sound2;
+  var skill1_offset, skill2_offset;
+  var skill1_points;
+  var item_price;
+
+  For (i := 1;i<=number;i+=1)
+    If (TX<>who.x or TY<>who.y || who.dead)
+      break;
+    EndIf
+
+    Near_Items := ListItemsNearLocation(who.x, who.y, who.z, 3, who.realm);
+    Ok1 := 0;
+
+    //                  Metall                     Metall
+    If ((material_1obj==0x6300) or (material_2obj==0x6300))
+      ForEach item in Near_Items
+        If ((item.objtype == 0x0faf) or (item.objtype == 0x0fb0))
+          Ok1 := 1;
+          Break;
+        EndIf
+      EndForEach
+      If (ok1==0)
+        SendSysMessagePergon(who,
+          "Ihr müsst neben einem Amboss stehen.",
+          "You have to stand near an anvil."
+        );
+        return;
+      EndIf
+    EndIf
+
+    // Glasblock                      Glasblock
+    If ((material_1obj==UOBJ_GLASS) or (material_2obj==UOBJ_GLASS))
+      ForEach item in Near_Items
+        If (((item.objtype >= UOBJ_FORGE_START) and (item.objtype <= UOBJ_FORGE_END)) or (item.objtype == UOBJ_SMALL_FORGE))
+          Ok1 := 1;
+          Break;
+        EndIf
+      EndForEach
+      If (ok1==0)
+        SendSysMessagePergon(who,
+          "Ihr müsst neben einem Schmiedefeuer stehen.",
+          "You have to stand near a forge."
+        );
+        return;
+      EndIf
+    EndIf
+
+    Ok1 := 0;
+    var Ok2 := 0;
+    var Item1;
+    var Item2;
+    If (!SkillID_2)
+      Ok2 := 1;
+    EndIf
+
+    ForEach item in EnumerateItemsInContainer(who.backpack)
+      If (((!ok1) and (item.objtype==use_on.objtype)) and (GetAmount(item)>=material_1))
+        Item1 := item;
+        ok1 := 1;
+        reserveitem(Item1);
+      ElseIf (((!ok2) and (item.objtype==use_on2.objtype)) and (GetAmount(item)>=material_2))
+        ok2 := 1;
+        Item2 := item;
+        reserveitem(Item2);
+      EndIf
+      If ((Ok1) and (Ok2))
+        Break;
+      EndIf
+      SleepMS(2);
+    EndForEach
+
+    If (!Ok1)
+      SendSysMessagePergon(who,
+        "Ihr habt nicht genügend "+material1.shortdesc+".",
+        "You don't have enough "+material1.shortdesc+"."
+      );
+      return;
+    EndIf
+    If (!Ok2)
+      SendSysMessagePergon(who,
+        "Ihr habt nicht genügend "+material2.shortdesc+".",
+        "You don't have enough "+material2.shortdesc+"."
+      );
+      return;
+    EndIf
+
+    If (SkillID_2)
+      If (material_2obj==0x6300)  // metall
+        sound2 := 0x2b;
+      Else
+        // glas or edelstein
+        If ((material_2obj==UOBJ_GLASS) or (material_2obj==0x0F0F))
+          sound2 := 0x3f;
+        Else // holz, bretter, basteln, lehm, stein
+          sound2 := SFX_HAMMER;
+        EndIf
+      EndIf
+
+      performaction(who, UACTION_PICK);
+      retval := PlaySoundEffect(who, sound2);
+      Sleep (2);
+      performaction(who, UACTION_PICK);
+      retval := PlaySoundEffect(who, sound2);
+      Sleep (2);
+      performaction(who, UACTION_PICK);
+      retval := PlaySoundEffect(who, sound2);
+      Sleep (2);
+
+      var material2_skill := (material2.difficulty/100)-1;
+      skill2_offset := cint(skill_2+material2_skill-werkzeugqual);
+      // Sicherung, falls werkzeug.quality>item_skill
+      If (skill2_offset<1)
+        skill2_offset := 1;
+      EndIf
+      If (who.cmdlevel >= CMDLEVEL_SEER)
+        print("skill2: "+skill2_offset);
+        print("Rohpoints2: "+Cint(skill2_offset*4));
+      EndIf
+
+      var Check;
+      If (SkillID_2 == SKILLID_BASTELN)
+        Check := CheckSkillPergon(who, SkillID_2, skill2_offset, 0);
+      Else
+        Check := CheckSkillPergon(who, SkillID_2, skill2_offset, CInt((skill_2+material2_skill)*4));
+      EndIf
+
+      If (!check)
+        SubtractAmount(item2, cint(material_2/2));
+        SendSysMessagePergon(who,
+          "Ihr zerstört etwas "+material2.shortdesc+".",
+          "You destroy some "+material2.shortdesc+"."
+        );
+        continue;
+      EndIf
+    EndIf
+    If (material_1obj==0x6300) // metall
+      sound1 := 0x2b;
+    Else
+      // glas or edelstein
+      If ((material_1obj==UOBJ_GLASS) or (material_1obj==0x0F0F))
+        sound1 := 0x3f;
+      Else // holz, bretter, basteln, lehm, stein
+        sound1 := SFX_HAMMER;
+      EndIf
+    EndIf
+    performaction(who, UACTION_PICK);
+    retval := PlaySoundEffect(who, sound1);
+    Sleep (2);
+    performaction(who, UACTION_PICK);
+    retval := PlaySoundEffect(who, sound1);
+    Sleep (2);
+    performaction(who, UACTION_PICK);
+    retval := PlaySoundEffect(who, sound1);
+    Sleep (2);
+
+    // crafting\materials.cfg   Item.difficulty
+    var material1_skill := (material1.difficulty/100.0)-1;
+
+    // Commander, keine wirklich schoene variante, aber so allgemeine
+    // scripte wie das sind halt much
+    If (werkzeug_feinschmieden == 1)
+      If (material_2obj and (tool.objtype == UOBJ_TINKER_TOOLS))
+        //  bei 2 materialien 80 zu 20 gewichtung metall/holz (werkzeug)
+        material1_skill := material1.difficulty * 0.8 + material2.difficulty / 400;
+      Else
+        material1_skill := material1_skill + material1.difficulty;
+      EndIf
+    EndIf
+
+
+    skill1_offset := Cint(skill_1+material1_skill-werkzeugqual);
+    // Sicherung, falls werkzeug.quality>item_skill
+    If (skill1_offset<1)
+      skill1_offset := 1;
+    EndIf
+
+    // Basteln darf nicht mit Skillpunkten aufgerufen werden
+    If (SkillID_1 == SKILLID_BASTELN)
+      skill1_points := 0;
+    Else
+      // commander; rawpoints erhoeht (alter faktor 4)
+      skill1_points := Cint((skill_1+material1_skill)*5);
+    EndIf
+
+    If (!CheckSkillPergon(who, SkillID_1, skill1_offset, skill1_points))
+      // Fehlschlag
+      SubtractAmount(item1, cint(material_1/2.0));
+      SendSysMessagePergon(who,
+        "Eure Anstrengungen waren umsonst, Ihr zerstört etwas "+
+        material1.shortdesc+".",
+        "Your efforts where futile, you destroy some "+
+        material1.shortdesc+"."
+      );
+      If (SetWerkzeugSchaden(who, tool,
+          "Euer Werkzeug hat gelitten!",
+          "Euer Werkzeug ist stark beschädigt!",
+          "Euer Werkzeug ist zerbrochen!"
+      ))
+        return;
+      EndIf
+      continue;
+    EndIf
+
+    // Bei Glas und (Titan-Obsidian) wird das Material in einer CProp
+    // im Produkt gespeichert
+    var MaterialProp;
+    If (material1.SaveMaterial == 1)
+      MaterialProp := CInt(use_on.objtype);
+    EndIf
+
+    var itemdef := GetItemDescriptor(objtype);
+    If (itemdef)
+      itemdef.color := CInt(material1.color);
+      If (MaterialProp)
+        itemdef.cprops.insert("material", MaterialProp);
+      EndIf
+      itemdef.movable := 1;
+
+      //now, I need to set the quality
+      // Basteln darf nicht mit Skillpunkten aufgerufen werden
+      If (SkillID_1 == SKILLID_BASTELN)
+        skill1_points := 0;
+      Else
+        skill1_points := 120;
+      EndIf
+
+      // Logging
+      // var text := theitem.desc+" ["+Lower(Hex(objtype))+"] mit "+tool.desc+" ["+Lower(Hex(tool.objtype))+" / "+werkzeug+"] aus "+
+      //   use_on.desc+" "+material1.quality+" ["+Lower(Hex(use_on.objtype))+"] ";
+      // var time := GetDateTimeStr();
+
+      // Meisterstuecke und Excepts
+      //   quality      [Rohstoffe]         = 0.69  bis 3.79
+      //   werkzeugqual [Werkzeug]          = 0.552 bis 4.7375
+      //   char_skill   [Herstellungsskill] = 0     bis 130
+
+      If (material_2obj)
+        // Logging
+        // text+="und "+use_on2.desc+" "+material2.quality+" ["+Lower(Hex(use_on2.objtype))+"] ";
+        quality := material1.quality*0.8+material2.quality*0.2;
+      Else
+        quality := material1.quality;
+      EndIf
+
+      var char_skill := GetSkillPergon(who, SkillID_1);
+
+      // Logging
+      // text+="mit Skill "+SkillID_1+" (Check "+skill1_offset+"% von "+char_skill+"%) und Meister/Excep-Rate=(("+
+      //   quality+"-0.69)*(-62.9)+250)+("+werkzeugqual+"*6.333)+("+char_skill+"/8.67)="+
+      //   (((quality-0.69)*(-62.9)+250)+(werkzeugqual*6.333)+(char_skill/8.67));
+
+      If ((RandomInt(5000)<((quality-0.69)*(-62.9)+250)+(werkzeugqual*6.333)+(char_skill/8.67)) And (char_skill>40))
+        If (SkillID_1==SKILLID_BASTELN)
+          // Basteln darf nicht mit Skillpunkten aufgerufen werden
+          skill1_points := 0;
+        Else
+          CheckSkillPergon(who, SkillID_1, (char_skill-40)*0.78+50, 120);
+          // Meisterstuecke/Excepts geben auch Punkte
+          skill1_points := skill_1*2;
+        EndIf
+
+        var meister_oder_except;
+        If (CheckSkillPergon(who, SkillID_1, skill1_offset + 15, skill1_points))
+          // Logging
+          // text := "Exceptional "+text;
+
+          // they made an exceptional item
+          quality_mod := 1.25;
+          meister_hp := 4.0; // + zu den Material hp
+          item_price := 1.5;
+
+          var toolinfocprop := struct{
+            material     := material1.shortdesc,
+            manufacturer := who.name
+          };
+          If (material_2obj)
+            toolinfocprop.material+=" und "+material2.shortdesc;
+          EndIf
+          itemdef.desc := "Exceptional "+itemdef.desc;
+          itemdef.cprops.insert(TOOLINFO, toolinfocprop);
+
+          meister_oder_except := 1;
+          // Damit Meister nicht auf Exept stacken
+          itemdef.cprops.insert("exept", meister_oder_except);
+          SendSysMessagePergon(who,
+            "Ihr fertigt ein außergewöhnliches Stück "+
+            "und legt es in Euren Rucksack.",
+            "You manufacture an exceptional piece "+
+            "and put it into your backpack."
+          );
+        Else
+          // Logging
+          // text := "Meisterstueck "+text;
+
+          //macht ein Meisterstueck
+          quality_mod := 1.1;
+          meister_hp := 2.5; // + zu den Material hp
+          item_price := 1.2;
+          var toolinfocprop := struct{material:=material1.shortdesc, manufacturer:=who.name};
+          If (material_2obj)
+            toolinfocprop.material+=" und "+material2.shortdesc;
+          EndIf
+
+          meister_oder_except := 0.5;
+          // Damit Meister nicht auf Exept stacken
+          itemdef.cprops.insert("exept", meister_oder_except);
+          itemdef.desc := "Meisterstueck "+itemdef.desc;
+          itemdef.cprops.insert(TOOLINFO, toolinfocprop);
+          SendSysMessagePergon(who,
+            "Ihr fertigt ein Meisterstück und legt es in Euren Rucksack.",
+            "You manufacture a masterpiece and put it into your backpack."
+          );
+        EndIf
+
+        // Commander: Anpassung an Thaumaturgie, CProp status_except [0;20]
+        //   Werkzeug, Skill, Material & Zufall geht zu gleichen Teilen ein
+        //   Skill / 25 -> ab Legende 5 Punkte
+        //   Werkzeug - Qualitaet ist maximal 4.7375, auf [0;5] skalieren
+        //   abschliessend Zufallswert in [0;5]
+        //   Meisterstueck nur die Haelfte des Bonus
+        var except_bonus := CInt(GetSkillPergon(who, SkillID_1) / 25);
+        except_bonus += CInt(werkzeugqual / 4.7375 * 5);
+
+        If (material_2obj)
+          // wurden 2 Materialien zur Herstellung verwendet?
+          If ((material_2obj == 0x6300) or (material_2obj == 0x1bdd))
+            except_bonus += CInt((material1.quality + material2.quality) / 7.58 * 5);
+          EndIf
+        Else
+          except_bonus += CInt(material1.quality / 3.79 * 5);
+        EndIf
+
+        except_bonus += RandomInt(6);
+
+        If (except_bonus >= 20)
+          except_bonus := 20;
+        EndIf
+
+        except_bonus := CInt(except_bonus * meister_oder_except);
+
+        // nicht fuer Schlossknacker, leeres Reagenzglas setzen ->
+        // stacking-prob
+        If (!((Auswahl_item.objtype == 0x14fb) or (Auswahl_item.objtype == 0xe24)))
+          itemdef.cprops.insert("status_exept", except_bonus);
+        EndIf
+
+      Else
+        // regular-quality
+        quality_mod := (80+(RandomInt(GetSkillPergon(who, SkillID_1))/6.0))/100.0;
+        If (quality_mod > 1)
+          quality_mod := 1;
+        EndIf
+
+        meister_hp := 0;
+        item_price := 1;
+        var toolinfocprop := struct{material:=material1.shortdesc};
+        If (material_2obj)
+          toolinfocprop.material+=" und "+material2.shortdesc;
+        EndIf
+        itemdef.cprops.insert(TOOLINFO, toolinfocprop);
+        SendSysMessagePergon(who,
+          "Ihr stellt den Gegenstand her und legt ihn in Euren Rucksack.",
+          "You manufacture the object and put it into your backpack."
+        );
+      EndIf
+      var theitem := CreateItemInBackpackPergon(who, itemdef, 1);
+      If (theitem)
+        // Funzt komischweise nicht direkt in der Def
+        SetName(theitem, itemdef.desc);
+
+        // material- und werkzeug-eigenschaften gehen mit in die item
+        // eigenschaften ein
+        // Wird vorm Except-Check vorberechnet
+        quality := quality_mod*quality;
+        If (material_2obj)
+          // maxhp ist (mat1.hp+mat2.hp)/2*item.maxhp in der var\itemdesc.cfg
+          maxhp_item := cint(maxhp * (meister_hp + ((material1.hp + material2.hp) / 20.0)));
+          item_price := cint(item_price*((Material_2*GetPropertyPrice(use_on2))+(Material_1*GetPropertyPrice(use_on))));
+        Else
+          maxhp_item := cint(maxhp*((material1.hp/10.0)+meister_hp));
+          item_price := cint(item_price*(Material_1*GetPropertyPrice(use_on)));
+        EndIf
+        // If (who.cmdlevel >= CMDLEVEL_SEER)
+        //   print("******* tinkering.src ********");
+        //   print("Skill1: "+skill1_offset);
+        //   print("Skill2: "+skill2_offset);
+        //   print("Rohpoints1: "+Cint((skill_1+material1_skill)*4));
+        //   print("Quali Item orig.:"+quality);
+        //   print("Quali Material1:"+material1.quality);
+        //   print("Quali Material2:"+material2.quality);
+        //   print("Material1.hp"+(material1.hp/10));
+        //   print("Material2.hp"+(material2.hp/10));
+        //   print("-----------------------------");
+        //   print("Price: "+GetPropertyPrice(use_on)+" * "+Material_1+" + "+GetPropertyPrice(use_on2)+" * "+Material_2);
+        //   print("Item Price: "+item_price);
+        //   print("Itemdesc: "+theitem.desc);
+        //   print("Color: "+theitem.color);
+        //   print("Gewicht: "+theitem.weight);
+        //   print("Item Quality/Qualityorig: "+dummy);
+        //   print("Item Hp/Maxhp/Maxhporig: "+maxhp_item);
+        //   print("SkillID_1: "+SkillID_1);
+        //   print("Skill_repair: "+(skill_1+material1_skill));
+        //   print("*****************************");
+        // EndIf
+        //item-property's setzen
+
+        If (theitem.isa(POLCLASS_WEAPON) Or theitem.isa(POLCLASS_ARMOR))
+          theitem.quality := quality;
+          // bei Waffen&Ruestung kann man MaxHP nicht festlegen
+          maxhp_item := theitem.maxhp;
+        EndIf
+
+        //SetPropertyItem(item, quality, hp, maxhp, qualityorig, maxhporig, type, skillid)
+        SetPropertyItem(theitem, quality, maxhp_item, maxhp_item, quality, maxhp_item, "t", SkillID_1, skill_1+material1_skill, item_price);
+
+        // Logging
+        // text := who.name+" ["+who.x+", "+who.y+"] "+text+" ("+GetObjProperty(theitem, "Werkzeug")+")";
+        // LogToFile("z_tinkering.log", time+text);
+        // LogToFile("z_char_"+who.name+" - "+Lower(Hex(who.serial))+".log", time+text);
+        If (theitem.objtype==0x6600)
+          SetLockDifficulty(who, theitem);
+        EndIf
+        //now onto lockable chests . . .hardcoding lockable chests, boxes)
+        //If (theitem.objtype in array(0x0a4f, 0x0a53, 0x0a4d, 0x0a51, 0x0a2c, 0x0a34, 0x0a30, 0x0a38, 0x0e42, 0x0e43, 0x0e3c, 0x09aa, 0x0e80, 0x0e3f, 0x0fae)) // hardcodet ist Mist, zumal s dafuer Props gibt :o) // by F.
+        If (theitem.lockable)
+          SetObjProperty(theitem, "lockable", "1");
+          var lockid := AllocLockId();
+          theitem.locked := 1;
+          var thekey := CreateItemInBackpackPergon(who, UOBJ_COPPER_KEY, 1);
+          SetObjProperty(thekey,  "lockid", lockid);
+          SetObjProperty(theitem, "lockid", lockid);
+          SendSysMessagePergon (who,
+            "Ihr findet den Schlüssel in Eurem Rucksack."
+          );
+        EndIf
+      Else // If (theitem)
+        SendSysMessagePergon(who,
+          "Der Gegenstand konnte nicht erzeugt werden!", ""
+        );
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+      EndIf
+    Else // If (itemdef)
+      SendSysMessagePergon(who,
+        "Der Gegenstand konnte nicht erzeugt werden!", ""
+      );
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+
+
+    // letztlich noch zu verarbeitende Materialien abziehen
+    SubtractAmount(item1, material_1);
+    If (SkillID_2)
+      SubtractAmount(item2, material_2);
+    EndIf
+
+    //  kleine Wahrscheinlichkeit auf Beschaedigung der Werkzeugs
+    If (RandomInt(100) < 2)
+      If (SetWerkzeugSchaden(who, tool,
+          "Euer Werkzeug hat gelitten!",
+          "Euer Werkzeug ist stark beschädigt!",
+          "Euer Werkzeug ist zerbrochen!"
+      ))
+        return;
+      EndIf
+    EndIf
+  EndFor
+
+  // Wann wird das mal beim laufenden Server geändert ...
+  // UnloadConfigFile(ConfigFile);
+EndProgram
+
+////////////////////////////////////////////////////////////////
+// GetAttributeName - Ermittelt und Prueft den Attribute-Namen
+////////////////////////////////////////////////////////////////
+Function GetAttributeName_(attribute) // {{{
+  If (attribute)
+    return (GetSkillName(attribute));
+  EndIf
+EndFunction // }}}
+
+///////////////////////////////////////////////////////////////////////////
+// CheckSkillForDifferentMetals
+// Besteht ueberhaupt die Chance, das Metall zu verarbeiten?
+///////////////////////////////////////////////////////////////////////////
+Function CheckSkillForDifferentMetals(who, skillid, ingot) // {{{
+  var minskill := 1;
+  Case (ingot.objtype)
+    // normale Metalle: bis 60 gestaffelt
+    UOBJ_EISEN_BARREN:      minskill :=   1; // Metall
+    UOBJ_MOLYBDAEN_BARREN:  minskill :=  20; // Metall
+    UOBJ_MANGAN_BARREN:     minskill :=  30; // Metall
+    UOBJ_IRIDIUM_BARREN:    minskill :=  40; // Metall
+    UOBJ_TENERUM_BARREN:    minskill :=  40; // Metall
+    UOBJ_INDIUM_BARREN:     minskill :=  40; // Metall
+    UOBJ_LANTHAN_BARREN:    minskill :=  60; // Metall
+    UOBJ_WOLFRAM_BARREN:    minskill :=  60; // Metall
+    UOBJ_PLATIN_BARREN:     minskill :=  60; // Metall
+    UOBJ_CHROM_BARREN:      minskill :=  60; // Metall
+    UOBJ_TITANIUM_BARREN:   minskill :=  60; // Metall
+    // 1. Legierungen: 60 - 80 (ab Buntmetalleinfluss 80)
+    UOBJ_CERIUM_BARREN:     minskill :=  60; // 1. Legierung
+    UOBJ_PRODYMIUM_BARREN:  minskill :=  60; // 1. Legierung
+    UOBJ_NEODYMIUM_BARREN:  minskill :=  60; // 1. Legierung
+    UOBJ_PROMETHIUM_BARREN: minskill :=  60; // 1. Legierung
+    UOBJ_SAMARIUM_BARREN:   minskill :=  60; // 1. Legierung
+    UOBJ_ROPIUM_BARREN:     minskill :=  80; // 1. Legierung
+    UOBJ_GADONIUM_BARREN:   minskill :=  80; // 1. Legierung
+    UOBJ_TERBIUM_BARREN:    minskill :=  80; // 1. Legierung
+    UOBJ_ERBIUM_BARREN:     minskill :=  80; // 1. Legierung
+    UOBJ_HOLMIUM_BARREN:    minskill :=  80; // 1. Legierung
+    // 2. Legierungen: 100, Energium Ausnahme
+    UOBJ_SOLARUM_BARREN:    minskill := 100; // 2. Legierung
+    UOBJ_HYDRIUM_BARREN:    minskill := 100; // 2. Legierung
+    UOBJ_LAVARIUM_BARREN:   minskill := 100; // 2. Legierung
+    UOBJ_TERADIUM_BARREN:   minskill := 100; // 2. Legierung
+    UOBJ_TERATUM_BARREN:    minskill := 100; // 2. Legierung
+    UOBJ_ENERGIUM_BARREN:   minskill := 115; // 2. Legierung
+    // Gold ist nur für Legenden da
+    UOBJ_GOLD_BARREN:       minskill := 125; // Metall, aber Dekadenz pur *g*
+
+    default:
+      // SendSysMessagePergon(who, "Ihr könnt das nicht schmelzen!");
+      return 0;
+  EndCase
+
+  If (GetSkillPergon(who, skillid) >= minskill)
+    return 1;
+  EndIf
+
+  return 0;
+EndFunction // }}}
+
+Function SetLockDifficulty(who, lock) // {{{
+  var Skill := GetSkillPergon(who, SKILLID_KUNST_FEINSCHMIEDEN) +
+    CInt(GetDexPergon(who)/10.0);
+
+  var msg := "unbrauchbares"; // := Namen des Schlosses ermitteln
+  If (Skill >= 130)
+    msg := "perfektes";
+  ElseIf (Skill >= 125)
+    msg := "fast perfektes";
+  ElseIf (Skill >= 120)
+    msg := "uebernatuerlich filigranes";
+  ElseIf (Skill >= 115)
+    msg := "aussergewoehnlich filigranes";
+  ElseIf (Skill >= 110)
+    msg := "ungewoehnlich gutes und filigranes";
+  ElseIf (Skill >= 105)
+    msg := "ungewoehnlich filigranes";
+  ElseIf (Skill >= 100)
+    msg := "sehr filigranes";
+  ElseIf (Skill >= 90)
+    msg := "sehr gutes und stabiles";
+  ElseIf (Skill >= 80)
+    msg := "ungewoehnlich schwer zu knackendes";
+  ElseIf (Skill >= 70)
+    msg := "sehr schwer zu knackendes";
+  ElseIf (Skill >= 60)
+    msg := "qualitativ hoeherwertiges";
+  ElseIf (Skill >= 50)
+    msg := "qualitativ mittelmaessiges";
+  ElseIf (Skill >= 40)
+    msg := "gutes";
+  ElseIf (Skill >= 30)
+    msg := "normales";
+  ElseIf (Skill >= 20)
+    msg := "qualitativ minderwertiges";
+  ElseIf (Skill >= 10)
+    msg := "fast unbrauchbares";
+  EndIf
+
+  SetObjProperty(lock, "LockDifficulty", Skill);
+  SetName(lock, "ein "+msg+" Schloss");
+EndFunction // }}}

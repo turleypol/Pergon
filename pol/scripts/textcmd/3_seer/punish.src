@@ -1,0 +1,669 @@
+//////////////////////////////////////////////////////////////////////
+// Punish --
+// Automatisiertes Menue zur Verhaengung von Strafen
+// (das funktioniert mit Serial als Parameter auch bei Offline-Chars)
+
+// Notizen:
+// - Haltbarkeit der Strafen ist 6 Monate
+// - Aufruf von .Punish per Script moeglich
+//   (Start_ScriptPergon("::textcmd/x_xxxx/punish", {"#SCRIPT", ev.source});)
+
+// Array[1] := ""; - Datum (rl) [dd/mm/yyyy]
+// Array[2] := ""; - Charname+Serial [String/Hex]
+// Array[3] := ""; - Bestrafername+Serial [String/Hex]
+// Array[4] := ""; - Strafe [String]
+// Array[5] := ""; - Grund der Strafe [String]
+// Array[6] := 0;  - Serverzeit zwecks Bestimmung von Uralt-Strafen
+//                   [Integer-Timestamp in Sekunden]
+
+// logische Abfolge des Scripts:
+// I.   zu bestrafenden Spieler abfragen
+// II.  PunishInfos des Spielers aus GlobalProp PunishInfos auslesen
+// III. bisherige Strafen des Spielers aufzeigen
+// IV.  Strafauswahl anbieten
+// V.   notwendige Daten fuer Strafe abfragen, Strafe verkuenden/anwenden
+//      (bei Seern muss ein High-GM zu bestimmten Strafen zustimmen)
+// VI.  PunishInfo-String neu zusammensetzen
+//      (Strafen, die aelter als 'VALIDTIME' Monate Serverlaufzeit sind,
+//      werden dabei automatisch geloescht)
+// VII. PunishInfo-String in GlobalProp PunishInfos speichern
+
+use file;
+use os;
+use uo;
+use util;
+include "include/clock";
+include "include/logutil";
+include "include/msgs";
+include "include/pergonutil";
+include "include/permissions";
+include "include/server";
+
+// Anzahl der Monate (an Serverlaufzeit), die die Strafen gespeichert werden
+Const VALIDTIME := 6;
+
+Const PUN_WARN     := 101; // Verwarnung
+Const PUN_JAIL     := 102; // Knast
+Const PUN_PILLORY  := 103; // Pranger
+Const PUN_DEATH    := 104; // Todesstrafe
+Const PUN_STONEPIT := 105; // Steinbruch
+Const PUN_MISC     := 106; // Sonstiges
+
+Program TextCMD_Punish(who, param)
+  // I. zu bestrafenden Spieler abfragen {{{
+  var player;
+
+  // Aufruf per Script?
+  If (who[1] == "#SCRIPT")
+    who := who[2];
+    param := who.serial;
+  EndIf
+
+  // Hilfe
+  If (
+    param and (
+      (lower(param) == "help") or (lower(param) == "hilfe") or
+      (param == "?") or (param == "-?") or (param == "/?")
+    )
+  )
+    SendSysMessagePergon(who,
+      "Benutzung: .punish [Char-Serial]",
+      "Usage: .punish [char serial]"
+    );
+    return;
+  EndIf
+
+  If (!param)
+    SendSysMessagePergon(who,
+      "Wer soll bestraft werden?", "Who should be punished?"
+    );
+    player := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!player)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+    param := player.serial;
+  EndIf
+
+  // immer OfflineRef holen, damit die Leute durch Ausloggen ihrer
+  // Strafe nicht entgehen
+  player := SystemFindObjectBySerial(
+    CInt(param), SYSFIND_SEARCH_OFFLINE_MOBILES
+  );
+
+  // moegliche Fehler abfangen
+  If (!player)
+    SendSysMessagePergon(who,
+      "Konnte Spieler mit der angegebenen Serial nicht finden",
+      "Couldn't find player with that serial"
+    );
+    return;
+  ElseIf (player.isa(POLCLASS_NPC))
+    SendSysMessagePergon(who,
+      "Das funktioniert nur bei Spielern.", "That only works on players."
+    );
+    return;
+  ElseIf (!player.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(who,
+      "Spieler nicht gefunden.", "Player not found."
+    );
+    return;
+  EndIf
+
+  // nur niedere CmdLevel bestrafen
+  If (player.cmdlevel > who.cmdlevel)
+    SendSysMessagePergon(who,
+      "Der CmdLevel des Ziels ist nicht niedriger als Euer eigener!",
+      "Target players command level isn't lower than yours!"
+    );
+    return;
+  EndIf
+  // }}}
+
+  // II. PunishInfos des Spielers aus GlobalProp PunishInfos auslesen {{{
+  var PunishInfo           := GetGlobalProperty("PunishInfos");
+  var PunishInfosCharacter := GetCharInfos(PunishInfo, player.serial);
+  // }}}
+
+  // III. bisherige Strafen des Spielers aufzeigen {{{
+  // Daten einfuegen
+  // Hauptgump {{{
+  var layout := {
+    "page 0",                        // Seite 0 (Basisseite)
+    "nodispose",
+    "resizepic 0 0 2620 800 400",
+    "text 20 20 1644 0",
+    "text 30 44 1844 1"
+  };
+  
+  If (who.serial != player.serial)
+    layout += {
+      "button 678  20 2708 2709 1 0 1", // "neue Strafe"-Button
+      "text 595 20 1644 2"
+    };
+  EndIf
+
+  layout += {
+    "button 770 20 2708 2709 1 0 0", // Cancel-Button
+    "text 710 20 1644 3",
+
+    "text 680 370 1644 4"            // (c)
+  };
+
+  var data := {
+    "Vorstrafen von "+player.name+"/"+LHex(player.serial)+":",
+    "Datum, GM/Serial, Strafe, Grund der Strafe",
+    "Neue Strafe",
+    "Abbruch",
+    "(C) GM Fraggulus"
+  };
+  // }}}
+
+  If (PunishInfosCharacter.size() >= 1)
+    var i;
+    For (i := 1; i <= PunishInfosCharacter.size(); i += 1)
+      SleepMs(2);
+      layout.append("text "+30+" "+(50 + 20*i)+" 1044 "+data.size());
+      // Name/Serial des Spielers loeschen, da die Platz wegnehmen und
+      // sowieso oben im Gump stehen
+      PunishInfosCharacter[i].erase(2);
+      data.append(PunishInfosCharacter[i]);
+    EndFor
+  Else
+    layout.append("text "+30+" "+70+" 1044 "+data.size());
+    data.append(
+      "Keine Vorstrafen innerhalb der letzten "+
+      VALIDTIME+" Monate gefunden."
+    );
+  EndIf
+
+  var ret := SendDialogGump(who, layout, data);
+  If (!ret || who.serial == player.serial)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+  // }}}
+
+  // IV. Strafauswahl anbieten {{{
+  // Gump fuer neue Strafen {{{
+  var layoutnew := {
+    "page 0",                       // Seite 0 (Basisseite)
+    "nodispose",
+    "resizepic 0 0 2620 800 200",
+
+    "text 20 20 1644 0",
+
+    "button 770 173 2708 2709 1 0 0", // Cancel-Button
+    "text 710 173 1644 1",
+
+    "button 100  70 2708 2709 1 0 "+PUN_WARN,
+    "text   130  70 1644 2",
+
+    "button 300  70 2708 2709 1 0 "+PUN_JAIL,
+    "text   330  70 1644 3",
+
+    "button 500  70 2708 2709 1 0 "+PUN_PILLORY,
+    "text   530  70 1644 4",
+
+    "button 100 120 2708 2709 1 0 "+PUN_DEATH,
+    "text   130 120 1644 5",
+
+    "button 300 120 2708 2709 1 0 "+PUN_STONEPIT,
+    "text   330 120 1644 6",
+
+    "button 500 120 2708 2709 1 0 "+PUN_MISC,
+    "text   530 120 1644 7"
+  };
+
+  var datanew := {
+    "Neue Strafe fuer "+player.name+"/"+LHex(player.serial)+":",
+    "Abbruch",
+    "Verwarnung",
+    "Knast",
+    "Pranger",
+    "Todesstrafe",
+    "Steinbruch",
+    "Sonstiges"
+  };
+  // }}}
+
+  ret := SendDialogGump(who, layoutnew, datanew);
+
+  If (!ret[0])
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+  // }}}
+
+  // V. notwendige Daten fuer Strafe abfragen, Strafe verkuenden/anwenden {{{
+  // Grund der Strafe erfragen
+  var reason := AskForReason(who);
+  If (!reason)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  var punishment := "";
+  Case (ret[0])
+  PUN_WARN: // Verwarnung {{{
+    SendSysMessagePergon(player,
+      "Ihr wurdet soeben verwarnt! Grund: "+reason,
+      "You have been issued a warning! Reason: "+reason,
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+
+    syslog(
+      "STRAFE: "+CharInfoStr(player)+" wurde von "+CharInfoStr(who)+
+      " verwarnt wegen: "+reason
+    );
+  // }}}
+
+  PUN_JAIL: // Knast {{{
+    // nach Dauer des Knastaufenthalts fragen
+    punishment := SendTextEntryGump(who,
+      "Dauer der Knaststrafe (in Minuten)?", TE_CANCEL_DISABLE,
+      TE_STYLE_NUMERICAL, 9999, "Imprisonment (in minutes)?"
+    );
+    punishment := CInt(punishment);
+    If (punishment <= 0)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+
+    // Bei Seern und GMs muss ein HighGM (oder hoeher) zustimmen
+    If (!AllowedToJail(who))
+      If (!AskForPermission(who, player, "Knast ("+punishment+"min)"))
+        SendSysMessagePergon(who,
+          "Das Aussprechen der Knaststrafe wurde Euch verwehrt.",
+          "You got no persmission to announce this jail punishment."
+        );
+        return;
+      EndIf
+    EndIf
+
+    AutoJail(player, punishment);
+
+    Sleep(1);
+    SendSysMessagePergon(player,
+      "Ihr wurdet soeben bestraft und für "+punishment+
+      " Minuten in den Knast geworfen! Grund: "+reason,
+      "You have been jailed for "+punishment+
+      " minutes due to a delict! Reason:"+reason,
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+
+    syslog(
+      "STRAFE: "+CharInfoStr(player)+" wurde von "+CharInfoStr(who)+
+      " fuer "+punishment+"min in den Knast geworfen wegen: "+reason
+    );
+
+    // zusaetzlich noch den String erweitern (damit es in der Uebersicht
+    // auch schoen aussieht)
+    punishment += "min Knast";
+  // }}}
+
+  PUN_PILLORY: // Pranger {{{
+    // nach Dauer des Knastaufenthalts fragen
+    punishment := SendTextEntryGump(who,
+      "Dauer der Prangerstrafe (in Minuten)?", TE_CANCEL_DISABLE,
+      TE_STYLE_NUMERICAL, 9999, "Pillory time (in minutes)?"
+    );
+    punishment := CInt(punishment);
+    If (punishment <= 0)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+
+    // Bei Seern und GMs muss ein HighGM (oder hoeher) zustimmen
+    If (!AllowedToJail(who))
+      If (!AskForPermission(who, player, "Pranger ("+punishment+"min)"))
+        SendSysMessagePergon(who,
+          "Das Aussprechen der Prangerstrafe wurde Euch verwehrt.",
+          "You got no persmission to announce this pillory punishment."
+        );
+        return;
+      EndIf
+    EndIf
+
+    AutoJail(player, punishment, struct{type := "Pranger"});
+
+    Sleep(1);
+    SendSysMessagePergon(player,
+      "Ihr wurdet soeben bestraft und werdet fuer "+punishment+
+      " Minuten an den Pranger gestellt! Grund: "+reason,
+      "You will be put to the pillory for "+punishment+
+      " minutes due to a delict! Reason:"+ reason,
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+
+    syslog(
+      "STRAFE: "+CharInfoStr(player)+" wurde von "+CharInfoStr(who)+
+      " fuer "+punishment+"min an den Pranger gestellt wegen: "+reason
+    );
+
+    // zusaetzlich noch den String erweitern (damit es in der Uebersicht
+    // auch schoen aussieht)
+    punishment += "min Pranger";
+  // }}}
+
+  PUN_DEATH: // Todesstrafe {{{
+    SendSysMessagePergon(who,
+      "Hinweis: Das Opfer sollte seinen Rucksack geleert haben, "+
+      "bevor Ihr beginnt.",
+      "Hint: Your victim should have emptied his backpack before you proceed."
+    );
+
+    // eine Guillotine muss in der Naehe sein
+    var guill := 0;
+    ForEach item in (ListItemsNearLocation(
+        player.x, player.y, LIST_IGNORE_Z, 30, player.realm
+    ))
+      SleepMs(2);
+      If (item.objtype in (array{0x1230, 0x125e, 0xff11, 0xff12}))
+        guill := item;
+        break;
+      EndIf
+    EndForEach
+
+    If (!guill)
+      SendSysMessagePergon(who,
+        "Das Opfer muss nahe einer Guillotine sein!",
+        "Your victim has to stand near a guillotine!"
+      );
+      return;
+    EndIf
+
+    // nach Dauer des Knastaufenthalts fragen
+    punishment := SendTextEntryGump(who,
+      "Zeit in der Hoelle (in Minuten)?", TE_CANCEL_DISABLE,
+      TE_STYLE_NUMERICAL, 9999, "Time in hell (in minutes)?"
+    );
+    punishment := CInt(punishment);
+    If (punishment <= 0)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+
+    // Bei Seern und GMs muss ein HighGM (oder hoeher) zustimmen
+    If (!AllowedToJail(who))
+      If (!AskForPermission(
+          who, player, "Todesstrafe ("+punishment+"min in Hoelle)"
+      ))
+        SendSysMessagePergon(who,
+          "Das Aussprechen der Todesstrafe wurde Euch verwehrt.",
+          "You got no permission to announce the death sentence."
+        );
+        return;
+      EndIf
+    EndIf
+
+    AutoJail(player, punishment, struct{type := "Tod", item := guill});
+
+    Sleep(1);
+    SendSysMessagePergon(player,
+      "Ihr wurdet soeben mit dem Tode bestraft und müsst für "+punishment+
+      " Minuten in der Hölle schmoren! Grund: "+reason,
+      "You have been sentenced to death and have to stay in hell for "+
+      punishment+" minutes! Reason: "+
+      reason,
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+
+    syslog(
+      "STRAFE: "+CharInfoStr(player)+" wurde von "+CharInfoStr(who)+
+      " wegen "+reason+" zum Tode verurteilt und muss fuer "+punishment+
+      "min in die Hoelle"
+    );
+
+    // zusaetzlich noch den String erweitern (damit es in der Uebersicht
+    // auch schoen aussieht)
+    punishment += "min Hoelle/Todesstrafe";
+  // }}}
+
+  PUN_STONEPIT: // Steinbruch {{{
+    punishment := SendTextEntryGump(who,
+      "Wieviele Steine muessen geschlagen werden (in 1k-Stueck)?",
+      TE_CANCEL_DISABLE, TE_STYLE_NORMAL, 5,
+      "Amount of stones to dig (in 1k's)?"
+    );
+    // falls deutsche Dezimalzahl eingegeben wurde, umbauen
+    punishment[","] := ".";
+    punishment := CDBl(punishment);
+    If (punishment <= 0.0)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+
+    // bei Seern und GMs muss ein HighGM (oder hoeher) zustimmen
+    If (who.cmdlevel < CMDLEVEL_HIGHGM)
+      If (!AskForPermission(
+          who, player, "Steinbruch ("+CInt(punishment*1000)+" Steine)"
+      ))
+        SendSysMessagePergon(who,
+          "Das Aussprechen der Steinbruchstrafe wurde Euch verwehrt.",
+          "You got no persmission to announce this quarry punishment."
+        );
+        return;
+      EndIf
+    EndIf
+
+    // Werte notieren und Player ausstatten
+    player.setprop(PROP_PUNISH_STONES, CInt(1000*punishment));
+    // fuer AutoForgive
+    player.setprop(PROP_PUNISH_TYPE, "Steinbruch");
+    var pick := CreateItemInBackpack(player, "StonePickDisgrace", 1);
+    If (!pick)
+      syslog(
+        "FEHLER: Schandhacke nicht erzeugbar fuer "+CharInfoStr(who)+": "+
+        pick.errortext
+      );
+    EndIf
+
+    punishment += "k Steine";
+    SendSysMessagePergon(player,
+      "Ihr wurdet soeben bestraft und in den Steinbruch geworfen, um "+
+      punishment+" abzuarbeiten! Grund: "+reason,
+      "You have been jailed in the quarry to dig "+punishment+
+      "! Reason: "+reason,
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+    Sleep(1);
+
+    var pos := struct{
+      x     := who.x,
+      y     := who.y,
+      z     := who.z,
+      realm := who.realm
+    };
+    who.setprop(PROP_PUNISH_OLDPOS, pos);
+
+    var res := MoveObjectToLocation(
+      player, 5943, 1459, 0, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+    );
+    If (!res)
+      syslog(
+        "FEHLER: "+CharInfoStr(who)+
+        " konnte nicht in den Steinbruch verschoben werden: "+res.errortext
+      );
+    EndIf
+
+    syslog(
+      "STRAFE: "+CharInfoStr(player)+" wurde von "+CharInfoStr(who)+
+      " zum Abarbeiten von "+punishment+" in den Steinbruch geworfen "+
+      "wegen: "+reason
+    );
+  // }}}
+
+  PUN_MISC: // Sonstige Strafe {{{
+    // nach Art und Grund der Strafe fragen
+    punishment := SendTextEntryGump(who,
+      "Welche Art von Bestrafung soll ausgesprochen werden?",
+      TE_CANCEL_DISABLE, TE_STYLE_NORMAL, 20, "What punishment to impose?"
+    );
+    If (!punishment)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+
+    SendSysMessagePergon(player,
+      "Euch wurde soeben eine Strafe ausgesprochen: "+reason,
+      "You have been issued a punishment: "+reason,
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+
+    syslog(
+      "STRAFE: "+CharInfoStr(player)+" wurde von "+CharInfoStr(who)+
+      " bestraft. Grund: "+reason+"; die Strafe ist: "+punishment
+    );
+  // }}}
+
+  default:
+    syslog("FEHLER: Ungueltige Auswahl "+ret[0]);
+    return;
+  EndCase
+
+  SendSysMessagePergon(who,
+    "Die Strafe wurde verkündet.", "The punishment was announced.",
+    _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+  );
+
+  Case (ret[0])
+  PUN_WARN:
+    // Verwarnung, keine weiteren Massnahmen noetig
+    break;
+
+  PUN_MISC:
+    // Individualstrafe
+    SendSysMessagePergon(who,
+      "Vollstreckt die Strafe nun, falls es noch nicht passiert ist.",
+      "Execute the punishment if it wasn't done yet.",
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+
+  default:
+    SendSysMessagePergon(who,
+      "Überzeugt Euch, ob sie ordnungsgemäß vollstreckt wurde.",
+      "Check for its execution.",
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+  EndCase
+  Sleep(2);
+  // }}}
+
+  // VI.  PunishInfo-String neu zusammensetzen {{{
+  // alle Infos fuer die Strafe zusammen und verkuendet, also eintragen
+  var info := Array;
+  info.append(GetDateStr());
+  info.append(player.name+"/"+LHex(player.serial));
+  info.append(who.name   +"/"+LHex(who.serial));
+  info.append(punishment);
+  info.append(reason);
+  info.append(ReadGameClock());
+
+  var old_crit := Is_Critical();
+  Set_Critical(1);
+  var PI := GetGlobalProperty("PunishInfos");
+  var PI_temp := Array;
+
+  // alte Eintraege entfernen, neue uebernehmen
+  // alt == aelter als 'VALIDTIME' Monate Serverlaufzeit
+  ForEach entry in PI
+    SleepMs(2);
+    // GameClock + 2x1 Monat
+    If (CInt(entry[6]) >= ReadGameClock() - (VALIDTIME * 2592000))
+      PI_temp.append(entry);
+    EndIf
+  EndForEach
+
+  // den neuen Eintrag noch hinzufuegen
+  PI_temp.append(info);
+  // }}}
+
+  // VII. PunishInfo-String in GlobalProp PunishInfos speichern {{{
+  // GlobalProp abspeichern
+  SetGlobalProperty("PunishInfos", PI_temp);
+  Set_Critical(old_crit);
+  // }}}
+EndProgram
+
+// Filtert anhand der uebergebenen Serial alle Eintraege des Spielers in
+// den PunishInfos heraus und liefert sie zurueck
+Function GetCharInfos(PI, serial) // {{{
+  var info := Array;
+  var info_ret := Array;
+  var i, s;
+
+  ForEach entry in PI
+    SleepMs(2);
+    // Serial zum Vergleich extrahieren
+    i := find(entry[2], "0x", 1);
+    s := entry[2][i, len(entry[2])];
+    If (CInt(s) == serial)
+      info.shrink(0);
+      info.append(entry[1]);
+      info.append(entry[2]);
+      info.append(entry[3]);
+      info.append(entry[4]);
+      info.append(entry[5]);
+      info.append(entry[6]);
+
+      info_ret.append(info);
+    EndIf
+  EndForEach
+
+  return info_ret;
+EndFunction // }}}
+
+// Oeffnet ein Gump, in dem der GM den Grund der Strafe eintragen kann
+Function AskForReason(who)
+  return SendTextEntryGump(who,
+    "Aus welchem Grund wurde die Strafe ausgesprochen?",
+    TE_CANCEL_DISABLE, TE_STYLE_NORMAL, 80,
+    "Reason for this punishment?"
+  );
+EndFunction
+
+// Fragt nach einem anwesenden HighGM, der der Strafe zustimmen soll
+Function AskForPermission(who, vict, reason := "") // {{{
+  SendSysMessagePergon(who,
+    "Wählt einen HighGM (oder höher), der die Strafe genehmigen soll.",
+    "Choose a HighGM (or higher) who allows the punishment."
+  );
+  var tgt_gm := who;
+  While (tgt_gm.cmdlevel < CMDLEVEL_HIGHGM)
+    SleepMs(2);
+    tgt_gm := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!tgt_gm)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return 0;
+    EndIf
+
+    If (tgt_gm.cmdlevel < CMDLEVEL_HIGHGM)
+      SendSysMessagePergon(who,
+        "Das ist kein HighGM (oder höher)",
+        "No HighGM (or higher) chosen!"
+      );
+    EndIf
+  EndWhile
+
+  SendSysMessagePergon(who,
+    tgt_gm.name+" wird gebeten, die Aktion zu genehmigen.",
+    tgt_gm.name+" is asked to give his or her permission."
+  );
+
+  SendSysMessagePergon(who,
+    "Bitte wartet einen Augenblick auf die Entscheidung.",
+    "Please wait a moment for the decision."
+  );
+  If (reason)
+    reason := "("+reason+") ";
+  EndIf
+  SendSysMessagePergon(tgt_gm,
+    who.name+" braucht Genehmigung für Strafe "+reason+"gegen "+vict.name,
+    who.name+" needs permission for punishment "+reason+"on "+vict.name
+  );
+
+  return SendYesNoDialog(tgt_gm, "Gestattet Ihr die Strafe?", 100, 100);
+EndFunction // }}}
+
+// vim: sw=2 sts=2

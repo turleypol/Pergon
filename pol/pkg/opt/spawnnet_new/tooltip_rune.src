@@ -1,0 +1,19 @@
+/////////////////////////////////////////////////////////
+// tooltip_rune - Für Tooltips
+//
+// Author: Mehdorn
+
+include ":tooltips:method_include";
+
+Program Install()
+  return 1;
+EndProgram
+
+Exported Function HasTooltip(object, who)
+  return hasTooltipRune(object);
+  who := who;
+EndFunction
+
+Exported Function setTooltip(object,byref packet)
+  setTooltipRune(object,packet);
+EndFunction

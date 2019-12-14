@@ -1,0 +1,540 @@
+/////////////////////////////////////////////////////////
+//
+//   useidol - ChampionsSpawn Steuerungsscript
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     04.07.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+
+Use uo;
+Use os;
+Use cfgfile;
+Use util;
+
+
+Include "include/msgs";
+Include "include/animal";
+Include "include/npc";
+Include "include/eventid";
+Include "include/server";
+
+Enum Misc
+  SPAWNRANGE:=24,
+  MAX_CREATE_TRYES:=10,
+  EXPIREDELAY:=600,  // 10 Minuten
+  MAXEXPIRECOUNT:=3, // Wieoft darf man versagen
+  USEDELAY:=12*60*60 // nur alle 12h darf ein Char aktivieren
+EndEnum
+
+Var Spawns:={};
+Var LvL:=0;
+Var KillCount:=0;
+Var Champion:=0;
+Var WhiteSkulls:={};
+Var RedSkulls:={};
+Var ExpireTime:=0;
+Var ExpireCount:=0;
+Var PID:=GetPID();
+Var SpawnCfg:=ReadConfigFile(":championspawn:spawns");
+Var SpawnType;
+Var Center;
+Var dmgdealer:=dictionary;
+
+Const DEBUG:=1;
+
+Program UseIdol(who,idol)
+  Center:=idol;
+
+  SpawnType:=idol.getprop("spawntype");  // Welche Spawns aus spawns.cfg
+  If (!spawntype)
+    Return;
+  EndIf
+  Var waittime,ev,damager;
+  If (DEBUG)
+    If (who.cmdlevel>=CMDLEVEL_SCRIPTER)
+      If (idol.getprop("#active"))
+        GetProcess(idol.getprop("#active")).sendevent(struct{source:=who,type:=DEBUG});
+        Return;
+      EndIf
+    EndIf
+  EndIf
+  If (idol.getprop("#active"))  // Bin schon da
+    Return;
+  EndIf
+  
+  If (DEBUG)
+    If (!idol.getprop("level0"))
+      var spawntypes:=GetConfigStringArray(SpawnCfg[Spawntype],"level0");
+      idol.setprop("level0",spawntypes);
+      spawntypes:=GetConfigStringArray(SpawnCfg[Spawntype],"level1");
+      idol.setprop("level1",spawntypes);
+      spawntypes:=GetConfigStringArray(SpawnCfg[Spawntype],"level2");
+      idol.setprop("level2",spawntypes);
+      spawntypes:=GetConfigStringArray(SpawnCfg[Spawntype],"level3");
+      idol.setprop("level3",spawntypes);
+      spawntypes:=GetConfigStringArray(SpawnCfg[Spawntype],"champion");
+      idol.setprop("lvlchampion",spawntypes);
+      spawntypes:=GetConfigStringArray(SpawnCfg[Spawntype],"champguard");
+      idol.setprop("lvlchampguard",spawntypes);
+      SendSysMessagePergon(who,"init");
+      Return;
+    EndIf
+  EndIf
+  
+  If (who.getprop("LastChampUse"))
+    If ((who.getprop("LastChampUse")+USEDELAY)>ReadGameClock()) // alle X Stunden nur
+      PrintTextAbovePergon(who,idol,struct{uc_text:=CAscz("Ihr schon wieder?"),lang:="DEU"},
+                                    struct{uc_text:=CAscz("You again?"),lang:="ENU"},FONT_NORMAL,COLOR_RED_DARK);
+      Return;
+    EndIf
+  EndIf
+  who.setprop("LastChampUse",ReadGameClock());
+  Detach();
+  SetScriptController(0);
+  
+  idol.setprop("#active",PID);
+  PrintTextAbovePergon(who,idol,struct{uc_text:=CAscz("Wer wagt es mich zu wecken?"),lang:="DEU"},
+                                struct{uc_text:=CAscz("Who dares to wake me?"),lang:="ENU"},FONT_NORMAL,COLOR_RED_DARK);
+
+  ForEachItem(idol.getprop("platform"),1);  // Platform bunt machen
+  SleepMS(2);
+  ForEachItem(idol.getprop("pentagram"),0);  // Pentagram zur Sicherheit auf 0
+
+  Set_Event_Queue_Size(300);
+  Spawn();  // lvl0 Spawnen
+  ExpireTime:=ReadGameClock()+EXPIREDELAY;  // Wann gibts lvlabzug
+  While(1)
+    SleepMS(2);
+    waittime:=Max(0,ExpireTime-ReadGameClock());  // Wielang darf ich denn warten?
+    ev:=Wait_For_Event(waittime);
+    If (ev)
+      If (ev.type==EVID_NPC_DIED)  // Da ist einer tod
+        If (ev.source==Champion)   // das war wohl der Champion, also fertig
+          MakeReward();   // Leute belohnen
+          PrintTextAbovePergon(who,idol,struct{uc_text:=CAscz("UUUUAAAARRRGGGHHH!!"),lang:="DEU"},
+                                        struct{uc_text:=CAscz("UUUUAAAARRRGGGHHH!!"),lang:="ENU"},FONT_NORMAL,COLOR_RED_DARK);
+          ForEachItem(idol.getprop("platform"),0);  // alles zurücksetzen
+          SleepMS(2);
+          ForEachItem(idol.getprop("pentagram"),0);
+          DeSpawn();
+          SetWhiteSkullCount(0);
+          SetRedSkullCount(0);
+          idol.eraseprop("#active");
+          Return;
+        EndIf
+        If (!Champion)  // Wenn Champion da ist interessiert mich der Rest nicht
+          ForEach serial in Spawns
+            If (ev.source==serial)
+              Spawns.erase(_serial_iter);  // der isses
+              KillCount+=1;
+              Break;
+            EndIf
+            SleepMS(2);
+          EndForEach
+          CheckLevel();  // Neues Lvl erreicht?
+          If (ev.damage) // jeder der mitmischt bekommt die 12h Sperre
+            damager:=GetMostRecentTotalDamager(ev.damage,3,600);
+            Foreach player in damager
+              player.setprop("LastChampUse",ReadGameClock());
+              If (dmgdealer.exists(player.serial))  // Hochzählen wer wieviel getötet hat
+                dmgdealer[player.serial]+=GetSubLevel()+1;
+              Else
+                dmgdealer[player.serial]:=GetSubLevel()+1;
+              EndIf
+            EndForEach
+          EndIf
+        EndIf
+      ElseIf (ev.type==DEBUG)
+        ForEachItem(idol.getprop("platform"),0);  // alles zurücksetzen
+        SleepMS(2);
+        ForEachItem(idol.getprop("pentagram"),0);
+        DeSpawn();
+        SetWhiteSkullCount(0);
+        SetRedSkullCount(0);
+        idol.eraseprop("#active");
+        Return;
+      EndIf
+    EndIf
+    If (ReadGameClock()>=ExpireTime) // tztztz
+      Expire();
+      If (ExpireCount>MAXEXPIRECOUNT) // Xmal schiefgegangen ->Aufhören
+        PrintTextAbovePergon(who,idol,struct{uc_text:=CAscz("HAHAHA!!"),lang:="DEU"},
+                                      struct{uc_text:=CAscz("HAHAHA!!"),lang:="ENU"});
+        DeSpawn();
+        ForEachItem(idol.getprop("platform"),0);
+        ForEachItem(idol.getprop("pentagram"),0);
+        SetWhiteSkullCount(0);
+        SetRedSkullCount(0);
+        idol.eraseprop("#active");
+        Return;
+      EndIf
+      Spawn();  // Wieder füllen
+      ExpireTime:=ReadGameClock()+EXPIREDELAY;
+    EndIf
+  EndWhile
+EndProgram
+
+
+// Weißer oder Roter Skull?
+Function CheckLevel()
+  Var maxkills:=GetSpawnAmount();
+  Var percent:=KillCount/CDbl(maxkills);
+  If (percent>=0.97)
+    AdvanceLevel();  // gratz
+  ElseIf (percent>=0.2)
+    SetWhiteSkullCount(CInt(percent*5));  // Zur Sicherheit einfach immer
+  EndIf
+EndFunction
+
+// Lvl up oder Champspawnen
+Function AdvanceLevel()
+  ExpireTime:=ReadGameClock()+EXPIREDELAY;
+  If (LvL<16)  // noch normales Lvlup
+    KillCount:=0;
+    LvL+=1;
+    SetRedSkullCount(LvL);  // 1 Roter dazu
+    SetWhiteSkullCount(0);  // und alle Weißen entfernen
+    PlaySoundEffect(Center,0x29);
+    PlayStationaryEffect(Center.x+1,Center.y+1,Center.z,0x3728,1,15,0,Center.realm);
+    Spawn(); // nachspawnen
+  Else
+    If (!Champion)  // Bin schon da
+      LvL+=1;
+      SetWhiteSkullCount(0);  // Nur rote bleiben stehen
+      Spawn(1);  // Champion
+      Spawn(2);  // Guards
+      ForEachItem(Center.getprop("pentagram"),1);  // Pentagram umfärben
+    EndIf
+  EndIf
+EndFunction
+
+// Weiße Köpfe entfernen/hinzufügen
+Function SetWhiteSkullCount(amount)
+  Var i,skull,loc;
+  If (amount<WhiteSkulls.size())  // Entfernen
+    For (i:=WhiteSkulls.size();i>amount;i-=1)
+      skull:=SystemFindObjectBySerial(WhiteSkulls[i]);
+      If (skull)
+        DestroyItem(skull);
+      EndIf
+    EndFor
+    WhiteSkulls.shrink(amount);
+  EndIf
+  If (amount>WhiteSkulls.size())  // Hinzufügen
+    For (i:=WhiteSkulls.size()+1;i<=amount;i+=1)
+      loc:=GetWhiteSkullLocation(i);
+      skull:=CreateItemAtLocation(loc.x,loc.y,loc.z,0x6675,1,Center.realm);
+      skull.MakeWhiteSkull();
+      WhiteSkulls.append(skull.serial);
+    EndFor
+  EndIf
+  Center.setprop("WhiteSkulls",WhiteSkulls); // und sichern
+EndFunction
+
+
+// Wo sollen die weißen Köppe hin=
+Function GetWhiteSkullLocation(i)
+  Var loc:=struct{x,y,z};
+  Case (i)
+    1: loc.x:=-1; loc.y:=-1;
+    2: loc.x:= 1; loc.y:=-1;
+    3: loc.x:= 1; loc.y:= 1;
+    4: loc.x:=-1; loc.y:= 1;
+  EndCase
+  loc.x:=loc.x+Center.x;
+  loc.y:=loc.y+Center.y;
+  loc.z:=Center.z;
+  Return(loc);
+EndFunction
+
+// Rote Köppe entfernen/hinzufügen
+Function SetRedSkullCount(amount)
+  Var i,skull,loc;
+  If (amount<RedSkulls.size())  // entfernen
+    For (i:=RedSkulls.size();i>amount;i-=1)
+      skull:=SystemFindObjectBySerial(RedSkulls[i]);
+      If (skull)
+        DestroyItem(skull);
+      EndIf
+    EndFor
+    RedSkulls.shrink(amount);
+  EndIf
+  If (amount>RedSkulls.size())  //hinzufügen
+    For (i:=RedSkulls.size()+1;i<=amount;i+=1)
+      loc:=GetRedSkullLocation(i);
+      skull:=CreateItemAtLocation(loc.x,loc.y,loc.z,0x6675,1,Center.realm);
+      skull.MakeRedSkull();
+      RedSkulls.append(skull.serial);
+    EndFor
+  EndIf
+  Center.setprop("RedSkulls",RedSkulls);
+EndFunction
+
+// Wohin mit den roten Köppen
+Function GetRedSkullLocation(i)
+  Var loc:=struct{x,y,z};
+  i-=1;
+  If (i<5)
+    loc.x:=i-2;
+    loc.y:=-2;
+  ElseIf (i<9)
+    loc.x:=2;
+    loc.y:=i-6;
+  ElseIf (i<13)
+    loc.x:=10-i;
+    loc.y:=2;
+  Else
+    loc.x:=-2;
+    loc.y:=14-i;
+  EndIf
+  loc.x:=loc.x+Center.x;
+  loc.y:=loc.y+Center.y;
+  loc.z:=Center.z;
+  Return(loc);
+EndFunction
+
+
+// Zeitum Pech gehabt
+Function Expire()
+  KillCount:=0;
+  ExpireCount+=1;
+  If (LvL==0) // erstes lvl nicht geschafft also komplett beenden
+    ExpireCount:=MAXEXPIRECOUNT+1;
+    Return;
+  EndIf
+  If (WhiteSkulls.size()==0) // noch nicht mal 20% geschafft
+    If (LvL>0)               // also lvlup
+      LvL-=1;
+      SetRedSkullCount(LvL);
+    EndIf
+  Else
+    SetWhiteSkullCount(0);   // aber mindestens alle weißen entfernen
+  EndIf
+  If (Champion)  // Champ killen
+    ForEachItem(Center.getprop("pentagram"),0);
+    var npc:=SystemFindObjectBySerial(Champion);
+    If (npc)
+      npc.setprop("guardkill",1);
+      npc.eraseprop("#championaltar");
+      npc.kill(); // death.log interessiert nicht
+    EndIf
+    Center.eraseprop("champion");
+    Champion:=0;
+  EndIf
+EndFunction
+
+// Wo befinden wir uns denn gerade?
+Function GetSubLevel()
+  If (LvL<=5)  // 0.Lvl für 0-5RoteSkulls
+    Return(0);
+  ElseIf (LvL<=9) // 1.Lvl für 6-9RoteSkulls
+    Return(1);
+  ElseIf (LvL<=13)// 2.Lvl für 10-13RoteSkulls
+    Return(2);
+  EndIf
+  Return(3);
+EndFunction
+
+// Wieviel kommt?
+Function GetSpawnAmount()
+  Return(200-(GetSubLevel()*40));
+EndFunction
+
+// Das wichtige
+Function Spawn(champ:=0)
+  Var amount,spawntypes;
+  Var template,times,spawnx,spawny,spawnz,creature;
+  Var champref;
+  If (!champ)  // Kein Champ also mal berechnen und Templates besorgen
+    var sublvl:=GetSubLevel();
+    amount:=GetSpawnAmount();
+    If (DEBUG)
+      spawntypes:=Center.getprop("level"+sublvl);
+    Else
+      spawntypes:=GetConfigStringArray(SpawnCfg[Spawntype],"level"+sublvl);
+    EndIf
+    amount-=Spawns.size();
+  ElseIf (champ==1)  // Champ
+    amount:=1;
+    If (DEBUG)
+      spawntypes:=Center.getprop("lvlchampion");
+    Else
+      spawntypes:=GetConfigStringArray(SpawnCfg[Spawntype],"champion");
+    EndIf
+  Else  // Champguards
+    amount:=20;
+    If (DEBUG)
+      spawntypes:=Center.getprop("lvlchampguard");
+    Else
+      spawntypes:=GetConfigStringArray(SpawnCfg[Spawntype],"champguard");
+    EndIf
+    champref:=SystemFindObjectBySerial(Champion);
+  EndIf
+
+  var override:=struct{CProps:=dictionary};
+  override.CProps.insert(PROP_ANCHOR,{Center.x, Center.y, SPAWNRANGE, 100});
+  override.CProps.insert("#championaltar", PID);
+  override.CProps.insert("noloot",1);  // kein Loot
+  If (champ<>1)  // Champ behält Leiche
+    override.CProps.insert("nocorpse",1);// keine Leiche
+  EndIf
+    
+  While (amount)
+    SleepMS(5);
+    amount-=1;
+    template:=spawntypes[RandomInt(spawntypes.size())+1];
+    // Spawnlocation besorgen
+    times:=0;
+    While (times<=MAX_CREATE_TRYES)
+      If (champ==2)  // Guards um den Champ rum
+        spawnx:=RandomIntMinMax(champref.x-10,champref.x+11);
+        spawny:=RandomIntMinMax(champref.y-10,champref.y+11);
+        spawnz:=GetStandingHeight(spawnx, spawny, Center.z-25,Center.realm);
+      Else
+        spawnx:=RandomIntMinMax(Center.x-SPAWNRANGE,Center.x+SPAWNRANGE+1);
+        spawny:=RandomIntMinMax(Center.y-SPAWNRANGE,Center.y+SPAWNRANGE+1);
+        spawnz:=GetStandingHeight(spawnx, spawny, Center.z-25,Center.realm);
+      EndIf
+      If (spawnz==error)
+        times+=1;
+      ElseIf (ListMultisInBox(spawnx,spawny,spawnz.z-20,spawnx,spawny,spawnz.z+20,Center.realm).size()>0)
+        times+=1; // Multi an der Stelle
+      Else
+        Break;
+      EndIf
+      SleepMS(2);
+    EndWhile
+    If (times>MAX_CREATE_TRYES)  // Keine passende Location gefunden
+      Continue;
+    EndIf
+
+    // Direkt spawnen weil sonst der Vernichter durchdreht
+    creature:=CreateNpcFromTemplatePergon(template,
+                spawnx, spawny, spawnz.z, 2, override,0,Center.realm);
+    If (!creature)
+      amount+=1;
+      Continue;
+    EndIf
+    creature.saveonexit:=0;
+
+    // NPC markieren
+    If (champ==1)
+      Champion:=creature.serial;
+      Center.setprop("champion",Champion);
+    Else
+      Spawns.append(creature.serial);
+    EndIf
+    
+  EndWhile
+  Center.setprop("spawns",Spawns);
+EndFunction
+
+
+// Leute belohnen aka combatabilities
+Function MakeReward()
+  // Top3 Killer suchen
+  var top:=GetTopPlayer();
+  If (top)
+    var abilities:=ReadConfigFile(":combatabilities:abilities");
+    var abilitycount:=GetConfigMaxIntKey(abilities);
+    var bookchance:=0.33;
+    ForEach player in top
+      If (player.getprop("Combatbook")) // Er hat schon ein Buch
+        If (SystemFindObjectBySerial(player.getprop("Combatbook")))
+          bookchance:=1.0/(abilitycount+1); // also nur geringe Chance
+        EndIf
+      EndIf
+      If (RandomFloat(1.0)<bookchance) // bekommt nen Buch
+        If (CreateItemInBackpackPergon(player,0xe686,1))
+          SendSysMessagePergon(player,struct{uc_text:=CAscz("Ihr findet ein Buch."),lang:="DEU"},
+                                      struct{uc_text:=CAscz("You find a book."),lang:="ENU"});
+        EndIf
+      Else // bekommt ne Rolle
+        var abilityscroll:=GetItemDescriptor(0xE687);
+        abilityscroll.cprops.insert("ability",RandomInt(abilitycount)+1);
+        var scroll:=CreateItemInBackpackPergon(player,abilityscroll,1);
+        If (scroll)
+          SetName(scroll,"Schriftrolle%n% Faehigkeit '"+abilities[scroll.getprop("ability")].name+"'");
+          SendSysMessagePergon(player,struct{uc_text:=CAscz("Ihr findet eine Schriftrolle."),lang:="DEU"},
+                                      struct{uc_text:=CAscz("You find a scroll."),lang:="ENU"});
+        EndIf
+      EndIf
+    EndForEach
+  EndIf
+EndFunction
+
+
+// Alle Spawns entfernen
+Function DeSpawn()
+  var npc;
+  ForEach serial in Spawns
+    npc:=SystemFindObjectBySerial(serial);
+    If (npc)
+      npc.setprop("guardkill",1);
+      npc.eraseprop("#championaltar");
+      npc.kill(); // death.log interessiert nicht
+    EndIf
+    SleepMS(2);
+  EndForEach
+  If (Champion)
+    npc:=SystemFindObjectBySerial(Champion);
+    If (npc)
+      npc.setprop("guardkill",1);
+      npc.eraseprop("#championaltar");
+      npc.kill(); // death.log interessiert nicht
+    EndIf
+    Center.eraseprop("champion");
+    Champion:=0;
+  Endif
+  Center.eraseprop("spawns");
+EndFunction
+
+
+// Für Platform und Pentagram
+Function ForEachItem(items,activate)
+  ForEach item in items
+    item:=SystemFindObjectBySerial(item);
+    If (item)
+      If (activate)
+        item.activate();
+      Else
+        item.deactivate();
+      EndIf
+    EndIf
+  EndForEach
+EndFunction
+
+Function GetTopPlayer()
+  var damager:={0};
+  var total:={0};
+  Var i,j;
+  For (i:=1;i<=dmgdealer.keys().size();i+=1)
+    For (j:=1;j<=total.size();j+=1)
+      If (dmgdealer[dmgdealer.keys()[i]]>total[j])
+        If (SystemFindObjectBySerial(dmgdealer.keys()[i])) // auch online
+          damager.insert(j,dmgdealer.keys()[i]);
+          total.insert(j,dmgdealer[dmgdealer.keys()[i]]);
+          damager.shrink(3);  // wieder auf Maxanz begrenzen
+          total.shrink(3);
+          Break;
+        EndIf
+      EndIf
+      SleepMS(2);
+    EndFor
+  EndFor
+  For (i:=1;i<=damager.size();i+=1)
+    If (damager[i])
+      damager[i]:=SystemFindObjectBySerial(damager[i]);
+    Else
+      damager.shrink(i-1);
+      Break;
+    EndIf
+  EndFor
+  Return(damager);
+EndFunction

@@ -1,0 +1,191 @@
+///////////////////////////////////////////////////////////////////////////
+// OnlineFull - TextCommand
+//
+//     Usage: .onlinefull
+//              Prints all online Players on Screen
+//
+//     Author: Shinigami
+//
+
+///////////////////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+// Revision 1.5  2008/09/11 11:45:08  mehdorn
+// - RP-Flag
+//
+// Revision 1.4  2008/08/04 04:27:50  mehdorn
+// - einige serverrelevante Konstanten aus modifyskill nach server verschoben
+// - fast alle Textcmds aus 0_player umgestellt
+// - diverse Includes dabei angepasst
+//
+// 2005/03/09 Shinigami: Zusaetzlicher Ort "auf einem Boot"
+// 2004/08/04 Fox: Counselor können ihre Farbe den normalen Playern anpassen
+// 2004/07/15 Shinigami: Hoehere oder gleich"wertige" GMs kann man aufspueren
+// 22.07.2003 Fraggulus: fehlerhafte Todesabfrage korrigiert
+// 2001/11/16 Shinigami: First Write
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use os;
+use uo;
+include "include/client";
+include "include/clock";
+include "include/msgs";
+include "include/onlinesearch";
+include "include/place";
+include "include/server";
+
+//////////////////////
+// Gump-Definitionen
+//////////////////////
+var layout := {
+  "page 0",
+  "nodispose",
+  "resizepic 0 0 2620 582 430",
+  "gumppic 20 30 2621",
+  "gumppic 290 30 2621",
+  "checkertrans 5 6 572 418",
+
+  "text 20 9 40 0",
+  "text 262 9 40 1",
+  "text 405 9 40 2",
+  "text 490 9 40 3"
+};
+var data := {"Spielername", "Aufenthaltsort", "Online seit", "wünscht RP"};
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_Online(who, eingabe)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  If (eingabe)
+    var gesuchter := SearchForOnlineCharacter(who, eingabe);
+    If (gesuchter)
+      SendSysMessagePergon(who, gesuchter.name+" ist online.");
+    Else
+      SendSysMessagePergon(who, eingabe+" konnte nicht gefunden werden.");
+    EndIf
+    return;
+  EndIf
+
+  var playerinfo := FillInFullCharInfo(who);
+  If (playerinfo)
+    SendDialogGump(who, layout, data, 10, 10);
+  Else
+    SendSysMessagePergon(who,
+      "Es ist gerade kein weiterer Character online."
+    );
+  EndIf
+EndProgram
+
+////////////////////////////////////////////////////////////
+// FillInFullCharInfo - Character-Daten ins Gump eintragen
+////////////////////////////////////////////////////////////
+Const CHARPERPAGE := 18;
+Const BASEPOSY    := 50;
+Function FillInFullCharInfo(who)
+  // Liste mit {char.name, char}
+  var playerinfo := EnumerateVisibleOnlineCharactersSorted(who, LIST_ME);
+  If (playerinfo.size() <= 0)
+    return;
+  EndIf
+
+  var gameclock := ReadGameClock();
+
+  var pagecount    := 1; // Akt. Seitenzahl
+  var playercount  := 0; // Zahl des einzutragenden Players
+  var nextpageswap := 0;
+  var pos_y;
+
+  // Alle Player eintragen
+  ForEach player in playerinfo
+    If (playercount == nextpageswap)
+      // Seitenwechsel-Buttons einfuegen
+      layout.append("page "+pagecount);
+      If (playercount > 0)
+        layout.append("button 130 9 2650 2651 0 "+(pagecount-1));
+      EndIf
+      If (playerinfo.size() > playercount+CHARPERPAGE)
+        layout.append("button 110 9 2648 2647 0 "+(pagecount+1));
+      EndIf
+      pagecount += 1;
+      nextpageswap += CHARPERPAGE;
+      pos_y := BASEPOSY;
+    EndIf
+
+    // Name, Location ausgeben
+    If (player[2].cmdlevel >= CMDLEVEL_SEER)
+      // Commandlevel ab Seer
+      layout.append("text 20 "+CStr(pos_y)+" 38 "+data.size());
+      data.append(player[1]);
+      layout.append("text 262 "+CStr(pos_y)+" 40 "+data.size());
+
+      If (who.cmdlevel >= player[2].cmdlevel)
+        // Hoehere oder gleich"wertige" GMs kann man aufspueren
+        If (player[2].dead)
+          data.append(TOTENREICH);
+        Else
+          data.append(PlaceName(player[2]));
+        EndIf
+      Else
+        data.append(KONTINENT);
+      EndIf
+    Else
+      If (player[2].murderer)                  // PKs
+        layout.append("text 20 "+CStr(pos_y)+" 66 "+data.size());
+        data.append(player[1]);
+        layout.append("text 262 "+CStr(pos_y)+" 40 "+data.size());
+      ElseIf (player[2].cmdlevel == CMDLEVEL_COUNSELOR)
+        // Counselor
+        If (GetObjProperty(player[2], HIDE_BM_ONLINE))
+          // nur wenn der BM es wuenscht wird er farblich hervorgehoben
+          layout.append("text 20 "+CStr(pos_y)+" 68 "+data.size());
+        Else
+          layout.append("text 20 "+CStr(pos_y)+" 46 "+data.size());
+        EndIf
+        data.append(player[1]);
+        layout.append("text 262 "+CStr(pos_y)+" 40 "+data.size());
+      Else                                     // restliche Player
+        layout.append("text 20 "+CStr(pos_y)+" 68 "+data.size());
+        data.append(player[1]);
+        layout.append("text 262 "+CStr(pos_y)+" 40 "+data.size());
+      EndIf
+
+      If (player[2].dead)
+        data.append(TOTENREICH);
+      ElseIf ((player[2].multi) And (player[2].multi.isa(POLCLASS_BOAT)))
+        data.append(BOOTFAEHRE);
+      Else
+        data.append(PlaceName(player[2]));
+      EndIf
+    EndIf
+
+    // Online-Zeit ermitteln und ausgeben
+    var time := GetObjProperty(player[2], "lifetime_session");
+    If (time)
+      time := Format_Time(gameclock-time);
+    Else
+      SetObjProperty(player[2], "lifetime_session", gameclock);
+      time := "0:00";
+    EndIf
+
+    layout.append("text 424 "+CStr(pos_y)+" 68 "+data.size());
+    data.append(time);
+
+    If (GetObjProperty(player[2], PROP_WANTS_RP))
+      layout.append("gumppic 515 "+CStr(pos_y+5)+" 2361");
+    Else
+      layout.append("gumppic 515 "+CStr(pos_y+5)+" 2360");
+    EndIf
+
+    playercount += 1;
+    pos_y += 20;
+  EndForEach
+
+  return playerinfo;
+EndFunction
+
+// vim: sw=2 sts=2

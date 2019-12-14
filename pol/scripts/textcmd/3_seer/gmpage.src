@@ -1,0 +1,248 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD GMPage - GMs können sich Pages ansehen/bearbeiten
+//
+// Author: AgtMulda
+
+// TODO:
+// - Kommentarfunktion
+
+use file;
+use uo;
+include "include/clock";
+include "include/logutil";
+include "include/msgs";
+include "include/names";
+include "include/pergonutil";
+include "include/place";
+include "include/server";
+
+// Offsets der Buttons
+Const OS_DELETE := 0;
+Const OS_GO     := 1000;
+Const OS_GO_POS := 2000;
+Const OS_LETTER := 3000;
+Const OS_DELALL := 9999;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program TextCMD_GMPage(who)
+///////////////
+// Gump-Daten
+///////////////
+  var layout := {
+    "page 0",
+    "nodispose",
+    "resizepic 30 30 5100 590 450",
+    "text 170 35 0 0",
+    // Button "Alle loeschen"
+    // "button 40 55 208 209 1 0 "+OS_DELALL,
+    // "text 60 55 0 1",
+    // G, L, D
+    "text 40 85 500 2",
+    "text 60 85 500 3",
+    "text 600 85 500 4",
+    // Seitenauswahl
+    "button 285 60 2117 2118 0 1 0",
+    "button 315 60 2117 2118 0 2 0",
+    "button 345 60 2117 2118 0 3 0",
+    "button 375 60 2117 2118 0 4 0",
+    "button 405 60 2117 2118 0 5 0",
+    "button 435 60 2117 2118 0 6 0",
+    "button 465 60 2117 2118 0 7 0",
+    "button 495 60 2117 2118 0 8 0",
+    "button 525 60 2117 2118 0 9 0",
+    "button 555 60 2117 2118 0 10 0"
+  };
+
+  var data := {
+    "GMPage Menue - Waehlt eine Option!",
+    "Alle Pages loeschen",
+    "G",
+    "L",
+    "D"
+  };
+
+  // Macht grade jemand was den Pages?
+  If (GetGlobalProperty(GM_PAGE_ACTIVITY))
+    SendSysMessagePergon(who, GetGlobalProperty(GM_PAGE_ACTIVITY)+
+      " schreibt oder bearbeitet gerade Pages. Versucht es später erneut."
+    );
+    return;
+  EndIf
+  SetGlobalProperty(GM_PAGE_ACTIVITY, who.name);
+
+  var pages := GetGlobalProperty(GM_PAGE_LIST);
+  If (!pages)
+    pages := {};
+  Else
+    pages.reverse();
+  EndIf
+
+  var zeile := 8;
+  var seite := 1;
+  // Gump zusammenbauen
+  var dataindex;
+  For (dataindex := 1; dataindex <= pages.size(); dataindex += 1)
+    var page := pages[dataindex];
+
+    // Player heraussuchen (fuer Sprung, Name)
+    var char := SystemFindObjectBySerial(
+      page.who, SYSFIND_SEARCH_OFFLINE_MOBILES
+    );
+
+    // Seitenwechsel behandeln
+    If (zeile<8)
+      zeile += 1;
+    Else
+      layout.append("page "+seite);
+      seite += 1;
+      zeile := 1;
+    EndIf
+
+    // "Go"-Knopf
+    If (char.connected)
+      layout.append(
+        // Online                    gruen rot
+        "button 40 "+(64+zeile*46)+" 2361 2360 1 0 "+(dataindex+OS_GO)
+      );
+    Else
+      layout.append(
+        // Offline                   blau  rot
+        "button 40 "+(64+zeile*46)+" 2362 2360 1 0 "+(dataindex+OS_GO)
+      );
+    EndIf
+
+    // Name
+    layout.append("text 75 "+(59+zeile*46)+" 0 "+data.size());
+    If (char)
+      var currname := RemoveTown(char.name);
+      var realname := RemoveTown(GetRealName(char));
+      If (currname == realname)
+        data.append(realname);
+      Else
+        data.append(realname+" ("+currname+")");
+      EndIf
+    Else
+      data.append("---");
+    EndIf
+
+    // "Position"-Knopf
+    layout.append(
+      "button 40 "+(84+zeile*46)+" 2361 2360 1 0 "+(dataindex+OS_GO_POS)
+    );
+
+    // Positionsangabe
+    layout.append("text 75 "+(79+zeile*46)+" 0 "+data.size());
+    data.append(
+      ShortLoc(page.loc)+" "+GetDateTimeStr(SHOW_DATE_SHORT, page.time)
+    );
+
+    // "Letterbox"-Knopf
+    layout.append(
+      "button 60 "+(64+zeile*46)+" 2361 2360 1 0 "+(dataindex+OS_LETTER)
+    );
+
+    // Page-Text
+    layout.append(
+      "htmlgump 285 "+(59+zeile*46)+" 310 44 "+(data.size()) +" 1 0"
+    );
+    data.append(page.text);
+
+    // Loeschknopf
+    layout.append(
+      "button 600 "+(64+zeile*46)+" 2360 2361 1 0 "+(dataindex+OS_DELETE)
+    );
+  EndFor
+
+  // Gump aufrufen
+  var bttn := CInt(SendDialogGump(who, layout, data)[0]);
+
+  // Zeit fuers Logging
+  var time := GetDateTimeStr();
+
+  // Sonderbuttons behandeln
+  If (bttn == OS_DELALL)
+    SetGlobalProperty(GM_PAGE_LIST, array{});
+    SendSysMessagePergon(who, "Alle Pages wurden gelöscht.");
+
+    LogToFile("log/pages.log",
+      time+" GELOESCHT: Alles [von "+CharInfoStr(who)+"]"
+    );
+    EraseGlobalProperty(GM_PAGE_ACTIVITY);
+    return;
+  ElseIf (bttn == 0)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    EraseGlobalProperty(GM_PAGE_ACTIVITY);
+    return;
+  EndIf
+
+  var select  := 1000 * CInt(bttn / 1000);
+  var pagenum := bttn % 1000;
+
+  var char := SystemFindObjectBySerial(
+    pages[pagenum].who, SYSFIND_SEARCH_OFFLINE_MOBILES
+  );
+
+  Case (select)
+  OS_GO:
+    If (char.connected)
+      SendSysMessagePergon(who, "Springe zu "+char.name);
+    Else
+      SendSysMessagePergon(who, "Springe zu "+char.name+" (offline)");
+    EndIf
+    MoveObjectToLocation(
+      who, char.x, char.y, char.z, char.realm, MOVEOBJECT_FORCELOCATION
+    );
+
+  OS_GO_POS:
+    var pos := pages[pagenum].loc;
+    SendSysMessagePergon(who,
+      "Springe zu ("+pos.x+", "+pos.y+", "+pos.z+"; "+pos.r+")"
+    );
+    MoveObjectToLocation(
+      who, pos.x, pos.y, pos.z, pos.r, MOVEOBJECT_FORCELOCATION
+    );
+
+  OS_LETTER:
+    If (!Start_ScriptPergon(":letterbox:email",
+        array{
+          // von, von_box, an_box
+          who, who.serial, char.serial,
+          // Betreff
+          "Eure Page von "+GetDateTimeStr(SHOW_DATE_SHORT, pages[pagenum].time)
+        }
+    ))
+      SendSysMessagePergon(who,
+        "Letterbox kann leider nicht aufgerufen werden."
+      );
+    EndIf
+
+  OS_DELETE:
+    var page := pages[pagenum];
+    pages.erase(pagenum);
+
+    var logname;
+    If (char)
+      logname := CharInfoStr(char);
+    Else
+      logname := "--- ["+LHex(page.who)+"]";
+    EndIf
+    LogToFile("log/pages.log",
+      time+" GELOESCHT: "+logname+" "+ShortLoc(page.loc)+" "+
+      GetDateTimeStr(SHOW_DATE_SHORT, page.time)+": "+page.text+
+      " [geloescht von "+CharInfoStr(who)+"]"
+    );
+
+    // oben wird gedreht, nun zurueckdrehen
+    pages.reverse();
+    SetGlobalProperty(GM_PAGE_LIST, pages);
+
+    SendSysMessagePergon(who, "Page gelöscht");
+
+  EndCase
+
+  EraseGlobalProperty(GM_PAGE_ACTIVITY);
+EndProgram
+
+// vim: sw=2 sts=2

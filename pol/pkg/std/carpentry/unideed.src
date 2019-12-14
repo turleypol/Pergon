@@ -1,0 +1,460 @@
+//////////////////////////////////////////////////
+//
+//   Phygons Universal Deed v1.00 (2003/11/11)
+//
+//     Usage: DoubleClick a deed (0xb032)
+//
+//     Author: Phygon
+//
+//  Bauplan für Gegenstände in zwei verschiedenen Ausrichtungen (Ost/West oder Nord/Süd)
+//  Alle Unterobjekte übernehmen den Namen und die Farbe des Bauplans
+//
+//
+//
+////////////////////////////////////////////////////////
+// ### Beispieleintrag in sets.cfg ###
+//  set Kreissaege_ns
+//  {
+//    // Die Werte fixed und offset gibt es nur für Gegenstände mit variabler Länge
+//    // Fixed steht für Anzahl Elemente am Anfang bzw. am Ende (die immer nur einfach existieren)
+//    // Offset gibt die Verschiebung des Mittelstücks an für jedes Mal, dass sie gebaut werden.
+//    Fixed  2  2
+//      Offset   0 -1  0
+//
+//    Item  0x19f1  0  0  0   // enthält Objtype, x-Offset, y-Offset, z-Offset
+//    Item  0x11b5  0  0  3
+//    Item  0x19f2  0 -1  0
+//    Item  0x19f3  0 -2  0
+//  }
+//
+// ### Eintrag in itemdesc.cfg ###
+//  Item 0xb01f
+//  {
+//    Name  BauplanKreissaege
+//    Desc  Kreissaege
+//    Graphic 0x14ed              // Oder auch 0x14ee
+//    Script  unideed             // Das Script zum Plazieren
+//    Plan  Kreissaege_ns Kreissaege_ow   // Die Baupläne (sets.cfg) als Nord/Süd (bzw. Ost/West, wenn nötig)
+//    VendorSellsFor  100000
+//    VendorBuysFor 10000
+//    weight  1/20
+//  }
+//
+////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+use os;
+use cfgfile;
+use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include ":housing:house";
+
+///////////////
+// Konstanten
+///////////////
+
+Const UOBJECT_WERKZEUGKASTEN := 0x1eba;
+
+Const PLACEDEED1    := 0x14ed;      // Grafiken des Bauplans
+Const PLACEDEED2    := 0x14ee;
+Const PLACEDEED_OPEN1 := 0x14ef;
+Const PLACEDEED_OPEN2 := 0x14f0;
+
+var TROUGHS := {0x7042, 0x7043, 0x7044, 0x7045};
+
+/////////////
+// Programm
+/////////////
+
+Program Use_Unideed(who, deed)
+  If (!AccessiblePergon(who, deed))
+    SendSysMessagePergon(who, "Ihr kommt da nicht ran!");
+    Return;
+  EndIf
+
+  ReserveItem(deed);
+
+  Var placed := GetObjProperty(deed, "placed");
+  If (!placed)
+    var house := GetHouseContainingObject(who);
+    If (
+      !IsHouseOwnerOrFriend(house, who) And
+      who.cmdlevel < CMDLEVEL_SEER
+    )
+      SendSysMessagePergon(who, "Ihr müsst Euch in einem Haus befinden und Besitzer oder Freund sein, um das Item aufzustellen!");
+      Return;
+    EndIf
+
+  EndIf
+
+  SendSysMessagePergon(who, "Wählt den Werkzeugkasten mit dem Ihr arbeiten wollt!");
+
+  Var werkzeugkasten:=Target(who);
+  If (werkzeugkasten.objtype<>UOBJECT_WERKZEUGKASTEN) // gr. Werkzeugkasten
+    SendSysMessagePergon(who, "Das ist nicht das richtige Werkzeug!");
+    Return;
+  EndIf
+
+  If (placed)
+    // Item is already placed. Remove it.
+    var ret := RemoveItems(who, placed);
+    If (!ret)
+      If (ret.errortext == "Component missing")
+        SendSysMessagePergon(who,
+          "So sehr Ihr den Bauplan dreht und wendet, es hilft nichts: "+
+          "Euch fehlt mindestens ein Bauteil. Ihr wagt den Abbau daher nicht."
+        );
+      ElseIf (ret.errortext["Trough"])
+        SendSysMessagePergon(who,
+          "Der Wassertrog, den Ihr abbauen wollt ist nicht leer: "+
+          "Ihr wagt den Abbau daher nicht."
+        );
+      Else
+        SendSysMessagePergon(who,
+          "Der Futtertrog, den Ihr abbauen wollt ist nicht leer: "+
+          "Ihr wagt den Abbau daher nicht."
+        );
+      EndIf
+      return;
+    EndIf
+
+    EraseObjProperty(deed, "placed");
+    If (deed.graphic==PLACEDEED_OPEN1)
+      deed.graphic := PLACEDEED1;
+    Else
+      deed.graphic := PLACEDEED2;
+    EndIf
+  Else
+    // Place item.
+    Var plan := GetObjProperty(deed, "plan");
+    Var fixed, offset;
+
+    If (plan)
+      If (TypeOfInt(plan) == OT_STRING)
+        Var sets := ReadConfigFile("::sets");
+        If (!sets)
+          SysLog("FEHLER: Konnte ::sets nicht oeffnen!");
+          Return;
+        EndIf
+
+        Var data := sets[plan];
+        If (!data)
+          SysLog("FEHLER: Bauplan "+plan+" in ::sets nicht vorhanden!");
+          Return;
+        EndIf
+
+        plan := ReadPlan(data, "Item");
+        If (!plan || !plan.size())
+          SysLog("FEHLER: Eintrag in Config fehlerhaft fuer Bauplan "+hex(deed)+"!");
+          Return;
+        EndIf
+
+        If (data.fixed)
+          fixed := splitWords(data.fixed);
+          fixed[1] := CInt(fixed[1]);
+          fixed[2] := CInt(fixed[2]);
+
+          offset := splitWords(data.offset);
+          If (!offset[1] && !offset[2] && !offset[3])
+            SysLog("FEHLER: Eintrag 'offset' in Config fehlerhaft fuer Bauplan "+hex(deed)+"!");
+            Return;
+          EndIf
+          offset[1] := CInt(offset[1]);
+          offset[2] := CInt(offset[2]);
+          offset[3] := CInt(offset[3]);
+        EndIf
+
+        UnLoadConfigFile("::sets");
+      EndIf
+    Else
+      // Bauplan aus sets.cfg lesen
+      Var itemdesc := ReadConfigFile("::itemdesc");
+      If (!itemdesc)
+        SysLog("FEHLER: Konnte ::itemdesc nicht oeffnen!");
+        Return;
+      EndIf
+
+      Var data := itemdesc[deed.objtype];
+      If (!data)
+        SysLog("FEHLER: Konnte Eintrag fuer "+hex(deed.objtype)+" in ::itemdesc nicht finden!");
+        Return;
+      EndIf
+
+      Var planname := data.plan;
+      If (!planname)
+        SysLog("FEHLER: Eintrag fuer "+hex(deed.objtype)+" enthaelt keinen Bauplan-Namen!");
+        Return;
+      EndIf
+      planname := splitWords(planname);
+
+      If (planname.size() > 1 && GetPlanFacing(who)==2)
+        planname := planname[2];    // Ost/West benutzen, wenn angefordert und vorhanden
+      Else
+        planname := planname[1];
+      EndIf
+
+      Var sets := ReadConfigFile("::sets");
+      If (!sets)
+        SysLog("FEHLER: Konnte ::sets.cfg nicht oeffnen!");
+        Return;
+      EndIf
+
+      data := sets[planname];
+      If (!data)
+        SysLog("FEHLER: Bauplan "+planname+" in ::sets nicht vorhanden!");
+        Return;
+      EndIf
+
+      plan := ReadPlan(data, "Item");
+      If (!plan || !plan.size())
+        SysLog("FEHLER: Eintrag in Config fehlerhaft fuer Bauplan "+planname+"!");
+        Return;
+      EndIf
+
+      If (data.fixed)
+        fixed := splitWords(data.fixed);
+        fixed[1] := CInt(fixed[1]);
+        fixed[2] := CInt(fixed[2]);
+
+        offset := splitWords(data.offset);
+        If (!offset[1] && !offset[2] && !offset[3])
+          SysLog("FEHLER: Eintrag 'offset' in Config fehlerhaft fuer Bauplan "+planname+"!");
+          Return;
+        EndIf
+        offset[1] := CInt(offset[1]);
+        offset[2] := CInt(offset[2]);
+        offset[3] := CInt(offset[3]);
+      EndIf
+
+      UnLoadConfigFile("::sets");
+    EndIf
+
+    // Nochmal überprüfen, ob es auch richtig ist
+    If (!plan || !plan.size())
+      SendSysMessagePergon(who, "Der Bauplan ist nicht lesbar!");
+      SysLog("FEHLER: unideed-Bauanleitung wurde nicht richtig erstellt!");
+      Return;
+    EndIf
+
+    Var length;
+    If (fixed)
+      length:=SendTextEntryGump(who, "Wie lang wollt Ihr den Gegenstand aufbauen? (0 bis 10) ?", TE_CANCEL_ENABLE, TE_STYLE_NUMERICAL, 10);
+      If (!length || length > 10)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        Return;
+      EndIf
+      length:=CInt(length); // erst hier CInt, sonst geht die Cancel-Abfrage nicht
+    EndIf
+
+    Var placed := array;
+    Var x:=who.x;
+    Var y:=who.y;
+    Var z:=who.z+1;   // Im Multihaus alles z+1 setzen, damits nicht im Fussboden verschwindet
+
+    If (fixed)
+      Var NewPlan := plan;
+
+      NewPlan.shrink(fixed[1]);
+      placed := BuildItems(who, deed, NewPlan, x, y, z);  // Build fixed start
+
+      If (placed[placed.size()] != 0x0) // Vorher Fehler beim Aufbauen aufgetreten?
+        NewPlan := plan;
+        NewPlan.shrink(NewPlan.size()-fixed[2]);
+        NewPlan.reverse();
+        NewPlan.shrink(NewPlan.size()-fixed[1]);
+        NewPlan.reverse();
+
+        // Build middle part of variable length
+        While (length > 0)
+          placed := placed + BuildItems(who, deed, NewPlan, x, y, z);
+          If (placed[placed.size()] == 0x0)
+            break;    // Abbrechen bei Fehler
+          EndIf
+
+          x := x+offset[1];
+          y := y+offset[2];
+          z := z+offset[3];
+          length := length - 1;
+        EndWhile
+      EndIf
+
+      If (placed[placed.size()] != 0x0) // Vorher Fehler beim Aufbauen?
+        NewPlan := plan;
+        NewPlan.reverse();
+        NewPlan.shrink(fixed[2]);
+        NewPlan.reverse();
+        placed := placed + BuildItems(who, deed, NewPlan, x, y, z); // Build fixed end
+      EndIf
+    Else
+      placed := BuildItems(who, deed, plan, x, y, z);
+    Endif
+
+    If (placed[placed.size()] == 0x0)   // Fehler? Dann alles wieder abbauen.
+      placed.erase(placed.size());
+      RemoveItems(who, placed, 1);
+      Return;
+    EndIf
+
+    PlaySoundEffect(who, SFX_HAMMER);
+
+    SetObjProperty(deed, "placed", placed);   // alle Objecte merken
+    If (deed.graphic==PLACEDEED1)
+      deed.graphic := PLACEDEED_OPEN1;
+    Else
+      deed.graphic := PLACEDEED_OPEN2;
+    EndIf
+  EndIf
+
+EndProgram
+
+///////////////////////////////////////////////////////////
+// BuildItems - Baut alle Gegenstände im array <plan> auf
+///////////////////////////////////////////////////////////
+
+Function BuildItems(who, deed, plan, x, y, z)
+  
+  Var placed := array;
+
+  Var obj, second, ok := 1;
+  Foreach item in plan;     // array of { objtype, x-offset, y-offset, z-offset }
+    If (!CheckForDoors(x+item[2], y+item[3], z+item[4],who.realm))
+      obj:=CreateItemAtLocationPergon(x+item[2], y+item[3], z+item[4], item[1], 1,who.realm);
+      If (obj)
+        var color := deed.color;
+        If (obj.objtype in TROUGHS)
+          If (!second)
+            second := obj;
+          Else
+            SetObjProperty(obj, "second", second.serial);
+            SetObjProperty(second, "second", obj.serial);
+          EndIf
+          If (deed.color == 0)
+            color := 50;
+          EndIf
+        EndIf
+        obj.color := color; obj.movable := 0; SetName(obj, deed.name);
+
+        placed.append(obj.serial);    // Object merken, um es wieder entfernen zu können.
+
+        var house := GetHouseContainingObject(obj);
+        If (
+          !IsHouseOwnerOrFriend(house, who) And
+          who.cmdlevel < CMDLEVEL_SEER
+        )
+          SendSysMessagePergon(who, "Ihr dürft außerhalb des Hauses nichts aufbauen!");
+          ok := 0;  // Ausserhalb des Hauses? Abbruch!
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Das konnte dort nicht aufgestellt werden!");
+        SysLog("Fehler beim Aufbauen (who="+who.name+", deed="+hex(deed.serial)+"): "+obj);
+        ok := 0;  // konnte es nicht erzeugt werden? Dann Abbruch.
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Das ist zu nah an einer Tür!");
+      ok := 0;
+    EndIf
+
+    If (!ok)
+      placed.append(0x0); // Abbruch- und Abbau-Signal
+      break;
+    EndIf
+
+    PlaySoundEffect(who, SFX_HAMMER);
+    SleepMs(700);
+  EndForeach
+
+  Return placed;
+EndFunction
+
+///////////////////////////////////////////////////////////
+// RemoveItems - Baut alles wieder ab
+///////////////////////////////////////////////////////////
+Function RemoveItems(who, placed, ignore_problems := 0)
+  // Umgekehrt abbauen, wie es aufgebaut wurde (damits anständig aussieht)
+  placed.reverse();
+
+  var to_destroy := array{};
+  ForEach item in (placed)
+    SleepMs(2);
+    var obj := SystemFindObjectBySerial(item);
+    If (obj)
+      If (obj.isa(POLCLASS_CONTAINER) and EnumerateItemsInContainer(
+        obj, ENUMERATE_IGNORE_LOCKED).size() and !ignore_problems
+      )
+        var ret := error;
+        ret.errortext := "Container isn't empty";
+        return ret;
+      EndIf
+      If (obj.objtype in TROUGHS && GetObjProperty(obj, "filled"))
+        var ret := error;
+        ret.errortext := "Trough isn't empty";
+        return ret;
+      EndIf
+      to_destroy.append(obj);
+    ElseIf (!ignore_problems)
+      var ret := error;
+      ret.errortext := "Component missing";
+      return ret;
+    EndIf
+  EndForEach
+
+  ForEach obj in (to_destroy)
+    DestroyItem(obj);
+
+    PlaySoundEffect(who, SFX_HAMMER);
+    SleepMs(500);
+  EndForEach
+
+  PlaySoundEffect(who, SFX_HAMMER);
+
+  return 1;
+EndFunction
+
+///////////////////////////////////////////////////////////
+// CheckForDoors - Prueft, ob eine Tuer in der Naehe ist
+// aus carpentry/placedeed.src
+///////////////////////////////////////////////////////////
+
+Function CheckForDoors(x, y, z,realm)
+  ForEach item in ListItemsNearLocation(x, y, z, 1,realm)
+    If ((UOBJECT_DOORS_START<=item.objtype) And (item.objtype<=UOBJECT_DOORS_END))
+      Return (1);
+    EndIf
+  EndForEach
+EndFunction
+
+///////////////////////////////////////////////////////////////////////
+// GetPlanFacing - Gibt 1 zurück, wenn Nord/Sued-Plan benutzt werden soll,
+//            ansonsten 2.
+///////////////////////////////////////////////////////////////////////
+
+Function GetPlanFacing(who)
+  If (who.facing==2 || who.facing==6)   // Ost/West nur, wenn Spieler in Ost oder Westrichtung blickt.
+    Return 2;
+  EndIf
+
+  Return 1;
+EndFunction
+
+////////////////////////////////////////////////////////////////
+// WriteUnideed - Speichert den Bauplan im Unideed-Item
+////////////////////////////////////////////////////////////////
+
+Function ReadPlan(cfg, entry)
+  Var plan_cfg := GetConfigStringArray(cfg, entry);
+  Var plan := array;
+
+  Foreach obj in plan_cfg
+    Var item := splitWords(obj);
+    plan.append( { CInt(item[1]), CInt(item[2]), CInt(item[3]), CInt(item[4]) } );
+  EndForeach
+
+  Return plan;
+EndFunction

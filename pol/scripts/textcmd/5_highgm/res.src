@@ -1,0 +1,16 @@
+use uo;
+include "include/msgs";
+include "include/modifyskill";
+include "include/vitals";
+
+Program textcmd_res(speaker)
+    var tgt := Target(speaker);
+    If (tgt.isa(POLCLASS_MOBILE))
+        If (tgt.dead)
+            ResurrectPergon(tgt);
+            ResPenalties(tgt);
+        Else
+            SendSysMessagePergon(speaker, "Das ist _nicht_ tot!");
+        EndIf
+    EndIf
+EndProgram

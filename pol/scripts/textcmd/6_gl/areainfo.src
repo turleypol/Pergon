@@ -1,0 +1,27 @@
+//
+// getmapinfo for gm's
+//
+// 1/00 exelon
+
+use uo;
+
+Include "include/msgs";
+
+program textcmd_getmapinfo( who )
+
+  SendSysMessagePergon(who,"Von was wollt Ihr ein AreaInfo bekommen?");
+  Var Koordinaten := TargetCoordinates(who);
+  Var tile_info;
+  If (Koordinaten)
+    tile_info := GetMapInfo(Koordinaten.x,Koordinaten.y,Koordinaten.realm);
+
+    SendSysMessagePergon(who, "Das ist LandTile " + hex(tile_info.landtile));
+    SendSysMessagePergon(who, "Mit Z = " + tile_info.z);
+    SendSysMessagePergon(who, "WorldHeight: " + GetWorldHeight(Koordinaten.x, Koordinaten.y,Koordinaten.realm));
+    SendSysMessagePergon(who, "StandingHeight: " + CStr(GetStandingHeight(Koordinaten.x,Koordinaten.y,Koordinaten.z,Koordinaten.realm).z));
+
+  Else
+    SendSysMessagePergon(who,"Keine Koordinaten ausgewählt.");
+  EndIf
+
+endprogram

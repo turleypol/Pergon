@@ -1,0 +1,121 @@
+///////////////////////////////////////////////////////////////////////////
+// Rise Script - Belebt Monster wieder
+//
+// Author: Mehdorn (Rewrite)
+
+use os;
+use uo;
+use util;
+include "include/msgs";
+
+Program Rise(p)
+  // gegen kaputten Aufruf gleich absichern
+  If (!p.corpse)
+    syslog("FEHLER: Wurde nicht mit Leiche aufgerufen: "+p.corpse);
+    return;
+  EndIf
+
+  var risechance := p.corpse.getprop("RiseChance");
+  If (!risechance)
+    risechance := 100;
+  EndIf
+  If (RandomInt(100) > risechance)
+    // wird nicht wiederbelebt
+    return;
+  EndIf
+
+  Sleep(RandomInt(3) + 3);
+  // Leiche noch da oder schon weggeschnippelt?
+  If (!p.corpse)
+    return;
+  EndIf
+
+  // Gesabbel
+  var text_de; var text_en;
+  Case (RandomInt(8))
+  0:
+    text_de := "Die Leiche wird wieder lebendig!";
+    text_en := "The corpse begins to live again!";
+  1:
+    text_de := "Die Leiche bewegt sich!";
+    text_en := "The corpse moves!";
+  2:
+    text_de := "Die Leiche steht wieder auf!";
+    text_en := "The corpse rises again!";
+  3:
+    text_de := "WUUUARGS";
+    text_en := "YAAARGS";
+  4:
+    text_de := "GRMPF!";
+    text_en := "HAAAAAR!";
+  5:
+    text_de := "TÖTEN!";
+    text_en := "DIE!";
+  6:
+    text_de := "So schnell wirst du mich nicht los!";
+    text_en := "You won't get rid of me _so_ easy!";
+  7:
+    text_de := "RACHE!";
+    text_en := "REVENGE!";
+  EndCase
+
+  PrintTextAboveLocalizedPergon(p.corpse, text_de, text_en);
+  Sleep(RandomInt(3)+3);
+
+  // Leiche noch da oder schon weggeschnippelt?
+  If (!p.corpse)
+    return;
+  EndIf
+
+  // einige Werte retten
+  var corptmpl := p.corpse.getprop("npctemplate");
+  var risename := p.corpse.getprop("RiseName");
+  var corpname := risename;
+  If (!corpname)
+    corpname := p.corpse.name;
+    corpname["Leiche von "] := "";
+    corpname["A corpse of "] := "";
+  EndIf
+
+  var risetimes := p.corpse.getprop("RiseTimes");
+  var template  := p.corpse.getprop("RiseTemplate");
+  If (!template)
+    template := corptmpl;
+  EndIf
+
+  var override := struct;
+  override.+CProps := dictionary;
+  If (p.corpse.getprop("RiseNoCorpse") or p.corpse.getprop("nocarve"))
+    override.CProps.insert("nocarve", 1);
+  EndIf
+  If (p.corpse.getprop("RiseNoCorpse") or p.corpse.getprop("nocorpse"))
+    override.CProps.insert("nocorpse", 1);
+  EndIf
+  If (p.corpse.getprop("RiseNoLoot") or p.corpse.getprop("noloot"))
+    override.CProps.insert("noloot", 1);
+  EndIf
+  If (risetimes > 1)
+    override.CProps.insert("RiseTimes",  risetimes - 1);
+    override.CProps.insert("RiseChance", risechance);
+    If (risename)
+      override.CProps.insert("RiseName", risename);
+    EndIf
+  EndIf
+
+  // NPC erstellen
+  var creature := CreateNpcFromTemplate(
+    template, p.corpse.x, p.corpse.y, p.corpse.z, override, p.corpse.realm
+  );
+
+  // weg damit
+  DestroyItem(p.corpse);
+
+  If (creature == error)
+    syslog("FEHLER: Kann keinen NPC erzeugen: "+creature.errortext);
+    return;
+  EndIf
+
+  If (Lower(template) == Lower(corptmpl) or risename)
+    creature.name := corpname;
+  EndIf
+EndProgram

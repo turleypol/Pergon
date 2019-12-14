@@ -1,0 +1,83 @@
+/////////////////////////////////////////////////////////////////
+// TextCMD_FindLostNPCs - Holt NPC's zu ihren Runen zurueck
+//
+// Features:
+// - sucht Spawnrunen im Umkreis von 5 und bewegt die zugehoerigen
+// Mobiles auf Spawnposition
+//
+// Author: Fox
+
+/////////////////////////////////////////////////////////////////
+// Modification
+// $Log: not supported by cvs2svn $
+// 24.07.06 Turley - Alte Position wird ausgegeben
+
+use os;
+use uo;
+include ":spawnnet_new:spawnnet";
+include "include/logutil";
+include "include/msgs";
+include "include/objtype";
+
+Program TextCMD_FindLostNPCs(who)
+    var counter  := 0;
+    var countnpc := 0;
+    ForEach rune in (ListItemsNearLocationOfType(
+        who.x, who.y, who.z, 5, UOBJ_SPAWNRUNE, who.realm
+    ))
+        SleepMS(10);
+        counter += 1;
+
+        var userdata := rune.getprop(CPROP_USER);
+        If (userdata.spawntype != TYPE_NPC)
+            // kein NPC-Rune
+            continue;
+        EndIf
+        countnpc += 1;
+
+        var number    := 0;
+        var spawndata := rune.getprop(CPROP_DATA);
+        ForEach mobile in (spawndata.serials)
+            SleepMS(2);
+            mobile := SystemFindObjectBySerial(mobile);
+            If (!mobile.isa(POLCLASS_NPC))
+                // da ist offenbar etwas kaputt
+                syslog(
+                    "WARNUNG: "+ItemInfoStr(mobile, COORDS_REALM)+
+                    " ist mit NPC-Spawnrune "+
+                    ItemInfoStr(rune, COORDS_REALM)+
+                    "verknuepft, aber kein NPC."
+                );
+                continue;
+            EndIf
+
+            If (mobile.getprop(CPROP_NR)[1] != rune.serial)
+                syslog(
+                    "WARNUNG: NPC "+CharInfoStr(mobile, COORDS_REALM)+
+                    " gehoert trotz Listung nicht zur Spawnrune "+
+                    ItemInfoStr(rune, COORDS_REALM)
+                );
+                continue;
+            EndIf
+
+            number+=1;
+            SendSysMessagePergon(who,
+                CharInfoStr(mobile, COORDS_REALM)+
+                " gefunden. Wird geholt."
+            );
+            MoveObjectToLocation(
+                mobile, rune.x, rune.y, rune.z, rune.realm,
+                MOVEOBJECT_FORCELOCATION
+            );
+        EndForEach
+        SendSysMessagePergon(who,
+            "Anzahl bewegte NPCs für "+ItemInfoStr(rune)+" ist "+number+"."
+        );
+    EndForEach
+    SendSysMessagePergon(who,
+        "Bearbeitete Spawnrunen: "+counter+"; davon NPC-Runen: "+countnpc
+    );
+    syslog(
+        "HINWEIS: "+CharInfoStr(who, COORDS_REALM)+" hat den Befehl benutzt."
+    );
+EndProgram

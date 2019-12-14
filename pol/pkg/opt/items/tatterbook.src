@@ -1,0 +1,257 @@
+///////////////////////////////////////////////////////////////////////////
+// tatterbook -- ein Buch zerfleddern
+
+use os;
+use uo;
+include "include/msgs";
+
+Const MAX_LOWSPELL  := 2;
+Const MAX_HIGHSPELL := 1;
+Const MAX_PAPER     := 5;
+
+Program TatterBook(who, book) // {{{
+    If (!book.movable)
+        SendSysMessagePergon(who, "Ihr müsst das erst losmachen!");
+        return;
+    EndIf
+
+    If (!ReserveItem(book))
+        SendSysMessagePergon(who, "Das wird schon benutzt!");
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Ihr zerfleddert das Buch, um etwas brauchbares zu finden."
+    );
+
+    var count_lowspell  := 0;
+    var count_highspell := 0;
+    var count_paper     := 0;
+    For i := 1 To 10
+        PlaySoundEffect(who, SFX_24A);
+        Sleep(1);
+
+        If (!who)
+            // beim Ausloggen hat man Pech gehabt, aber bevor ich
+            // noch den aktuellen Rausrupfstatus am Buch sichere ...
+            DestroyItem(book);
+            return;
+        EndIf
+
+        var random := RandomInt(1000);
+
+        // in 0,1% der Faelle Hauptgewinn {{{
+        If (count_highspell < MAX_HIGHSPELL)
+            If (random == 1)
+                count_highspell += 1;
+                var item :=
+                    CreateItemInBackpackPergon(who, GetHighScroll(), 1);
+                SendSysMessagePergon(who,
+                    "Ihr reisst eine "+item.desc+" heraus."
+                );
+                continue;
+            EndIf
+        EndIf
+        // }}}
+
+        // ansonsten 10% Chance auf niedere Rolle {{{
+        If (count_lowspell < MAX_LOWSPELL)
+            If (random <= 100)
+                count_lowspell += 1;
+                var item :=
+                    CreateItemInBackpackPergon(who, GetLowScroll(), 1);
+                SendSysMessagePergon(who,
+                    "Ihr reisst eine "+item.desc+" heraus."
+                );
+                continue;
+            EndIf
+        EndIf
+        // }}}
+
+        // mit 50% eine Rolle Papier {{{
+        If (count_paper < MAX_PAPER)
+            If (random <= 500)
+                count_paper += 1;
+                CreateItemInBackpackPergon(who, GetBlankScroll(), 1);
+                SendSysMessagePergon(who, "Ihr findet eine leere Rolle.");
+                continue;
+            EndIf
+        EndIf
+        // }}}
+    EndFor
+
+    SendSysMessagePergon(who, "Aus dem Buch ist nichts mehr herauszuholen");
+    DestroyItem(book);
+EndProgram // }}}
+
+Function GetHighScroll() // {{{
+    return array{
+        // Elementarmagier
+        0x6718, // 5 - Magischer Spiegel
+        0x6719, // 5 - Unsichtbarkeit
+        0x671a, // 5 - Mauer
+        0x671b, // 6 - Merken
+        0x671c, // 6 - Inkognito
+        0x671d, // 6 - Teleportation
+        0x6728, // 5 - Flammenschlag
+        0x6729, // 5 - Frostschock
+        0x672a, // 5 - Meteor
+        0x672b, // 5 - Blitz
+        0x672c, // 5 - Wasserresistenz
+        0x672d, // 6 - Feuerfeld
+        0x672e, // 6 - Blizzard
+        0x672f, // 6 - Steinhagel
+        0x6730, // 6 - Blitzfeld
+        0x6731, // 6 - Erdresistenz
+
+        // Kleriker
+        0x6778, // 5 - Magischer Spiegel
+        0x6779, // 5 - Unsichtbarkeit
+        0x677a, // 5 - Mauer
+        0x677b, // 6 - Merken
+        0x677c, // 6 - Inkognito
+        0x677d, // 6 - Teleportation
+        0x6788, // 5 - Erzheilung
+        0x6789, // 5 - Segen
+        0x678a, // 5 - Ruestungssegen
+        0x678b, // 5 - Waffensegen
+        0x678c, // 5 - Antimagie
+        0x678d, // 6 - Gesundheit
+        0x678e, // 6 - Paralyse
+        0x678f, // 6 - Erzschutz
+        0x6790, // 6 - Exorzismus
+        0x6791, // 6 - Opferschlag
+
+        // Nekromantie
+        0x67d8, // 5 - Magischer Spiegel
+        0x67d9, // 5 - Unsichtbarkeit
+        0x67da, // 5 - Mauer
+        0x67e8, // 5 - Beschwoerung
+        0x67e9, // 5 - Erzgift
+        0x67ea, // 5 - Dunkelheit
+        0x67eb, // 5 - Halluzination
+        0x67ec, // 5 - Beherrschung
+        0x691b, // 6 - Merken
+        0x691c, // 6 - Inkognito
+        0x691d, // 6 - Teleportation
+        0x69ed, // 6 - Erwecke Golem
+        0x69ee, // 6 - Giftfeld
+        0x69ef, // 6 - Giftresistenz
+        0x69f0, // 6 - Seelen Spueren
+        0x69f1  // 6 - Knochenbrecher
+    }.randomentry();
+EndFunction // }}}
+
+Function GetLowScroll() // {{{
+    return array{
+        // Elementarmagier
+        0x6700, // 1 - Essen
+        0x6701, // 1 - Trinken
+        0x6702, // 1 - Verwirrung
+        0x6703, // 1 - Missgeschick
+        0x6704, // 1 - Schwaeche
+        0x6705, // 1 - Magischer Pfeil
+        0x6706, // 1 - Telekinese
+        0x6707, // 1 - Zahn der Zeit
+        0x6708, // 2 - Licht
+        0x6709, // 2 - Schutz
+        0x670a, // 2 - Kleine Heilung
+        0x670b, // 2 - Scharfsinn
+        0x670c, // 2 - Geschicklichkeit
+        0x670d, // 2 - Kraft
+        0x670e, // 2 - Hinken
+        0x670f, // 2 - Rennen
+        0x6710, // 3 - Magisches Schloss
+        0x6711, // 3 - Magische Falle
+        0x6712, // 3 - Enthuellung
+        0x6713, // 3 - Reparatur
+        0x6714, // 4 - Magischer Schluessel
+        0x6715, // 4 - Entschaerfen
+        0x6716, // 4 - Zurueckkehren
+        0x6717, // 4 - Manadieb
+        0x6720, // 3 - Feuerball
+        0x6721, // 3 - Eiszapfen
+        0x6722, // 3 - Steinsplitter
+        0x6723, // 3 - Stromschlag
+        0x6724, // 4 - Waffe entflammen
+        0x6725, // 4 - Waffe vereisen
+        0x6726, // 4 - Waffe versteinern
+        0x6727, // 4 - Waffe aufladen
+
+        // Kleriker
+        0x6760, // 1 - Essen
+        0x6761, // 1 - Trinken
+        0x6762, // 1 - Verwirrung
+        0x6763, // 1 - Missgeschick
+        0x6764, // 1 - Schwaeche
+        0x6765, // 1 - Magischer Pfeil
+        0x6766, // 1 - Telekinese
+        0x6767, // 1 - Zahn der Zeit
+        0x6768, // 2 - Licht
+        0x6769, // 2 - Schutz
+        0x676a, // 2 - Kleine Heilung
+        0x676b, // 2 - Scharfsinn
+        0x676c, // 2 - Geschicklichkeit
+        0x676d, // 2 - Kraft
+        0x676e, // 2 - Hinken
+        0x676f, // 2 - Rennen
+        0x6770, // 3 - Magischer Schloss
+        0x6771, // 3 - Magische Falle
+        0x6772, // 3 - Enthuellung
+        0x6773, // 3 - Reparatur
+        0x6774, // 4 - Magischer Schluessel
+        0x6775, // 4 - Entschaerfen
+        0x6776, // 4 - Zurueckkehren
+        0x6777, // 4 - Manadieb
+        0x6780, // 3 - Heilung
+        0x6781, // 3 - Gegengift
+        0x6782, // 3 - Nebel
+        0x6783, // 3 - Bann
+        0x6784, // 4 - Grosse Heilung
+        0x6785, // 4 - Erzgegengift
+        0x6786, // 4 - Gegenfluch
+        0x6787, // 4 - Augen oeffnen
+
+        // Nekromantie
+        0x67c0, // 1 - Essen
+        0x67c1, // 1 - Trinken
+        0x67c2, // 1 - Verwirrung
+        0x67c3, // 1 - Missgeschick
+        0x67c4, // 1 - Schwaeche
+        0x67c5, // 1 - Magischer Pfeil
+        0x67c6, // 1 - Telekinese
+        0x67c7, // 1 - Zahn der Zeit
+        0x67c8, // 2 - Licht
+        0x67c9, // 2 - Schutz
+        0x67ca, // 2 - Kleine Heilung
+        0x67cb, // 2 - Scharfsinn
+        0x67cc, // 2 - Geschicklichkeit
+        0x67cd, // 2 - Kraft
+        0x67ce, // 2 - Hinken
+        0x67cf, // 2 - Rennen
+        0x67d0, // 3 - Magisches Schloss
+        0x67d1, // 3 - Magische Falle
+        0x67d2, // 3 - Enthuellung
+        0x67d3, // 3 - Reparatur
+        0x67d4, // 4 - Magischer Schluessel
+        0x67d5, // 4 - Entschaerfen
+        0x67d6, // 4 - Zurueckkehren
+        0x67d7, // 4 - Manadieb
+        0x67e0, // 3 - Erwecke Skelett
+        0x67e1, // 3 - Gift
+        0x67e2, // 3 - Verfluchen
+        0x67e3, // 3 - Wegstossen
+        0x67e4, // 4 - Erwecke Untoten
+        0x67e5, // 4 - Erzfluch
+        0x67e6, // 4 - Gegenstand verfluchen
+        0x67e7  // 4 - Erblinden
+    }.randomentry();
+EndFunction // }}}
+
+Function GetBlankScroll() // {{{
+    return array{
+        0x0e34, // leere Zauberrolle
+        0x0e34, // leere Zauberrolle
+        0xaf04  // leere Papierrolle
+    }.randomentry();
+EndFunction // }}}

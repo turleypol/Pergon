@@ -1,0 +1,9 @@
+///////////////////////////////////////////////////////////////////////////
+// askforname - Player nach einem neuen Namen befragen
+
+include "include/modifyskill";
+include "include/names";
+
+Program AskForName(who)
+    AutoAskForPlayerName(who);
+EndProgram

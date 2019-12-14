@@ -1,0 +1,49 @@
+///////////////////////////////////////////////////////////
+//
+//   Rune Script
+//
+//     Author: ???? ????/??/??
+//
+//   Modifications
+//     1999/05/26 Ignatius: lenghtchecking and commenting
+//     2002/02/19 Shinigami: Rewrite
+//
+///////////////////////////////////////////////////////////
+//
+// Benutzte CProp's - Rune
+//   String(Place) - Bezeichnung (Zielposition)
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+Include "rune";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program Use_Rune(who, rune)
+  If (IsRuneMarked(rune)) // Ist die Rune markiert?
+    var runedescription:=RequestInputPergon(who, rune, "Gebt eine Beschreibung für die Rune ein (max. 40 Zeichen) !");
+    If (runedescription)
+      runedescription := CChrZ(runedescription.uc_text);
+      If (Len(runedescription)<=40)
+        SetObjProperty(rune, "Place", runedescription);
+        RenameRune(who, rune);
+        SendSysMessagePergon(who, "Rune wurde umbenannt.");
+      Else
+        SendSysMessagePergon(who, "Beschreibung ist zu lang!");
+      EndIf
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Diese Rune ist noch nicht markiert!");
+  EndIf
+EndProgram

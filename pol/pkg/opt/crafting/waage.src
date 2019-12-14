@@ -1,0 +1,52 @@
+//  Script Waage - by Fraggulus
+//  wiegt je nach Auswahl entweder einen Gegenstand oder ein Mobile
+//
+//  05.06.2002
+
+use math;
+use os;
+use uo;
+include "include/msgs";
+
+Program Waage(who)
+  SendSysMessagePergon(who, "Wählt einen Gegenstand oder ein Lebewesen zum Wiegen aus.",
+                            "Choose an item or a wight to put on the scales.");
+  var tgt := Target(who, TGTOPT_CHECK_LOS);
+
+  If (tgt)
+    If (tgt.isa(POLCLASS_ITEM))
+      SendSysMessagePergon(who, "Mit einiger Mühe bugsiert Ihr den Gegenstand auf die Waage.",
+                                "You jockey this item on the scales.");
+      Sleep(4);
+      SendSysMessagePergon(who, WeightMsg("Er wiegt: ", tgt.weight), WeightMsg("Weight: ", tgt.weight));
+    ElseIf (tgt.isa(POLCLASS_MOBILE))
+      If (who.serial == tgt.serial)
+        SendSysMessagePergon(who, "Ihr zwängt Euch irgendwie auf die kleine Waage.",
+                                  "Anyhow you step onto this little scales.");
+        Sleep(4);
+        SendSysMessagePergon(who, "Mit viel Ausdauer und Balance schafft Ihr es endlich.",
+                                  "With some perseverance and balance you manage it.");
+        Sleep(4);
+        SendSysMessagePergon(who, WeightMsg("Ihr wiegt: ", who.weight), WeightMsg("Your weight: ", who.weight));
+      ElseIf (tgt.isa(POLCLASS_NPC))
+        SendSysMessagePergon(who, WeightMsg("Der NPC wiegt: ", tgt.weight), WeightMsg("This NPC weighs: ", tgt.weight));
+      Else
+        SendSysMessagePergon(who, WeightMsg("Der Spieler wiegt: ", tgt.weight), WeightMsg("This player weighs: ", tgt.weight));
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Das könnt Ihr nicht wiegen.", "You cannot weigh that.");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram
+
+Function WeightMsg(Text, Weight)
+  If (Weight == 1)
+    Text += CStr(Weight) + " stone.";
+  Else
+    Text += CStr(Weight) + " stones.";
+  EndIf
+
+  return(Text);
+EndFunction

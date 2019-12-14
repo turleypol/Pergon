@@ -1,0 +1,215 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Zufluchtssteine
+//
+// Benutzung des Steins
+// - Markieren in der Naehe eines geeigneten NPCs
+// - Aktivieren/Deaktivieren nach Bedarf
+// - bei Tod bringt aktiver Stein zu vorher markiertem Punkt
+// - Rueckkehr mit aktivem Stein lebend jederzeit moeglich
+
+include ":newspells:fields";
+include ":newspells:magicpergon";
+include "common";
+include "include/effects";
+include "include/modifyskill";
+use cfgfile;
+use math;
+use os;
+use uo;
+
+Program ResortStone(who, item)
+  var external := 0;
+  // externe Aufrufe behandeln
+  If (TypeOfInt(who) == OT_STRUCT)
+    item := who.item;
+    who  := who.who;
+    external := 1;
+  EndIf
+
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  var enabled := item.getprop(ARTEFACT_ENABLED);
+  var coords := item.getprop(ARTEFACT_COORDS);
+  // enabled <> 0 bei ungesetzten coords sollte nicht vorkommen,
+  // wuerde aber Logik unten verwirren
+  If (!coords)
+    enabled := 0;
+  EndIf
+
+  var artefacts  := ReadConfigFile(":newinscription:artefacts");
+  var artefact   := FindConfigElem(artefacts, GetArtefactID(item));
+  // var range      := artefact.range;
+  // var difficulty := artefact.useskill;
+
+  // externe Aufrufe dienen nur zur automatischen Rueckkehr (bei Tod ...)
+  If (external)
+    If (enabled and coords)
+      ReturnToDestination(who, item, coords, artefact.delay);
+    EndIf
+    return;
+  EndIf
+
+  // gucken, ob passende NPCs in Gegend sind
+  var istargetarea :=
+    FindTargetNpc(who, GetArtefactID(item), artefact.range);
+
+  If (!coords and !istargetarea)
+    SendSysMessagePergon(who,
+      "Der Stein kann hier nicht markiert werden.",
+      "Your stone cannot be marked here."
+    );
+    return;
+  EndIf
+
+  If (!coords and istargetarea)
+    MarkResortStone(who, item);
+    return;
+  EndIf
+
+  If (coords and istargetarea)
+    If (SendYesNoGump(who,
+        "Stein erneut markieren?<br>"+
+        "Mark stone again?",
+        200, 200
+    ))
+      MarkResortStone(who, item);
+      return;
+    EndIf
+  EndIf
+
+  If (enabled)
+    // Deaktivieren oder Rueckkehr
+    If (SendYesNoGump(who,
+        "Wollt Ihr von hier fliehen?<br>"+
+        "Do you want to flee from here?",
+        200, 200
+    ))
+      ReturnToDestination(who, item, coords, artefact.delay);
+    Else
+      SendSysMessagePergon(who, "Stein deaktiviert", "Stone deactivated");
+      item.setprop(ARTEFACT_ENABLED, 0);
+    EndIf
+    return;
+  ElseIf (coords)
+    SendSysMessagePergon(who, "Stein aktiviert", "Stone activated");
+    item.setprop(ARTEFACT_ENABLED, 1);
+  EndIf
+EndProgram
+
+// Sonderbeschraenkungen fuer Newbies/PKs
+Function MarkReturnAllowed(who, coords) // {{{
+  var place := PlaceName(coords);
+  If (who.getprop(TYPNEWBIE))
+    // Newbie darf nur auf Jhe'lom
+    If (!(place["Jhe'lom"]))
+      return 0;
+    EndIf
+  ElseIf (who.getprop(TYPKILLER))
+    // PKs darf nicht nach Jhe'lom
+    If (place["Jhe'lom"])
+      return 0;
+    EndIf
+  EndIf
+  return 1;
+EndFunction // }}}
+
+// eigentliche Rueckkehr
+Function ReturnToDestination(who, item, coords, delay) // {{{
+  // darf man aus der Region fliehen?
+  If (PlaceNoEscape(who) == 1)
+    SendSysMessagePergon(who,
+      "Von hier könnt Ihr nicht fliehen",
+      "You aren't able to flee from here"
+    );
+    return;
+  EndIf
+
+  // Sonderrestriktionen beachten
+  If (!MarkReturnAllowed(who, coords))
+    SendSysMessagePergon(who,
+      "Die Götter verbieten Eure Reise.",
+      "The gods do not allow your journey."
+    );
+    return;
+  EndIf
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", (ReadGameClock() + delay));
+
+  PerformAction(who, ANIM_CAST_AREA);
+  Sleep(1);
+
+  // Stein verbrauchen
+  SubtractAmount(item, 1);
+
+  // "Zurueckkehren"
+  CastRecall(who, coords.x, coords.y, coords.z, 0, coords.realm);
+EndFunction // }}}
+
+// Stein markieren (Koordinaten setzen)
+Function MarkResortStone(who, item) // {{{
+  var coords := struct{
+    x     := who.x,
+    y     := who.y,
+    z     := who.z,
+    realm := who.realm
+  };
+
+  // Sonderrestriktionen beachten
+  If (!MarkReturnAllowed(who, coords) or PlaceNoRune(who))
+    SendSysMessagePergon(who,
+      "Die Götter verbieten Euch diesen Ort als Ziel.",
+      "The gods do not allow this place as destination."
+    );
+    return;
+  EndIf
+
+  PlayObjectCenteredEffect(who, FX_MARK_EFFECT, 10, 10);
+  PlaySoundEffect(who, SFX_SPELL_MARK);
+
+  SendSysMessagePergon(who, "Ihr markiert den Stein.", "You mark the stone");
+  item.setprop(ARTEFACT_COORDS, coords);
+  // damit er beim Tod im Rucksack bleibt
+  item.newbie := 1;
+  SetName(item, "Zufluchtsstein nach "+PlaceName(coords));
+EndFunction // }}}
+
+// herausfinden, ob bestimmte NPCs in der Naehe sind
+Function FindTargetNpc(who, artefactid, range) // {{{
+  var npctypes;
+  // Achtung: Lowercase!
+  Case (artefactid)
+    // Magie
+    124: npctypes := array{
+      "lowmagem", "lowmagew", "medmagem", "medmagew",
+      "highmagem", "highmagew", "orcmagier"
+    };
+    // Segnen
+    224: npctypes := array{
+      "lowclericm", "lowclericw", "medclericm", "medclericw",
+      "highclericm", "highclericw"
+    };
+    // Fluchen
+    324: npctypes := array{
+      "lownecrom", "lownecrow", "mednecrom", "mednecrow",
+      "highnecrom", "highnecrow", "orclownecrom"
+    };
+  EndCase
+
+  ForEach mob in (ListMobilesNearLocation(
+      who.x, who.y, LIST_IGNORE_Z, range, who.realm
+  ))
+    SleepMs(2);
+    If (Lower(mob.npctemplate) in npctypes)
+      // ein Treffer genuegt
+      return 1;
+    EndIf
+  EndForEach
+
+  // niemand gefunden
+  return 0;
+EndFunction // }}}
+
+// vim: sw=2 sts=2

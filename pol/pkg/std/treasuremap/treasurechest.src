@@ -1,0 +1,121 @@
+////////////////////////////////////////////////////////////////////////////
+// TreasureChest - Den Schatz oeffnen und die Bewacher herbeirufen
+//
+// Author: Racalac 4/24/99
+
+use os;
+use util;
+use uo;
+use cfgfile;
+include "include/msgs";
+
+// max. Anzahl der Versuche beim Erzeugen der Waechter-NPCs
+Const MAX_CREATE_TRIES := 4;
+
+Program TreasureChest(who, chest)
+  If (who.cmdlevel >= CMDLEVEL_SEER)
+    SendSysMessagePergon(who, "Schatzkiste wird fuer CmdLevel geöffnet");
+    SendViewContainer(who, chest);
+    return;
+  EndIf
+
+  chest.usescript := "";
+  var level := GetObjProperty(chest, "level");
+  If (level == 0)
+    // Kiste ohne Bewacher fuer besonders Quests
+    return;
+  EndIf
+
+  If (!level)
+    syslog(
+      "FEHLER: Die Schatzkiste "+ItemInfoStr(chest)+" hat keine CProp level!"
+    );
+    return;
+  EndIf
+
+  var cfgfile := ReadConfigFile("guardians");
+  If (!cfgfile)
+    syslog("FEHLER: Die Datei guardians.cfg konnte nicht geoeffnet werden!");
+    return;
+  EndIf
+
+  var elem := FindConfigElem(cfgfile, level);
+  If (!elem)
+    syslog(
+      "FEHLER: Der guardians.cfg fehlt der Eintrag fuers Level "+level+"!"
+    );
+    return;
+  EndIf
+
+  var num := GetConfigInt(elem, "num");
+  For i := 1 To RandomDiceRoll(GetConfigString(elem, "total"))
+    var template := GetConfigString(elem, "creature"+(RandomInt(num)+1));
+    CreateGuardian(chest, template, 4);
+  EndFor
+
+  SendSysMessagePergon(who, "Ihr weckt die Wächter des Schatzes!");
+
+  UnloadConfigFile("guardians");
+EndProgram
+
+// CreateGuardian - Erzeugt den Bewacher (Code entspricht dem ausm SpawnNet)
+Function CreateGuardian(chest, template, range)
+  // Spawn-Location suchen
+
+  // Wieviele Versuche hab ich schon gebraucht?
+  var times := 0;
+  var spawnx;
+  var spawny;
+  var spawnz;
+  While ((times <> -1) And (times <= MAX_CREATE_TRIES))
+    spawnx := RandomIntMinMax(chest.x-range, chest.x+range+1);
+    spawny := RandomIntMinMax(chest.y-range, chest.y+range+1);
+    spawnz := GetStandingHeight(spawnx, spawny, chest.z, chest.realm);
+
+    If (spawnz == error)
+      times += 1;
+    Else
+      spawnz := spawnz.z;
+      times := -1;
+    EndIf
+  EndWhile
+
+  // Keine passende Spawn-Location gefunden
+  If (times > MAX_CREATE_TRIES)
+    return;
+  EndIf
+
+
+  // NPC erzeugen
+
+  // Wieviele Versuche hab ich schon gebraucht?
+  times := 0;
+  var creature;
+  var origspawnx;
+  var origspawny;
+  var origspawnz;
+  While ((times <> -1) And (times <= MAX_CREATE_TRIES))
+    origspawnx := 5280+RandomInt(9);
+    origspawny := 1182+RandomInt(5);
+    origspawnz := 0;
+
+    creature := CreateNpcFromTemplate(
+      template, origspawnx, origspawny, origspawnz, 0, REALM_BRITANNIA
+    );
+    If (creature)
+      times := -1;
+    Else
+      times += 1;
+    EndIf
+  EndWhile
+
+  // NPC konnte nicht erzeugt werden
+  If (times > MAX_CREATE_TRIES)
+    return;
+  EndIf
+
+  // NPC an seine Ziellocation verschieben
+  MoveObjectToLocation(
+    creature, spawnx, spawny, spawnz, chest.realm, MOVEOBJECT_FORCELOCATION
+  );
+EndFunction

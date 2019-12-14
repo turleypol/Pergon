@@ -1,0 +1,70 @@
+///////////////////////////////////////////////////////////////////////////
+// change - Lampen umschalten
+
+// Einstellungen in Itemdesc:
+// change     (decimal) - Graphic
+// changesnd  (decimal)
+// originsnd  (decimal)
+// staff      (decimal) - minimum cmd level
+
+use cfgfile;
+use os;
+use uo;
+
+Program Lighting_Change(whoparam, itemparam)
+  var who;
+  var item;
+  If (whoparam[1] == "#params")
+    // externen Aufruf behandeln
+    who  := whoparam[2];
+    item := whoparam[3];
+  Else
+    who  := whoparam;
+    item := itemparam;
+  EndIf
+
+  // FIXME: alte Methode der Speicherung des alten Zustands
+  item.eraseprop("original");
+
+  var lightcfg := ReadConfigFile("::itemdesc");
+  If (!lightcfg)
+    syslog("FEHLER: Lighting-Itemdesc konnte nicht geoeffnet werden!");
+    return;
+  EndIf
+
+  If (
+    // ggf. darf nicht jeder
+    (who.cmdlevel >= lightcfg[item.objtype].staff) or
+    // selbstgemachte Lampen
+    GetObjProperty(item, "Werkzeug")
+  )
+    // zu verwendende Grafiken aus Config ermitteln
+    var original := CInt(lightcfg[item.objtype].graphic);
+    If (!original)
+      original := item.objtype;
+      If (!original)
+        // Fallback fuer ganz schwere Faelle
+        original := item.graphic;
+      EndIf
+    EndIf
+    var change := CInt(lightcfg[item.objtype].change);
+
+    // Schalten
+    If (item.graphic == original)
+      // auf "anders" schalten
+      var sound := lightcfg[item.objtype].changesnd;
+      If (sound)
+        PlaySoundEffect(who, sound);
+      EndIf
+      item.graphic := change;
+
+    Else
+      // auf "normal" schalten
+      var sound := lightcfg[item.objtype].originsnd;
+      If (sound)
+        PlaySoundEffect(who, sound);
+      EndIf
+      item.graphic := original;
+    EndIf
+  EndIf
+EndProgram

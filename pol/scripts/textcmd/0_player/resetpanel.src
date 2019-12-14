@@ -1,0 +1,74 @@
+////////////////////////////////////////////////////////////////////////////////
+// TextCMD ResetPanel - Setzt das Panel an den Standardort zurueck
+//
+// Author: Shinigami
+
+use uo;
+include ":newmagic:spellbook";
+
+Program TextCMD_ResetSpellpanel(who)
+  SendSysMessagePergon(who, "Wählt das fehlerhafte Buch aus!");
+  var book := Target(who);
+  If (!book)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (!(book.objtype in (array{0x6101, 0x6820, 0x6821, 0x6822, 0xe686})))
+    SendSysMessagePergon(who,
+    	"Das ist weder ein Buch der Kriegskunst, "+
+    	"noch ein Zauber- oder Musikbuch!"
+    );
+    return;
+  EndIf
+	
+	var success := 0;
+	If (book.objtype != 0x6101)
+  	var owner := book.getprop("Besitzer");
+  	If (!owner or owner <> who.serial)
+    	SendSysMessagePergon(who, "Das ist nicht Euer Buch.");
+    	return;
+  	EndIf
+	EndIf
+	
+	If (book.objtype != 0x6101 && book.objtype != 0xe686)
+  	ForEach panel in (FindSubstance(
+      	book, UOBJ_SPELLPANEL, 1, 0, FINDSUBSTANCE_FIND_ALL
+  	))
+    	SleepMs(2);
+    	var data := panel.getprop("Data");
+    	If (data)
+      	If (data.size() == 4)
+        	// Alter Stil ohne Name und Transparenz?
+        	// Struktur von data auf das neue System umgestellen
+        	// (Taya 17. Sep. 2007)
+        	data := array{"Spellpanel", "X", "Y", data[3], 1, data[4]};
+      	EndIf
+      	data[2] := DEFAULT_PANEL_X;
+      	data[3] := DEFAULT_PANEL_Y;
+      	panel.setprop("Data", data);
+      	success := 1;
+    	EndIf
+  	EndForEach
+  Else
+  	var data:=book.getprop("GumpProps");
+  	data.x := DEFAULT_PANEL_X;
+  	data.y := DEFAULT_PANEL_Y;
+  	book.setprop("GumpProps", data);
+  	success := 1;
+  EndIf
+
+  If (success)
+    SendSysMessagePergon(who,
+      "Das Panel sollte wieder an einem erreichbaren Fleck sitzen."
+    );
+    SendSysMessagePergon(who,
+      "Ihr müsst eventuell das Buch erneut öffnen oder "+
+      "Euch kurz ausloggen."
+    );
+  Else
+    SendSysMessagePergon(who,
+      "Das Panel konnte nicht gefunden werden."
+    );
+  EndIf
+EndProgram

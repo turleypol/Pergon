@@ -1,0 +1,86 @@
+///////////////////////////////////////////////////////////////////////
+//
+//  Autor:   Hotny
+//
+//  Allgemeines WalkOverSkript für Fallen jeglicher Art
+//
+///////////////////////////////////////////////////////////////////////
+
+Use util;
+use os;
+use uo;
+use util;
+use vitals;
+include "include/modifyskill";
+include "include/poison";
+include "traps";
+
+Program snaretrap(character, trapon)
+  Var cfg:=ReadConfigFile("traps");
+  Var trap:=FindConfigElem( cfg, GetObjProperty( trapon, "trap" ));
+  // Var buildersdex:=GetObjProperty(trapon, "buildersdex");
+  // Var buildersserial:=GetObjProperty(trapon, "buildersserial");
+  // Var buildersskill:=GetObjProperty(trapon, "buildersskill");
+  Var trap_strength:=GetObjProperty(trapon, "trap_strength");
+  // Var expiretime:=trapon.decayat;
+
+  If (character.cmdlevel>=CMDLEVEL_SEER) //CmdLevel aussortieren
+    SendSysMessagePergon(character, "Ihr betretet eine "+trapon.desc+", da ihr von göttlicher Gesinnung seit, tut sie Euch nichts.");
+    return;
+  EndIf
+
+  If (character.dead)         //kein Schaden an Toten und kein deaktivieren der Falle
+    return;
+  Endif
+  
+  //Jetzt alle Tiere rausfiltern, die nicht zur Falle gehören -> wenn WishVieh
+  Var ViechID:=CInt(GetObjProperty(trap,"wishviech"));
+  If (ViechID>0)
+    var viehcfg:=ReadConfigFile(":traps:create");
+    If (character.isa(POLCLASS_NPC))
+      //Nur NPCs werden gefiltert
+      If (character.NpcTemplate<>viehcfg[ViechID].NpcTemplate)
+        //Wenn nicht das gesuchte Vieh, dann wird auch nicht gefangen
+        Return;
+      EndIf
+    EndIf
+  EndIf
+
+  If (GetDexPergon(character)> RandomInt(CInt(trap_strength)))    //Staerke entscheidet ueber Haengenbleiben oder nicht
+    If (!character.isa(POLCLASS_NPC))
+      //SendSysMessagePergon(character, "Diese Falle war nicht für Euch gedacht.", "This trap isn't for you.");
+      SendSysMessagePergon(character,"Ihr bemerkt eine Falle und weicht ihr aus.","");
+      //Falle wird nicht deaktiviert
+      return;
+    EndIf
+  Else
+    If (!character.isa(POLCLASS_NPC))
+      SendSysMessagePergon(character, "Ihr seid gerade in eine Falle getreten.", "");
+    Endif
+
+    Var timetofreeze:=CInt(ReadGameClock() + CInt(trap_strength) - GetDexPergon(character));
+    SetScriptController(character);
+    //Jetzt schauen wegen Giftschaden
+    If (trapon.getprop("poisonlvl"))
+      AddPoisonLevel(character, CInt(trapon.getprop("poisonlvl"))); // Vergiftung durchfuehren
+    EndIf
+    var oldfrozen:=character.frozen;
+    While (timetofreeze > ReadGameClock())         //solange gefreezed
+      character.frozen:=1;
+      IncRevision(character);
+      ApplyDamagePergon(character, RandomDiceRoll(CStr(trap.damage))+CInt(trapon.getprop("dmgplus")));
+      If (character.dead)
+        character.frozen:=oldfrozen;
+        IncRevision(character);
+        //Falle deaktiviert -> zerstören
+        DestroyItem(trapon);
+        Return;
+      Endif
+      //Effekt einbauen
+      Sleep(1);
+    EndWhile
+    character.frozen:=oldfrozen;
+    IncRevision(character);
+    DestroyItem(trapon); //Falle freigeben, ist ja jemand draufgelatscht und hat sie benutzt
+  Endif
+EndProgram

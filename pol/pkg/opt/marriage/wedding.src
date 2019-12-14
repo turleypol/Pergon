@@ -1,0 +1,237 @@
+////////////////////////////////////////////////////////////
+//
+//   Shinigami's Mariage-Package v1.0 (2000/06/28)
+//
+//   Usage: DoubleClick on two Wedding Ring's (0xff10)
+//            to marry two PCs together
+//          DoubleClick to get Infos about, how is married
+//
+//   Author: Shinigami
+//
+////////////////////////////////////////////////////////////
+
+// Ehering sollte nicht wegschmeissbar sein, fuer den, von dem ne serial
+// dort eingetragen is... und wenn man tot is ?
+
+////////////////
+// Bemerkungen
+////////////////
+//
+// /pkg/opt/townstone/tstone.src -> [temporaer] CProp MajorOf setzen
+// /pkg/opt/townstone/tstone.inc -> neue Fkt. SetMajor()
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Wedding(who, ring)
+  Var married:=GetObjProperty(ring, "married");
+  If (married)
+    If (married[1]==who.serial)
+      Verheiratet_mit(who, married[2]);
+    ElseIf (married[2]==who.serial)
+      Verheiratet_mit(who, married[1]);
+    Else
+      SendSysMessagePergon(who, "Wie seid Ihr an diesen Ehering gekommen? Sucht bitte den nächsten GM auf.",
+                                "Where did you get this wedding ring? Please contact a GM.");
+    EndIf
+  Else
+    Var city:=GetObjProperty(who, "MajorOf");
+    If (city)
+      Var abbruch:=1;
+
+      Var partner1:=Ehepartner_auswaehlen(who, "ersten", "first");
+      If (partner1)
+        Var partner2:=Ehepartner_auswaehlen(who, "zweiten", "second");
+        If (partner2)
+          If (partner1.serial<>partner2.serial)
+            If (partner2.gender)
+              PrintTextAbovePergon(who, who, "Wollt Ihr, "+partner1.name+", die hier anwesende "+partner2.name+" ehelichen?",
+                                             "Do you, "+partner1.name+", want to marry "+partner2.name+"?");
+            Else
+              PrintTextAbovePergon(who, who, "Wollt Ihr, "+partner1.name+", den hier anwesenden "+partner2.name+" ehelichen?",
+                                             "Do you, "+partner1.name+", want to marry "+partner2.name+"?");
+            EndIf
+
+            SendSysMessagePergon(who, "Falls "+partner1.name+" mit 'Ja' geantwortet hat, bitte auf den Spieler klicken.",
+                                      "If "+partner1.name+" did answer with 'Yes', please click on the player.");
+
+            If (Target(who)==partner1)
+              SetObjProperty(ring, "Married", {partner1.serial, partner2.serial});
+
+              Var tempmarried1:=GetObjProperty(partner1, "#TempMarried");
+              Var tempmarried2:=GetObjProperty(partner2, "#TempMarried");
+              If ((tempmarried1) And (tempmarried2))
+                If ((tempmarried1==partner2.serial) And (tempmarried2==partner1.serial))
+                  SetObjProperty(partner1, "Married", partner2.serial);
+                  SetObjProperty(partner2, "Married", partner1.serial);
+
+                  If (partner1.gender==partner2.gender)
+                    If (partner1.gender)
+                      PrintTextAbovePergon(who, who, "Ich erkläre Euch hiermit zu Frau und Frau.",
+                                                     "So I pronounce you as wife and wife.");
+                    Else
+                      PrintTextAbovePergon(who, who, "Ich erkläre Euch hiermit zu Mann und Mann.",
+                                                     "So I pronounce you as man and man.");
+                    EndIf
+                  Else
+                    PrintTextAbovePergon(who, who, "Ich erkläre Euch hiermit zu Mann und Frau.",
+                                                     "So I pronounce you as man and wife.");
+                  EndIf
+
+                  BroadcastPergon(partner1.name+" und "+partner2.name+" sind in den heiligen Stand der Ehe eingetreten.",
+                                  partner1.name+" and "+partner2.name+" just now celebrated the marriage.");
+
+                  EraseObjProperty(partner1, "#TempMarried");
+                  EraseObjProperty(partner2, "#TempMarried");
+
+                  abbruch:=0;
+                Else
+                  If (tempmarried1<>partner2.serial)
+                    Var spouce:=FindCharacter(tempmarried1);
+                    If (spouce)
+                      PrintTextAbovePergon(who, who, "Tut mir leid "+partner1.name+
+                        ", aber Ihr wollt doch schon "+spouce.name+" heiraten!",
+                                                     "Sorry "+partner1.name+
+                        ", but you already want to marry "+spouce.name+"!");
+                    EndIf
+                  EndIf
+                  If (tempmarried2<>partner1.serial)
+                    Var spouce:=FindCharacter(tempmarried2);
+                    If (spouce)
+                      PrintTextAbovePergon(who, who, "Tut mir leid "+partner2.name+
+                        ", aber Ihr wollt doch schon "+spouce.name+" heiraten!",
+                                                     "Sorry "+partner2.name+
+                        ", but you already want to marry "+spouce.name+"!");
+                    EndIf
+                  EndIf
+                EndIf
+              ElseIf ((tempmarried1) Or (tempmarried2))
+                If (tempmarried1)
+                  PrintTextAbovePergon(who, who, partner1.name+", wilde Hochzeiten gibt es nicht!",
+                                                 partner1.name+", no wild weddings!");
+                Else
+                  PrintTextAbovePergon(who, who, partner1.name+", wilde Hochzeiten gibt es nicht!",
+                                                 partner1.name+", no wild weddings!");
+                EndIf
+              Else
+                SetObjProperty(partner1, "#TempMarried", partner2.serial);
+                SetObjProperty(partner2, "#TempMarried", partner1.serial);
+
+                abbruch:=0;
+              EndIf
+            Else
+              PrintTextAbovePergon(who, who, "Vielleicht solltet Ihr, "+partner1.name+
+                ", nochmal drüber nachdenken?!?",
+                                             "Maybe you, "+partner1.name+
+                ", should rethink your plans?!?");
+            EndIf
+          Else
+            SendSysMessagePergon(who, "Ihr könnt niemanden mit sich selbst verheiraten!",
+                                      "You can't marry someone with himself!");
+          EndIf
+        EndIf
+      EndIf
+
+      If (abbruch)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Ihr seid kein Bürgermeister!", "You are no mayor!");
+    EndIf
+  EndIf
+EndProgram
+
+/////////////////////////////////////////////////////
+// Ehepartner_auswaehlen - Waehlt einen Partner aus
+/////////////////////////////////////////////////////
+
+Function Ehepartner_auswaehlen(who, text, text_e)
+  Var result:=0;
+
+  SendSysMessagePergon(who, "Wählt den "+text+" Ehepartner aus.", "Choose the "+text_e+" spouse.");
+
+  Var partner:=Target(who);
+  If (partner)
+    If (partner.isa(POLCLASS_MOBILE) And (!partner.isa(POLCLASS_NPC)))
+      If (partner.serial<>who.serial)
+        Var married:=GetObjProperty(partner, "Married");
+        If (married)
+          Var spouce:=FindCharacter(married);
+          If (spouce)
+            PrintTextAbovePergon(who, who, "Tut mir leid "+partner.name+
+              ", aber Ihr seid schon mit "+spouce.name+" verheiratet!",
+                                           "Sorry "+partner.name+
+              ", but you already are married with "+spouce.name+"!");
+          Else
+            If (partner.gender)
+              PrintTextAbovePergon(who, who, "Tut mir leid "+partner.name+
+                ", aber Ihr seid eine Witwe!",
+                                             "Sorry "+partner.name+
+                ", but you are a widow!");
+            Else
+              PrintTextAbovePergon(who, who, "Tut mir leid "+partner.name+
+                ", aber Ihr seid ein Witwer!",
+                                             "Sorry "+partner.name+
+                ", but you are a widower!");
+            EndIf
+          EndIf
+        Else
+          result:=partner;
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Ihr könnt Euch nicht selbst verheiraten!",
+                                  "You can't get married by yourself!");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Wählt beim naechsten mal einen Spieler aus!",
+                                "Next time choose a player!");
+    EndIf
+  EndIf
+
+  Return (result);
+EndFunction
+
+////////////////////////////////////////////////////////////
+// FindCharacter - Sucht einen Character anhand der Serial
+////////////////////////////////////////////////////////////
+
+Function FindCharacter(serial)
+  Var character:=SystemFindObjectBySerial(serial);
+  If (!character)
+    character:=SystemFindObjectBySerial(serial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+  EndIf
+
+  Return (character);
+EndFunction
+
+/////////////////////////////////////////////////////
+// Verheiratet_mit - Mit wem seid Ihr verheiratet ?
+/////////////////////////////////////////////////////
+
+Function Verheiratet_mit(who, serial)
+  Var spouce:=FindCharacter(serial);
+  If (spouce)
+    SendSysMessagePergon(who, "Ihr seid verheiratet mit "+spouce.name+".",
+                              "You are already married with "+spouce.name+".");
+  Else
+    If (who.gender)
+      SendSysMessagePergon(who, "Ihr seid eine Witwe!", "You are a widow!");
+    Else
+      SendSysMessagePergon(who, "Ihr seid ein Witwer!", "You are a widower!");
+    EndIf
+  EndIf
+EndFunction

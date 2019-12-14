@@ -1,0 +1,320 @@
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   Tillerman Script - Gump Anzeige für Allemöglichen Parameter des Bootes
+//      Plus Heimathafenwechsel und Namesänderung
+//
+//     Author: Turley
+//
+// Modification
+//   2005/02/02 Turley: Erster Entwurf, Reine Anzeige der Daten
+//   2005/02/02 Turley: Daten können geändert werden
+//   10.06.2005 Fraggulus: PortRegistry() automatisiert, siehe auch boat.src:DropAnchorRegistry()
+//
+// To-Do:
+//  - Zustandsmeldung abhängig vom Skill Schiffsbau
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+use os;
+use uo;
+
+include "boat";
+include "include/client";
+include "include/gumps";
+include "include/gumputil";
+include "include/msgs";
+
+Var COLOR_TITLE   := FONTCOLOR_RED;
+var COLOR_TOPIC   := 104;
+
+Var HAFENPREIS := 60000; //Preis für Heimathafenänderung
+Var boat,hp,maxhp,state,route_index;  //inc variablen
+
+program tillermangump(who, tillerman)
+  var material := {}, porthome, ownerid, owner, zustand;
+  boat    := SystemFindObjectBySerial(GetObjProperty(tillerman, "shipserial"));
+  ownerid := GetObjProperty(tillerman, "owner");
+  owner   := SystemFindObjectBySerial(ownerid, SYSFIND_SEARCH_OFFLINE_MOBILES);
+
+  If (!GetObjProperty(boat, "ist_faehre"))
+    material := GetObjProperty(boat, "Material");
+    If (!material)
+      material := {("Boot"), ("Mischholz"), ("Elfenbeinholz"), ("Eisen"), ("Leinen")};
+      SetShipStats("Material", material); //xxx
+      //SetObjProperty(boat, "Material", material);
+    EndIf
+    porthome := GetObjProperty(boat, "PortOfRegistry");
+    If (!porthome)
+      porthome := "";
+      SetShipStats("PortOfRegistry", porthome); //xxx
+      //SetObjProperty(boat, "PortOfRegistry", porthome);
+    EndIf
+    zustand := Zustandcalc(boat);
+    If (ownerid != who.serial)
+      NoOwnerMenu(who, tillerman, owner.name, material, porthome, zustand);
+    Else
+     OwnerMenu(who, tillerman, owner.name, material, porthome, zustand);
+    EndIf
+  Else
+    PrintTextAbovePergon(who, tillerman, "Hört auf mir Befehle zu erteilen, sonst geht Ihr über Bord!", "");
+  EndIf
+endprogram
+
+///////////////////////////////////////////////////
+// OwnerMenu - Gump für Besitzer
+///////////////////////////////////////////////////
+
+Function OwnerMenu(who, tillerman, ownername, material, porthome, zustand)
+  Var port  := struct{okay, cancel, vesper, cove, yew, nirdana};
+  Var name  := struct{okay, cancel, edit};
+  Var topic := struct{title, owner, port, hp, material, name, port};
+  Var buttontext := struct{name, port};
+  Var result,  i := 0, porthomenr := {}, shipname, Registryresult;
+  Var mat;
+  Var GWidth   := 300;
+  Var GHeight  := 330;
+  Var GumpX    := 20;
+  Var GumpY    := 20;
+
+  topic.title        := tillerman.name;
+  topic.owner        := "Besitzer:";
+  topic.port         := "Heimathafen:";
+  topic.hp           := "Zustand:";
+  topic.material     := material[1]+" aus:";
+  topic.name         := "Neuen Schiffsnamen eingeben";
+  topic.portreg      := "Neuer Heimathafen";
+  buttontext.name    := "Bootname aendern";
+  buttontext.port    := "Heimathafen aendern";
+  buttontext.vesper  := "Vesper";
+  buttontext.cove    := "Cove";
+  buttontext.yew     := "Yew";
+  buttontext.nirdana := "Nirdana";
+
+  If (material[2] == material[3])
+    mat := material[2]+", "+material[4]+", "+material[5];
+  Else
+    mat := material[2]+", "+material[3]+", "+material[4]+", "+material[5];
+  EndIf
+
+  Case (porthome) // Vorauswahl
+   "Vesper":  porthomenr := {(1),(0),(0),(0)};
+   "Cove":    porthomenr := {(0),(1),(0),(0)};
+   "Yew":     porthomenr := {(0),(0),(1),(0)};
+   "Nirdana": porthomenr := {(0),(0),(0),(1)};
+   default:   porthomenr := {(0),(0),(0),(0)};
+  EndCase
+
+  GFInitGump();
+  GFSetRef(GumpX, GumpY); //setzt (0,0) Punkt
+  GFResizePic(0, 0, 2520, GWidth, GHeight);  // Background
+  GFTextLine(GumpTextMid(topic.title, 0, GWidth), 10, COLOR_TITLE, topic.title);  // Name des Schiffes
+
+  GFTextLine(GumpTextMid(topic.owner, 0, GWidth), 40, COLOR_TOPIC, topic.owner);
+  GFTextLine(GumpTextMid(ownername, 0, GWidth), 60, COLOR_DEFAULT, ownername); // Besitzer
+
+  GFTextLine(GumpTextMid(topic.port, 0, GWidth), 80, COLOR_TOPIC, topic.port); // Heimathafen
+  GFTextLine(GumpTextMid(porthome, 0,GWidth), 100, COLOR_DEFAULT, porthome);
+
+  GFTextLine(GumpTextMid(topic.material, 0, GWidth), 120, COLOR_TOPIC, topic.material);  // Material
+  GFTextLine(GumpTextMid(mat, 0, GWidth), 140, COLOR_DEFAULT, mat);
+
+  GFTextLine(GumpTextMid(topic.hp, 0, GWidth), 160, COLOR_TOPIC, topic.hp);
+  GFTextLine(GumpTextMid(zustand, 0, GWidth), 180, COLOR_DEFAULT, zustand); // Zustand
+
+  GFGumpPic(33,210,95); // Zwischenlinie
+  GFGumpPic(40,219,96);
+  GFGumpPic(83,219,96);
+  GFGumpPic(260,210,97);
+
+  GFButtonPage(70, 240, 1210, 1209, 2); //Bootsname
+  GFTextLine  (90, 238, COLOR_DEFAULT, buttontext.name);
+  GFButtonPage(70, 260, 1210, 1209, 3); //Heimathafen
+  GFTextLine  (90, 258, COLOR_DEFAULT, buttontext.port);
+
+
+  GFPage(2);
+  GFResizePic(320, 0, 2520, 300, 170);  // Background
+  GFTextLine(GumpTextMid(topic.name, 320, 300), 10, COLOR_TITLE, topic.name);  // Titel
+  GFGumpPic(400, 50, 2501);
+  name.edit   := GFTextEntry(408, 50, 300, 20, 0, tillerman.name);
+  name.okay   := GFButtonID(380, 90, 2130, 2129, 1); //ok
+  name.cancel := GFButtonID(500, 90, 2121, 2120, 1); //cancel
+
+
+  GFPage(3);
+  GFResizePic(320, 0, 2520, 300, 265);  // Background
+  GFTextLine(GumpTextMid(topic.port, 320, 300), 10, COLOR_TITLE, topic.portreg);  // Titel
+  port.vesper  := GFCheckBox(400, 50, 2151, 2154, porthomenr[1]);
+  GFTextLine(450, 55, COLOR_DEFAULT, buttontext.vesper);
+  port.cove    := GFCheckBox(400, 85, 2151, 2154, porthomenr[2]);
+  GFTextLine(450, 90, COLOR_DEFAULT, buttontext.cove);
+  port.yew     := GFCheckBox(400, 120, 2151, 2154, porthomenr[3]);
+  GFTextLine(450, 125, COLOR_DEFAULT, buttontext.yew);
+  port.nirdana := GFCheckBox(400, 155, 2151, 2154, porthomenr[4]);
+  GFTextLine(450, 160, COLOR_DEFAULT, buttontext.nirdana);
+
+  port.okay   := GFButtonID(380, 200, 2130, 2129, 1); //ok
+  port.cancel := GFButtonID(500, 200, 2121, 2120, 1); //cancel
+
+  result := GFSendGump(who);
+
+  If ((!result[port.okay]) && (!result[name.okay])) //Nix los
+    Return (0);
+  EndIf
+
+  If (result[name.okay])  // Namensänderung
+    If (result[name.edit[2]])
+      result[name.edit[2]][1,4] := "";
+      shipname := result[name.edit[2]];
+      If (Len(shipname) <= 40)
+        tillerman.name := shipname;
+        SendSysMessagePergon(who, "Das Schiff wurde umbenannt.");
+      Else
+        SendSysMessagePergon(who, "Zu viele Zeichen!");
+      EndIf
+    Endif
+  Else  // Hafenwechsel
+    ForEach city in (port)  // Mehr als Einen ausgewählt?
+      If (result[city])
+        i += 1;
+      EndIf
+    EndForEach
+
+    If (i > 2) // Wenn ja dann Pech
+      SendSysMessagePergon(who, "Ihr könnt nur eine Stadt als Heimathafen wählen.", "");
+      Return (0);
+    EndIf
+
+    If ((result[port.vesper]) && (!porthomenr[1])) // Vesper
+      Registryresult := PortRegistry(who, "Vesper", HAFENPREIS);
+      If (Registryresult)
+        SendSysMessagePergon(who, "Ihr zahlt die Hafengebühr in Höhe von "+HAFENPREIS+" Goldstücken in die Hafenkasse von Vesper ein.");
+        SetShipStats("PortOfRegistry", "Vesper"); //xxx
+        //SetObjProperty(boat, "PortOfRegistry", "Vesper");
+        Return (1);
+      Else
+        SendSysMessagePergon(who, "Euch fehlen "+(HAFENPREIS - who.gold)+" Goldstücke zum Bezahlen der Hafengebühr in Höhe von "+HAFENPREIS+".");
+        Return (0);
+      EndIf
+    ElseIf ((result[port.cove]) && (!porthomenr[2]))  // Cove
+      Registryresult := PortRegistry(who, "Cove", HAFENPREIS);
+      If (Registryresult)
+        SendSysMessagePergon(who, "Ihr zahlt die Hafengebühr in Hoehe von "+HAFENPREIS+" Goldstücken in die Hafenkasse von Cove ein.");
+        SetShipStats("PortOfRegistry", "Cove"); //xxx
+        //SetObjProperty(boat, "PortOfRegistry", "Cove");
+        Return (1);
+      Else
+        SendSysMessagePergon(who, "Euch fehlen "+(HAFENPREIS - who.gold)+" Goldstücke zum Bezahlen der Hafengebühr in Höhe von "+HAFENPREIS+".");
+        Return (0);
+      EndIf
+    ElseIf ((result[port.yew]) && (!porthomenr[3]))  // Yew
+      Registryresult := PortRegistry(who, "Yew", HAFENPREIS);
+      If (Registryresult)
+        SendSysMessagePergon(who, "Ihr zahlt die Hafengebühr in Hoehe von "+HAFENPREIS+" Goldstücken in die Hafenkasse von Yew ein.");
+        SetShipStats("PortOfRegistry", "Yew"); //xxx
+        //SetObjProperty(boat, "PortOfRegistry", "Yew");
+        Return (1);
+      Else
+        SendSysMessagePergon(who, "Euch fehlen "+(HAFENPREIS - who.gold)+" Goldstücke zum Bezahlen der Hafengebühr in Höhe von "+HAFENPREIS+".");
+        Return (0);
+      EndIf
+    ElseIf ((result[port.nirdana]) && (!porthomenr[4]))  // Nirdana
+      Registryresult := PortRegistry(who, "Nirdana", HAFENPREIS);
+      If (Registryresult)
+        SendSysMessagePergon(who, "Ihr zahlt die Hafengebühr in Hoehe von "+HAFENPREIS+" Goldstücken in die Hafenkasse von Nirdana ein.");
+        SetShipStats("PortOfRegistry", "Nirdana"); //xxx
+        //SetObjProperty(boat, "PortOfRegistry", "Nirdana");
+        Return (1);
+      Else
+        SendSysMessagePergon(who, "Euch fehlen "+(HAFENPREIS - who.gold)+" Goldstücke zum Bezahlen der Hafengebühr in Höhe von "+HAFENPREIS+".");
+        Return (0);
+      EndIf
+    EndIf
+  EndIf
+EndFunction
+
+///////////////////////////////////////////////////
+// NoOwnerMenu - Gump für den Rest
+///////////////////////////////////////////////////
+
+Function NoOwnerMenu(who, tillerman, ownername, material, porthome, zustand)
+  Var topic := struct{title, owner, port, hp, material, name, port};
+  Var mat;
+  Var GWidth  := 300;
+  Var GHeight := 260;
+  Var GumpX   := 20;
+  Var GumpY   := 20;
+
+  topic.title := tillerman.name;
+  topic.owner := "Besitzer:";
+  topic.port  := "Heimathafen:";
+  topic.hp    := "Zustand:";
+  topic.material := material[1]+" aus:";
+  mat         := material[2]+", "+material[3]+", "+material[4];
+
+  GFInitGump();
+  GFSetRef(GumpX, GumpY); //setzt (0,0) Punkt
+  GFResizePic(0, 0, 2520, GWidth, GHeight);  // Background
+  GFTextLine(GumpTextMid(topic.title, 0, GWidth), 10, COLOR_TITLE, topic.title);  // Name des Schiffes
+
+  GFTextLine(GumpTextMid(topic.owner, 0, GWidth), 40, COLOR_TOPIC, topic.owner);
+  GFTextLine(GumpTextMid(ownername, 0, GWidth), 60, COLOR_DEFAULT, ownername); // Besitzer
+
+  GFTextLine(GumpTextMid(topic.port, 0, GWidth), 80, COLOR_TOPIC, topic.port); // Heimathafen
+  GFTextLine(GumpTextMid(porthome, 0, GWidth), 100, COLOR_DEFAULT, porthome);
+
+  GFTextLine(GumpTextMid(topic.material, 0, GWidth), 120, COLOR_TOPIC, topic.material);  // Material
+  GFTextLine(GumpTextMid(mat, 0, GWidth), 140, COLOR_DEFAULT, mat);
+
+  GFTextLine(GumpTextMid(topic.hp, 0, GWidth), 160, COLOR_TOPIC, topic.hp);
+  GFTextLine(GumpTextMid(zustand, 0, GWidth), 180, COLOR_DEFAULT, zustand); // Zustand
+
+  GFSendGump(who);
+EndFunction
+
+///////////////////////////////////////////////////
+// Zustandcalc - Welchen Zustand hat das Boot
+///////////////////////////////////////////////////
+
+Function Zustandcalc(boat)
+  var hpproz, zustand;
+  hp    := GetObjProperty(boat, "hp");
+  maxhp := GetObjProperty(boat, "maxhp");
+
+  hpproz := CInt((hp * 100.0) / maxhp);
+  If (hpproz <= 5)
+    zustand := "Dieses Schiff ist ein Wrack!";
+  ElseIf (hpproz <= 10)
+    zustand := "Euer Schiff bedarf einer Grundüberholung!";
+  ElseIf (hpproz <= 30)
+    zustand := "Euer Schiff bedarf einer Wartung!";
+  ElseIf (hpproz <= 70)
+    zustand := "Euer Schiff weist leicht Schäden auf.";
+  Else
+    zustand := "Euer Schiff ist in einem tadellosen Zustand.";
+  EndIf
+  Return(zustand);
+EndFunction
+
+///////////////////////////////////////////////////
+// PortRegistry - Gold abheben und Hafenkasse gutschreiben
+///////////////////////////////////////////////////
+
+Function PortRegistry(who, port, preis)
+  var PortGold;
+
+  If (who.gold >= preis)
+    who.spendgold(preis);
+    set_critical(1); //Sonst wohl Props bei Gleichzeitigem Auffruf
+    PortGold   := GetPortGold(port); // HafenKasse abfragen
+    If (!PortGold)
+      PortGold := 0;
+    EndIf
+    SetPortGold(port, PortGold + preis);
+    set_critical(0);
+    Return (1);
+  Else
+    Return (0);
+  EndIf
+
+EndFunction

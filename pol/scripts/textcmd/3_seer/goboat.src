@@ -1,0 +1,146 @@
+///////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD GoBoat - Zu einem Boot teleportieren (auch, wenn es gerade faehrt)
+//
+//     Author: Shinigami
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use uo;
+include "include/msgs";
+include "include/place";
+include "include/string";
+
+///////////////
+// Konstanten
+///////////////
+
+Const HOEHE_BOATS:=25; // Wieviel Zeilen passen in den Boot-Gump?
+Const BUTTON_BOAT:=10; // Bootauswahl
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program GoBoat(who)
+  Var boatinfo:=GetBoatInfo();
+
+  // SysLog(boatinfo);
+
+  If (boatinfo.size())
+    Var boatdata:=FillInBoatInfo(boatinfo);
+
+    // SysLog(boatdata);
+
+    // Boot auswaehlen
+    Var nummer:=SendDialogGump(who, boatdata[1], boatdata[2])[0];
+
+    If (nummer)
+      Var boat:=boatdata[3][nummer-BUTTON_BOAT+1];
+      JumpLocationAdd(who);
+      MoveObjectToLocation(
+        who, boat[3].x, (boat[3].y)+1, (boat[3].z)+3, boat[3].realm
+        //, MOVEOBJECT_FORCELOCATION
+      );
+    Else
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Es gibt keine Boote.");
+  EndIf
+EndProgram
+
+//////////////////////////////////////////////////////
+// GetBoatInfo - Liefert die Informationen der Boote
+//////////////////////////////////////////////////////
+
+Function GetBoatInfo()
+  Var boatinfo:={};
+
+  // SysLog("#boatlist = "+GetGlobalProperty("#boatlist"));
+
+  ForEach boatserial in GetGlobalProperty("#boatlist")
+    Var boat:=SystemFindObjectBySerial(boatserial);
+    If (boat)
+      Var owner;
+      Var ownerserial:=GetObjProperty(boat.tillerman, "owner");
+      If (ownerserial)
+        owner:=SystemFindObjectBySerial(ownerserial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+      EndIf
+
+      If (owner)
+        boatinfo.append({owner.name+" - "+boat.tillerman.name, "["+owner.acctname+"]", boat, 68});
+      Else
+        If (ownerserial)
+          boatinfo.append({"geloeschter Besitzer - "+boat.tillerman.name, "", boat, 68});
+        Else
+          boatinfo.append({"fehlender Besitzer - "+boat.tillerman.name, "", boat, 68});
+        EndIf
+      EndIf
+    EndIf
+  EndForEach
+
+  Return (SortMultiArrayByIndexNotCase(boatinfo, 1));
+EndFunction
+
+///////////////////////////////////////////////////
+// FillInBoatInfo - Boot-Daten ins Gump eintragen
+///////////////////////////////////////////////////
+
+Function FillInBoatInfo(boatinfo)
+  Var layout:={                                      // Gump-Layout
+    "page 0",                                        //   Seite 0 (Basisseite)
+    "nodispose",
+    "resizepic 10 10 2620 660 "+(70+HOEHE_BOATS*20),
+    "gumppic 30 40 2621",
+    "gumppic 180 40 2621",
+    "gumppic 380 40 2621",
+    "checkertrans 15 16 650 "+(58+HOEHE_BOATS*20)
+  };
+  Var data:={};                                      // Gump-Data
+
+  Var boatcount:=0;           // Zahl des einzutragenden Bootes
+  Var pagecount:=1;           // Akt. Seitenzahl
+  Var nextpageswap:=0;        // Wann erfolgt ein Seitenwechsel?
+  Var msgbutton:=BUTTON_BOAT; // Nummer des Buttons
+  Var pos_y;                  // Akt. Y-Koordinate
+
+  ForEach boat in boatinfo // Alle Boote eintragen
+    If (boatcount==nextpageswap)  // Seitenwechsel-Buttons einfuegen?
+      layout.append("page "+pagecount);
+      layout.append("text 30 19 40 "+data.size());
+
+      If (boatcount>0)
+        layout.append("button 633 19 2650 2651 0 "+(pagecount-1));
+      EndIf
+      If (boatinfo.size()>boatcount+HOEHE_BOATS)
+        layout.append("button 613 19 2648 2647 0 "+(pagecount+1));
+        data.append("Boot auswaehlen ("+(boatcount+1)+" bis "+(boatcount+HOEHE_BOATS)+")");
+      Else
+        data.append("Boot auswaehlen ("+(boatcount+1)+" bis "+boatinfo.size()+")");
+      EndIf
+
+      pagecount+=1;
+      nextpageswap+=HOEHE_BOATS;
+      pos_y:=60;
+    EndIf
+
+    layout.append("button 30 "+(pos_y-3)+" 2640 2641 1 0 "+msgbutton);
+
+    layout.append("text 65 "+pos_y+" "+boat[4]+" "+data.size());
+    data.append(boat[1]);
+    If (boat[2])
+      layout.append("text 465 "+pos_y+" 40 "+data.size());
+      data.append(boat[2]);
+    EndIf
+    layout.append("text 555 "+pos_y+" 68 "+data.size());
+    data.append(boat[3].x+" "+boat[3].y+" "+boat[3].z);
+
+    boatcount+=1;
+    msgbutton+=1;
+    pos_y+=20;
+  EndForEach
+
+  Return ({layout, data, boatinfo});
+EndFunction

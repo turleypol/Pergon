@@ -1,0 +1,73 @@
+//**************************************************************************************************
+// Script file sacrifice.src
+//
+//    implements spell 230 <Sacrifice> - "Opfer"
+//
+//  caster commits suicide an deals his HP, Mana and Stamina as damage to spelltarget
+//    [ Resisted (Magic) ]
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+// Vers. 1.1   - 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use vitals;
+
+Include "../magicpergon";
+Include "../resistance";
+Include "include/packets";
+
+program cast_sacrifice (params)
+
+  Var caster;
+  Var caston;
+
+  Var spells:= ReadConfigFile("::spells");                   // load spelldata
+  Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_SACRIFICE);
+  Var difficulty:= spell.skill;
+  Var resist:= spell.resist;
+  Var dmg;
+  Var power;
+
+  if (params[1] == "#SCROLL")
+    caster:= params[2];
+    power:=  params[3];
+    caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    if (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    endif
+  elseif (params[1] == "#MOB")
+    caster:= params[2];
+    power:=  params[3];
+    caston:= params[4];
+  else
+    caster:= params[1];
+
+    power:= GetCastPowerPergon(caster, SPELLID_CLERIC_SACRIFICE);
+    caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    if (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    endif
+  endif
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_DIR);
+
+  Var spelltarget:= ReflectSpell(caster, caston, dmg, 1, FX_SMOKE, 15, 20, 0, SFX_29);
+  // PlayObjectCenteredEffect(caster, FX_SPARK_EFFECT, 10, 30);
+
+  if (spelltarget)
+    dmg:= GetHPPergon(caster) + GetManaPergon(caster) + GetStaminaPergon(caster);    // sum up damage
+
+    if (resist)                            // alter damage according to spelltargets magic resistance
+      dmg:= CInt(MagicResistance(spelltarget, difficulty, resist, dmg, 1));
+    endif
+
+    ApplyRawDamagePergon(spelltarget, dmg);                // apply damage to spelltarget
+    KillMobile(caster, "cleric-sacrifice");                      // kill caster
+  else
+    KillMobile(caster, "cleric-sacrifice-mr");                   // apply backfiring damage to caster
+  endif
+
+endprogram

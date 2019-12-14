@@ -1,0 +1,29 @@
+use uo;
+
+Include "include/msgs";
+Include "include/pergonutil";
+
+Program TextCMD_DestroyMulti(who, serial)
+  var multi;
+  If (serial)
+    multi := SystemFindObjectBySerial(CInt(serial));
+  Else
+    SendSysMessagePergon(who, "Bitte das Multi auswählen!");
+
+    var targ := TargetCoordinates(who);
+    If (targ.multi)
+      var ret := SendYesNoGump(who, "Wollt Ihr das Multi "+Hex(targ.multi.serial)+" wirklich zerstören?");
+      If (!ret)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+      Else
+        multi := targ.multi;
+      EndIf
+    EndIf
+  EndIf
+
+  var destroyed := DestroyMulti(multi);
+  If (!destroyed)
+    SendSysMessagePergon(who, "Multi konnte nicht zerstört werden ("+destroyed.errortext+") !");
+  EndIf
+EndProgram

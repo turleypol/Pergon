@@ -1,0 +1,8 @@
+<h3 id="changecriminal">changecriminal</h3>
+
+<h4>Parameter: keiner oder <kbd>b</kbd> oder <kbd>g</kbd> oder
+<kbd>r</kbd></h4>
+
+<p>Schaltet die eigene Einstellung zwischen gut (&bdquo;b&rdquo;), neutral
+(&bdquo;g&rdquo;) und böse (&bdquo;r&rdquo;) um. Ohne Parameter wird
+zur nächsten Ausrichtung gewechselt.</p>

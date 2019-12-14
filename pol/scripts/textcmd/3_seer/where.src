@@ -1,0 +1,9 @@
+use uo;
+
+Include "include/msgs";
+
+program textcmd_where( who )
+
+    SendSysMessagePergon( who, "X="+who.x+", Y="+who.y+", Z="+who.z );
+
+endprogram

@@ -1,0 +1,72 @@
+///////////////////////////////////////////////////////////////////////////
+// Online - TextCommand
+//
+//     Usage: .online
+//              Prints all online Players on Screen
+//
+//     Author: Exelon
+
+///////////////////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+// 2004/08/04 Fox: Counselor können ihre Farbe den normalen Playern anpassen
+// 2000/06/26 Shinigami: Complete ReWrite + Implementing Sort
+// 2000/06/05 Exelon: Enhancement
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+include "include/client";
+include "include/msgs";
+include "include/onlinesearch";
+include "include/server";
+include "include/string";
+use os;
+use uo;
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_Online(who, eingabe)
+  If (eingabe)
+    var gesuchter := SearchForOnlineCharacter(who, eingabe);
+    If (gesuchter)
+      SendSysMessagePergon(who, gesuchter.name+" ist online.", "");
+    Else
+      SendSysMessagePergon(who, eingabe+" konnte nicht gefunden werden.", "");
+    EndIf
+  Else
+    var playerinfo := EnumerateVisibleOnlineCharactersSorted(who, LIST_ME); // Liste mit {char.name, char}
+    If (playerinfo.size())
+      SendSysMessagePergon(who, "Online-Charactere:", "");
+
+      ForEach player in playerinfo
+        If (player[2].cmdlevel >= CMDLEVEL_SEER)
+          SendSysMessagePergon(who, "  "+player[1], "", _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+        Else
+          If (player[2].murderer)
+            SendSysMessagePergon(who, "  "+player[1], "", _DEFAULT_TEXT_FONT, FONTCOLOR_GREEN-2);
+          ElseIf (player[2].cmdlevel == CMDLEVEL_COUNSELOR)
+            If (GetObjProperty(player[2], HIDE_BM_ONLINE)) // nur wenn der BM es wuenscht wird er farblich hervorgehoben
+              SendSysMessagePergon(who, "  "+player[1], "", _DEFAULT_TEXT_FONT, FONTCOLOR_GREEN);
+            Else
+              SendSysMessagePergon(who, "  "+player[1], "", _DEFAULT_TEXT_FONT, FONTCOLOR_BROWN);
+            EndIf
+          Else
+            SendSysMessagePergon(who, "  "+player[1], "", _DEFAULT_TEXT_FONT, FONTCOLOR_GREEN);
+          EndIf
+        EndIf
+        SleepMS(2);
+      EndForEach
+
+      If (playerinfo.size() == 1)
+        SendSysMessagePergon(who, "Es ist 1 Character online.", "");
+      Else
+        SendSysMessagePergon(who, "Es sind "+playerinfo.size()+" Charactere online.", "");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Es ist gerade kein weiterer Character online.", "");
+    EndIf
+  EndIf
+EndProgram

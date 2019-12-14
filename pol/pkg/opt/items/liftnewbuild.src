@@ -1,0 +1,82 @@
+///////////////////////////////////////////////////////////////////////////
+// liftnewbuild -- neue Liftteile einbauen/Rufsteine aufbauen
+
+use os;
+use uo;
+include "include/eventid";
+include "include/msgs";
+include "include/pergonutil";
+include "include/server";
+include "lift";
+
+Program LiftBuild(who, lift)
+    If (who.cmdlevel < CMDLEVEL_SEER)
+        return;
+    EndIf
+
+    // Event vorbereiten
+    var ev := struct;
+    ev["type"]   := EVID_LIFT_MODIFY;
+    ev["source"] := who;
+
+    If (SendYesNoGump(who, "Wollt Ihr einen Rufstein bauen?"))
+        // Rufstein bauen
+        var stone := CreateItemAtLocation(
+            who.x, who.y, who.z, "liftnewcall", 1, who.realm
+        );
+        If (!stone)
+            SendSysMessagePergon(who,
+                "Fehler: "+stone.errortext, "Error: "+stone.errortext
+            );
+            return;
+        EndIf
+        SendSysMessagePergon(who,
+            "Rufstein wurde unter Euch aufgebaut",
+            "Caller stone has been created below yourself"
+        );
+
+        // Modify-Event "Rufstein"
+        ev[EVTYPE_MODIFY] := EV_MOD_CALLER;
+        ev["item"]        := stone;
+
+    Else
+        // Teil hinzufuegen/entfernen
+        SendSysMessagePergon(who,
+            "Waehlt ein Teil, was (nicht) mitfahren soll! (Abbruch = Ende)",
+            "Select an item which should (not) travel with the lift! "+
+            "(Cancel = Exit)"
+        );
+        var tgt := Target(who);
+        If (!tgt)
+            SendSysMessagePergon(who, "Abbruch", "Abort");
+            return;
+        EndIf
+
+        If (tgt.isa(POLCLASS_MOBILE) or !tgt.isa(POLCLASS_ITEM))
+            SendSysMessagePergon(who,
+                "Ungültige Auswahl", "Invalid target"
+            );
+            return;
+        EndIf
+
+        If (tgt.objtype in (array{0x70d1, 0x70d3, 0x70d5}))
+            SendSysMessagePergon(who,
+                "Das ist eine sehr schlechte Idee.",
+                "That's a very bad idea."
+            );
+            return;
+        EndIf
+
+        // Modify-Event "Komponente"
+        ev[EVTYPE_MODIFY] := EV_MOD_COMPONENT;
+        ev["item"]        := tgt;
+    EndIf
+
+    // Event verschicken
+    var process := GetLiftProcess(who, lift);
+    If (!process)
+        return;
+    EndIf
+
+    process.sendevent(ev);
+EndProgram

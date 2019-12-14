@@ -1,0 +1,138 @@
+<html>
+
+<head>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+<title>POL Object Reference - PolCore()</title>
+</head>
+
+<body>
+
+<table border="0" width="100%">
+  <tr>
+    <td valign="top" width="100%"><strong><big>PolCore() </big></strong></td>
+    <td width="50%" valign="top" align="right" nowrap><a href="objref.htm"><small>POL </small><br>
+    <small>Object Reference</small></a></td>
+  </tr>
+</table>
+
+<p>The PolCore object gives access to POL internals.&nbsp; It can be accessed by calling
+PolCore(), which is defined in the uo.em functionality module.</p>
+
+<pre>use uo;
+var core := polcore();
+print( core.itemcount );
+</pre>
+
+<h3>Methods</h3>
+
+<table border="0" width="80%">
+  <tr>
+    <td width="25%"><a href="#log_profile">log_profile</a></td>
+    <td width="25%"><a href="#set_priority_divide">set_priority_divide</a></td>
+    <td width="25%"><a href="#clear_script_profile_counters">clear_script_profile_counters</a></td>
+    <td width="25%"></td>
+  </tr>
+</table>
+
+<p>&nbsp; </p>
+
+<h3>Properties</h3>
+
+<p>&nbsp;</p>
+
+<table border="0" width="80%">
+  <tr>
+    <td width="16%"><a href="#bytes_sent">bytes_sent</a> </td>
+    <td width="16%">bytes_received </td>
+    <td width="17%">compiledate</td>
+    <td width="17%">compiletime </td>
+  </tr>
+  <tr>
+    <td width="16%">events_per_min</td>
+    <td width="16%">instr_per_min</td>
+    <td width="17%">itemcount</td>
+    <td width="17%">mobilecount</td>
+  </tr>
+  <tr>
+    <td width="16%">packages</td>
+    <td width="16%">priority_divide</td>
+    <td width="17%">running_scripts</td>
+    <td width="17%">script_profiles</td>
+  </tr>
+  <tr>
+    <td width="16%">sysload</td>
+    <td width="16%">sysload_severity</td>
+    <td width="17%">systime</td>
+    <td width="17%">uptime</td>
+  </tr>
+  <tr>
+    <td width="16%">version</td>
+    <td width="16%">verstr</td>
+    <td width="17%"></td>
+    <td width="17%"></td>
+  </tr>
+</table>
+
+<p>&nbsp;&nbsp; </p>
+
+<p>&nbsp;&nbsp; </p>
+
+<hr width="50%">
+
+<h3>Methods</h3>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td width="100%" colspan="2"><a name="log_profile"><strong><big>polcore().log_profile(
+    clear )</big></strong></a></td>
+  </tr>
+  <tr>
+    <td>Function:</td>
+    <td width="100%">Logs script profiles to pol.log.&nbsp; Clears the script profile counters
+    if 'clear' is nonzero.<p>Script profiles tell how many instructions each type of script
+    has executed</td>
+  </tr>
+</table>
+
+<p>&nbsp;</p>
+
+<table border="1" width="80%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="100%" colspan="2"><a name="set_priority_divide"><strong><big>polcore().set_priority_divide(
+    pridiv )</big></strong></a></td>
+  </tr>
+  <tr>
+    <td>Function:</td>
+    <td width="100%">Sets the script priority divider.&nbsp; If this value is set high, this
+    has the effect that each script will run for less time before being scheduled out to run
+    the next script.&nbsp; If system load is high, this can decrease client latency.</td>
+  </tr>
+</table>
+
+<p>&nbsp;</p>
+
+<table border="1" width="80%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="100%" colspan="2"><a name="clear_script_profile_counters"><strong><big>polcore().clear_script_profile_counters()</big></strong></a></td>
+  </tr>
+  <tr>
+    <td width="10%">Function:</td>
+    <td width="100%">Clears the script profile counters...</td>
+  </tr>
+</table>
+
+<p>&nbsp;</p>
+
+<h3>Properties</h3>
+
+<table border="1" width="80%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="100%" colspan="2"><a name="bytes_sent"><strong><big>polcore().bytes_sent</big></strong></a></td>
+  </tr>
+  <tr>
+    <td>Meaning:</td>
+    <td width="100%">The number of bytes sent to all clients, not including HTTP connections</td>
+  </tr>
+</table>
+</body>
+</html>

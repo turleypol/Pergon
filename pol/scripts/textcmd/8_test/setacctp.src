@@ -1,0 +1,30 @@
+Use uo;
+
+Include "include/msgs";
+
+Program TextCMD_SetAcctP(who, params)
+  Var prop:=SplitWords(params);
+  If ((prop[1]) And (prop[2]))
+    If (CInt(prop[2]))
+      prop[2]:=CInt(prop[2]);
+    EndIf
+
+    SendSysMessagePergon(who, "Bitte einen Player anklicken!");
+
+    Var tgt:=Target(who, TGTOPT_NOCHECK_LOS);
+    If ((tgt.isa(POLCLASS_MOBILE)) And (!tgt.isa(POLCLASS_NPC)))
+      Var value:=(tgt.acct).getprop(params);
+      If (value)
+        SendSysMessagePergon(who, "Die AccountProperty "+prop[1]+" wird von "+value+" auf "+prop[2]+" gesetzt.");
+      Else
+        SendSysMessagePergon(who, "Die AccountProperty "+prop[1]+" wird neu angelegt!");
+      EndIf
+
+      (tgt.acct).setprop(prop[1], prop[2]);
+    Else
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr müsst eine AccountProperty und ihren Wert angeben!");
+  EndIf
+EndProgram

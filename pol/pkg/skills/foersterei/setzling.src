@@ -1,0 +1,13 @@
+Use uo;
+Use os;
+
+Program Setzling(item)
+  if ( GetObjProperty(Item, "ttl") > 0)
+//     SysLog("Setling beendet");
+     return;
+  EndIf;
+
+  //print ("lösche Setzling.");
+  Sleep(1000);
+  DestroyItem(item);
+EndProgram

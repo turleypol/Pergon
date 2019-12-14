@@ -1,0 +1,8 @@
+<h3 id="name">name</h3>
+
+<h4>Parameter: <kbd>&lt;Name&gt;</kbd></h4>
+
+<p>Gegenstände und NPCs umbenennen. Funktioniert nur, wenn der
+Gegenstand umbenennbar ist. Eine Übersicht über umbenennbare
+Gegenstände wird angezeigt. Gegenstände wie Container und
+Schlüssel müssen sich im Rucksack oder der Bankbox befinden.</p>

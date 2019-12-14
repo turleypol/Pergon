@@ -1,0 +1,109 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD StripPlayervendor - Entzieht dem Playerhaendler alle Gegenstaende
+//
+//     Author: Shinigami
+//
+//   Modification:
+//
+////////////////////////////////////////////////////////////////////////////////
+
+/////////////
+// Includes
+/////////////
+
+use storage;
+use uo;
+include "include/client";
+include "include/itemnpc";
+include "include/msgs";
+include "include/storage";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program StripPlayervendor(who)
+  SendSysMessagePergon(who,
+    "Welcher Playerhändler soll all seine Gegenstände an Euch übergeben?"
+  );
+
+  var mobile := Target(who);
+  If (!mobile.isa(POLCLASS_NPC))
+    SendSysMessagePergon(who, "Dies ist kein NPC!");
+    return;
+  EndIf
+
+  If (Lower(mobile.npctemplate) != "playervendor")
+    SendSysMessagePergon(who, "Dies ist kein Playerhändler!");
+    return;
+  EndIf
+
+  var storage := FindStorageArea(STORAGE_MERCHANT);
+  If (!storage)
+    SendSysMessagePergon(who, "StorageArea konnte nicht geöffnet werden!");
+    return;
+  EndIf
+
+  var inv_fs := FindOrCreateRootItemInStorage(
+    storage, mobile.serial+" FS", 0xe7c
+  );
+  var inv_pb := FindOrCreateRootItemInStorage(
+    storage, mobile.serial+" PB", 0xe7c
+  );
+  var inv_1c := FindOrCreateRootItemInStorage(
+    storage, mobile.serial+" 1C", 0xe7c
+  );
+
+  If (inv_fs and inv_pb and inv_1c)
+    var vendorbackpack := CreateItemInBackpackPergon(who, 0xe75);
+    If (vendorbackpack)
+      vendorbackpack.name := "Gegenstände vom Händler "+mobile.name;
+
+      var vendorequip := CreateItemInContainerPergon(vendorbackpack, 0xe75);
+      var vendor_fs := CreateItemInContainerPergon(vendorbackpack, 0xe75);
+      var vendor_pb := CreateItemInContainerPergon(vendorbackpack, 0xe75);
+      var vendor_1c := CreateItemInContainerPergon(vendorbackpack, 0xe75);
+      If (vendorequip And vendor_fs And vendor_pb And vendor_1c)
+        vendorequip.name := "Equipment";
+        vendor_fs.name := "Inventar FS";
+        vendor_pb.name := "Inventar PB";
+        vendor_1c.name := "Inventar 1C";
+
+        ForEach item in ListEquippedItems(mobile)
+          If ((item.layer<>LAYER_HAIR) And (item.layer<>LAYER_BEARD))
+            If (!MoveItemToContainer(item, vendorequip))
+              SendSysMessagePergon(who, "Konnte '"+item.desc+"' nicht ausziehen!");
+            EndIf
+          EndIf
+        EndForEach
+
+        ForEach item in EnumerateItemsInContainer(inv_fs)
+          If (!MoveItemToContainer(item, vendor_fs))
+            SendSysMessagePergon(who, "Konnte '"+item.desc+"' nicht verschieben!");
+          EndIf
+        EndForEach
+
+        ForEach item in EnumerateItemsInContainer(inv_pb)
+          If (!MoveItemToContainer(item, vendor_pb))
+            SendSysMessagePergon(who, "Konnte '"+item.desc+"' nicht verschieben!");
+          EndIf
+        EndForEach
+
+        ForEach item in EnumerateItemsInContainer(inv_1c)
+          If (!MoveItemToContainer(item, vendor_1c))
+            SendSysMessagePergon(who, "Konnte '"+item.desc+"' nicht verschieben!");
+          EndIf
+        EndForEach
+
+        SendSysMessagePergon(who, "Fertig. Schaut in Euren Rucksack nach 'Gegenstaende vom Haendler "+mobile.name+"'.");
+      Else
+        SendSysMessagePergon(who, "Euer Rucksack ist voll!");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Euer Rucksack ist voll!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Die Häendlerrucksäcke konnten nicht gefunden werden!");
+  EndIf
+EndProgram

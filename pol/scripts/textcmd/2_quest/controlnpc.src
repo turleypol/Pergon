@@ -1,0 +1,105 @@
+///////////////////////////////////////////////////////////////////////////
+// ControlNPC -- ausgewaehlter NPC macht diverse Dinge nach
+
+use uo;
+include "include/msgs";
+include "include/quests";
+include "include/server";
+
+Program ControlNPC(who) // {{{
+    // pruefen, ob gerade ein NPC kontrolliert wird
+    var serial := who.getprop(PROP_CONTROLNPC);
+    If (serial)
+        var npc := SystemFindObjectBySerial(serial);
+        If (npc)
+            SendSysMessagePergon(who,
+                "Gebe Kontrolle auf", "Stopping remote control"
+            );
+            StopControl(who, npc);
+
+            // Logging
+            QuestCharLog(
+                who, "Kontrolle ueber "+CharInfoStr(npc)+" aufgegeben"
+            );
+            syslog(
+                CharInfoStr(who)+" gibt Kontrolle ueber "+
+                CharInfoStr(npc)+" auf"
+            );
+            return;
+        EndIf
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Wer soll Euch folgen?", "Who should follow you?"
+    );
+    var npc := Target(who);
+    If (!npc or !npc.isa(POLCLASS_MOBILE))
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    // Restriktionen {{{
+    If (!npc.isa(POLCLASS_NPC))
+        SendSysMessagePergon(who,
+            "Ihr könnt nur NPCs kontrollieren!",
+            "You may only control NPCs!"
+        );
+        return;
+    EndIf
+
+    If (who.cmdlevel <= CMDLEVEL_QUESTCHAR)
+        If (npc.getprop("master") or npc.getprop("ExMaster"))
+            SendSysMessagePergon(who,
+                "Ihr könnt keine NPCs anderer Leute kontrollieren!",
+                "You may not control NPCs of other players!"
+            );
+            return;
+        EndIf
+    EndIf
+    // }}}
+
+    // Logging
+    QuestCharLog(who, "Kontrolliert nun "+CharInfoStr(npc));
+    syslog(CharInfoStr(who)+" kontrolliert nun "+CharInfoStr(npc));
+
+    // alte Daten sichern
+    var npcdata := struct;
+    npcdata.c := npc.cmdlevel;
+    npcdata.f := npc.frozen;
+    npcdata.s := npc.script;
+    // Kontrollierenden setzen
+    npcdata.m := who.serial;
+    npc.setprop(PROP_CONTROLNPC, npcdata);
+    who.setprop(PROP_CONTROLNPC, npc.serial);
+
+    // Startposition einnehmen
+    who.setfacing(npc.facing, FACING_FORCE);
+    MoveObjectToLocation(
+        who, npc.x, npc.y, npc.z, npc.realm, MOVEOBJECT_FORCELOCATION
+    );
+
+    // Remote-AI starten
+    npc.cmdlevel := who.cmdlevel;       // damit man gehoert wird
+    npc.frozen   := 1;                  // wegrennen soll er nicht
+    npc.script   := "remotecontrolled";
+    RestartScript(npc);
+EndProgram // }}}
+
+// Original-Script und alten Cmdlevel wiederherstellen
+Function StopControl(who, npc) // {{{
+    // Kontrollierenden reinigen
+    who.eraseprop(PROP_CONTROLNPC);
+
+    // Daten von vor Scriptaenderung laden
+    var npcdata := npc.getprop(PROP_CONTROLNPC);
+    If (!npcdata)
+        syslog("FEHLER: "+CharInfoStr(npc)+" ist nun hirntot");
+        return;
+    EndIf
+
+    npc.cmdlevel := npcdata.c;
+    npc.frozen   := npcdata.f;
+    npc.script   := npcdata.s;
+    npc.eraseprop(PROP_CONTROLNPC);
+    RestartScript(npc);
+EndFunction // }}}

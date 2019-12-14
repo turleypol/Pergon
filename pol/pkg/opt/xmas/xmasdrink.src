@@ -1,0 +1,43 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+// - funky xmas drink.
+// updated November 19, 2000
+//
+/////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+Use util;
+
+Include "include/client";
+Include "include/msgs";
+
+Program XMasDrink(who, xmas)
+  If (ReserveItem(xmas))
+    DestroyItem(xmas);
+
+    PerformAction(who, ANIM_EAT);
+    PlaySoundEffect(who, SFX_32);
+    Sleep(5);
+
+    Detach();
+
+    PerformAction(who,ANIM_BOW);
+    PrintTextAbovePergon(who, who, "*hick*");
+    who.facing:=RandomDiceRoll("1d8");
+    Sleep(2);
+
+    PerformAction(who,ANIM_BOW);
+    who.facing:=RandomDiceRoll("1d8");
+    Sleep(1);
+
+    PerformAction(who,ANIM_BOW);
+    who.facing:=RandomDiceRoll("1d8");
+    Sleep(5);
+
+    PrintTextAbovePergon(who, who, "*hick*");
+    Sleep(5);
+
+    SendSysMessagePergon(who, "Das hat lecker geschmeckt...", "Uh, very tasty...");
+  EndIf
+EndProgram

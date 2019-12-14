@@ -1,0 +1,100 @@
+//**************************************************************************************************
+// Script file paralyze.src
+//
+//    implements spell 215 <Paralyse> - "Paralyse"
+//
+//  paralyzes spelltarget - renders it immovable
+//    [ Reflected / Resisted (Magic) ]
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 03.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+Include "include/spellcheck";
+Include "../magicpergon";
+Include "../spellattack";
+
+program cast_paralyze (params)
+
+   Var caster;
+   Var caston;
+   Var spelltarget;
+
+   Var spells:= ReadConfigFile("::spells");                   // load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_PARALYZE);
+   Var difficulty:= spell.skill;
+   Var resist:= spell.resist;
+   Var dur:=    spell.duration;
+   Var mindur:= spell.durationmin;
+   Var maxdur:= spell.durationmax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+      dur:=spell.npcduration;
+      send_attack(caston, caster, 215);
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_PARALYZE);
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+      //keine para auf tote
+      if (caston.dead)
+        SendSysMessagePergon(caster, "Euer Ziel ist tot", "Your target is dead");
+        return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+                                  // get spelltarget -> possible spell reflection
+   spelltarget:= ReflectSpell(caster, caston, power, 1, FX_CURSE_EFFECT, 10, 10, 0, SFX_SPELL_PARALYZE);
+
+   if (spelltarget)
+      if ((GetObjProperty(spelltarget, "spell_paralyze"))||(GetObjProperty(spelltarget, "spell_statue")))   // check if spelltarget can be paralyzed
+         SendSysMessagePergon(caster, "Euer Ziel ist bereits paralysiert", "Your target is paralyzed already");
+         return;
+      endif
+                            // calc spell duration according to spelltargets magic resistance
+      if (resist)           // and casting power
+         dur:= CInt(MagicResistance(spelltarget, difficulty, resist, power*dur/100.0, 1));
+      else
+         dur:= CInt(power*dur/100.0);
+      endif
+
+      if (mindur and mindur > dur)
+         dur:= mindur;
+      elseif (maxdur and maxdur < dur)
+         dur:= maxdur;
+      endif
+
+      spelltarget.paralyzed:= 1;      // paralyze spelltarget
+      spelltarget.frozen:= 1;       // freeze spelltarget (necessary 'cos paralyze aint enough)
+      IncRevision(spelltarget);
+      
+      Var tag:= array;
+
+      tag[1]:= ReadGameClock() + dur;
+      tag[2]:= power;
+      tag[5]:= ReadMilliSecondClock();
+
+      SetObjProperty(spelltarget, "spell_paralyze", tag);   // tag spelltarget for spellchecker
+      SendSpellWaiter(spelltarget, "spell_paralyze", dur, tag[5], spelltarget);
+
+   endif
+
+endprogram

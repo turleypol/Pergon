@@ -1,0 +1,50 @@
+///////////////////////////////////////////////////////////////////////////
+// MoveSecureContItems - Verschiebt Items aus einem alten in einen neuen
+// Hauscontainer
+
+///////////////////////////////////////////////////////////////////////////
+// $Log: not supported by cvs2svn $
+// Revision 1.5  2008/09/04 19:45:44  mehdorn
+// - in Housing mal Konstanten fuer viel Props eingefuehrt
+// - entsprechend in anderen Scripten verwendet
+//
+
+use uo;
+
+include ":housing:house";
+
+Program MoveSecureContItems(who)
+  SendSysMessagePergon(who, "Bitte den alten Hauscontainer auswählen!");
+
+  var oldcontainer := Target(who);
+  If (oldcontainer.isa(POLCLASS_CONTAINER) And GetObjProperty(oldcontainer, PROP_HS_C_SC_BOX))
+    var oldboxs := GetObjProperty(oldcontainer, PROP_HS_C_SC_BOX);
+    var oldboxo := SystemFindObjectBySerial(oldboxs);
+
+    ForEach item in EnumerateItemsInContainer(oldcontainer,ENUMERATE_ROOT_ONLY) // Alle Items, die per Drag'n'Drop raufgezogen wurden, reinverschieben
+      If (item.serial<>oldboxs) // Jedoch die interne Box ignorieren
+        MoveItemToContainer(item, oldboxo);
+      EndIf
+    EndForEach
+
+    SendSysMessagePergon(who, "Bitte den neuen Hauscontainer auswählen!");
+
+    var newcontainer := Target(who);
+    If (newcontainer.isa(POLCLASS_CONTAINER) And GetObjProperty(newcontainer, PROP_HS_C_SC_BOX))
+      var newboxs := GetObjProperty(newcontainer, PROP_HS_C_SC_BOX);
+      var newboxo := SystemFindObjectBySerial(newboxs);
+
+      ForEach item in EnumerateItemsInContainer(oldboxo,ENUMERATE_ROOT_ONLY)
+        MoveItemToContainer(item, newboxo, item.x, item.y);
+      EndForEach
+
+      SendSysMessagePergon(who, "Alle Items wurden verschoben.");
+
+      SendOpenSpecialContainer(who, newboxo);
+    Else
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

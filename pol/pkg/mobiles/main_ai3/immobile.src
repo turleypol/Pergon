@@ -1,0 +1,237 @@
+/////////////////////////////////////////////////////////
+//
+//   immobile - OverrideFunction KI Hauptkram in main.inc
+//                Main_AI3
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     24.06.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+//
+// Immobile: unbeweglicher Nahk‰mpfer
+
+include ":main_ai3:include_common/main_ai";
+CONST NATURE:=NATURE_IMMOBILE;
+include ":main_ai3:include_common/main";
+include ":main_ai3:include_common/common";
+include ":main_ai3:include_nature/immobile";
+
+
+
+Function OnStart()
+  OnStartImmobile();
+EndFunction
+
+Function InitNPC()
+  InitNPC_Common();
+EndFunction
+
+Function InitParamsSpezial(byref mytemplate)
+  mytemplate:=mytemplate;
+EndFunction
+
+Function Before_Events()
+  Return;
+EndFunction
+
+Function IdleTime()
+  Return(IdleTime_Common());
+EndFunction
+
+Function Event_DoubleClicked(byref ev)
+  Event_DoubleClicked_Common(ev);
+EndFunction
+
+Function Event_ItemGiven(byref ev)
+  Event_ItemGiven_Common(ev);
+EndFunction
+
+Function Event_Speech(byref ev)
+  Event_Speech_Common(ev);
+EndFunction
+
+Function Can_Speech_Kill()
+  Return(1);
+EndFunction
+
+Function Can_Speech_Guard()
+  Return(1);
+EndFunction
+
+Function Event_Engaged(byref ev)
+  If (Event_Engaged_Common(ev))
+    If( !Me.warmode ) //nur wenn er nicht schon kaempft
+      If (params.exists(SPELLCASTER))
+        If (params[FIRSTCAST])  // Hab noch nicht gecastet also jetzt mal anschmeiﬂen
+          MagicFight(ev.source);
+        EndIf
+      EndIf
+      FightImmobile( ev.source ); //killer greift an
+    EndIf
+  EndIf
+EndFunction
+
+Function Event_Disengaged(byref ev)
+  Event_Disengaged_Common(ev);
+EndFunction
+
+Function Event_Damaged(byref ev)
+  If (Event_Damaged_Common(ev))
+    If( !Me.warmode ) //nur wenn er nicht schon kaempft
+      If (params.exists(SPELLCASTER))
+        If (params[FIRSTCAST])  // Hab noch nicht gecastet also jetzt mal anschmeiﬂen
+          MagicFight(ev.source);
+        EndIf
+      EndIf
+      FightImmobile( ev.source );
+    Else
+      If( !RandomInt(50) ) //2%chance vielleicht renn ich ja trotzdem hin?
+        SetWarmode(0); //neuen gegner setzen ermoeglichen
+        If (params.exists(SPELLCASTER))
+          If (params[FIRSTCAST])  // Hab noch nicht gecastet also jetzt mal anschmeiﬂen
+            MagicFight(ev.source);
+          EndIf
+        EndIf
+        FightImmobile( ev.source);
+      EndIf
+    EndIf
+  EndIf
+EndFunction
+
+Function Event_EnteredArea(byref ev)
+  If (Event_EnteredArea_Common(ev))
+    If( !Me.warmode ) //nur wenn er nicht schon kaempft
+      If (ValidEnemy_Override(ev.source,1))
+        If (params.exists(SPELLCASTER))
+          If (params[FIRSTCAST])  // Hab noch nicht gecastet also jetzt mal anschmeiﬂen
+            MagicFight(ev.source);
+          EndIf
+        EndIf
+        FightImmobile( ev.source );
+      ElseIf (ev.source.npctemplate["escort_"]) //einzige NPCs die von anderen NPCs angegriffen werden
+        TestMessage("MainLoop: Entered Area (Eskort NPC): "+ev.source.name, 1);
+        If (params.exists(SPELLCASTER))
+          If (params[FIRSTCAST])  // Hab noch nicht gecastet also jetzt mal anschmeiﬂen
+            MagicFight(ev.source);
+          EndIf
+        EndIf
+        FightImmobile( ev.source );
+      EndIf
+    EndIf
+  EndIf
+EndFunction
+
+Function Event_LeftArea(byref ev)
+  Event_LeftArea_Common(ev);
+EndFunction
+
+Function Event_StillRun(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_LookAround(byref ev)
+  ev.source:=Event_LookAround_Common(ev);
+  If (ev.source==-1)
+    MakeMePeaceful(params[RANGESENSE]);
+  ElseIf (ev.source)
+    If (params.exists(SPELLCASTER))
+      If (params[FIRSTCAST])  // Hab noch nicht gecastet also jetzt mal anschmeiﬂen
+        MagicFight(ev.source);
+      EndIf
+    EndIf
+    FightImmobile(ev.source);
+  EndIf
+EndFunction
+
+Function Event_Follow(byref ev)
+  Event_Follow_Common(ev);
+EndFunction
+
+Function Event_AskJoin(byref ev)
+  Return;
+  ev:=ev;
+  //Event_AskJoin_Common(ev);
+EndFunction
+
+Function Event_GrantJoin(byref ev)
+  Return;
+  ev:=ev;
+  //Event_GrantJoin_Common(ev);
+EndFunction
+
+Function Event_RefuseJoin(byref ev)
+  Return;
+  ev:=ev;
+  //Event_RefuseJoin_Common(ev);
+EndFunction
+
+Function Event_Walk(byref ev)
+  Return;
+  ev:=ev;  // Unbeweglich
+  //Event_Walk_Common(ev);
+EndFunction
+
+Function Event_Peacemade(byref ev)
+  Event_Peacemade_Common(ev);
+  MakeMePeaceful(params[RANGESENSE]);
+EndFunction
+
+Function Event_Guards_Help(byref ev)
+  Event_Guards_Help_Common(ev);
+EndFunction
+
+Function Event_Cast_Wait(byref ev)
+  If (!Me.warmode)  // K‰mpf ich noch?
+    params[FIRSTCAST]:=1;
+    Return;
+  EndIf
+  If (Me.getprop(PROP_OPPONENT))  // Hinkt wegen Lookaround immer hinterher
+    ev.source:=SystemFindObjectBySerial(Me.getprop(PROP_OPPONENT));
+    If (!ev.source)                     // deswegen opp aus cprop holen
+      params[FIRSTCAST]:=1;
+      Return;
+    EndIf
+    Event_Cast_Wait_Common(ev);
+  Else
+    params[FIRSTCAST]:=1;
+  EndIf
+EndFunction
+
+Function Event_Quest_Waypoint(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Quest_Speech(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Self_Kill(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Quest_Nemesis(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Reflection(byref ev)
+	Event_Reflection_Common(ev);
+EndFunction
+
+Function OnIdle()
+  OnIdleImmobile();
+EndFunction
+
+
+Function ValidEnemy_Override(byref mob,byref hostile)
+  Return(ValidEnemy_Override_Common(mob));
+  hostile:=hostile;
+EndFunction

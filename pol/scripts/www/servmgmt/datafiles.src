@@ -1,0 +1,117 @@
+/////////////////////////////////////////////////////////
+// datafiles - Zeigt Inhalt der Datafiles
+//
+// Author: Turley
+
+use datafile;
+use http;
+use os;
+use uo;
+include "header";
+
+Program HTMLPage()
+  DoHeader("Data Files");
+  WriteHTML("<div id='container'>");
+  WriteHTML("<div id='header'></div>");
+  WriteHTML("<div id='content'>");
+  TableHeader("Data Files");
+  
+  DenyAccess(isALLOWED_STRICT);
+
+  var data_file := QueryParam("File");
+  var data_elem := QueryParam("Elem");
+
+  If (data_file && data_elem)
+    ShowDataElem(data_file, UnPack(data_elem));
+  ElseIf (data_file)
+    ShowDataFile(data_file);
+  Else
+    DataFileList();
+  EndIf
+
+  WriteHTML("</div>");
+
+  DoFooter();
+EndProgram
+
+Function ShowDataElem(descriptor, elem_name)
+  var the_file := OpenDataFile(descriptor);
+  var the_elem := the_file.FindElement(elem_name);
+  If (!the_elem)
+    WriteHTML(
+      "<p class=warning>Unable to open '"+descriptor+"' '"+elem_name+
+      "' -&gt; "+the_elem.errortext+"</p>"
+    );
+    return;
+  EndIf
+
+  WriteHTML(
+    "<h2>Data File - <a href='?File="+descriptor+"&"+A_PARAM+"'>"+
+    descriptor+"</a></h2>"
+  );
+  WriteHTML("<h3>Data Elem - "+elem_name+"</h3>");
+
+  WriteHTML("<table>");
+  WriteHTML("<tr>");
+  WriteHTML("<th>Prop Name</th><th>Prop Value</th>");
+  WriteHTML("</tr>");
+  ForEach prop_name in ( the_elem.PropNames() )
+    WriteHTML("<tr>");
+    WriteHTML("<td>"+prop_name+"</td>");
+    WriteHTML("<td>"+EscapeHTML(the_elem.GetProp(prop_name))+"</td>");
+    WriteHTML("</tr>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</table>");
+EndFunction
+
+Function ShowDataFile(descriptor)
+  var the_file := OpenDataFile(descriptor);
+  If (!the_file)
+    WriteHTML(
+      "<p class=warning>Unable to open '"+descriptor+"' -&gt; "+
+      the_file.errortext+"</p>"
+    );
+    return;
+  EndIf
+
+  WriteHTML("<h2>Descriptor - "+descriptor+"</h2>");
+
+  WriteHTML("<table style='width:auto'>");
+  WriteHTML("<tr>");
+  WriteHTML("<th>Elem list</th>");
+  WriteHTML("</tr>");
+  ForEach elem_name in ( the_file.keys() )
+    WriteHTML("<tr>");
+    WriteHTML(
+      "<td><a href='?File="+descriptor+"&Elem="+Pack(elem_name)+"&"+
+      A_PARAM+"'>"+elem_name+"</a></td>");
+    WriteHTML("</tr>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</table>");
+
+  WriteHTML("<p><a href=?"+A_PARAM+">File List</a></p>");
+EndFunction
+
+Function DataFileList()
+  WriteHTML("<h2>Data Files</h2>");
+
+  WriteHTML("<table style='width:auto'>");
+  WriteHTML("<tr>");
+  WriteHTML("<th>Descriptor</th>");
+  WriteHTML("<th>Package</th>");
+  WriteHTML("<th>File Name</th>");
+  ForEach entry in ( ListDataFiles() )
+    WriteHTML("<tr>");
+    WriteHTML(
+      "<td><a href='?File="+entry.descriptor+"&"+A_PARAM+"'>"+
+      entry.descriptor+"</a></td>"
+    );
+    WriteHTML("<td>"+entry.pkg+"</td>");
+    WriteHTML("<td>"+entry.name+"</td>");
+    WriteHTML("</tr>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</table>");
+EndFunction

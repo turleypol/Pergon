@@ -1,0 +1,45 @@
+Use uo;
+
+Include "include/itemnpc";
+Include "include/msgs";
+
+// Beispiel: ".itemsample 5642 1553 5895 1809 2 0"
+
+Program TextCMD_ItemSample(who, params)
+  Var paramarray:=SplitWords(params);
+  If (Len(paramarray)==6)
+    Var x1:=CInt(paramarray[1]);
+    Var y1:=CInt(paramarray[2]);
+    Var x2:=CInt(paramarray[3]);
+    Var y2:=CInt(paramarray[4]);
+    Var abstand:=CInt(paramarray[5]);
+    Var itemid:=CInt(paramarray[6]);
+
+    If (x2<x1)
+      Var temp:=x1;
+      x1:=x2;x2:=temp;
+    EndIf
+    If (y2<y1)
+      Var temp:=y1;
+      y1:=y2;y2:=temp;
+    EndIf
+    If (abstand<1)
+      abstand:=1;
+    EndIf
+
+    Var y;
+    For (y:=y1; y<=y2; y+=abstand)
+      Var x;
+      For (x:=x1; x<=x2; x+=abstand)
+        Var item:=CreateItemAtLocationPergon(x, y, GetWorldHeight(x, y,who.realm), itemid, 1,who.realm);
+        item.decayat:=0;
+
+        itemid+=1;
+      EndFor
+    EndFor
+
+    SendSysMessagePergon(who, "Es wurden Items mit den Nummern "+CInt(paramarray[6])+" bis "+(itemid-1)+" erzeugt.");
+  Else
+    SendSysMessagePergon(who, "Aufruf mittels '.itemsample x1 y1 x2 y2 abstand startID'");
+  EndIf
+EndProgram

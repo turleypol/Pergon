@@ -1,0 +1,87 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Fontänen
+//
+// macht Sprüheffekt (sonst nix!)
+
+//////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.11  2008/09/23 12:46:12  turley
+// PlaySoundEffectXYZ() -> PlaySoundEffectXYZ_()
+// Pol98 bekommt das als Corefunktion
+//
+// Revision 1.10  2008/09/05 20:04:21  mehdorn
+// - RandomIntMinMax-Umbau
+//
+// Revision 1.9  2008/08/31 20:29:10  mehdorn
+// - leicht ueberarbeitet
+// - Tippfehler raus
+// - teilweise Uebersetzungen vervollstaendigt/verbessert
+// - diverse unnoetige Includes entfernt
+//
+// Revision 1.8  2008/08/29 02:20:04  mehdorn
+// - Fontaene fontaeniger gemacht
+//   (sah bisher aus wie eine Bodenexplosion einer Rakete)
+//
+// Revision 1.7  2008/08/27 19:20:42  mehdorn
+// - ConvertDirectionToLoc* in neues Include mobile.inc verlagert
+//   - aus crazystuff.inc und main_ai.inc entfernt
+// - Scripte noetigenfalls angepasst
+//
+// Revision 1.6  2008/08/25 21:56:53  mehdorn
+// - ExplodeInCircle umgebaut
+//   - fehlerhafte Parameterreihenfolge bei PlayMovingEffectXYZ gefixt
+//   - anderes Parameterformat
+//   - bissel optimiert
+// - entsprechend Scripte angepasst
+//   - dabei GetFacingCoordinates abgeschafft
+// - Typos und sonstiger Kleinkram
+//
+// 2006-02-05 - Seppel
+// angefangen
+
+include ":newspells:magicpergon";
+include "common";
+include "include/effects";
+include "include/mobile";
+include "include/modifyskill";
+use cfgfile;
+use os;
+use uo;
+
+Program Fountain(who, item)
+  If (!ArtefactUsable(who, item))
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var effect := array{artefact.effect};
+
+  SendSysMessagePergon(who,
+    "Ihr stellt die Fontäne vor euch und zündet sie an",
+    "You put the fountain in front of you and light it"
+  );
+  var pos := struct{
+    x     := who.x + ConvertDirectionToLocX(who.facing),
+    y     := who.y + ConvertDirectionToLocY(who.facing),
+    z     := who.z - 3,
+    realm := who.realm
+  };
+
+  PerformAction(who, ANIM_BOW);
+  SubtractAmount(item, 1);
+  Detach();
+  If (who.cmdlevel < CMDLEVEL_SCRIPTER)
+    // testet sich schneller
+    Sleep(4);
+  EndIf
+
+  // ExplodeInCircle(pos.x, pos.y, pos.z, pos.realm, 5, 200, 100, 3, effect);
+  ExplodeToDirection(
+    pos.x, pos.y, pos.z, pos.realm, -1, 20, 60, 200, 100, 5, effect
+  );
+  PlaySoundEffectXYZ(pos.x, pos.y, pos.z, 774, pos.realm);
+EndProgram
+
+// vim: sw=2 sts=2

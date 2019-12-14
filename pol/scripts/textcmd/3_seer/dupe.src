@@ -1,0 +1,99 @@
+///////////////////////////////////////////////////////////////////////////
+// dupe -- Item duplizieren
+//
+
+use os;
+use uo;
+include "include/logutil";
+include "include/msgs";
+include "include/server";
+
+Program Dupe(who, num)
+    var count := 1;
+    // Missbrauch ggf. reduzieren, Seer bekommen nur ein Duplikat
+    If (who.cmdlevel >= CMDLEVEL_HIGHGM and CInt(num))
+        count := CInt(num);
+    EndIf
+
+    SendSysMessagePergon(who,
+        "W‰hlt ein Objekt!",
+        "Select an item!"
+    );
+    var item := Target(who);
+    If (!ReserveItem(item))
+        return;
+    EndIf
+
+    var dest := who.backpack;
+    If (count > 1)
+        SendSysMessagePergon(who,
+            "W‰hlt einen Zielbehaelter! (Abbruch: im Rucksack)",
+            "Select a destination container! (Cancel: in backpack)"
+        );
+        var newdest := Target(who);
+        If (newdest and newdest.isa(POLCLASS_CONTAINER))
+            dest := newdest;
+        EndIf
+    EndIf
+
+    var made := 0;
+    While (count)
+        count -= 1;
+        var success := DoDuplicate(who, item, dest);
+        If (success)
+            made += 1;
+        Else
+            break;
+        EndIf
+    EndWhile
+
+    SendSysMessagePergon(who,
+        made+" Objekt(e) wurde(n) im Rucksack abgelegt.",
+        made+" items has/have been placed in your backpack."
+    );
+    syslog(
+        CharInfoStr(who, COORDS_REALM)+" hat "+made+" "+
+        ItemInfoStr(item)+" erzeugt."
+    );
+
+    ReleaseItem(item);
+EndProgram
+
+Function DoDuplicate(who, item, dest)
+    // Erzeugung eines Exemplars im Knast
+    var new := CreateItemCopyAtLocation(
+        5376, 1081, 0, item, REALM_BRITANNIA
+    );
+
+    If (!new)
+        SendSysMessagePergon(who,
+            "Fehler beim Duplizieren! ("+new.errortext+")",
+            "Error while copying! ("+new.errortext+")"
+        );
+        return 0;
+    EndIf
+
+    // immer nur ein Item "erzeugen"
+    // (Miﬂbrauchspotential bei Stackverdopplung,
+    // neue Items sollen nicht stacken)
+    If (new.amount)
+        SubtractAmount(new, new.amount - 1);
+    EndIf
+
+    // MoveItemToContainer funktioniert nur, wenn Item losgemacht ist
+    If (!new.movable)
+        new.movable := 1;
+    EndIf
+
+    var result := MoveItemToContainer(new, dest);
+    If (!result)
+        DestroyItem(new);
+        SendSysMessagePergon(who,
+            "Fehler! ("+result.errortext+")",
+            "Error! ("+result.errortext+")"
+        );
+        return 0;
+    EndIf
+
+    return 1;
+EndFunction

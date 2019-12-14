@@ -1,0 +1,1531 @@
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   Spawnrunen Manager
+//
+//    Author: Turley
+//
+//   Modifications:
+//    02.08.2007 Turley: Init
+//    01.02.2008 Turley: Endlich fertig...
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////
+//  CProps:
+//  alle Daten der Rune als CProp an der Rune aufgeteilt in reine Spawnnet und "User"-Werte
+//   dadurch sparen von CriticalSections da strickte Trennung
+//    "spawnnetdata": // rein vom Spawnnetbenötigte
+//     .lastspawn - wann wurde das letzte mal gespawnt/bzw letzter NPC Tod (um Spawnzeit restartsicher zu machen)
+//     .nextspawn - Berechnung der nächsten Spawnzeit über min/max und lastspawn
+//     .serials - Array aller NPCs/Items die im moment gespawned wurde (darüber aktuelle Anzahl, leichtes Löschen/Überprüfen)
+//     .templatearray - Falls Template = Gruppe Array aller Templates (wird bei jedem _ADD neugesetzt, dadurch pro Restart 1mal->Config änderbar)
+//     .container - Containerserial
+//     .linked  - Serial der Verlinkten Rune
+//
+//    "userdata": // Von Usern veränderbare
+//     .spawntype - Welcher Typ ist zu spawnen
+//     .mintime - MinSpawnTime
+//     .maxtime - MaxSpawnTime
+//     .template - Template falls Gruppe siehe spawnnetdata.templatearray (bei TypeItem Nr==groupspawn)
+//     .amount - Max Amount
+//     .group - Flag & GROUPING ->wieviel aufeinmal
+//     .range - Spawnbereich
+//     .flags - Flags siehe .inc Enum BinaryFlag
+//     .stackamount - ItemType wenn nicht IN_CONTAINER
+//     .containertype - ContainerType
+//     .note - Beschreibung
+//     .questnr - Questnummer für Questsystem
+//
+//
+//Ablauf:
+// Restart:
+//  Rune meldet sich an über EVID_SPAWNPOINT_ADD (mit großzügigem RandomSleep)
+//  wenn amount<>.serials.size() setzen der runennr in Zeitdict
+//
+//Normaler Lauf:
+//  Events:
+//    Neue Runen kommen über EVID_SPAWNPOINT_ADD an,
+//    Löschen der Runen über EVID_SPAWNPOINT_DEL (über .nextspawn in spawntimes)
+//    Aktualisierung der Spawnzeit über EVID_SPAWNPOINT_REFRESH (Runenbenutzung eines GMs)
+//    NPC Tod über EVID_NPC_DIED
+//      über Runennr -> Daten
+//      serial aus .serials löschen
+//      nextspawn neuberechnen
+//  Falls Zeit um für Spawn
+//    Typ rausfinden und entsprechenden Spawn anschmeißen
+//    .serials erweitern
+//    falls .serials.size() <> amount, nochmal nextspawn berechnen und setzen
+//    falls linked anschmeißen der anderen Runen
+//
+//Spawns:
+//  NPC-        Angeschmissen wenn amount>serials (konsistent über deathScript)
+//              Flag Grouping alle aufeinmal, Anchor Anker setzen
+//  Item-       Spawnzeit wird immer gesetzt
+//              Check von .serials und spawn anschmeißen
+//                Unterscheidung ob IN_CONTAINER
+//              Wenn !IN_CONTAINER && !SAVE_OLD - .serials löschen
+//              Grouping alle auf einmal
+//  Container - Wie Item immer Spawnzeitsetzen
+//              Check ob Containerserial noch lebt (bekommt ein .decay)
+//              Falls MOVING_SPAWN zufällige Pos sonst Runenpos
+//              Falls CONTAINER_FLUSH Container durchgehen und löschen
+//              MakeLoot + CONTAINER_TRAP_CHANCE
+//
+// Eventstruktur:
+//   .nr - Spawnnetnummer (Serial der Rune) bzw Regionname
+//   .type:
+//     EVID_SPAWNPOINT_ADD  - Registrierung einer Rune
+//       .source - ObjRef der Spawnrune
+//     EVID_SPAWNPOINT_DEL  - löschen einer Rune (Gespawnte Sachen werden über destroyscript gelöscht) Reine "Deregistierung"
+//       .source - ObjRef der Spawnrune
+//       .spawndata - Daten der CProp
+//     EVID_SPAWNPOINT_REFRESH  - SpawnZeit hat sich geändert (Rest wird erst ausgelesen wenn benötigt)
+//       .source - ObjRef der Spawnrune
+//     EVID_NPC_DIED  - NPC ist gestorben
+//       .source - Serial des NPCs
+//
+//
+//  Region
+//   .source == unnötig
+//   .nr     == String Region
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+Use util;
+Use file;
+Use cfgfile;
+Use datafile;
+
+Include "include/npc";
+Include "include/animal";
+Include "include/objtype";
+Include "include/starteqp";
+Include ":spawnnet_new:spawnnet";
+
+Const MAX_SPAWN_PER_CYCLE:=10;     // Wieviel Spawns werden max gleichzeitig gespawnt
+Const MAX_CREATE_TRYES:=10;        // Wie oft wird versucht eine passende Stelle zu finden
+Const CONTAINER_TRAP_CHANCE:=50;  // Chance auf Kontainerfalle
+
+Var waittime:=1800, nextindex; //Zeitvariablen für debug als Global
+Var spawntimes:=dictionary;  // Zeitdict
+
+// Cfg Gruppen
+Var groups:=ReadConfigFile("groups");    // NPCgruppen
+Var igroups:=ReadConfigFile("igroups");  // Itemgruppen
+
+Var RegionData:=OpenDataFile(FILE_REGIONUSER);
+If (!RegionData)
+  RegionData:=CreateDataFile(FILE_REGIONUSER,DF_KEYTYPE_STRING);
+EndIf
+If (!RegionData.FindElement("Realms"))
+  RegionData.CreateElement("Realms");
+EndIf
+Var GroupData:= OpenDataFile(FILE_REGIONGROUPS);
+If (!GroupData)
+  GroupData:=CreateDataFile(FILE_REGIONGROUPS,DF_KEYTYPE_STRING);
+EndIf
+Var RunePosData:= OpenDataFile(FILE_RUNEPOS);
+If (!RunePosData)
+  RunePosData:=CreateDataFile(FILE_RUNEPOS,DF_KEYTYPE_STRING);
+EndIf
+
+Program spawnnetmanager()
+  Var ev;
+
+  Set_Event_Queue_Size(EVENTQUEUESIZE_SPAWN);
+  SetGlobalProperty(PID_SPAWNSYSTEM, GetPid());
+
+  InitRegions();  // Regionen in den Zeitqueue setzen
+  CleanUpRunePos();
+
+  While (1)
+    SleepMS(1);
+    ev:=Wait_For_Event(waittime);
+    If (ev)
+      Case (ev.type)
+        EVID_SPAWNPOINT_ADD:      // Rune Meldet sich an
+          AddRune(ev);
+        EVID_SPAWNPOINT_DEL:      // Rune Abmelden
+          DelRune(ev);
+        EVID_SPAWNPOINT_REFRESH:  // SpawnZeit ändern
+          RefreshRune(ev);
+        EVID_SPAWNPOINT_RESPAWN:  // Respawnen
+          RefreshRune(ev,1);
+        EVID_NPC_DIED:    // NPC ist gestorben/getamed
+          NPCRemove(ev);
+        EVID_SPAWNPOINT_LINK:     // 2 Runen verknüpfen
+          LinkRunes(ev);
+      EndCase
+
+      If (spawntimes.keys()<>{}) // neue Wartezeit berechnen
+        nextindex:=spawntimes.keys()[1];
+      Else
+        nextindex:=ReadGameClock()+1800; // 30Minuten warten wenn nichts zu tun
+      EndIf
+      waittime:=Max(0,nextindex-ReadGameClock());
+    EndIf
+
+    If (nextindex<=ReadGameClock()) // Schon Wartezeit vergangen? Also nächsten Spawn starten
+      If (spawntimes.keys()<>{}) // ist was los?
+        ForEach spawn in (spawntimes[spawntimes.keys()[1]])
+          If (!IsRegion(spawn)) // Spawnrune
+            StartSpawnRuneSpawn(spawn);
+          Else  // Spawnregion
+            StartSpawnRegionSpawn(spawn[1],spawn[2]);
+          EndIf
+        EndForEach
+
+        spawntimes.erase(spawntimes.keys()[1]); // Die Spawns sind abgearbeitet also weg damit aus der Liste
+      EndIf
+    EndIf
+
+    If (spawntimes.keys()<>{}) // Neue Wartezeit berechnen
+      nextindex:=spawntimes.keys()[1];
+    Else
+      nextindex:=ReadGameClock()+1800; // 30Minuten warten wenn nichts zu tun
+    EndIf
+    waittime:=Max(0,nextindex-ReadGameClock());
+  EndWhile
+EndProgram
+
+
+///////////////////////////////////////////////
+// StartSpawnRuneSpawn - RunenSpawn anschmeißen
+///////////////////////////////////////////////
+
+Function StartSpawnRuneSpawn(spawnnr)
+  Var master, master_spawndata, master_userdata;
+  Var rune:=SystemFindObjectBySerial(spawnnr);
+  If (!rune)
+    LogToFile("::log/spawn.log","WARNUNG: Rune "+spawnnr+" nicht mehr existent!",1);
+    Return(0);
+  EndIf
+  Var spawndata:=rune.getprop(CPROP_DATA);
+  Var userdata:=rune.getprop(CPROP_USER);
+
+  If ((userdata.amount>spawndata.serials.size()) // gibt es was zu spawnen
+      || (userdata.spawntype==TYPE_ITEM)         // Items immer anschmeißen
+      || (userdata.spawntype==TYPE_CONTAINER))   // Container ebenso
+    Case (userdata.spawntype)
+      TYPE_NPC:
+        SpawnNPC(rune,spawndata,userdata);
+      TYPE_ITEM:
+        SpawnItem(rune,spawndata,userdata);
+      TYPE_CONTAINER:
+        SpawnContainer(rune,spawndata,userdata);
+    EndCase
+    If (spawndata.linked) // Ist verlinked also jetzt andere Rune anschmeißen
+      If (userdata.spawntype<>TYPE_NPC)  // NPC geht über NPCDeath
+        master:=SystemFindObjectBySerial(spawndata.linked);
+        If (!master)
+          LogToFile("::log/spawn.log","WARNUNG: LinkedRune "+spawndata.linked+" nicht mehr existent!",1);
+          Return(0);
+        EndIf
+        master_spawndata:=master.getprop(CPROP_DATA);
+        master_userdata:=master.getprop(CPROP_USER);
+        master_spawndata.lastspawn:=ReadGameClock(); // LastSpawn auf aktuelle Zeit setzen
+        CalcNextSpawnTime(master_spawndata,master_userdata,CInt(master.serial));  // neuen Spawnzeitpunkt setzen
+        master.setprop(CPROP_DATA,master_spawndata);  // wegen byref ist alles aktuell
+        Return(0);
+      EndIf
+    EndIf
+    spawndata.lastspawn:=ReadGameClock(); // LastSpawn auf aktuelle Zeit setzen
+    CalcNextSpawnTime(spawndata,userdata,spawnnr);  // neuen Spawnzeitpunkt setzen
+    rune.setprop(CPROP_DATA,spawndata);  // wegen byref ist alles aktuell
+  EndIf
+EndFunction
+
+///////////////////////////////////////////////
+// StartSpawnRegionSpawn - RegionenSpawn anschmeißen
+///////////////////////////////////////////////
+
+Function StartSpawnRegionSpawn(region, group)
+  var regionref:=RegionData.FindElement(region);
+  If (!regionref)
+    LogToFile("::log/spawn.log","WARNUNG: SpawnRegion "+region+" nicht mehr existent!",1);
+    Return(0);
+  EndIf
+  var spawndata:=regionref.getprop(CPROP_DATA);
+  var spawntype:=GroupData.FindElement(group).getprop(D_GROUP_TYPE);
+  var userdata:=regionref.getprop(CPROP_USER);
+
+  If (userdata.groups[group].enabled)
+    If ((userdata.groups[group].max_amt>spawndata.groups[group].serials.size()) // gibt es was zu spawnen
+      || (spawntype==TYPE_ITEM)         // Items immer anschmeißen
+      || (spawntype==TYPE_CONTAINER))   // Container ebenso
+      Case (spawntype)
+        TYPE_NPC:
+          SpawnNPC(region,spawndata,userdata,group);
+        TYPE_ITEM:
+          SpawnItem(region,spawndata,userdata,group);
+        TYPE_CONTAINER:
+          SpawnContainer(region,spawndata,userdata,group);
+      EndCase
+      spawndata.groups[group].lastspawn:=ReadGameClock(); // LastSpawn auf aktuelle Zeit setzen
+      CalcNextSpawnTime(spawndata,userdata,region,group);  // neuen Spawnzeitpunkt setzen
+      regionref.setprop(CPROP_DATA,spawndata);  // wegen byref ist alles aktuell
+    EndIf
+  EndIf
+EndFunction
+
+
+///////////////////////////////////////////////
+// AddRune - Meldet eine Rune im System an
+///////////////////////////////////////////////
+
+Function AddRune(byref ev)
+  Var spawndata, userdata, region;
+  Var RegionSpawn:=0;
+  Var regionname, realmref, runes;
+
+  If (IsRegion(ev.nr))
+    RegionSpawn:=1;
+  EndIf
+
+  If (RegionSpawn)
+    region:=RegionData.FindElement(ev.nr);
+    spawndata:=region.getprop(CPROP_DATA);
+    userdata:=region.getprop(CPROP_USER);
+  Else
+    spawndata:=ev.source.getprop(CPROP_DATA);
+    regionname:=PlaceName(ev.source); // Rune speichern in Datafile sortiert nach Realm & Region zum leichteren Auffinden
+    realmref:=RunePosData.FindElement(ev.source.realm);
+    If (!realmref)
+      realmref:=RunePosData.CreateElement(ev.source.realm);
+    EndIf
+    regionname:=StrReplace(regionname," ","_");
+    runes:=realmref.getprop(regionname);
+    If (!runes)
+      runes:={ev.source.serial};
+      realmref.setprop(regionname,runes);
+    ElseIf (!(ev.source.serial in runes))
+      runes.append(ev.source.serial);
+      realmref.setprop(regionname,runes);
+    EndIf
+  EndIf
+
+  If (!spawndata) // frische Rune
+    If (RegionSpawn)
+      spawndata:=struct{container:=0,groups:=dictionary};
+      ForEach group in (userdata.groups.Keys())
+        spawndata.groups[group]:=struct;
+        spawndata.groups[group].+serials:={};
+        spawndata.groups[group].+nextspawn:=0;
+        spawndata.groups[group].+lastspawn:=0;
+        spawndata.groups[group].+container:=0;
+      EndForEach
+      region.setprop(CPROP_DATA,spawndata);
+    Else
+      ev.source.setprop(CPROP_DATA,struct{nextspawn:=0,
+                                          lastspawn:=0,
+                                          serials:={},
+                                          templatearray:={},
+                                          container:=0,
+                                          linked:=0});
+    EndIf
+
+  Else
+    If (!RegionSpawn)
+      userdata:=ev.source.getprop(CPROP_USER);
+      If (CInt(userdata.template)) // Gruppe
+        Case (userdata.spawntype)
+          TYPE_NPC:
+            If (groups[userdata.template])
+              spawndata.templatearray:=GetConfigStringArray(groups[userdata.template], "spawn");
+              If (!spawndata.templatearray)
+                LogToFile("::log/spawn.log","FEHLER: Leeres Group-Template ("+userdata.template+") !");
+                Return;
+              EndIf
+            Else
+              LogToFile("::log/spawn.log","FEHLER: Group-Template ("+userdata.template+") existiert nicht!");
+              Return;
+            EndIf
+          TYPE_ITEM:
+            If (igroups[userdata.template])
+              spawndata.templatearray:=GetConfigStringArray(igroups[userdata.template], "item");
+              If (!spawndata.templatearray)
+                LogToFile("::log/spawn.log","FEHLER: Leeres iGroup-Template ("+userdata.template+") !");
+                Return;
+              EndIf
+              ForEach itemtemplate in (spawndata.templatearray) // Alle Itemnamen in Zahlen umwandeln
+                If (CInt(itemtemplate))
+                  itemtemplate:=CInt(itemtemplate);
+                Else
+                  itemtemplate:=GetObjtypeByName(itemtemplate);
+                EndIf
+              EndForEach
+            Else
+              LogToFile("::log/spawn.log","FEHLER: iGroup-Template ("+userdata.template+") existiert nicht!");
+              Return;
+            EndIf
+          TYPE_CONTAINER:
+            // Wird nicht benötigt
+        EndCase
+      Else
+        spawndata.templatearray:={};
+      EndIf
+    EndIf
+    CalcNextSpawnTime(spawndata, userdata, ev.nr);  // Nächsten Spawn anschmeißen
+
+    ev.source.setprop(CPROP_DATA,spawndata);
+  EndIf
+EndFunction
+
+
+///////////////////////////////////////////////
+// DelRune - Meldet eine Rune im System ab
+///////////////////////////////////////////////
+
+Function DelRune(byref ev)
+  If (IsRegion(ev.nr))
+    var regionref,spawndata;
+    If (!ev.oldtype) // kein komplettes Löschen also spawndata aktualisieren
+      regionref:=RegionData.FindElement(ev.nr);
+      spawndata:=regionref.getprop(CPROP_DATA);
+    EndIf
+    ForEach group in (ev.spawndata)  // Alle Gruppen durchgehen
+      ForEach spawn in (spawntimes[group.nextspawn])  // Zeitqueue durchgehen
+        If ((spawn[1]==ev.nr) && (spawn[2]==_group_iter))
+          spawntimes[group.nextspawn].erase(_spawn_iter);  // und löschen
+          If (spawntimes[group.nextspawn]=={}) // jetzt leer?
+            spawntimes.erase(group.nextspawn);
+          EndIf
+          Break;
+        EndIf
+        SleepMS(2);
+      EndForEach
+      If (!ev.oldtype)
+        spawndata.groups.erase(_group_iter);
+      EndIf
+    EndForEach
+    If (!ev.oldtype)
+      regionref.setprop(CPROP_DATA,spawndata);
+    EndIf
+
+  Else
+    ForEach spawn in (spawntimes[ev.spawndata.nextspawn])  // Zeitqueue durchgehen
+      If (spawn==ev.nr)
+        spawntimes[ev.spawndata.nextspawn].erase(_spawn_iter);  // und löschen
+        If (spawntimes[ev.spawndata.nextspawn]=={}) // jetzt leer?
+          spawntimes.erase(ev.spawndata.nextspawn);
+        EndIf
+        Break;
+      EndIf
+      SleepMS(2);
+    EndForEach
+
+    // Aus Datafile rauslöschen
+    var realmref, runes;
+    realmref:=RunePosData.FindElement(ev.oldrealm);
+    If (realmref)
+      runes:=realmref.getprop(ev.oldplace);
+      If (runes)
+        ForEach rune in runes
+          If (rune==ev.nr)
+            runes.erase(_rune_iter);
+            realmref.setprop(ev.oldplace,runes);
+            Break;
+          EndIf
+          SleepMS(2);
+        EndForEach
+      EndIf
+    EndIf
+  EndIf
+EndFunction
+
+
+///////////////////////////////////////////////
+// CalcNextSpawnTime - Setzt neue Spawnzeit
+//   speichert CProp nicht selber ab
+///////////////////////////////////////////////
+
+Function CalcNextSpawnTime(byref spawndata, byref userdata, byref spawnnr, groupnr:=0, forcerespawnnow:=0)
+  Var groupref, groupspawnref;
+
+  If (IsRegion(spawnnr))  // Regionen Calc
+    ForEach group in (userdata.groups)
+      SleepMS(2);
+      If (groupnr)  // Nur eine bestimmte Gruppe muß neugestartet werden
+        If (_group_iter<>groupnr)
+          Continue;
+        EndIf
+      EndIf
+
+      If (group.enabled)
+        groupref:=GroupData.FindElement(_group_iter);
+        groupspawnref:=spawndata.groups[_group_iter];
+        If ((group.max_amt>groupspawnref.serials.size())
+            || (groupref.getprop(D_GROUP_TYPE)==TYPE_ITEM)         // Items immer anschmeißen
+            || (groupref.getprop(D_GROUP_TYPE)==TYPE_CONTAINER))   // Container ebenso
+
+          If (forcerespawnnow)
+            groupspawnref.nextspawn:=ReadGameClock();
+          Else
+            If (groupspawnref.lastspawn)  // Spawnte es jemals? Dann nächsten Spawn mit Startpunkt lastspawn
+              groupspawnref.nextspawn:=groupspawnref.lastspawn
+                                      +CInt(RandomIntMinMax(userdata.mintime,userdata.maxtime+1)*60
+                                      *group.spawn_factor);
+            Else
+              groupspawnref.nextspawn:=ReadGameClock()
+                                      +CInt(RandomIntMinMax(userdata.mintime,userdata.maxtime+1)*60
+                                      *group.spawn_factor);
+            EndIf
+          EndIf
+
+          If (spawntimes[groupspawnref.nextspawn])  // ZeitQueue füllen
+            spawntimes[groupspawnref.nextspawn].append({spawnnr,_group_iter});
+          Else
+            spawntimes[groupspawnref.nextspawn]:={{spawnnr,_group_iter}};
+          EndIf
+        Else
+          groupspawnref.nextspawn:=0;
+        EndIf
+        spawndata.groups[_group_iter]:=groupspawnref;
+      Else
+        spawndata.groups[_group_iter].nextspawn:=0;
+      EndIf
+    EndForEach
+
+  Else  // Runen Calc
+    If ((userdata.amount>spawndata.serials.size()) // Gibt es etwas zu spawnen?
+        || (userdata.spawntype==TYPE_ITEM)         // Items immer anschmeißen
+        || (userdata.spawntype==TYPE_CONTAINER))   // Container ebenso
+
+      If (forcerespawnnow)
+        spawndata.nextspawn:=ReadGameClock();
+      Else
+        If (spawndata.lastspawn)  // Spawnte es jemals? Dann nächsten Spawn mit Startpunkt lastspawn
+          spawndata.nextspawn:=spawndata.lastspawn
+                              +RandomIntMinMax(userdata.mintime,userdata.maxtime+1)*60;
+        Else
+          spawndata.nextspawn:=ReadGameClock()
+                              +RandomIntMinMax(userdata.mintime,userdata.maxtime+1)*60;
+        EndIf
+      EndIf
+
+      If (spawntimes[spawndata.nextspawn])  // ZeitQueue füllen
+        spawntimes[spawndata.nextspawn].append(spawnnr);
+      Else
+        spawntimes[spawndata.nextspawn]:={spawnnr};
+      EndIf
+    Else
+      spawndata.nextspawn:=0; // nextspawn Zurücksetzen
+    EndIf
+  EndIf
+EndFunction
+
+
+///////////////////////////////////////////////
+// RefreshRune - Geänderte Zeit->alte Zeit löschen neue setzen
+//  + Respawn
+///////////////////////////////////////////////
+
+Function RefreshRune(byref ev, respawn:=0)
+  Var spawndata, userdata;
+  Var type, spawns;
+  Var regionref;
+  Var spawntype;
+
+  If (IsRegion(ev.nr))
+    regionref:=RegionData.FindElement(ev.nr);
+    spawndata:=regionref.getprop(CPROP_DATA);
+    userdata:=regionref.getprop(CPROP_USER);
+    If (!spawndata.groups[ev.oldtype]) // Gruppe existierte noch nicht
+      spawndata.groups[ev.oldtype]:=struct;
+      spawndata.groups[ev.oldtype].+serials:={};
+      spawndata.groups[ev.oldtype].+nextspawn:=0;
+      spawndata.groups[ev.oldtype].+lastspawn:=0;
+      spawndata.groups[ev.oldtype].+container:=0;
+    EndIf
+    If (respawn)
+      ForEach group in (spawndata.groups)
+        If (group.nextspawn)  // Erstmal alle aktiven Spawns löschen
+          ForEach spawn in (spawntimes[group.nextspawn])
+            If ((spawn[1]==ev.nr) && (spawn[2]==_group_iter))
+              spawntimes[group.nextspawn].erase(_spawn_iter);  // und löschen
+              If (spawntimes[group.nextspawn]=={}) // jetzt leer?
+                spawntimes.erase(group.nextspawn);
+              EndIf
+            EndIf
+          EndForEach
+        EndIf
+        spawntype:=GroupData.FindElement(_group_iter).getprop(D_GROUP_TYPE);
+        If (spawntype==TYPE_ITEM)
+          ItemCount(ev.nr, spawndata, userdata, _group_iter);
+        EndIf
+        If (spawntype==TYPE_CONTAINER)
+          spawns:=SystemFindObjectBySerial(group.container);
+          If (spawns)
+            DestroyItem(spawns);
+          EndIf
+          group.container:=0;
+        Else
+          ForEach serial in (group.serials)
+            spawns:=SystemFindObjectBySerial(serial);
+            If (spawns.isA(POLCLASS_NPC))
+              If ((spawns.getprop(CPROP_NR)[1][1]==ev.nr) && (spawns.getprop(CPROP_NR)[1][2]==_group_iter))
+                RevokePrivilege(spawns, "invul");
+                spawns.setprop("guardkill", 1);
+                KillMobile(spawns, "spawnnet-respawn");
+              EndIf
+            Else
+              If ((spawns.getprop(CPROP_NR)[1]==ev.nr) && (spawns.getprop(CPROP_NR)[2]==_group_iter))
+                DestroyItem(spawns);
+              EndIf
+            EndIf
+            SleepMS(2);
+          EndForEach
+        EndIf
+        group.serials:={};
+        group.lastspawn:=ReadGameClock(); // LastSpawn auf Aktualisierungszeitpunkt setzen
+        CalcNextSpawnTime(spawndata,userdata,ev.nr,_group_iter,1); // Neue Zeit berechnen (ForceRespawn)
+        SleepMS(2);
+      EndForEach
+      regionref.setprop(CPROP_DATA,spawndata);
+
+    Else
+      If (userdata.groups[ev.oldtype].enabled)
+        If (!spawndata.groups[ev.oldtype].nextspawn) // neu anschmeißen weil nicht vorhanden
+          spawndata.groups[ev.oldtype].lastspawn:=ReadGameClock(); // LastSpawn auf Aktualisierungszeitpunkt setzen
+          CalcNextSpawnTime(spawndata,userdata,ev.nr,ev.oldtype); // Neue Zeit berechnen
+          regionref.setprop(CPROP_DATA,spawndata);
+        EndIf
+      Else
+        If (spawndata.groups[ev.oldtype].nextspawn) // hatte eine Zeit
+          ForEach spawn in (spawntimes[spawndata.groups[ev.oldtype].nextspawn])
+            If ((spawn[1]==ev.nr) && (spawn[2]==ev.oldtype))
+              spawntimes[spawndata.groups[ev.oldtype].nextspawn].erase(_spawn_iter);  // und löschen
+              If (spawntimes[spawndata.groups[ev.oldtype].nextspawn]=={}) // jetzt leer?
+                spawntimes.erase(spawndata.groups[ev.oldtype].nextspawn);
+              EndIf
+              Break;
+            EndIf
+            SleepMS(2);
+          EndForEach
+          spawndata.groups[ev.oldtype].lastspawn:=ReadGameClock(); // LastSpawn auf Aktualisierungszeitpunkt setzen
+          CalcNextSpawnTime(spawndata,userdata,ev.nr,ev.oldtype); // Neue Zeit berechnen
+          regionref.setprop(CPROP_DATA,spawndata);
+        EndIf
+      EndIf
+    EndIf
+
+  Else
+    spawndata:=ev.source.getprop(CPROP_DATA);
+    userdata:=ev.source.getprop(CPROP_USER);
+
+    ForEach spawn in (spawntimes[spawndata.nextspawn])  // Zeitqueue durchgehen
+      If (spawn==ev.nr)
+        spawntimes[spawndata.nextspawn].erase(_spawn_iter);  // und löschen
+        If (spawntimes[spawndata.nextspawn]=={}) // jetzt leer?
+          spawntimes.erase(spawndata.nextspawn);
+        EndIf
+        Break;
+      EndIf
+      SleepMS(2);
+    EndForEach
+
+    If (respawn) // Alle NPCs/Items killen
+      If (ev.oldtype)  // hat sich der spawntyp geändert?
+        type:=ev.oldtype;
+      Else
+        type:=userdata.spawntype;
+      EndIf
+
+      If (type<>TYPE_CONTAINER)
+        If (type==TYPE_ITEM)  // serials aktualisieren
+          ItemCount(ev.source,spawndata,userdata);
+        EndIf
+        ForEach spawn in (spawndata.serials)
+          spawns:=SystemFindObjectBySerial(spawn);
+          If (type==TYPE_NPC)
+            If ((spawns) && (spawns.getprop(CPROP_NR)[1]==ev.nr))
+              RevokePrivilege(spawns, "invul");
+              spawns.setprop("guardkill", 1);
+              KillMobile(spawns, "spawnnet-respawn");
+            EndIf
+          ElseIf ((spawns) && (spawns.getprop(CPROP_NR)==ev.nr))
+            DestroyItem(spawns);
+          EndIf
+        EndForEach
+        spawndata.serials:={};
+      Else
+        spawns:=SystemFindObjectBySerial(spawndata.container);
+        If (spawns)
+          DestroyItem(spawns);
+        EndIf
+        spawndata.container:=0;
+      EndIf
+    EndIf
+
+    If (CInt(userdata.template)) // Gruppe
+      Case (userdata.spawntype)
+        TYPE_NPC:
+          If (groups[userdata.template])
+            spawndata.templatearray:=GetConfigStringArray(groups[userdata.template], "spawn");
+            If (!spawndata.templatearray)
+              LogToFile("::log/spawn.log","FEHLER: Leeres Group-Template ("+userdata.template+") !");
+              Return;
+            EndIf
+          Else
+            LogToFile("::log/spawn.log","FEHLER: Group-Template ("+userdata.template+") existiert nicht!");
+            Return;
+          EndIf
+        TYPE_ITEM:
+          If (igroups[userdata.template])
+            spawndata.templatearray:=GetConfigStringArray(igroups[userdata.template], "item");
+            If (!spawndata.templatearray)
+              LogToFile("::log/spawn.log","FEHLER: Leeres iGroup-Template ("+userdata.template+") !");
+              Return;
+            EndIf
+            ForEach itemtemplate in (spawndata.templatearray) // Alle Itemnamen in Zahlen umwandeln
+              If (CInt(itemtemplate))
+                itemtemplate:=CInt(itemtemplate);
+              Else
+                itemtemplate:=GetObjtypeByName(itemtemplate);
+              EndIf
+            EndForEach
+          Else
+            LogToFile("::log/spawn.log","FEHLER: iGroup-Template ("+userdata.template+") existiert nicht!");
+            Return;
+          EndIf
+        TYPE_CONTAINER:
+          // Wird nicht benötigt
+      EndCase
+    Else
+      spawndata.templatearray:={};
+    EndIf
+    spawndata.lastspawn:=ReadGameClock(); // LastSpawn auf Aktualisierungszeitpunkt setzen
+    If (!ev.oldtype)  // Wenn sich der Spawntype geändert noch keine neue Zeit berechnen
+      If (respawn)
+        CalcNextSpawnTime(spawndata,userdata,ev.nr,0,1); // Neue Zeit berechnen (ForceRespawn)
+      Else
+        CalcNextSpawnTime(spawndata,userdata,ev.nr); // Neue Zeit berechnen
+      EndIf
+    EndIf
+    ev.source.setprop(CPROP_DATA,spawndata);  // wegen byref alles aktuell
+  EndIf
+EndFunction
+
+
+///////////////////////////////////////////////
+// NPCRemove - Entfernt einen NPC aus dem Spawnnet
+///////////////////////////////////////////////
+
+Function NPCRemove(byref ev)
+  Var rune, spawndata, userdata;
+  Var master, master_spawndata, master_userdata;
+  Var regionref;
+
+  If (IsRegion(ev.nr))
+    regionref:=RegionData.FindElement(ev.nr[1]);
+    If (!regionref)
+      LogToFile("::log/spawn.log","WARNUNG: SpawnRegion "+ev.nr[1]+" nicht mehr existent!",1);
+      Return(0);
+    EndIf
+    spawndata:=regionref.getprop(CPROP_DATA);
+    userdata:=regionref.getprop(CPROP_USER);
+    ForEach spawn in (spawndata.groups[ev.nr[2]].serials)
+      If (ev.source == spawn)
+        spawndata.groups[ev.nr[2]].serials.erase(_spawn_iter);
+        Break;
+      EndIf
+      SleepMS(2);
+    EndForEach
+    If ((!spawndata.groups[ev.nr[2]].nextspawn) || (spawndata.groups[ev.nr[2]].nextspawn<ReadGameClock())) // Wenn noch kein Spawngeplant war dann jetzt
+      spawndata.groups[ev.nr[2]].lastspawn:=ReadGameClock(); // LastSpawn auf Todeszeitpunkt setzen
+      CalcNextSpawnTime(spawndata,userdata,ev.nr[1],ev.nr[2]); // Neue Zeit anschmeißen
+    EndIf
+    regionref.setprop(CPROP_DATA,spawndata);  // wegen byref alles aktuell
+
+  Else
+    rune:=SystemFindObjectBySerial(ev.nr);
+    If (rune)
+      spawndata:=rune.getprop(CPROP_DATA);
+      userdata:=rune.getprop(CPROP_USER);
+      ForEach spawn in (spawndata.serials)
+        If (ev.source == spawn)
+          spawndata.serials.erase(_spawn_iter);
+          Break;
+        EndIf
+        SleepMS(2);
+      EndForEach
+      If ((!spawndata.nextspawn) || (spawndata.nextspawn<ReadGameClock())) // Wenn noch kein Spawngeplant war dann jetzt
+        If (spawndata.linked) // Ist verlinked also jetzt andere Rune anschmeißen
+          master:=SystemFindObjectBySerial(spawndata.linked);
+          If (!master)
+            LogToFile("::log/spawn.log","WARNUNG: LinkedRune "+spawndata.linked+" nicht mehr existent!",1);
+          Else
+            master_spawndata:=master.getprop(CPROP_DATA);
+            master_userdata:=master.getprop(CPROP_USER);
+            master_spawndata.lastspawn:=ReadGameClock(); // LastSpawn auf aktuelle Zeit setzen
+            CalcNextSpawnTime(master_spawndata,master_userdata,CInt(master.serial));  // neuen Spawnzeitpunkt setzen
+            master.setprop(CPROP_DATA,master_spawndata);  // wegen byref ist alles aktuell
+          EndIf
+        Else
+          spawndata.lastspawn:=ReadGameClock(); // LastSpawn auf Todeszeitpunkt setzen
+          CalcNextSpawnTime(spawndata,userdata,ev.nr); // Neue Zeit anschmeißen
+        EndIf
+      EndIf
+      rune.setprop(CPROP_DATA,spawndata);  // wegen byref alles aktuell
+    EndIf
+  EndIf
+EndFunction
+
+
+///////////////////////////////////////////////
+// LinkRunes - "Oder"-Verknüpfung zwischen 2 Runen
+///////////////////////////////////////////////
+
+Function LinkRunes(byref ev)
+  Var master:=SystemFindObjectBySerial(ev.nr);
+  Var master_spawndata:=master.getprop(CPROP_DATA);
+  Var spawndata:=ev.source.getprop(CPROP_DATA);
+  Var userdata:=ev.source.getprop(CPROP_USER);
+  Var spawns;
+
+  // erstmal "Slave"Rune löschen
+  ForEach spawn in (spawntimes[spawndata.nextspawn])  // Zeitqueue durchgehen
+    If (spawn==CInt(ev.source.serial))
+      spawntimes[spawndata.nextspawn].erase(_spawn_iter);  // und löschen
+      If (spawntimes[spawndata.nextspawn]=={}) // jetzt leer?
+        spawntimes.erase(spawndata.nextspawn);
+      EndIf
+      Break;
+    EndIf
+    SleepMS(2);
+  EndForEach
+  spawndata.nextspawn:=0;
+
+  If (userdata.spawntype<>TYPE_CONTAINER)
+    If (userdata.spawntype==TYPE_ITEM)  // serials aktualisieren
+      ItemCount(ev.source,spawndata,userdata);
+    EndIf
+    ForEach spawn in (spawndata.serials) // alles killen/löschen
+      spawns:=SystemFindObjectBySerial(spawn);
+      If (userdata.spawntype==TYPE_NPC)
+        If ((spawns) && (spawns.getprop(CPROP_NR)[1]==CInt(ev.source.serial)))
+          RevokePrivilege(spawns, "invul");
+          spawns.setprop("guardkill", 1);
+          KillMobile(spawns, "spawnnet-respawn");
+        EndIf
+      ElseIf ((spawns) && (spawns.getprop(CPROP_NR)==CInt(ev.source.serial)))
+        DestroyItem(spawns);
+      EndIf
+      SleepMS(2);
+    EndForEach
+    spawndata.serials:={};
+  Else
+    spawns:=SystemFindObjectBySerial(spawndata.container);
+    If (spawns)
+      DestroyItem(spawns);
+    EndIf
+    spawndata.container:=0;
+  EndIf
+
+  spawndata.linked:=ev.nr;
+  ev.source.setprop(CPROP_DATA,spawndata);
+  master_spawndata.linked:=CInt(ev.source.serial);
+  master.setprop(CPROP_DATA,master_spawndata);
+EndFunction
+
+
+///////////////////////////////////////////////
+// SpawnNPC - Spawned einen NPC
+///////////////////////////////////////////////
+
+Function SpawnNPC(byref rune, byref spawndata, byref userdata, groupnr:=0)
+  Var template, seenpc, creature;
+  Var spawnx,spawny,spawnz, origspawnx,origspawny,origspawnz;
+  Var times:=0;
+  Var amount:=1, realm;
+  Var groupref, flags,groupamt, grouptemplates, regionref;
+
+  Var RegionSpawn:=0;
+  If (IsRegion(rune))
+    RegionSpawn:=1;
+  EndIf
+
+  If (RegionSpawn)
+    regionref:=RegionData.FindElement(rune);
+    realm:=regionref.getprop("realm");
+    groupref:=GroupData.FindElement(groupnr);
+    grouptemplates:=groupref.getprop(D_GROUP_ENTRIES);
+  Else
+    realm:=rune.realm;
+  EndIf
+
+  // grouping aktiviert->alle aufeinmal spawnen sonst nur 1
+  If (RegionSpawn)
+    flags:=groupref.getprop(D_GROUP_FLAGS);
+    groupamt:=groupref.getprop(D_GROUP_GROUPING);
+    If (flags & GROUPING)
+      If (userdata.groups[groupnr].enabled)
+        amount:=userdata.groups[groupnr].max_amt-spawndata.groups[groupnr].serials.size(); // Wieviel ist zu spawnen?
+        amount:=CInt(Min(MAX_SPAWN_PER_CYCLE,Min(groupamt,amount))); // Erst auf Gruppenanzahl, dann auf Maxanz begrenzen
+        If (amount<1) // da ging was schief
+          Return;
+        EndIf
+      Else
+        Return;
+      EndIf
+    EndIf
+
+  Else
+    If (userdata.flags & GROUPING)
+      amount:=userdata.amount-spawndata.serials.size();  // Wieviel ist zu spawnen?
+      amount:=CInt(Min(MAX_SPAWN_PER_CYCLE,Min(userdata.group,amount))); // Erst auf Gruppenanzahl, dann auf Maxanz begrenzen
+      If (amount<1) // da ging was schief
+        Return;
+      EndIf
+    EndIf
+  EndIf
+
+  If (!RegionSpawn)
+    If (spawndata.templatearray=={}) // keine Spawngruppe
+      If (GetNPCConfig(userdata.template).movemode["S"]) // Ist es ein See-NPC?
+        seenpc:=1;
+      Else
+        seenpc:=0;
+      EndIf
+    EndIf
+  EndIf
+
+  While (amount)
+    If (RegionSpawn)
+      template:=ChooseRandomGroupEntry(grouptemplates);
+      If (GetNPCConfig(template).movemode["S"]) // Ist es ein See-NPC bzw beides?
+        If (GetNPCConfig(template).movemode["L"]) // beides besser erst auf Land spawnen
+          seenpc:=0;                              // sonst könnte es am Arsch der Welt spawnen
+        Else
+          seenpc:=1;
+        EndIf
+      Else
+        seenpc:=0;
+      EndIf
+    ElseIf (spawndata.templatearray<>{})  // Spawngruppe
+      template:=spawndata.templatearray.randomentry();
+      If (GetNPCConfig(template).movemode["S"]) // Ist es ein See-NPC bzw beides?
+        seenpc:=1;
+      Else
+        seenpc:=0;
+      EndIf
+    Else
+      template:=userdata.template;
+    EndIf
+
+    If (template in {"<NONE>","<keine>"})
+      LogToFile("::log/spawn.log","NPCSpawnRune ["+Hex(rune.serial)+"] hat noch kein Template definert!");
+      Return;
+    EndIf
+
+    // Spawnlocation besorgen
+    times:=0;
+    While (times<=MAX_CREATE_TRYES)
+      If (RegionSpawn)
+        spawnx:=RandomIntMinMax(userdata.koords[1],userdata.koords[3]+1);
+        spawny:=RandomIntMinMax(userdata.koords[2],userdata.koords[4]+1);
+        spawnz:=GetStandingHeight(spawnx, spawny, CInt(GetWorldHeight(spawnx, spawny, realm)),realm);
+      Else
+        spawnx:=RandomIntMinMax(rune.x-userdata.range,rune.x+userdata.range+1);
+        spawny:=RandomIntMinMax(rune.y-userdata.range,rune.y+userdata.range+1);
+        spawnz:=GetStandingHeight(spawnx, spawny, rune.z,rune.realm);
+      EndIf
+
+      If (spawnz==error)
+        If (seenpc) // Ist es ein See-NPC?
+          spawnz:=GetStandingLayers(spawnx, spawny, MAPDATA_FLAG_MOVESEA, realm)[1]; // Erstmal schaun ob Wasser da ist
+          If (!spawnz)
+            times+=1;
+          ElseIf (ListMultisInBox(spawnx,spawny,spawnz.z-20,spawnx,spawny,spawnz.z+20,realm).size()>0)  // Multi an der Stelle
+            times+=1;
+          Else
+            Break;
+          EndIf
+        Else
+          times+=1;
+        EndIf
+      ElseIf (ListMultisInBox(spawnx,spawny,spawnz.z-20,spawnx,spawny,spawnz.z+20,realm).size()>0)
+        times+=1; // Multi an der Stelle
+      Else
+        Break;
+      EndIf
+      SleepMS(2);
+    EndWhile
+    If (times>MAX_CREATE_TRYES)  // Keine passende Location gefunden
+      If (IsRegion(rune))
+        LogToFile("::log/spawn.log","HINWEIS: Die NPCSpawnRegion ("+rune+":"+groupnr+") konnte keinen geeigneten Platz finden!");
+      Else
+        LogToFile("::log/spawn.log","HINWEIS: Die NPCSpawnRune ["+Hex(rune.serial)+"]("+rune.x+", "+rune.y+", "+rune.z+") konnte keinen geeigneten Platz finden!");
+      EndIf
+      Return;
+    EndIf
+
+    // NPC erzeugen
+    var override:=struct{CProps:=dictionary};
+    If (!RegionSpawn)
+      // NPC auf Wunsch verankern
+      If (userdata.flags & NPC_ANCHOR)
+        override.CProps.insert(PROP_ANCHOR,{rune.x, rune.y, userdata.range, 100});
+      EndIf
+      // NPC auf Wunsch gleich festtackern
+      If (userdata.flags & NPC_FROZEN)
+        override.CProps.insert("frozen",1);
+        override.+Frozen:=1;
+      EndIf
+    Else
+      // NPC auf Wunsch verankern
+      If (flags & NPC_ANCHOR)
+        override.CProps.insert(PROP_ANCHOR,{spawnx, spawny, 20, 100});
+      EndIf
+    EndIf
+
+    // NPC markieren
+    If (RegionSpawn)
+      override.CProps.insert(CPROP_NR, {{rune,groupnr}});
+    Else
+      override.CProps.insert(CPROP_NR, {CInt(rune.serial)});
+    EndIf
+
+    //QuestNPC CProp an den NPC tackern, falls Gewünscht
+    If (!RegionSpawn)
+      If (userdata.questnr)
+        override.CProps.insert("questnpc",userdata.questnr);
+      EndIf
+    EndIf
+    
+    times:=0;
+    While (times<=MAX_CREATE_TRYES)
+      If (seenpc) // Ist es ein See-NPC?
+        origspawnx:=5273+RandomInt(6);
+        origspawny:=1181+RandomInt(9);
+        origspawnz:=-5;
+      Else
+        origspawnx:=5280+RandomInt(9);
+        origspawny:=1182+RandomInt(5);
+        origspawnz:=0;
+      EndIf
+
+      creature:=CreateNpcFromTemplatePergon(template, origspawnx, origspawny, origspawnz, 2, override,0,_DEFAULT_REALM);
+      If (creature)
+        Break;
+      Else
+        times+=1;
+      EndIf
+      SleepMS(2);
+    EndWhile
+    If (times>MAX_CREATE_TRYES)  // Keine passende Location gefunden
+      If (RegionSpawn)
+        LogToFile("::log/spawn.log","HINWEIS: Die NPCSpawnRegion ("+rune+":"+groupnr+") konnte keinen NPC spawnen!");
+      Else
+        LogToFile("::log/spawn.log","HINWEIS: Die NPCSpawnRune ["+Hex(rune.serial)+"]("+rune.x+", "+rune.y+", "+rune.z+") konnte keinen NPC spawnen!");
+      EndIf
+      Return;
+    EndIf
+
+    // NPC bewegen
+    MoveObjectToLocation(creature, spawnx, spawny, spawnz.z, realm, MOVEOBJECT_FORCELOCATION);
+
+    If (RegionSpawn)
+      spawndata.groups[groupnr].serials.append(creature.serial);
+    Else
+      spawndata.serials.append(creature.serial);
+    EndIf
+    amount-=1;
+    SleepMS(2);
+  EndWhile
+EndFunction
+
+
+///////////////////////////////////////////////
+// SpawnItem - Spawned ein Item
+///////////////////////////////////////////////
+
+Function SpawnItem(byref rune, byref spawndata, byref userdata, groupnr:=0)
+  Var itemobj, times, item, stackitem;
+  Var spawnx, spawny, spawnz;
+  Var contobj;
+  Var amount:=1, stackamount:=1;
+  Var realm;
+  var groupref, flags,groupamt, grouptemplates, regionref;
+
+  Var RegionSpawn:=0;
+  If (IsRegion(rune))
+    RegionSpawn:=1;
+  EndIf
+
+  If (RegionSpawn)
+    regionref:=RegionData.FindElement(rune);
+    realm:=regionref.getprop("realm");
+    groupref:=GroupData.FindElement(groupnr);
+    grouptemplates:=groupref.getprop(D_GROUP_ENTRIES);
+    flags:=groupref.getprop(D_GROUP_FLAGS);
+    groupamt:=groupref.getprop(D_GROUP_GROUPING);
+  Else
+    realm:=rune.realm;
+  EndIf
+
+  If ((!RegionSpawn) && (userdata.flags & ITEM_IN_CONTAINER_SPAWN))
+    contobj:=SystemFindObjectBySerial(spawndata.container);
+    If (!contobj)
+      If (rune.container)
+        contobj:=rune.container; // Rune befindet sich doch im Container
+        spawndata.container:=contobj.serial;
+      Else // irgendwas lief falsch
+        LogToFile("::log/spawn.log","WARNUNG: ItemSpawnRune befand sich nicht in einem Container und wurde geloescht! ["+rune.x+" "+rune.y+"]");
+        DelRune(struct{nr:=CInt(rune.serial),spawndata:=spawndata,userdata:=userdata});
+        DestroyItem(rune);
+        Return;
+      EndIf
+    EndIf
+    ItemCount(rune, spawndata, userdata, groupnr);  // Aktualisierung von .serials
+  Else
+    ItemCount(rune, spawndata, userdata, groupnr);  // Aktualisierung von .serials
+  EndIf
+
+  If (RegionSpawn)
+    If (!(flags & SAVE_OLD_ITEMS))
+      ForEach serial in (spawndata.groups[groupnr].serials)
+        item:=SystemFindObjectBySerial(serial);
+        If (item)
+          DestroyItem(item);
+        EndIf
+        SleepMS(2);
+      EndForEach
+      spawndata.groups[groupnr].serials:={};
+    EndIf
+  Else
+    If ((!(userdata.flags & SAVE_OLD_ITEMS)) && (!(userdata.flags & ITEM_IN_CONTAINER_SPAWN)))  // Alte Items löschen
+      ForEach serial in (spawndata.serials)
+        item:=SystemFindObjectBySerial(serial);
+        If (item)
+          DestroyItem(item);
+        EndIf
+        SleepMS(2);
+      EndForEach
+      spawndata.serials:={};
+    EndIf
+  EndIf
+
+  If (RegionSpawn)
+    If (userdata.groups[groupnr].max_amt<=spawndata.groups[groupnr].serials.size()) // Gibt es etwas zu tun?
+      Return;
+    Endif
+  Else
+    If (userdata.amount<=spawndata.serials.size()) // Gibt es etwas zu tun?
+      Return;
+    Endif
+  EndIf
+
+
+  If (RegionSpawn)
+    If (flags & GROUPING)  // Alle Aufeinmal
+      If (flags & SAVE_OLD_ITEMS)
+        amount:=groupamt;
+      Else
+        amount:=userdata.groups[groupnr].max_amt-spawndata.groups[groupnr].serials.size();  // Wieviel ist zu spawnen?
+      EndIf
+      amount:=CInt(Min(MAX_SPAWN_PER_CYCLE,Min(groupamt,amount))); // Erst auf Gruppenanzahl, dann auf Maxanz begrenzen
+      If (amount<1) // da ging was schief
+        Return;
+      EndIf
+    EndIf
+
+    stackamount:=groupref.getprop(D_GROUP_STACK);  // Wie groß soll denn der Stack sein?
+  Else
+    If (userdata.flags & GROUPING)  // Alle Aufeinmal
+      If (userdata.flags & SAVE_OLD_ITEMS)
+        amount:=userdata.group;
+      Else
+        amount:=userdata.amount-spawndata.serials.size();  // Wieviel ist zu spawnen?
+      EndIf
+      amount:=CInt(Min(MAX_SPAWN_PER_CYCLE,Min(userdata.group,amount))); // Erst auf Gruppenanzahl, dann auf Maxanz begrenzen
+      If (amount<1) // da ging was schief
+        Return;
+      EndIf
+    EndIf
+
+    stackamount:=userdata.stackamount;  // Wie groß soll denn der Stack sein?
+  EndIf
+
+  While (amount)
+    If (RegionSpawn)
+      itemobj:=ChooseRandomGroupEntry(grouptemplates);
+    ElseIf (spawndata.templatearray<>{})  // Spawngruppe
+      itemobj:=spawndata.templatearray.randomentry();
+    Else
+      itemobj:=userdata.template;
+    EndIf
+
+    If (itemobj in {"<NONE>","<keine>"})
+      LogToFile("::log/spawn.log","ItemSpawnRune ["+Hex(rune.serial)+"] hat noch kein Objtype definert!");
+      Return;
+    EndIf
+
+    // Location suchen
+    times:=0;
+    If (!(userdata.flags & ITEM_IN_CONTAINER_SPAWN)) // Für Region immer erfüllt
+      While (times<=MAX_CREATE_TRYES)
+        If (RegionSpawn)
+          spawnx:=RandomIntMinMax(userdata.koords[1],userdata.koords[3]+1);
+          spawny:=RandomIntMinMax(userdata.koords[2],userdata.koords[4]+1);
+          spawnz:=GetStandingHeight(spawnx, spawny, CInt(GetWorldHeight(spawnx, spawny, realm)),realm);
+        Else
+          spawnx:=RandomIntMinMax(rune.x-userdata.range,rune.x+userdata.range+1);
+          spawny:=RandomIntMinMax(rune.y-userdata.range,rune.y+userdata.range+1);
+          spawnz:=GetStandingHeight(spawnx, spawny, rune.z,realm);
+        EndIf
+        If (spawnz==error)
+          times+=1;
+        ElseIf (ListMultisInBox(spawnx,spawny,spawnz.z-20,spawnx,spawny,spawnz.z+20,realm).size()>0)
+          times+=1; // Multi an der Stelle
+        Else
+          Break;
+        EndIf
+        SleepMS(2);
+      EndWhile
+      If (times>MAX_CREATE_TRYES)  // Keine passende Location gefunden
+        LogToFile("::log/spawn.log","HINWEIS: Die ItemSpawnRune ["+Hex(rune.serial)+"]("+rune.x+", "+rune.y+", "+rune.z+") konnte keinen geeigneten Platz finden!");
+        Return;
+      EndIf
+    EndIf
+
+    // Item erzeugen
+    If (userdata.flags & ITEM_IN_CONTAINER_SPAWN)
+      item:=CreateItemInContainerPergon(contobj, itemobj, stackamount);
+    Else
+      item:=CreateItemAtLocationPergon(spawnx, spawny, spawnz.z, itemobj,stackamount,realm);
+    EndIf
+    If (item)
+      // item.movable := 1;
+      item.decayat := ReadGameClock() + userdata.maxtime * 60; // damit es nicht vor Ablauf der Zeit verschwindet
+      If (RegionSpawn)
+        item.setprop(CPROP_NR, {rune,groupnr});
+        spawndata.groups[groupnr].serials.append(item.serial);
+      Else
+        item.setprop(CPROP_NR,rune.serial);
+        spawndata.serials.append(item.serial);
+      EndIf
+    Else
+      // Hmm, als ganzer Stack ging nicht, mal einzeln versuchen
+      If (userdata.flags & ITEM_IN_CONTAINER_SPAWN)
+        item:=CreateItemInContainerPergon(contobj, itemobj, 1);
+      Else
+        item:=CreateItemAtLocationPergon(spawnx, spawny, spawnz.z, itemobj, 1, realm);
+      EndIf
+      If (item)
+        // item.movable := 1;
+        item.decayat := ReadGameClock() + userdata.maxtime * 60; // damit es nicht vor Ablauf der Zeit verschwindet
+        If (RegionSpawn)
+          item.setprop(CPROP_NR, {rune,groupnr});
+          spawndata.groups[groupnr].serials.append(item.serial);
+        Else
+          item.setprop(CPROP_NR,rune.serial);
+          spawndata.serials.append(item.serial);
+        EndIf
+        // Funzt, also alles einzeln...
+        For i:=2 To stackamount
+          If (userdata.flags & ITEM_IN_CONTAINER_SPAWN)
+            stackitem:=CreateItemInContainerPergon(contobj, itemobj, 1);
+          Else
+            stackitem:=CreateItemAtLocationPergon(spawnx, spawny, spawnz.z, itemobj, 1, realm);
+          EndIf
+          If (stackitem)
+            // stackitem.movable := 1;
+            item.decayat := ReadGameClock() + userdata.maxtime * 60; // damit es nicht vor Ablauf der Zeit verschwindet
+            // Item markieren
+            If (RegionSpawn)
+              stackitem.setprop(CPROP_NR, {rune,groupnr});
+              spawndata.groups[groupnr].serials.append(stackitem.serial);
+            Else
+              stackitem.setprop(CPROP_NR,rune.serial);
+              spawndata.serials.append(item.serial);
+            EndIf
+          EndIf
+          SleepMS(2);
+        EndFor
+      Else
+        If (RegionSpawn)
+          LogToFile("::log/spawn.log","HINWEIS: Die ItemSpawnRegion ("+rune+": "+groupnr+") konnte Item nicht erzeugen ("+itemobj+")! "+item);
+        Else
+          LogToFile("::log/spawn.log","HINWEIS: Die ItemSpawnRune ["+Hex(rune.serial)+"]("+rune.x+", "+rune.y+", "+rune.z+") konnte Item nicht erzeugen ("+itemobj+")! "+item);
+        EndIf
+        Break;
+      EndIf
+    EndIf
+
+    amount-=1;
+    SleepMS(2);
+  EndWhile
+EndFunction
+
+
+///////////////////////////////////////////////
+// SpawnContainer - Spawned einen Container
+///////////////////////////////////////////////
+
+Function SpawnContainer(byref rune,byref spawndata, byref userdata, groupnr:=0)
+  Var times;
+  Var spawnx, spawny, spawnz;
+  Var contobj;
+  Var realm;
+  var groupref, flags, grouptemplates, regionref, cnt_objtype;
+
+  Var RegionSpawn:=0;
+  If (IsRegion(rune))
+    RegionSpawn:=1;
+  EndIf
+
+  If (RegionSpawn)
+    regionref:=RegionData.FindElement(rune);
+    realm:=regionref.getprop("realm");
+    groupref:=GroupData.FindElement(groupnr);
+    grouptemplates:=groupref.getprop(D_GROUP_ENTRIES);
+    flags:=groupref.getprop(D_GROUP_FLAGS);
+    cnt_objtype:=groupref.getprop(D_CONTAINER_TYPE);
+  Else
+    realm:=rune.realm;
+  EndIf
+
+  If (spawndata.container)
+    contobj:=SystemFindObjectBySerial(spawndata.container);
+    If ((contobj) && (userdata.flags & CONTAINER_MOVING_SPAWN))  // gleich löschen
+      DestroyItem(contobj);
+    EndIf
+  ElseIf (RegionSpawn)
+    contobj:=SystemFindObjectBySerial(spawndata.groups[groupnr].container);
+    If (contobj)
+      DestroyItem(contobj);
+    EndIf
+  EndIf
+  If (!contobj)
+    // Neuen Container erzeugen
+    times:=0;
+    If ((userdata.flags & CONTAINER_MOVING_SPAWN) || (RegionSpawn))  // Zufällige Pos bzw Region
+      While (times<=MAX_CREATE_TRYES)
+        If (IsRegion(rune))
+          spawnx:=RandomIntMinMax(userdata.koords[1],userdata.koords[3]+1);
+          spawny:=RandomIntMinMax(userdata.koords[2],userdata.koords[4]+1);
+          spawnz:=GetStandingHeight(spawnx, spawny, CInt(GetWorldHeight(spawnx, spawny, realm)),realm);
+        Else
+          spawnx:=RandomIntMinMax(rune.x-userdata.range,rune.x+userdata.range+1);
+          spawny:=RandomIntMinMax(rune.y-userdata.range,rune.y+userdata.range+1);
+          spawnz:=GetStandingHeight(spawnx, spawny, rune.z,realm);
+        EndIf
+        If (spawnz==error)
+          times+=1;
+        ElseIf (ListMultisInBox(spawnx,spawny,spawnz.z-20,spawnx,spawny,spawnz.z+20,realm).size()>0)
+          times+=1; // Multi an der Stelle
+        Else
+          Break;
+        EndIf
+        SleepMS(2);
+      EndWhile
+      If (times>MAX_CREATE_TRYES)  // Keine passende Location gefunden
+        If (IsRegion(rune))
+          LogToFile("::log/spawn.log","HINWEIS: Die ContainerSpawnRegion ("+rune+": "+groupnr+") konnte keinen geeigneten Platz finden!");
+        Else
+          LogToFile("::log/spawn.log","HINWEIS: Die ContainerSpawnRune ["+Hex(rune.serial)+"]("+rune.x+", "+rune.y+", "+rune.z+") konnte keinen geeigneten Platz finden!");
+        EndIf
+        Return;
+      EndIf
+    Else  // Feste Pos
+      spawnx:=rune.x;
+      spawny:=rune.y;
+      spawnz:=rune;
+    EndIf
+    If (RegionSpawn)
+      contobj:=CreateItemAtLocationPergon(spawnx, spawny, spawnz.z, cnt_objtype, 1, realm);
+      If (!contobj)
+        LogToFile("::log/spawn.log","HINWEIS: Die ContainerSpawnRegion ("+rune+": "+groupnr+") konnte keinen Container ("+cnt_objtype+") spawnen!");
+        Return;
+      EndIf
+      contobj.movable:=0;
+    Else
+      contobj:=CreateItemAtLocationPergon(spawnx, spawny, spawnz.z, userdata.containertype, 1, realm);
+      If (!contobj)
+        LogToFile("::log/spawn.log","HINWEIS: Die ContainerSpawnRune ["+Hex(rune.serial)+"]("+rune.x+", "+rune.y+", "+rune.z+") konnte keinen Container ("+userdata.containertype+") spawnen!");
+        Return;
+      EndIf
+      contobj.movable:=0;
+    EndIf
+    If (RegionSpawn)
+      // Container zerfaellt nach gewisser Zeit
+      contobj.decayat:=ReadGameClock()
+                      +RandomIntMinMax(spawndata.groups[groupnr].MinTime,
+                                       spawndata.groups[groupnr].MaxTime+1)*60;
+    ElseIf (userdata.flags & CONTAINER_MOVING_SPAWN)
+      // Container zerfaellt nach gewisser Zeit
+      contobj.decayat:=ReadGameClock()
+                      +RandomIntMinMax(spawndata.mintime,
+                                       spawndata.maxtime+1)*60;
+    Else
+      contobj.decayat:=0;
+    EndIf
+
+    If (RegionSpawn)
+      contobj.setprop(CPROP_NR,{rune,groupnr});
+      spawndata.groups[groupnr].container:=contobj.serial;
+    Else
+      contobj.setprop(CPROP_NR,rune.serial);
+      spawndata.container:=contobj.serial;
+    EndIf
+  EndIf
+
+  // Container leeren
+  If (RegionSpawn)
+    If (flags & CONTAINER_FLUSH)
+      ForEach olditem in EnumerateItemsInContainer(contobj)
+        If (olditem.objtype <> UOBJ_SPAWNRUNE)
+          DestroyItem(olditem);
+        EndIf
+        SleepMS(2);
+      EndForEach
+    EndIf
+  Else
+    If (userdata.flags & CONTAINER_FLUSH)
+      ForEach olditem in EnumerateItemsInContainer(contobj)
+        If (olditem.objtype <> UOBJ_SPAWNRUNE)
+          DestroyItem(olditem);
+        EndIf
+        SleepMS(2);
+      EndForEach
+    EndIf
+  EndIf
+
+  // Container fuellen
+  If (RegionSpawn)
+    MakeLoot(contobj, grouptemplates.keys().randomentry());
+
+    spawndata.groups[groupnr].serials:={};
+  Else
+    MakeLoot(contobj, userdata.template);
+
+    spawndata.serials:={};
+  EndIf
+
+  If ((userdata.flags & CONTAINER_TRAP) // Gegenenfalls ne Falle draufknallen
+     || ((RegionSpawn) && (flags & CONTAINER_TRAP)))
+    If (RandomInt(100)<CONTAINER_TRAP_CHANCE)
+      Var type:=RandomIntMinMax(1,4);
+      contobj.setprop("trap_type", CStr(type));
+      contobj.setprop("trap_strength", RandomIntMinMax(20,51));
+      If (type==2) // Giftfalle
+        contobj.setprop("poisonlvl",RandomIntMinMax(1,20));
+      EndIf
+      contobj.usescript:=":traps:containertrap";
+    EndIf
+  EndIf
+EndFunction
+
+
+///////////////////////////////////////////////
+// ItemCount - Überprüft & setzt .serials für ItemRune
+///////////////////////////////////////////////
+
+Function ItemCount(byref rune, byref spawndata, byref userdata, groupnr:=0)
+	Var item, temp:={};
+  If (userdata.flags & ITEM_IN_CONTAINER_SPAWN)
+  	If (!IsRegion(rune))
+      ForEach serial in (spawndata.serials)
+        item:=SystemFindObjectBySerial(serial);
+        If (item)  // Existenz
+        	If (item.container.serial==spawndata.container) // noch im selben conti
+        		temp.append(item.serial);
+         	EndIf
+        EndIf
+        SleepMS(2);
+      EndForEach
+      spawndata.serials:=temp;
+    EndIf
+    Return;
+  EndIf
+  
+
+  If (IsRegion(rune))
+    ForEach serial in (spawndata.groups[groupnr].serials)
+      item:=SystemFindObjectBySerial(serial);
+      If (item)  // Existenz
+        If (item.getprop(CPROP_NR)[1]==rune)  // Selbe Region
+          If (item.getprop(CPROP_NR)[2]==groupnr)  // Selbe Gruppe
+            If ((!item.container) && (!item.multi))  // in keinem Container oder Multi
+              If ((item.x>=userdata.koords[1]) && (item.x<=userdata.koords[3])
+                && (item.y>=userdata.koords[2]) && (item.y<=userdata.koords[4])) // Bereich passend?
+                temp.append(item.serial);
+              EndIf
+            EndIf
+          EndIf
+        EndIf
+      EndIf
+      SleepMS(2);
+    EndForEach
+    spawndata.groups[groupnr].serials:=temp;
+
+  Else
+    ForEach serial in (spawndata.serials)
+      item:=SystemFindObjectBySerial(serial);
+      If (item)  // Existenz
+        If (item.getprop(CPROP_NR)==rune.serial)  // Selbe Rune
+          If ((!item.container) && (!item.multi))  // in keinem Container oder Multi
+            If (Distance(item,rune)<=userdata.range)  // Entfernung passend?
+              temp.append(item.serial);
+            EndIf
+          EndIf
+        EndIf
+      EndIf
+      SleepMS(2);
+    EndForEach
+    spawndata.serials:=temp;
+  EndIf
+EndFunction
+
+
+///////////////////////////////////////////////
+// InitRegions - Regionen in den Zeitqueue setzen
+///////////////////////////////////////////////
+
+Function InitRegions()
+  Var region, spawndata,userdata;
+  ForEach regionid in (RegionData.Keys())  // Alle Regionen durchgehen
+    If (regionid=="Realms")  // dich nicht
+      continue;
+    EndIf
+    region:=RegionData.FindElement(regionid);
+    spawndata:=region.getprop(CPROP_DATA);
+    userdata:=region.getprop(CPROP_USER);
+    ForEach group in (userdata.groups)  // Jede Gruppe einzeln behandeln
+      If (group.enabled)
+        If (spawndata.groups[_group_iter].nextspawn)
+          If (spawntimes[spawndata.groups[_group_iter].nextspawn])  // ZeitQueue füllen
+            spawntimes[spawndata.groups[_group_iter].nextspawn].append({regionid,_group_iter});
+          Else
+            spawntimes[spawndata.groups[_group_iter].nextspawn]:={{regionid,_group_iter}};
+          EndIf
+        EndIf
+      EndIf
+      SleepMS(2);
+    EndForEach
+  EndForEach
+EndFunction
+
+
+
+Function ChooseRandomGroupEntry(byref liste)
+  Var verteilung:=0;
+  Var rand:=RandomInt(100)+1;
+  If (liste[liste.keys()[1]]<>-1)  // Wahrscheinlichkeit angegeben
+    ForEach wahrscheinlichkeit in liste
+      verteilung+=wahrscheinlichkeit;
+      If (rand<=verteilung)
+        Return(_wahrscheinlichkeit_iter);
+      EndIf
+    EndForEach
+  EndIf
+  Return(liste.keys().randomentry());
+EndFunction
+
+// Bereinigt nach Neustart die Runen Positionen
+Function CleanUpRunePos()
+  Foreach elem in (RunePosData.keys())
+    RunePosData.DeleteElement(elem);
+    SleepMS(2);
+  EndForEach
+EndFunction

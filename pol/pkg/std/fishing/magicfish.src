@@ -1,0 +1,133 @@
+// ********************************************************************************
+// ***
+// ***	magic fish script
+// ***
+// ***	This script is called each time a player uses (double-clicks) a magic fish
+// ***
+// ********************************************************************************
+//
+//      19.05.2007 Turley - Benutzung des Spellcheckers für ModInt/Str/Dex
+//
+
+// ********************************************************************************
+//	function modules that will be used
+// ********************************************************************************
+use vitals;
+use uo;
+// ********************************************************************************
+//	included modules that will be used
+// ********************************************************************************
+
+Include "fishing";
+//Include "../../magic/statmod";
+Include "include/poison";
+Include "include/modifyskill";
+Include "include/npc";
+Include "../../opt/daymoonweather/daymoonweather";
+Include "include/spellcheck";
+
+// ********************************************************************************
+//	Main program
+//
+//	This is the main magic fish handler.  It is called when the player
+//	double-clicks on a magic fish.
+// ********************************************************************************
+program use_magicfish( who, fish )
+	// indicate the bottle is in use
+	reserveitem(fish);
+	// get the cprops we need before destroying the fish
+	Var spellnum := GetObjProperty( fish, "spellnum" );
+	Var spellsound := GetObjProperty( fish, "spellsound" );
+	Var spelleffect := GetObjProperty( fish, "spelleffect" );
+	Var miscprop1 := GetObjProperty( fish, "miscprop1" );
+	Var miscprop2 := GetObjProperty( fish, "miscprop2" );
+	Var tag:={};
+	SubtractAmount(fish,1);
+	if (spellnum > 0)
+		// this magic fish has a spell set for it
+		// play the sound and animations that are requested
+		PlaySoundEffect( who, spellsound );
+		PlayObjectCenteredEffect( who, spelleffect, 10,10);
+		// debug messages
+		// SendSysMessagePergon( who, "Fish has spell number " + spellnum);
+		// SendSysMessagePergon( who, "Using spell sound " + spellsound);
+		// SendSysMessagePergon( who, "Using spell effect" + spelleffect);
+		case (spellnum)		// handle the different magical effects
+
+			4:	// heal
+				HealDamage( who, miscprop1);
+
+			6:	// night sight
+				SetLightLevelPergon(who, miscprop1, miscprop2, CHECK_NOLIGHT);
+
+			9:	// agility
+			  If (!who.getprop("fish_agility"))
+          AlterDexModPergon(who, miscprop1);
+          tag[1]:=miscprop1;
+          tag[2]:=miscprop2;
+          tag[3]:=ReadMilliSecondClock();
+          who.setprop("fish_agility",tag);
+          SendSpellWaiter(who, "fish_agility", miscprop2, tag[3], who);
+        EndIf
+
+			10:	// cunning
+			  If (!who.getprop("fish_cunning"))
+          AlterIntModPergon(who, miscprop1);
+          SetCastPowerProperty(who,"Fische",miscprop1,"","",0);
+          RefreshSpellPowerGump(who);
+          tag[1]:=miscprop1;
+          tag[2]:=miscprop2;
+          tag[3]:=ReadMilliSecondClock();
+          who.setprop("fish_cunning",tag);
+          SendSpellWaiter(who, "fish_cunning", miscprop2, tag[3], who);
+        EndIf
+
+			11:	// cure
+			  AddPoisonLevel(who, -miscprop1); // Entgiftung durchfuehren
+
+			16:	// strength
+			  If (!who.getprop("fish_strength"))
+          AlterStrModPergon(who, miscprop1);
+          tag[1]:=miscprop1;
+          tag[2]:=miscprop2;
+          tag[3]:=ReadMilliSecondClock();
+          who.setprop("fish_strength",tag);
+          SendSpellWaiter(who, "fish_strength", miscprop2, tag[3], who);
+        EndIf
+
+			17:	// bless
+			  If (!who.getprop("fish_agility"))
+          AlterDexModPergon(who, miscprop1);
+          tag[1]:=miscprop1;
+          tag[2]:=miscprop2;
+          tag[3]:=ReadMilliSecondClock();
+          who.setprop("fish_agility",tag);
+          SendSpellWaiter(who, "fish_agility", miscprop2, tag[3], who);
+        EndIf
+        If (!who.getprop("fish_cunning"))
+          AlterIntModPergon(who, miscprop1);
+          SetCastPowerProperty(who,"Fische",miscprop1,"","",0);
+          tag[1]:=miscprop1;
+          tag[2]:=miscprop2;
+          tag[3]:=ReadMilliSecondClock();
+          who.setprop("fish_cunning",tag);
+          SendSpellWaiter(who, "fish_cunning", miscprop2, tag[3], who);
+        EndIf
+        If (!who.getprop("fish_strength"))
+          AlterStrModPergon(who, miscprop1);
+          tag[1]:=miscprop1;
+          tag[2]:=miscprop2;
+          tag[3]:=ReadMilliSecondClock();
+          who.setprop("fish_strength",tag);
+          SendSpellWaiter(who, "fish_strength", miscprop2, tag[3], who);
+        EndIf
+
+		    44:	// invisibility
+				who.hidden := 1;
+
+		endcase
+	else
+		// bad spellnum cprop on this fish, it is 0 (not valid)
+		SendSysMessagePergon(who, "Urgs, das war ein alter Fisch!");
+	endif
+endprogram

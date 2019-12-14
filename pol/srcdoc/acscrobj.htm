@@ -1,0 +1,63 @@
+<title>Account Scripting Object</title>
+<table border=0 width="100%">
+  <tr>
+    <td valign="top" width="100%"><strong><big><big><big>Account Scripting Object</big></strong></td>
+    <td width="50%" valign="top" align="right" nowrap><a href="index.htm"><small>POL Core Doc<br>Home</small></a></td>
+  </tr>
+</table>
+<pre>
+
+ </pre><H2><a name="1">1</a> Account Scripting Object Methods</H2><pre>
+
+     All methods except GetProp and GetCharacter return 1 on success
+     All methods except GetProp and GetCharacter write the data/accounts.txt file on success.
+     All methods return Error("Not enough parameters") if too few parameters were passed.
+     All methods return Error("Invalid parameter type") if the wrong type was passed.
+
+    
+ account.Ban() : bans the account.  Disconnects connected client if any.
+
+
+ account.Unban() : unbans the account.
+
+
+ account.Enable() : enables the account
+
+
+ account.Disable() : disables the account.  Disconnects connected client if any.
+
+
+ account.SetPassword( newpassword : string ) : changes the password..
+
+
+ account.SetAcctName( newname : string ) : changes the account name
+    - deprecated in favor of:
+ account.SetName( newname : string ) : changes the account name
+  ACK, bug - since account data is saved immediately,
+  a crash w/o save will result in a server that can't start
+  because account names in accounts.txt will refer to the old name
+
+
+ account.GetProp( propname : string ) : gets a custom account property
+     returns Error( "Property not found" ) if property does not exist.
+
+
+ account.SetProp( propname : string, propval : packable ) : sets a custom account property
+
+
+ account.EraseProp( propname : string ) : erases a custom account property.
+
+
+ account.GetCharacter( index : 1..5 ) : retrieve a reference to a character belonging to this account.
+    This reference may be used even if the character is offline.
+
+ account.DeleteCharacter( index : 1..5 ) : delete a character
+  character to be deleted cannot be logged in.
+
+
+ </pre><H2><a name="2">2</a> Account Scripting Object Members</H2><pre>
+     MemberName      Type        Access
+     name            string      read-only
+     enabled         boolean     read-only
+     banned          boolean     read-only
+ 

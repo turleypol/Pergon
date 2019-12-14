@@ -1,0 +1,139 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file poisonelemental.src
+//
+// implements spell 326 <Poison Elemental> - "Giftelementar"
+//
+// caster summons (enticed) poison elemental which deals poison
+
+use os;
+use util;
+use vitals;
+include "../magicpergon";
+
+Program cast_poisonelemental(params)
+  var caster;
+  var where;
+  var power;
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  := params[3];
+    where  := struct{};
+    where.x     := params[4].x;
+    where.y     := params[4].y;
+    where.z     := params[4].z;
+    where.realm := params[4].realm;
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    where  := TargetArea(caster);
+    If (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+
+    power := GetCastPowerPergon(caster, SPELLID_NECRO_POISONELEMENTAL);
+    where := TargetArea(caster);
+    If (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  If (!caster or caster.dead)
+    // bei Zielauswahl ausgeloggt, verstorben etc.
+    return;
+  EndIf
+
+  TurnCharTo(caster, where);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  // load spell data
+  var spells := ReadConfigFile("::spells");
+  var spell := FindConfigElem(spells, SPELLID_NECRO_POISONELEMENTAL);
+
+  // calc spell duration according to casting power
+  var dur := CInt(power*spell.duration/100.0);
+  If (spell.durationmin and spell.durationmin > dur)
+    dur := CInt(spell.durationmin / 5);
+  ElseIf (spell.durationmax and spell.durationmax < dur)
+    dur := CInt(spell.durationmax / 5);
+  Else
+    dur := CInt(dur / 5);
+  EndIf
+
+  // prepare controlscript for summoned NPC
+  var parms := struct;
+  parms.+CProps := dictionary;
+  // Von NPC beschworene sind "wild"
+  If (params[1] <> "#MOB")
+    parms.+script := "enticedanimal";
+    // set caster as master
+    parms.+Master := caster.serial;
+    parms.CProps.insert("master", caster.serial);
+    // set enticed time (high enough)
+    parms.CProps.insert("RoamsFreeAt", ReadGameClock() + dur * 6);
+  EndIf
+  // mark critter as summoned
+  parms.CProps.insert(PROP_SUMMONED, SUMMON_BY_NECRO);
+  // für Antimagie und Exorzismus
+  parms.CProps.insert("power", CInt(power+80));
+  // Exp löschen für selbstbeschworene Viecher
+  parms.CProps.insert("exp", 0);
+
+  PlaySoundEffect(caster, SFX_SPELL_SUMMON_ELEMENTAL);
+  // create poison elemental -> critter
+  var critter := CreateNpcFromTemplate(
+    "poisonelemental", where.x, where.y, where.z, parms, where.realm
+  );
+  If (!critter)
+    SendSysMessagePergon(caster, "Interner Fehler. Staff wurde informiert.");
+    syslog("FEHLER: CreateNPC gescheitert mit: "+critter.errortext);
+    return;
+  EndIf
+  // Castanimation
+  PerformAction(critter, ANIM_ATTACK_2HAND_DOWN);
+
+  // applied damage after 1/5th of duration
+  var critdmg := CInt(GetMaxHPPergon(critter)/5);
+
+  Detach();
+
+  // wait summa 4/5th of duration
+  var i := 0;
+  While (i < 5)
+    Sleep(dur);
+
+    If (!caster or caster.dead)
+      // Caster tot also Vieh auch
+      break;
+    EndIf
+
+    If (!critter or critter.dead)
+      // abort if critter got killed
+      return;
+    EndIf
+
+    PlaySoundEffect(critter, SFX_SPELL_HARM);
+    PlayObjectCenteredEffect(critter, FX_SMOKE, 10, 10);
+
+    If (GetHPPergon(critter) <= critdmg)
+      // reduce critters HP by 1/5th
+      break;
+    Else
+      SetHPPergon(critter, GetHPPergon(critter) - critdmg);
+    EndIf
+  EndWhile
+
+  If (critter)
+    PlaySoundEffect(critter, SFX_SPELL_MANA_VAMPIRE);
+    PlayStationaryEffect(
+      critter.x, critter.y, critter.z, FX_SMOKE, 10, 10, 0, critter.realm
+    );
+
+    // hide and kill critter
+    critter.hidden := 1;
+    KillNPC(critter, "necro-poisonelemental", KILLNPC_NOCORPSE);
+  EndIf
+EndProgram

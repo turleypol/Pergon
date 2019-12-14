@@ -1,0 +1,19 @@
+use uo;
+
+Include ":popuphook:popupmenu";
+Include "include/eventid";
+Include "include/msgs";
+
+Program protomaster(params);
+  var who, mob;
+  
+  who := params[1];
+  mob := params[2];
+  
+  var name := SendTextEntryGump(who, "Wen wollt Ihr als Meister entfernen?");
+	If (name)
+		EventSenden(who, mob, "delmaster "+name);
+	Else
+		SendSysMessagePergon(who, "Abbruch", "Abort");
+	EndIf
+EndProgram

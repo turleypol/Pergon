@@ -1,0 +1,126 @@
+//**************************************************************************************************
+// Script file rust.src
+//
+//    implements spell 8 <Rust> - "Zahn der Zeit"
+//
+//  decreases HP on random armor of spelltarget (possibly breaks it)
+//     [ Reflected ]
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 27.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+use util;
+
+Include "../magicpergon";
+Include "../spellattack";
+
+program cast_rust (params)
+
+  Var caster;
+  Var caston;
+  Var spelltarget;
+
+  Var spells:= ReadConfigFile("::spells");                  // load spelldata
+  Var spell:=  FindConfigElem(spells, SPELLID_COMMON_RUST);
+  //Var difficulty:= spell.skill;
+  Var dmg:=    spell.primary;
+  Var mindmg:= spell.primarymin;
+  Var maxdmg:= spell.primarymax;
+  Var power;
+
+  if (params[1] == "#MOB")
+    caster:= params[2];
+    power:=  params[3];
+    caston:= params[4];
+    send_attack(caston, caster, 8);
+  elseif (params[1] == "#SCROLL")
+    caster:= params[2];
+    power:=  params[3];
+    caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    if (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    endif
+  else
+    caster:= params[1];
+
+    power:= GetCastPowerPergon(caster, SPELLID_COMMON_RUST);
+    caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    if (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    endif
+  endif
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_DIR);
+  If (caston.isa(POLCLASS_NPC))
+    SendSysMessagePergon(caster,"Ihr könnt diesen Spruch nicht auf einen NPC wirken","");
+    Return;
+  EndIf
+  // get spelltarget -> possible spell reflection
+  spelltarget:= ReflectSpell(caster, caston, dmg, 1, FX_CURSE_EFFECT, 7, 7, 0, SFX_1CA);
+
+  If (spelltarget)
+
+    Var armor:= {};
+    Var item;
+    Var equipped:= ListEquippedItems(spelltarget) ;     // get equipped items on spelltarget
+
+    ForEach item In equipped
+      If (item.isa(POLCLASS_ARMOR)||item.isa(POLCLASS_WEAPON))                // get armor out of equipped items
+        If (!item.getprop("spell_rust"))
+          armor.append(item);
+        EndIf
+      EndIf
+    EndForEach
+
+    if (armor=={})
+      SendSysMessagePergon(caster,"Ihr findet nichts was noch verrotten kann!","You find nothing to rust!");
+      Return;
+    endif
+    item:= armor.randomentry();          // choose item
+
+    if (item)
+
+      //dmg:= CInt(item.maxhp*power*dmg/10000.0);   // calc damage depending on casting power
+      dmg:=CInt((power/300.0)*(item.hp*0.5)); //bei voller stärke wird das item zu 80% vom aktuellen zustand verrosten
+
+      if (mindmg and mindmg > dmg)
+        dmg:= mindmg;
+      elseif (maxdmg and maxdmg < dmg)
+        dmg:= maxdmg;
+      endif
+
+      if (dmg>=item.hp)                   // destroy item if damage > current HP
+        SendSysMessagePergon(spelltarget, ModDesc(item.desc) + " wird vom Zahn der Zeit zerstört",
+                                          ModDesc(item.desc) + " is destroyed by rust");
+        DestroyItem(item);
+      else                            // decrese item's HP
+        SendSysMessagePergon(spelltarget, "Der Zahn der Zeit nagt an " + ModDesc(item.desc),
+                                          "Rust weakens " + ModDesc(item.desc));
+        item.setprop("spell_rust",{power,item.hp,dmg});
+        item.hp:=item.hp-dmg;
+        IncRevision(item);
+      endif
+      
+    endif
+  endif
+
+endprogram
+
+
+
+function ModDesc(desc)    // alter description of item (cut a(n) for us Germans)
+
+  if (desc[1, 2]=="a ")
+    desc[1, 2]:="";
+  elseif (desc[1, 3]=="an ")
+    desc[1, 3]:="";
+  endif
+
+  return(desc);
+
+endfunction

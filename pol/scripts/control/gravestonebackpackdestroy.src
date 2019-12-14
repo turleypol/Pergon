@@ -1,0 +1,39 @@
+///////////////////////////////////////////////////////////////////////////
+//  Reines Logging... siehe GraveStoneBackpack
+
+use file;
+use os;
+use uo;
+include "include/logutil";
+
+Const ALLOW_DESTROY := 1;
+
+Program GraveStoneBackpackDestroy(backpack)
+  // Wann wurde der Corpse und Gravestone erzeugt und wem gehoert er?
+  var corpseinfo := GetObjProperty(backpack, "corpseinfo");
+  If (!corpseinfo)
+    // keine Spielerleichenrucksack (Packtier etc.),
+    // Loeschung ohne Logging erlauben
+    return ALLOW_DESTROY;
+  EndIf
+
+  var ghost := SystemFindObjectBySerial(
+    corpseinfo[1], SYSFIND_SEARCH_OFFLINE_MOBILES
+  );
+  If (!ghost)
+    ghost.+name := "[geloescht]";
+  EndIf
+
+  var text :=
+    "TOD: Der Grabstein-Rucksack "+ItemInfoStr(backpack)+" von "+ghost.name+
+    ", erzeugt um "+corpseinfo[3]+", wird nach "+
+    (ReadGameClock() - corpseinfo[3])+
+    " Sekunden vom Server wegen Decay geloescht. Der Corpse lag "+
+    (corpseinfo[3] - corpseinfo[2])+" Sekunden da. [Typ B]";
+  syslog(text);
+  LogToFile(
+    "log/corpses.log", corpseinfo[2]+"_"+LHex(corpseinfo[1])+text, LOG_DATETIME
+  );
+
+  return ALLOW_DESTROY;
+EndProgram

@@ -1,0 +1,84 @@
+//
+//	Swamp-Trap
+//	Mit einer Wahrscheinlichkeit von 40% sinkt ein Darüberlaufender ein
+//	wie lang, haengt vom mitgeschleppten Gewicht ab
+//
+//	16.03.2002 - Fraggulus - Erstausgabe
+//  02.12.2002 - Fraggulus - Animationseffekt, falls vorhanden, abspielen
+//
+
+use uo;
+use util;
+
+Include "include/client";
+Include "include/msgs";
+Include "traps";
+
+Program SwampTrap(who, trap)
+
+	If ((!who.dead) && (who.z == trap.z))
+    var oldfrozen:=who.frozen;
+		who.frozen := 1;
+		IncRevision(who);
+		Var Gewicht := who.weight;
+
+		If (RandomInt(100) < 40)	// mit 40% Wahrscheinlichkeit einsinken
+
+			PlayTrapEffect(trap);
+
+			Var Dauer := 0;
+			Var Msg :=" ";
+			Var Tiefe := 0;
+
+			// Dauer des Einsinkens berechnen
+			If (Gewicht > 2000)
+				Dauer := 15000;
+				Msg := "Ihr versinkt fast vollständig und kommt nur äußerst langsam wieder raus!";
+				Tiefe := 9;
+			ElseIf (Gewicht > 1000)
+				Dauer := 500 * Gewicht / 1000 + 10000;
+				Msg := "Ihr versinkt tief und kommt nur langsam wieder raus!";
+				Tiefe := 8;
+			ElseIf (Gewicht > 500)
+				Dauer := 500 * Gewicht / 1000 + 7400;
+				Msg := "Ihr versinkt bis zum Hals, kommt aber geradeso wieder frei!";
+				Tiefe := 7;
+			ElseIf (Gewicht > 300)
+				Dauer := 500 * Gewicht / 500 + 4200;
+				Msg := "Ihr versinkt fast bis zum Hals, kommt aber wieder frei";
+				Tiefe := 6;
+			ElseIf (Gewicht > 200)
+				Dauer := 500 * Gewicht / 300 + 2600;
+				Msg := "Ihr versinkt bis zur Brust, kommt aber wieder frei.";
+				Tiefe := 5;
+			ElseIf (Gewicht > 150)
+				Dauer := 500 * Gewicht / 200 + 1800;
+				Msg := "Ihr versinkt bis zur Hüfte, kommt aber schnell wieder frei.";
+				Tiefe := 4;
+			ElseIf (Gewicht > 100)
+				Dauer := 1000 * Gewicht / 150 + 1000;
+				Msg := "Ihr sinkt etwas ein, kommt aber schnell wieder frei.";
+				Tiefe := 3;
+			EndIf
+			who.frozen := oldfrozen;
+			IncRevision(who);
+
+			// Einsinken lassen (wenn Gewicht > 100)
+			If (Dauer > 0)
+				Var X := who.x, Y := who.y, Z := who.z;
+
+				SendSysMessagePergon(who, Msg, "", _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+				MoveObjectToLocation(who, X, Y, Z - Tiefe, who.realm, MOVEOBJECT_FORCELOCATION);
+				SleepMs(Dauer);
+
+				// Eingesunkenen wieder freigeben
+				If ((Who.x == X) && (Who.y == Y) && (Who.z < Z))
+					MoveObjectToLocation(who, X, Y, trap.z + 1, who.realm, MOVEOBJECT_FORCELOCATION);
+				EndIf
+			EndIf
+		EndIf
+		who.frozen := oldfrozen;
+		IncRevision(who);
+	EndIf
+
+EndProgram

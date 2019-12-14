@@ -1,0 +1,36 @@
+//////////////////////////////////////////////////////
+// TextCMD EraseGlobal - globale Property loeschen
+//
+// Author: Shinigami
+
+use uo;
+include "include/logutil";
+include "include/modifyskill";
+include "include/msgs";
+
+Program TextCMD_EraseGlobal(who, propname)
+    // Ist der Zugriff auf die Properties gestattet?
+    If (IGNORE_GLOBAL_PROPS[" "+propname+" "])
+        SendSysMessagePergon(who,
+            "Properties dieser Art dürfen nicht verändert werden!"
+        );
+        return;
+    EndIf
+
+    var value := GetGlobalProperty(propname);
+    If (value == error)
+        SendSysMessagePergon(who,
+            "Die globale Property "+propname+" gibt es nicht!"
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Die globale Property "+propname+" (Wert: "+value+") wird gelöscht."
+    );
+    syslog(
+        "EraseGlobal: "+CharInfoStr(who)+" loescht GProp '"+propname+
+        "' mit Wert '"+value+"'"
+    );
+    EraseGlobalProperty(propname);
+EndProgram

@@ -1,0 +1,30 @@
+Use uo;
+Use os;
+
+Include "include/modifyskill";
+
+Program TextCMD_NPCWipeType(who, template)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  template:=Lower(template);
+
+  Var number:=0;
+  Var subnumber:=0;
+
+  ForEach npc in ListObjectsInBox(0, 0, -128, 6143, 4095, 127)
+    If (npc.isa(POLCLASS_NPC) And (Lower(npc.npctemplate)==template))
+      RevokePrivilege(npc, "invul");
+      SetObjProperty(npc, "guardkill", 1);
+      KillMobile(npc, "TextCMD NPCWipeType");
+
+      number:=number+1;
+      subnumber:=subnumber+1;
+      If (subnumber>10)
+        subnumber:=0;
+        SendSysMessagePergon(who, number+" NPCs entfernt");
+      EndIf
+    EndIf
+  EndForEach
+
+  SendSysMessagePergon(who, "Insgesamt "+number+" "+template+"'s entfernt.");
+EndProgram

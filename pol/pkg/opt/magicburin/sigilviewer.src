@@ -1,0 +1,40 @@
+//
+// Sigilviewer - Macht Inschriften wieder sichtbar
+//
+
+use math;
+use uo;
+
+Include "include/msgs";
+
+Program use_sigilviewer(who, sigilviewer)
+
+	SendSysMessagePergon(who, "Wählt ein Item.", "Choose an item.");
+	Var TargetObj := target(who);
+
+	If (!TargetObj)
+		SendSysMessagePergon(who, "Abbruch", "Abort");
+		Return;
+	EndIf
+
+	// Wird der Sigilviewer auf sich selbst benutzt, werden die Siegel aller Objekte im Umkreis von 8 sichtbar gemacht
+	If (TargetObj.serial == sigilviewer.serial)
+		Var SiegelSpruch;
+		SendSysMessagePergon(who, "Scanne...", "Scanning...");
+		ForEach item in ListItemsNearLocation(who.x, who.y, who.z, 8,who.realm)
+			SiegelSpruch := GetObjProperty(item, "burin");
+			If (SiegelSpruch)
+				SendSysMessagePergon(who, item.desc + ": " + SiegelSpruch, item.desc + ": " + SiegelSpruch);
+			EndIf
+		EndForEach
+		Return;
+	EndIf
+
+	Var sigils := GetObjProperty(TargetObj, "burin");
+
+	If (sigils)
+		SendSysMessagePergon(who, "Ihr seht: *" + sigils + "*", "You see: *" + sigils + "*");
+	Else
+		SendSysMessagePergon(who, "Da sind keine Inschriften.", "Ther are no inscriptions.");
+	EndIf
+EndProgram

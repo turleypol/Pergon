@@ -1,0 +1,117 @@
+<html>
+
+<head>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+<title>POL Object Reference - UObject</title>
+</head>
+
+<body>
+
+<table border="0" width="100%">
+  <tr>
+    <td valign="top" width="100%"><strong><big>UObject</big></strong></td>
+    <td width="50%" valign="top" align="right" nowrap><a href="objref.htm"><small>POL </small><br>
+    <small>Object Reference</small></a></td>
+  </tr>
+</table>
+
+<p>&nbsp; </p>
+
+<h3>Methods</h3>
+
+<p>none</p>
+
+<h3>Properties</h3>
+
+<table border="1" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="25%"><strong>property</strong></td>
+    <td width="25%"><strong>description</strong></td>
+    <td width="25%"><strong>type</strong></td>
+    <td width="25%"><strong>access</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">serial</td>
+    <td width="25%">serial number</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">objtype</td>
+    <td width="25%">object type</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">x</td>
+    <td width="25%">x-location</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">y</td>
+    <td width="25%">y-location</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">z</td>
+    <td width="25%">z-location</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">facing</td>
+    <td width="25%">direction facing</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">graphic<sup>1</sup></td>
+    <td width="25%">&quot;model&quot;</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">color</td>
+    <td width="25%"><a href="../colors.htm">color</a></td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">height</td>
+    <td width="25%">height of object</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">weight</td>
+    <td width="25%">weight of object</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong></strong>read-only<strong></strong></td>
+  </tr>
+  <tr>
+    <td width="25%">name</td>
+    <td width="25%">name if non-default</td>
+    <td width="25%">string</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">multi</td>
+    <td width="25%">the multi underneath this object</td>
+    <td width="25%">multiref</td>
+    <td width="25%">read-only</td>
+  </tr>
+</table>
+
+<p>Notes: 
+
+<ol>
+  <li>The &quot;graphic&quot; member comes from different pools for mobiles and items - for
+    example, mobile graphic 0x190 is a human male, while item graphic 0x190 is a wall. &nbsp;
+    It is writable for everything except multis.</li>
+  <li>The &quot;facing&quot; member will have one of 8 values: 0=North, 1=NE, 2=E, 3=SE, 4=S,
+    5=SW, 6=W, 7=NW</li>
+</ol>
+</body>
+</html>

@@ -1,0 +1,68 @@
+Qualifizierte Schätzung, wie mit dem Bauserver zu verfahren ist
+
+Vorbereitung
+------------
+
+- WorldForge für Pergon besorgen
+  (2008-07-08: <http://forums.polserver.com//files/worldforgepol_168.zip>)
+- Dateien artidx.mul, art.mul, texidx.mul und texmaps.mul vom Client
+  in ein Verzeichnis kopieren, wo man Schreibrechte auf den Dateien
+  hat (werden nicht verändert, aber Worldforge weigert sich sonst)
+- WorldForge laden
+  - als Client-Pfad den Pfad zu den eben kopierten Dateien eintragen
+  - falls mal bereits Kartendaten hat, diese ebenfalls eintragen
+
+
+Karte an Stelle(n) öffnen
+-------------------------
+
+- Koordinaten der zu ändernden Stelle(n) herausfinden
+- falls man einen Bereich will
+  - Koordinaten durch 8 teilen (Blockkoordinaten)
+  - linke obere Ecke abrunden, rechte obere Ecke aufrunden
+  - danach wieder mit 8 multiplizieren
+- map0.mul, statics0.mul und staidx0.mul vom Bauserver kopieren
+  - ein Backup machen
+
+- WorldForge laden
+  - ggf. statics.cfg erstellen/leeren und Pfad eintragen
+- GetStaticIndex drücken und Fortschrittsbalken abwarten
+- für alle ermittelten Koordinaten
+  - Koordinaten eingeben
+  - GetStaticBlock drücken
+- Items auswählen
+- Melt drücken und Fortschrittsbalken abwarten
+- statics0.mul, staidx0.mul und statics.cfg auf den Bauserver kopieren
+- statics mit UOConvert konvertieren
+  (tools/uoconvert statics realm=britannia)
+- Bauserver neustarten
+- losgemachte Items aus statics.cfg in den Bauserver importieren
+  (Textcmd ".staticsimport")
+
+Karte an Stellen schließen
+--------------------------
+
+- festzumachende Items exportieren (Textcmds ".staticsexport" oder
+  ".staticsexportforce"[0])
+- statics0.mul, staidx0.mul und statics.cfg vom Bauserver kopieren
+  - statics.cfg sollte nicht mehr als 65535 Teile enthalten, notfalls
+    aufteilen auf mehrere Dateien
+- WorldForge laden
+- Pfade passend zu den kopierten Dateien eintragen
+- Freeze drücken, abwarten, WorldForge schließen
+- ggf. Statics aufräumen mit
+  <http://www.aksdb.de/CentrED/Tools/StaticsDefrag_linux_i386.tar.gz>
+  bzw.
+  <http://www.aksdb.de/CentrED/Tools/StaticsDefrag_win32.zip>
+- statics0.mul und staidx0.mul auf den Bauserver kopieren
+- derweil prüfen, ob in Festmachzone alle Items gelöscht wurden
+  (sollte beim Export passiert sein)
+- statics mit UOConvert konvertieren
+  (tools/uoconvert statics realm=britannia)
+- Bauserver neustarten
+
+[0] .staticsexport benutzt eine Ausnahmeliste und exportiert
+    einige Items (z. B. Türen) in eine separate Datei staticsno.cfg;
+    .staticsexportforce exportiert alles
+
+# vim: tw=70 sts=2 sw=2 ai

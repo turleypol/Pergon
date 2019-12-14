@@ -1,0 +1,94 @@
+////////////////////////////////////////////////////////////////////////////
+//
+//   Exploder Script - Fuehrt die eigentliche Explosion einer Potion durch
+//
+//     Author: Shinigami
+//
+//   Modification:
+//     2003/07/17 Shinigami: Rewrite
+//     22.07.2003 Fraggulus: Zeitversetztes Starten mehrerer Potions
+//                           Explosionseffekt fuer die Flasche
+//
+////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+use vitals;
+use os;
+use util;
+use uo;
+use cfgfile;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonutil";
+Include "include/modifyskill";
+
+///////////////
+// Konstanten
+///////////////
+
+Const MOVING_EFFECT_PURPLE_POTION:=0x0f0d;
+Const SOUND_EFFECT_EXPLOSION     :=0x208;
+Const EFFECT_EXPLOSION           :=0x36b0;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Exploder(parms)
+  If (parms[1]) // Wurde das Script korrekt aufgerufen?
+    Var itemdesc:=ReadConfigFile("::itemdesc");
+    If (itemdesc)
+      Var potiondesc:=itemdesc[parms[1].objtype];
+      If (potiondesc)
+        If (!GetObjProperty(parms[1], "#Exploding")) // Laeuft dieses Script schon?
+          SetObjProperty(parms[1], "#Exploding", 1);
+
+          SleepMS(RandomInt(500)+500); // Nicht alles zeitgleich...
+
+          Var potionstrength:=potiondesc.strength; // Wirkungsradius der Potion
+
+          Var thecenter:=parms[1]; // Start"punkt" der Explosion ermitteln
+          While (thecenter.container)
+            thecenter:=thecenter.container;
+          EndWhile
+
+          SetScriptController(parms[2]); // Den Verursacher der Explosion festlegen
+
+          PlayStationaryEffect(parms[1].x, parms[1].y, parms[1].z, EFFECT_EXPLOSION, 7, 0x10,0,parms[1].realm); // Die Potion geht erstmal hoch...
+          parms[1].graphic:=1;
+
+          // ...und beschaedigt alle umstehenden Viecher
+          ForEach critter in ListMobilesNearLocationEx(thecenter.x, thecenter.y, thecenter.z, potionstrength, LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN,thecenter.realm)
+            PlayObjectCenteredEffect(critter, EFFECT_EXPLOSION, 7, 0x10);
+            PlaySoundEffect(critter, SOUND_EFFECT_EXPLOSION);
+
+            ApplyRawDamagePergon(critter, (Randomint(19)+1)*potionstrength+2); // Geht durch die Ruestung durch...
+          EndForEach
+
+          // ...aber auch alle umliegenden Potions, die mit hochgehen
+          ForEach item in ListItemsNearLocation(thecenter.x, thecenter.y, thecenter.z, potionstrength,thecenter.realm)
+            If ((0xdc07<=item.objtype) And (item.objtype<=0xdc09) And (item.serial<>parms[1].serial))
+              If (!GetObjProperty(item, "#Exploding")) // Laeuft dieses Script dort schon?
+                Start_ScriptPergon("exploder", {item, parms[2]});
+              EndIf
+            EndIf
+          EndForEach
+
+          DestroyItem(parms[1]);
+        EndIf
+      Else
+        SysLog("FEHLER: Die Potion "+Lower(Hex(parms[1].objtype))+" ist nicht in der itemdesc.cfg enthalten!");
+      EndIf
+    Else
+      SysLog("FEHLER: Die itemdesc.cfg konnte nicht geoeffnet werden!");
+    EndIf
+  Else
+    SysLog("FEHLER: Die Bombe von '"+parms[2].name+"' ist abhanden gekommen!");
+  EndIf
+EndProgram

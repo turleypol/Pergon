@@ -1,0 +1,85 @@
+/////////////////////////////////////////
+//removetrap.src
+//
+//Removes a trap if:
+//
+// *It's not a trapped container
+// *You pass a skill check
+//
+//Disarms a trap if:
+//
+// *It is a trappd container
+// *You pass a skill Check
+//
+//Todo: Chance to set off trap if you fail.
+//      Move the removed trap in a nearby location
+//      after a few minutes.
+//
+//Author: Racalac, 4/22/99
+//
+//rewrite:
+//Peter -pJOTTR- Straube 29.01.2004: 	alle CProp loeschen, die was mit ner Falle zu tun haben (bei erfolgreichem CheckSkill)
+//					Check auf 1: 2/3 zum Fallensteller (buildersskill) geeicht (wie bei verstecktes_finden),
+//					ansonsten Hitpointsabzug pro mißgluecktem Versuch.
+/////////////////////////////////////////
+
+Use uo;
+use cfgfile;
+use attributes;
+use uo;
+
+
+Include "include/client";
+Include "include/modifyskill";
+Include ":traps:traps";
+
+Program Remove_Trap(character)
+  Var thepoints:=GetSkillDefaultPoints(SKILLID_FALLEN_ENTSCH);
+
+  SendSysMessagePergon(character, "Ziel wählen");
+
+  Var trapon:=Target(character);
+  If (!trapon)
+    SendSysMessagePergon(character, "Abbruch", "Abort");
+    Return;
+  EndIf
+
+  If (Distance(character, trapon)>2) // check if caster is close enough
+    SendSysMessagePergon(character, "Ihr müsst schon etwas näher heran, um eine Falle entschärfen zu können!");
+    Return;
+  EndIf
+
+  If (GetObjProperty(trapon, "trap_type"))                                                 // Alte Logik
+    If (CheckSkillPergon(character, SKILLID_FALLEN_ENTSCH, -1, thepoints))
+      EraseObjProperty(trapon, "trap_type");
+      EraseObjProperty(trapon, "trap_strength");
+      trapon.usescript:="";
+
+      SendSysMessagePergon(character, "Ihr habt die Falle erfolgreich entschärft.");
+    Else
+      SendSysMessagePergon(character, "Ihr schafft es nicht, die Falle zu entschärfen.");
+    EndIf
+  ElseIf ((GetObjProperty(trapon, "trapped")==1))                                          // Alte Logik
+    If (CheckSkillPergon(character, SKILLID_FALLEN_ENTSCH, -1, 40))
+     // DestroyItem(trapon);
+      SendSysMessagePergon(character, "Ihr habt die Falle erfolgreich entschärft.");
+    Else
+      SendSysMessagePergon(character, "Da ist keine Falle.");
+    EndIf
+  Else                                                                                     // Neue Logik
+    If (!GetObjProperty(trapon, "trap_strength"))
+      SendSysMessagePergon(character, "Da ist keine Falle dran.");
+      Return;
+    EndIf
+
+   // Var cfg:=ReadConfigFile("traps");
+   // Var trapstrength:=GetObjProperty(trapon, "trap_strength");
+   // Var trap:=FindConfigElem(cfg, GetObjProperty(trapon, "trap"));
+
+    If (CheckSkillPergon(character, SKILLID_FALLEN_ENTSCH, CInt(GetObjProperty(trapon, "buildersskill"))*2/3, thepoints))
+      UnTrapSuccess(character, trapon);
+    Else
+      UnTrapFail(character);
+    EndIf
+  EndIf
+EndProgram

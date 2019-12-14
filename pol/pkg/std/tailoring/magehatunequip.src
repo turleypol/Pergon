@@ -1,0 +1,28 @@
+///////////////////////////////////////////////////////////////////////////
+// MageHatUnequip - Magischen Hut ablegen, Boni gehen verloren
+//
+// Author: Mehdorn
+
+use uo;
+include ":newspells:magicpergon";
+include "common";
+
+Const UNEQUIP_ALLOWED := 1;
+
+Program MageHatUnequip(who, hat)
+    // jeweils nur zuruecknehmen, wenn es zuvor geaendert wurde
+    // (sonst wird die CProp nicht am Hut gesetzt)
+    var castbonus := hat.getprop(CPROP_HAT_BONUS_CAST);
+    If (castbonus)
+        hat.eraseprop(CPROP_HAT_BONUS_CAST);
+        ClearCastPowerProperty(who, "Kleidung", "", "", 0);
+    EndIf
+
+    var intbonus := hat.getprop(CPROP_HAT_BONUS_INT);
+    If (intbonus)
+        AlterIntModPergon(who, -intbonus);
+        hat.eraseprop(CPROP_HAT_BONUS_INT);
+    EndIf
+
+    return UNEQUIP_ALLOWED;
+EndProgram

@@ -1,0 +1,33 @@
+///////////////////////////////////////////
+//
+//   Drinking - Start
+//
+//     based on Hungry - System
+//       Author: Shinigami
+//
+//     Author: Pider
+//
+//   Modifications:
+//     2000/09/11 Pider: Complete ReWrite
+//
+///////////////////////////////////////////
+
+//////////////
+// Libraries&Includes
+//////////////
+use os;
+use uo;
+include "include/pergonutil";
+include "include/server";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program Drinking_Start()
+  If (GetGlobalProperty(BAUSERVER))
+    return;
+  EndIf
+
+  Start_ScriptPergon("drinkingsystem");
+EndProgram

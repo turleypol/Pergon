@@ -1,0 +1,37 @@
+///////////////////////////////////////////////////////////////////////////
+// createkey -- Tuer/Kiste mit neuem Schloss versehen
+
+use uo;
+include ":doorsnew:common";
+include "include/itemnpc";
+include "include/msgs";
+
+Program MakeLock(who)
+    SendSysMessagePergon(who,
+        "Wählt eine Tür oder Kiste, die ein neues Schloss bekommen soll."
+    );
+    var lockeditem := Target(who);
+    If (!lockeditem)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (!lockeditem.isa(POLCLASS_LOCKABLE))
+        SendSysMessagePergon(who,
+            "Das ist nicht abschliessbar und bekommt daher kein Schloss."
+        );
+        return;
+    EndIf
+
+    // neue "Schluesselnummer" besorgen
+    var lockid := AllocLockId();
+
+    // Schluessel erzeugen
+    var key := CreateItemInBackpackPergon(who, 0x100f, 1);
+
+    // Nummern auf Schloss und Tuer/Kiste uebertragen
+    SetObjProperty(key,        "lockid", lockid);
+    SetObjProperty(lockeditem, "lockid", lockid);
+
+    SendSysMessagePergon(who, "Der Schlüssel wurde im Rucksack abgelegt.");
+EndProgram

@@ -1,0 +1,149 @@
+///////////////////////////////////////////////////////////////////////////
+// back -- bringt den Character oder andere zurueck
+
+use uo;
+include "include/msgs";
+include "include/place";
+
+Const ERR_NOLOC_DE :=
+    "Es gibt kein Zurück, wenn Ihr nicht zunächst voranschreitet.";
+Const ERR_NOLOC_EN :=
+    "You cannot go back until you've been somewhere else.";
+
+Program Back(who, parm)
+    If (!parm)
+        parm := "";
+    Else
+        parm := Lower(parm);
+    EndIf
+
+
+    If (!parm or parm["no"] or parm["return"])
+        BackJump(who, parm);
+        return;
+    EndIf
+
+    If (who.cmdlevel < CMDLEVEL_HIGHGM)
+        // wegen Knastproblematik etc.
+        // fuer Seer nur auf eigenen Char beschraenkt
+        return;
+    EndIf
+
+    // jemanden zurueckschicken zu seiner alten Position
+    If (parm["sendback"])
+        SendBack(who);
+        return;
+    EndIf
+
+    // jemanden zur eigenen alten Position schicken
+    If (parm["send"])
+        SendToMine(who);
+        return;
+    EndIf
+EndProgram
+
+Function BackJump(who, parm) // {{{
+    var erase := 1;
+    var ret   := 0;
+    If (parm["no"])
+        // aktuelles Rueckkehrziel nicht löschen
+        erase := 0;
+    EndIf
+    If (parm["return"])
+        // aktuelles Position mit Rueckkehrziel tauschen,
+        // daher zwangsweise loeschen
+        erase := 1;
+        ret   := 1;
+    EndIf
+
+    var loc := JumpLocationGet(who, erase);
+    If (!loc)
+        SendSysMessagePergon(who, ERR_NOLOC_DE, ERR_NOLOC_EN);
+        return;
+    EndIf
+    If (ret)
+        JumpLocationAdd(who);
+    EndIf
+
+    var res := MoveObjectToLocation(
+        who, loc.x, loc.y, loc.z, loc.realm, MOVEOBJECT_FORCELOCATION
+    );
+    If (!res)
+        SendSysMessagePergon(who,
+            "Fehler: "+res.errortext, "Error: "+res.errortext
+        );
+    EndIf
+EndFunction // }}}
+
+Function SendBack(who) // {{{
+    SendSysMessagePergon(who, "Wählt ein Mobile zum Herumschicken!");
+    var mob := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!mob or !mob.isa(POLCLASS_MOBILE))
+        return;
+    EndIf
+
+    CheckPerm(who, mob);
+
+    var loc := JumpLocationGet(mob);
+    If (!loc)
+        SendSysMessagePergon(who, ERR_NOLOC_DE, ERR_NOLOC_EN);
+        return;
+    EndIf
+
+    var res := MoveObjectToLocation(
+        mob, loc.x, loc.y, loc.z, loc.realm, MOVEOBJECT_FORCELOCATION
+    );
+    
+    If (!res)
+        SendSysMessagePergon(who,
+            "Fehler: "+res.errortext, "Error: "+res.errortext
+        );
+    ElseIf (!mob.isa(POLCLASS_NPC))
+      SysLog(CharInfoStr(who, COORDS_REALM)+" schickt "+CharInfoStr(mob, COORDS_REALM)+" zur vorherigen Position zurück");
+    EndIf
+      
+EndFunction // }}}
+
+Function SendToMine(who) // {{{
+    var loc := JumpLocationGet(who, JUMP_LOCATION_PRESERVE);
+    If (!loc)
+        SendSysMessagePergon(who, ERR_NOLOC_DE, ERR_NOLOC_EN);
+        return;
+    EndIf
+
+    SendSysMessagePergon(who, "Waehlt ein Mobile zum Herumschicken!");
+    var mob := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!mob or !mob.isa(POLCLASS_MOBILE))
+        return;
+    EndIf
+
+    CheckPerm(who, mob);
+
+    // alte Position sichern, damit derjenige zurueck kann
+    JumpLocationAdd(mob);
+    var res := MoveObjectToLocation(
+        mob, loc.x, loc.y, loc.z, loc.realm, MOVEOBJECT_FORCELOCATION
+    );
+    If (!res)
+        SendSysMessagePergon(who,
+            "Fehler: "+res.errortext, "Error: "+res.errortext
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who, mob.name+" verschickt", mob.name+" sent");
+    SendSysMessagePergon(mob,
+        who.name+" hat dich hergeschickt. Du kannst mit '.back' zurück.",
+        who.name+" has sent you here. You may return with '.back'."
+    );
+EndFunction // }}}
+
+Function CheckPerm(who, mob) // {{{
+    If (mob.cmdlevel > who.cmdlevel and !mob.isa(POLCLASS_NPC))
+        SendSysMessagePergon(who,
+            "Euer Opfer steht über Euch und lässt sich nicht herumschubsen.",
+            "Your victim has a higher rank and cannot be pushed around."
+        );
+        exit;
+    EndIf
+EndFunction // }}}

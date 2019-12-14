@@ -1,0 +1,114 @@
+POL players see their stats and skills on a scale of 0 - 100. However, the POL core sees them differently -- they're on a scale of 0 to 1000000 (or so). The translation between those scales allows for a difficulty curve that slows down stat and skill gain. The "raw" skill vlaue is on the internal (larger) scale, and the "base" value is on the 1-100 scale.For example, a skill of 10 base points (that is, it shows up as 10 on the paperdoll) is 2048 raw points (seen internally by POL)
+
+
+Whenever a stat (or skill, of course. I'll just use stat for the rest of this document) is checked, there's a chance of success in the check, as well as a point value. The point value is the maximum number of raw skill points that will be added to the skill on success. This amount is modified by difficulty, and you will gain no points for something 20 points too easy for you.
+
+For example, let's say that someone with 20 base (4096 raw) skill points succeeds with  the following skill check:
+CheckSkill(character, SKILLID_SOMETHING, 20, 410);
+That is, SKILLID_SOMETHING is checked at 20 difficulty, and success will get a maximum of 410 points (that's a lot). Since it's successful (and at the maximum difficulty for the character) he'll get the full 410 points. THat pushes him up to 4505 raw skill points, which equates to a 21 base skill score. In other words, he just gained a full point in the skill.
+
+Here's the conversion:
+
+
+
+Base skill 0 = 0 raw skill points
+Base skill 1 = 204 raw skill points
+Base skill 2 = 409 raw skill points
+Base skill 3 = 614 raw skill points
+Base skill 4 = 819 raw skill points
+Base skill 5 = 1024 raw skill points
+Base skill 6 = 1228 raw skill points
+Base skill 7 = 1433 raw skill points
+Base skill 8 = 1638 raw skill points
+Base skill 9 = 1843 raw skill points
+Base skill 10 = 2048 raw skill points
+Base skill 11 = 2252 raw skill points
+Base skill 12 = 2457 raw skill points
+Base skill 13 = 2662 raw skill points
+Base skill 14 = 2867 raw skill points
+Base skill 15 = 3072 raw skill points
+Base skill 16 = 3276 raw skill points
+Base skill 17 = 3481 raw skill points
+Base skill 18 = 3686 raw skill points
+Base skill 19 = 3891 raw skill points
+Base skill 20 = 4096 raw skill points
+Base skill 21 = 4505 raw skill points
+Base skill 22 = 4915 raw skill points
+Base skill 23 = 5324 raw skill points
+Base skill 24 = 5734 raw skill points
+Base skill 25 = 6144 raw skill points
+Base skill 26 = 6553 raw skill points
+Base skill 27 = 6963 raw skill points
+Base skill 28 = 7372 raw skill points
+Base skill 29 = 7782 raw skill points
+Base skill 30 = 8192 raw skill points
+Base skill 31 = 9011 raw skill points
+Base skill 32 = 9830 raw skill points
+Base skill 33 = 10649 raw skill points
+Base skill 34 = 11468 raw skill points
+Base skill 35 = 12288 raw skill points
+Base skill 36 = 13107 raw skill points
+Base skill 37 = 13926 raw skill points
+Base skill 38 = 14745 raw skill points
+Base skill 39 = 15564 raw skill points
+Base skill 40 = 16384 raw skill points
+Base skill 41 = 18022 raw skill points
+Base skill 42 = 19660 raw skill points
+Base skill 43 = 21299 raw skill points
+Base skill 44 = 22937 raw skill points
+Base skill 45 = 24576 raw skill points
+Base skill 46 = 26214 raw skill points
+Base skill 47 = 27852 raw skill points
+Base skill 48 = 29491 raw skill points
+Base skill 49 = 31129 raw skill points
+Base skill 50 = 32768 raw skill points
+Base skill 51 = 36044 raw skill points
+Base skill 52 = 39321 raw skill points
+Base skill 53 = 42598 raw skill points
+Base skill 54 = 45875 raw skill points
+Base skill 55 = 49152 raw skill points
+Base skill 56 = 52428 raw skill points
+Base skill 57 = 55705 raw skill points
+Base skill 58 = 58982 raw skill points
+Base skill 59 = 62259 raw skill points
+Base skill 60 = 65536 raw skill points
+Base skill 61 = 72089 raw skill points
+Base skill 62 = 78643 raw skill points
+Base skill 63 = 85196 raw skill points
+Base skill 64 = 91750 raw skill points
+Base skill 65 = 98304 raw skill points
+Base skill 66 = 104857 raw skill points
+Base skill 67 = 111411 raw skill points
+Base skill 68 = 117964 raw skill points
+Base skill 69 = 124518 raw skill points
+Base skill 70 = 131072 raw skill points
+Base skill 71 = 144179 raw skill points
+Base skill 72 = 157286 raw skill points
+Base skill 73 = 170393 raw skill points
+Base skill 74 = 183500 raw skill points
+Base skill 75 = 196608 raw skill points
+Base skill 76 = 209715 raw skill points
+Base skill 77 = 222822 raw skill points
+Base skill 78 = 235929 raw skill points
+Base skill 79 = 249036 raw skill points
+Base skill 80 = 262144 raw skill points
+Base skill 81 = 288358 raw skill points
+Base skill 82 = 314572 raw skill points
+Base skill 83 = 340787 raw skill points
+Base skill 84 = 367001 raw skill points
+Base skill 85 = 393216 raw skill points
+Base skill 86 = 419430 raw skill points
+Base skill 87 = 445644 raw skill points
+Base skill 88 = 471859 raw skill points
+Base skill 89 = 498073 raw skill points
+Base skill 90 = 524288 raw skill points
+Base skill 91 = 576716 raw skill points
+Base skill 92 = 629145 raw skill points
+Base skill 93 = 681574 raw skill points
+Base skill 94 = 734003 raw skill points
+Base skill 95 = 786432 raw skill points
+Base skill 96 = 838860 raw skill points
+Base skill 97 = 891289 raw skill points
+Base skill 98 = 943718 raw skill points
+Base skill 99 = 996147 raw skill points
+Base skill 100 = 1048576 raw skill points

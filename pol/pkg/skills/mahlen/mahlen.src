@@ -1,0 +1,96 @@
+///////////////////////////////////////////////////////////////////////////
+//
+// mahlen.src
+// 2001-02     Paukerli         Weizen-/Mais-Mehl
+// 2008-04-04  mehdorn          Einrückung ordentlich und etwas optimiert
+//
+///////////////////////////////////////////////////////////////////////////
+
+use attributes;
+use os;
+use cfgfile;
+use uo;
+
+include "include/client";
+include "include/objtype";
+include "include/modifyskill";
+
+program mahlen(character, Tool)
+    If (
+        (!AccessiblePergon(character,Tool)) or
+        (distance(character, Tool) > 1)
+    )
+        SendSysMessagePergon(character,
+            "Ihr könnt die Mühle so nicht benutzen."
+        );
+        return 0;
+    endif
+
+    // Koerner auswaehlen
+    SendSysMessagePergon(character, "Was wollt Ihr mahlen?");
+    Var use_on := target(character);
+
+    if (!use_on)
+        SendSysMessagePergon (character, "Nichts ausgewählt. Abbruch!");
+        return;
+    endif
+
+    ReserveItem(use_on);
+    Var      cfg := readconfigfile(":*:itemdesc");
+    Var item_cfg := cfg[use_on.objtype];
+
+    Var skill := item_cfg.skill;
+    if (!skill)
+        SendSysMessagePergon(character,
+            "Dies scheint nicht zum Mahlen geeignet zu sein!"
+        );
+        return;
+    endif
+    Var target_item:=item_cfg.targetitem;
+    if (!target_item)
+        SendSysMessagePergon(character,
+            "Das Mahlen dieses Gegenstandes wird nichts brauchbares "+
+            "hervorbringen!"
+        );
+        Syslog("'Targetitem' in der Itemdesc nicht gesetzt! ("+
+            Hex(use_on.objtype)+")/("+use_on.desc+")");
+        return;
+    endif
+    Var max_products:=cint(GetAmount(use_on)/20);
+    if (max_products<1)
+        SendSysMessagePergon (character, "Ihr benötigt mehr Körner!");
+        return;
+    endif
+
+    Var TX:=character.x;
+    Var TY:=character.y;
+    Var val := cint(SendTextEntryGump(character,
+        "Wieviele wollt Ihr anfertigen? (Max "+max_products+")", 40)
+    );
+    if (!val or val>max_products)
+        SendSysMessagePergon(character, "Abbruch", "Abort");
+        return;
+    endif
+
+    while ((val>0) and (TX==character.x) and (TY==character.y))
+
+        PlaySoundEffect(character, 0xf1);
+        sleep (2);
+        PlaySoundEffect(character, 0xf1);
+        sleep (2);
+
+        val -= 1;
+        if (CheckSkillPergon(character, SKILLID_MAHLEN, skill, cint(skill*9)))
+            SubtractAmount(use_on, 20);
+            SendSysMessagePergon(character,
+                "Ihr legt einen Sack Mehl in Euren Rucksack."
+            );
+            CreateItemInBackpackPergon(character, target_item, 1);
+        else
+            SendSysMessagePergon(character,
+                "Schade, das Mehl ist nicht zu gebrauchen."
+            );
+            SubtractAmount(use_on, 10);
+        endif
+    endwhile
+endprogram

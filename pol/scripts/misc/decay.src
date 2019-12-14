@@ -1,0 +1,24 @@
+use uo;
+use os;
+
+function decay(object, blood)
+
+    sleep(60);
+        /*
+            Var theitems := EnumerateItemsInContainer(object);
+            if (len(theitems) > 0)
+            Var i;
+            for ( i:= 1; i <= len(theitems); i := i + 1)
+            CreateItemAtLocationPergon(object.x, object.y, object.z, theitems[i].objtype, theitems[i].amount);
+            destroyitem(object);
+            endfor
+        */
+    destroyitem(object);
+    sleep(60);
+    destroyitem(blood);
+endfunction
+
+
+program p_decay( theparms )
+    decay (theparms[1], theparms[2]);
+endprogram

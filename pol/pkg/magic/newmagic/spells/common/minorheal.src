@@ -1,0 +1,68 @@
+//**************************************************************************************************
+// Script file minorheal.src
+//
+//    implements spell 11 <Minor Heal> - "Kleine Heilung"
+//
+//	heals very minor HP on spelltarget
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 27.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use vitals;
+
+Include "../magicpergon";
+
+program cast_minorheal (params)
+
+   Var caster;
+   Var caston;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_COMMON_MINORHEAL);
+   Var amnt:=    spell.primary;
+   Var minamnt:= spell.primarymin;
+   Var maxamnt:= spell.primarymax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_COMMON_MINORHEAL);
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+
+   amnt:= CInt(power*amnt/100.0);				// calc amount depending on casting power
+   if (minamnt and minamnt > amnt)
+      amnt:= minamnt;
+   elseif (maxamnt and maxamnt < amnt)
+      amnt:= maxamnt;
+   endif
+
+   PlayObjectCenteredEffect(caston, FX_HEAL_EFFECT, 5, 15);
+   PlaySoundEffect(caston, SFX_SPELL_HEAL);
+
+   HealDamage(caston, amnt);						// heal HP
+
+   SendSysMessagePergon(caster, "Ihr heilt " + amnt + " Lebenspunkte", "You heal " + amnt + " hitpoints");
+
+endprogram

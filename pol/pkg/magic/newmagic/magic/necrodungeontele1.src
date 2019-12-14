@@ -1,0 +1,99 @@
+///////////////////////////////////////////////////////////////////////////
+// NecroDungeonTele1.src - WalkOn script For Necro Dungeon (aka Wrong)
+//
+// teleports Chars in Cells, If they have neither Necro nor Cleric Skills
+
+///////////////////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+
+use uo;
+use util;
+include "include/modifyskill";
+
+// target regions For teleports
+// format: { base_x, base_y, offset_x, offset_y, z }
+// teleport to random position in base_x, base_y, base_x + offset_x, base_y + offset_y
+
+var locations := {
+    {5854, 550, 8,  7, 15}, {5854, 563, 2,  3, 15}, {5858, 563, 2,  3, 15},
+    {5862, 563, 2,  3, 15}, {5862, 568, 2,  3, 15}, {5862, 573, 2,  3, 15},
+    {5862, 578, 2,  3, 15}, {5858, 578, 2,  3, 15}, {5854, 578, 2,  3, 15},
+    {5849, 587, 5, 10, 15}, {5856, 587, 5, 10, 15}, {5863, 587, 5, 10, 15},
+    {5861, 541, 0,  0, 15}
+};
+
+Program NecroDungeonTeleporter(mobile)
+    If (mobile.isa(POLCLASS_NPC))
+        // do not trigger on npcs
+        return;
+    EndIf
+
+    If (
+        // default effect for ghosts, CMD-Level and
+        mobile.dead || mobile.cmdlevel >= CMDLEVEL_SEER ||
+        // mobiles with Necro-or Cleric-Skills
+        HasPlayerSkill(mobile, SKILLID_FLUCHEN) ||
+        HasPlayerSkill(mobile, SKILLID_VERFLUCHTEGEGENST) ||
+        HasPlayerSkill(mobile, SKILLID_SEGNEN) ||
+        HasPlayerSkill(mobile, SKILLID_GESEGNETEGEGENST)
+    )
+        MoveObjectToLocation(
+            mobile, 5691, 582, 0, REALM_BRITANNIA, MOVEOBJECT_NORMAL
+        );
+    Else
+        // these poor souls...
+        var x, y;
+        var loc;
+        // random target location
+        var dice := randomint(100);
+
+        If (dice < 3)
+            loc := 1;
+        ElseIf (dice < 9)
+            loc := 2;
+        ElseIf (dice < 15)
+            loc := 3;
+        ElseIf (dice < 21)
+            loc := 4;
+        ElseIf (dice < 27)
+            loc := 5;
+        ElseIf (dice < 33)
+            loc := 6;
+        ElseIf (dice < 39)
+            loc := 7;
+        ElseIf (dice < 45)
+            loc := 8;
+        ElseIf (dice < 51)
+            loc := 9;
+        ElseIf (dice < 63)
+            loc := 10;
+        ElseIf (dice < 75)
+            loc := 11;
+        ElseIf (dice < 87)
+            loc := 12;
+        Else
+            loc := 13;
+        EndIf
+
+        var i := 0;
+        Repeat
+            // try moving mobile Until success
+            x := randomint(locations[loc][3] + 1);
+            y := randomint(locations[loc][4] + 1);
+            i+= 1;
+            // at max 20 times
+        Until (MoveObjectToLocation(
+            mobile, locations[loc][1]+x, locations[loc][2]+y,
+            locations[loc][5], REALM_BRITANNIA, MOVEOBJECT_NORMAL
+        ) || i > 20);
+
+        If (loc < 13)
+            PrintTextAbovePrivatePergon(
+                mobile, "Ihr wart gewarnt worden...",
+                "You had been warned...", mobile
+            );
+            PlaySoundEffectPrivate(mobile, SFX_247, mobile);
+        EndIf
+    EndIf
+EndProgram

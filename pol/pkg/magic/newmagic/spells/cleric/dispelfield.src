@@ -1,0 +1,101 @@
+//**************************************************************************************************
+// Script file dispelfield.src
+//
+//    implements spell 213 <Dispel Field> - "Antimagie"
+//
+//	destroys magically created fields
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 02.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use util;
+
+Include "../magicpergon";
+
+program cast_dispelfield (params)
+
+   Var caster;
+   Var caston;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_DISPELFIELD);
+   //Var difficulty:= spell.skill;
+   Var range:=    spell.range;
+   Var minrange:= spell.rangemin;
+   Var maxrange:= spell.rangemax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:=struct{x,y,z,realm};
+      caston.x:=params[2].x;  // NPC sprechen immer auf sich Selbst (vereinfacht KI)
+      caston.y:=params[2].y;
+      caston.z:=params[2].z;
+      caston.realm:=params[2].realm;
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetArea(caster);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_DISPELFIELD);
+      caston:= TargetArea(caster);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   range:= CInt(power * range/100.0);					// calc spell range according to casting power
+   if (minrange and minrange > range)
+      range:= minrange;
+   elseif (maxrange and maxrange < range)
+      range:= maxrange;
+   endif
+
+   Var items:= ListItemsNearLocation(caston.x, caston.y, caston.z, range,caston.realm);		// get items in range
+   Var diff;
+   Var dest;
+
+   PlaySoundEffect(caster, SFX_SPELL_MASS_DISPEL);
+
+   foreach item in items																	// for each item
+   	  SleepMS(2);
+   	  
+   	  If (!item)
+   	    Continue;
+   	  EndIf
+      if (GetObjProperty(item, "f") and CheckLineOfSight(caster, item))		// check if its a magical field
+       	 diff:= CInt(GetObjProperty(item, "f"));				        			// and if caster can see item
+       	 if ((power - diff + 25 >= RandomInt(51)) || (GetObjProperty(item, "creator") == caster.serial))									// check if caster destroys item
+            PlayStationaryEffect(item.x, item.y, item.z, FX_SMOKE, 10, 10,0,item.realm);
+            DestroyItem(item);																// destroy item
+            continue;
+         endif
+      endif
+
+      if ((item.objtype ==  UOBJ_BLUE_MOONGATE) and								// check if its a magic gate
+          CheckLosAt(caster, item.x, item.y, item.z))								// and if caster can see it
+//      if (((item.objtype == UOBJ_RED_MOONGATE) or (item.objtype == UOBJ_WHITE_MOONGATE) or
+//           (item.objtype == UOBJ_BLACK_MOONGATE) or (item.objtype == UOBJ_BLUE_MOONGATE)) and
+//          CheckLosAt(caster, item.x, item.y, item.z))
+         diff:= CInt(GetObjProperty(item, "GatePower"));
+         if ((power - diff + 25 >= RandomInt(51)) || (GetObjProperty(item, "caster") == caster.serial))									// check if caster destroys item
+            dest:= SystemFindObjectBySerial(GetObjProperty(item, "GateDestItem"));	// get destination of magic gate
+            PlayStationaryEffect(item.x, item.y, item.z, FX_SMOKE, 10, 10,0,item.realm);
+            PlayStationaryEffect(dest.x, dest.y, dest.z, FX_SMOKE, 10, 10,0,dest.realm);
+            SysLog(CharInfoStr(caster)+" zerstoert "+ItemInfoStr(caston, COORDS_REALM)+" nach "+ItemInfoStr(dest, COORDS_REALM));
+            DestroyItem(item);																		// destroy both gates
+            DestroyItem(dest);
+         endif
+      endif
+   endforeach
+
+endprogram

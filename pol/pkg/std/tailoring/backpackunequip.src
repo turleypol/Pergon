@@ -1,0 +1,43 @@
+/////////////////////////////////////////////////////
+//
+//   Ablegen des Backpacks zulassen oder verhindern
+//
+//     Author: Shinigami
+//
+//   Modification
+//
+/////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Backpack_UnEquip(who, backpack)
+  Var mobile:=backpack.container;
+  If (mobile)
+    If (mobile.isa(POLCLASS_MOBILE) And (!mobile.isa(POLCLASS_NPC))) // Spieler-Backpack?
+      If (mobile.serial==who.serial)
+        SendSysMessagePergon(who, "Ihr könnt Euren Rucksack nicht ablegen!");
+      Else
+        SendSysMessagePergon(who, "Ihr könnt den Rucksack von "+mobile.name+" nicht ablegen!");
+      EndIf
+
+      Return (0);
+    EndIf
+  EndIf
+
+  Return (1);
+EndProgram

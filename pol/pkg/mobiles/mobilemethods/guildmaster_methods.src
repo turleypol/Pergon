@@ -1,0 +1,24 @@
+use uo;
+
+Include ":popuphook:popupmenu";
+Include "include/pergonutil";
+
+Program Install()
+	return 1;
+EndProgram
+
+Exported Function haspopup(mobile)
+	return 1;
+	mobile := mobile;
+EndFunction
+
+Exported Function popupinfo(mobile, who)
+	var info := {{ID_VENDOR_SKILL, CLILOC_VENDOR_SKILL}};
+	
+	If (GetObjProperty(who, TYPNEWBIE))
+	  info.append({ID_VENDOR_FLUCHT, CLILOC_VENDOR_FLUCHT});
+	EndIf
+	
+	return info;
+	mobile := mobile;
+EndFunction

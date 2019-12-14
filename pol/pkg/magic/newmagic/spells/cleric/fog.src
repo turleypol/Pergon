@@ -1,0 +1,249 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file fog.src
+//
+// implements spell 203 <Fog> - "Nebel"
+//
+// lowers current attack skill of spelltarget
+//     [ Reflected / Resisted (Magic) ]
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.20  2008/08/18 17:33:03  mehdorn
+// + kein Einfluss mehr auf >= Seer
+// + Nebelabbau nun ebenfalls langsam
+//
+// Revision 1.19  2008/07/31 12:21:39  mehdorn
+// - Sound gleich ab midcloud-Erzeugung
+//
+// Revision 1.18  2008/07/31 11:49:31  mehdorn
+// - Nebel werden zwischen Bewegungen festgemacht
+//
+// Revision 1.17  2008/07/30 19:48:38  mehdorn
+// - gleich mal noch eingebaut, dass die Schleife verlassen wird, wenn
+//   jemand die Wolke zerstoert
+//
+// Revision 1.16  2008/07/30 10:59:47  turley
+// Endlosschleife behoben
+//
+// Revision 1.15  2008/07/26 14:19:28  mehdorn
+// - Nebel bewegt sich
+// - langsamere Erzeugung -> ungleichmaessigeres Pulsieren
+//
+// Revision 1.14  2008/07/21 15:09:43  mehdorn
+// - da Namenssetzung mit Itemdescriptor nicht klappt, wieder SetName
+//
+// Revision 1.13  2008/07/21 15:01:15  mehdorn
+// - vergessenes "var" entfernt
+//
+// Revision 1.12  2008/07/21 03:56:43  mehdorn
+// - ueberarbeitet
+// - moeglicherweise Create-Fehler gefunden und gefixt
+//
+//
+// 02.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+// 19.11.2001 Sebastian 'Bihinos' Giese - gebaut
+
+include "../magicpergon";
+include "../spellattack";
+include "include/server";
+include "include/spellcheck";
+
+Const SOUND_FOG := 0x0458;
+
+Program CastFog(params)
+  var power;
+  var caster;
+  var caston := struct{x, y, z, realm};
+  If (params[1] == "#MOB")
+    caster       := params[2];
+    power        := params[3];
+    caston.x     := params[4].x;
+    caston.y     := params[4].y;
+    caston.z     := params[4].z;
+    caston.realm := params[4].realm;
+    If (!caston.realm)
+      syslog("HINWEIS: Fog auf Ziel mit kaputtem Realm aufgerufen; Abbruch");
+      return;
+    EndIf
+    send_attack(caston, caster, 203);
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetArea(caster, TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_CLERIC_FOG);
+    caston := TargetArea(caster, TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  If (caster)
+    TurnCharTo(caster, caston);
+    PerformAction(caster, ANIM_CAST_DIR);
+  EndIf
+
+  // load spelldata
+  var spells := ReadConfigFile("::spells");
+  var spell  := FindConfigElem(spells, SPELLID_CLERIC_FOG);
+
+  // calc spell damage and spell range according to casting power
+  var dmg   := CInt(power*spell.primary/100.0);
+  var dur   := CInt(power*spell.duration/100.0);
+  var range := CInt(power*spell.range/100.0);
+
+  If (spell.primarymin and spell.primarymin > dmg)
+    dmg := spell.primarymin;
+  ElseIf (spell.primarymax and spell.primarymax < dmg)
+    dmg := spell.primarymax;
+  EndIf
+  If (spell.durationmin and spell.durationmin > dur)
+    dur := spell.durationmin;
+  ElseIf (spell.durationmax and spell.durationmax < dur)
+    dur := spell.durationmax;
+  EndIf
+  If (spell.rangemin and spell.rangemin > range)
+    range := spell.rangemin;
+  ElseIf (spell.rangemax and spell.rangemax < range)
+    range := spell.rangemax;
+  EndIf
+
+  var CloudDescs := array{};
+  CloudDescs[1] := CloudDesc(FX_EXPLODE_1);
+  CloudDescs[2] := CloudDesc(FX_EXPLODE_2);
+  CloudDescs[3] := CloudDesc(FX_EXPLODE_3);
+  CloudDescs[4] := CloudDesc(FX_SMOKE);
+
+  // item in the middle for sound effects
+  var midcloud := CreateItemAtLocationPergon(
+    caston.x, caston.y, caston.z, CloudDescs[1], 1, caston.realm
+  );
+  SetName(midcloud, "Nebel");
+  PlaySoundEffect(midcloud, SOUND_FOG);
+
+  var clouds := array{};
+  var i;
+  For (i := 1; i < CInt(Pow(range, 2)*2); i += 1)
+    SleepMS(50);
+    clouds[i] :=
+      CreateCloud(caston, range, CloudDescs[RandomInt(4) + 1]);
+    ReserveItem(clouds[i]);
+  EndFor
+
+  For (i := 0; i < dur; i+= 1)
+    PlaySoundEffect(midcloud, SOUND_FOG);
+    ForEach cloud in clouds
+      SleepMS(2);
+      DriftCloud(cloud, midcloud, range);
+    EndForEach
+
+    // get current victims
+    var victims := ListMobilesNearLocationEx(
+      caston.x, caston.y, caston.z, range, LISTEX_FLAG_NORMAL, caston.realm
+    );
+    If (victims)
+      ForEach victim in victims
+        SleepMS(2);
+        If (
+          victim.dead or
+          victim.getprop("spell_fog") or
+          (victim.cmdlevel >= CMDLEVEL_SEER)
+        )
+          // don't hide ghosts and already affected victims
+          continue;
+        EndIf
+        // Wahrscheinlichkeit im Nebel zu verschwinden ist abhängig
+        // von der Power
+        If (RandomInt(100) < (power/2))
+          victim.hidden := 1;
+          var tag := array{
+            ReadGameClock() + 3, dmg, ReadMilliSecondClock()
+          };
+          // tag spelltarget for spellchecker
+          SetObjProperty(victim, "spell_fog", tag);
+          SendSpellWaiter(victim, "spell_fog", 3, tag[3], victim);
+        EndIf
+      EndForEach
+    EndIf
+
+    // after 3 seconds caster is not responsible for the cloud
+    If (i == 3)
+      SetScriptController(0);
+    EndIf
+    Sleep(1);
+  EndFor
+
+  ForEach cloud in clouds
+    SleepMS(50);
+    DestroyItem(cloud);
+  EndForEach
+  DestroyItem(midcloud);
+
+  // jetzt alle im Nebel sichtbar machen
+  var victims := ListMobilesNearLocationEx(
+    caston.x, caston.y, caston.z, range, LISTEX_FLAG_HIDDEN, caston.realm
+  );
+  ForEach victim in victims
+    SleepMS(2);
+    If (victim.getprop("spell_fog"))
+      victim.hidden := 0;
+      victim.eraseprop("spell_fog");
+    EndIf
+  EndForEach
+EndProgram
+
+Function CreateCloud(caston, range, type) // {{{
+  var cloud := CreateItemAtLocation(
+    caston.x - range + RandomInt(2 * range) + 1,
+    caston.y - range + RandomInt(2 * range) + 1,
+    caston.z + RandomInt(10),
+    type, 1, caston.realm
+  );
+  SetName(cloud, "Nebel");
+
+  return cloud;
+EndFunction // }}}
+
+Function CloudDesc(effect) // {{{
+  var desc     := GetItemDescriptor(effect);
+  desc.color   := 1072;
+  desc.movable := 0;
+
+  return desc;
+EndFunction // }}}
+
+Function DriftCloud(cloud, center, range); // {{{
+  var tries := 3;
+  While (cloud)
+    SleepMS(2);
+    var pos := struct{
+      x := cloud.x + DriftDir(), y := cloud.y + DriftDir()
+    };
+    If (CoordinateDistance(pos.x, pos.y, center.x, center.y) >= range)
+      // aus Bereich geraten? neuer Versuch
+      tries -= 1;
+      If (tries <= 0)
+        // alle Versuche verbraucht? dann keine Bewegung
+        return;
+      EndIf
+      continue;
+    EndIf
+
+    MoveObjectToLocation(cloud, pos.x, pos.y, cloud.z, cloud.realm,MOVEITEM_IGNOREMOVABLE);
+    return;
+  EndWhile
+
+EndFunction // }}}
+
+Function DriftDir() // {{{
+  // -1, 0 or 1
+  return RandomInt(3) - 1;
+EndFunction // }}}
+// vim: sts=2 sw=2

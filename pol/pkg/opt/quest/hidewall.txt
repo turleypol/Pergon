@@ -1,0 +1,99 @@
+  Es gibt ein Wand-Item namens "hidewall". Diese Wand wird
+"invisible" aufgebaut, z. B. per ".createat hidewall 20" und
+ein wenig geklicke, oder per Herumlaufen und ".create hidewall"
+sagen oder oder oder.
+
+  Dabei entsteht allerdings keine echte Wand, sondern nur je ein
+Spielbrett. Dieses erzeugt aber nach kurzer Zeit eine echte
+Wand, die ebenfalls unsichtbar ist. Jede einzelne Wand versinkt
+dann selbsttätig im Boden. Man sieht also noch, wo man bereits
+Wände hingebaut hat, aber nach kurzer Zeit kann die Stelle wieder
+problemlos passiert werden. Dadurch wird die Chance minimiert, daß
+ein Spieler vom Aufbau gestört wird, trotzdem bleibt es halbwegs
+praktisch.
+
+  Die Wände hören auf folgende Kommandos (man kann die Enden
+weglassen, solange es eindeutig bleibt):
+
+.hidewall mark <Radius>
+
+  Damit faßt man alle Wände im Bereich zu einer Gruppe zusammen.
+Die Zusammenfassung ist kompatibel zum Bautool, man kann also
+zusammengefaßte Wände mit dem Bautool verschieben oder alternativ
+zum Textcmd Wände auch mit dem Bautool zusammenfassen[0].
+
+.hidewall select
+
+  Wählt eine bereits definierte Wandgruppe aus. Man kann auch
+einzelne Wände auswählen, wenn sie vorher noch nicht in einer
+Gruppe waren.
+
+.hidewall up
+
+  Alle gewählten Wände kommen an die Oberfläche.
+
+.hidewall down
+
+  Alle gewählten Wände versinken.
+
+.hidewall visible ["1"]
+
+  Alle gewählten Wände werden sichtbar. Wird zusätzlich die 1
+angegeben, wird auch das Spielbrett, das die Steuerung übernimmt,
+sichtbar[1].
+
+.hidewall invisible ["1"]
+
+  Das Gegenstück. Die Wände werden unsichtbar, mit der 1 wird
+zusätzlich auch das Spielbrett versteckt.
+
+.hidewall color <Nummer>
+
+  Alle gewählten Wände (und auch die Spielbretter) nehmen die neue
+Farbe an[2].
+
+.hidewall graphic <Nummer>
+
+  Alle gewählten Wände ändern ihre Grafik. Die Spielbretter
+nicht, weil sich dadurch die Begehbarkeit bei versenkter Wand
+ändern kann. Wenn man ein begehbares Item wählt, wird die Wand
+allerdings auch etwas albern[3].
+
+
+  Die Farben und Grafiken der Items können allerdings auch manuell
+geändert werden, z. B. mit ".setprop graphic <nummer>". Dazu hole
+man die Wand entweder hoch oder setze sich selbst mit dem Befehl
+".setprop z -127" in den Keller. Dort warten die versunkenen
+Wände.
+
+
+  Zum Abriß der Wände markiere man einfach die Spielbretter mit
+dem Bautool und verwende den "Destroy"-Knopf. Man kann sie aber
+auch einzeln abreißen. Die zugehörigen Wände werden dann nach
+einiger Zeit automatisch entfernt.
+
+
+  Nutzungsideen:
+- wahlweise vorhandenes unsichtbares Hindernis
+- sichtbare Fallen (Käfige), die aus dem Untergrund auftauchen
+- Brücken/Treppen aus dem Nichts
+- versenkbare Beleuchtungen
+
+  Bei Bedarf könnte man auch noch Bodenplatten bauen, die beim
+Betreten eine oder mehrere "hidewall"-s auslösen. Damit könnte
+man beispielsweise dafür sorgen, daß eine Falle automatisch
+zuschnappt.
+
+
+Fußnoten:
+[0] Allerdings müssen sie zum Zusammenfassen sichtbar sein.
+
+[1] Sind die Wände versenkt und das Spielbrett ist sichtbar,
+    kann man bequem mit dem Bautool arbeiten.
+
+[2] Man kann auch einfach die Spielbretter umfärben, auch
+    per Bautool. Die Wände werden nach einiger Zeit dann
+    auf dieselbe Farbe gesetzt.
+
+[3] Na ja, vielleicht braucht man mal einen versenkbaren
+    Teppich oder eine Brücke, die aus dem Untergrund kommt.

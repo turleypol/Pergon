@@ -1,0 +1,245 @@
+<html>
+
+<head>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+<title>Events</title>
+</head>
+
+<body>
+
+<h1>Events</h1>
+
+<p>There are several kinds of events that scripts will receive, based on the script's
+event mask.&nbsp; Every event object has a <strong>type</strong> member, and one or more
+other members describing the event.&nbsp; Event constants are defined in <strong>include/eventid.inc</strong></p>
+
+<p>&nbsp;</p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td><strong>type</strong></td>
+    <td><strong>Description</strong></td>
+    <td><strong>Context</strong></td>
+  </tr>
+  <tr>
+    <td><a href="#speech">EVID_SPEECH</a></td>
+    <td>PC Speech near an object or NPC</td>
+    <td>NPC, or script registered with RegisterForSpeechEvents</td>
+  </tr>
+  <tr>
+    <td><a href="#engage">EVID_ENGAGED</a></td>
+    <td>Someone has double-clicked an NPC while in war-mode</td>
+    <td>NPC</td>
+  </tr>
+  <tr>
+    <td><a href="#disengage">EVID_DISENGAGED</a></td>
+    <td>Someone who had set an NPC as their opponent has exited war-mode.</td>
+    <td>NPC</td>
+  </tr>
+  <tr>
+    <td><a href="#damage">EVID_DAMAGED</a></td>
+    <td>something has damaged an NPC</td>
+    <td>NPC</td>
+  </tr>
+  <tr>
+    <td><a href="#enteredarea">EVID_ENTEREDAREA</a></td>
+    <td>A mobile has entered the area near an NPC</td>
+    <td>NPC</td>
+  </tr>
+  <tr>
+    <td><a href="#leftarea">EVID_LEFTAREA</a></td>
+    <td>A mobile has left the area near an NPC</td>
+    <td>NPC</td>
+  </tr>
+  <tr>
+    <td><a href="#itemgiven">EVID_ITEM_GIVEN</a></td>
+    <td>An PC has dragged an item onto an NPC</td>
+    <td>NPC</td>
+  </tr>
+  <tr>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="3"><a name="speech"><big><big><big><strong>Event type: EVID_SPEECH</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" rowspan="3">Members:</td>
+    <td align="right"><strong>type</strong></td>
+    <td width="100%">EVID_SPEECH</td>
+  </tr>
+  <tr>
+    <td align="right"><strong>source</strong></td>
+    <td width="100%">character who spoke</td>
+  </tr>
+  <tr>
+    <td align="right"><strong>text</strong></td>
+    <td width="100%">spoken text</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="3"><a name="damage"><big><big><big><strong>Event type: EVID_DAMAGED</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" rowspan="3">Members:</td>
+    <td align="right"><strong>type</strong></td>
+    <td width="100%">EVID_DAMAGED</td>
+  </tr>
+  <tr>
+    <td align="right"><strong>source</strong></td>
+    <td width="100%">character doing the damage, if known.&nbsp; Zero if unknown.</td>
+  </tr>
+  <tr>
+    <td align="right"><strong>damage</strong></td>
+    <td width="100%">amount of damage done</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td colspan="2" width="100%">damage may be zero.&nbsp; This indicates all damage was
+    absorbed by armor.<br>
+    Source will be unknown if damage is due to a ApplyDamage or ApplyRawDamage call.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="3"><a name="engage"><big><big><big><strong>Event type: EVID_ENGAGED</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" rowspan="2">Members:</td>
+    <td align="right"><strong>type</strong></td>
+    <td width="100%">EVID_ENGAGED</td>
+  </tr>
+  <tr>
+    <td align="right"><strong>source</strong></td>
+    <td width="100%">character engaging to attack</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="3"><a name="disengage"><big><big><big><strong>Event type: EVID_DISENGAGED</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" rowspan="2">Members:</td>
+    <td align="right"><strong>type</strong></td>
+    <td width="100%">EVID_DISENGAGED</td>
+  </tr>
+  <tr>
+    <td align="right"><strong>source</strong></td>
+    <td width="100%">character disengaging from attack</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="3"><a name="enteredarea"><big><big><big><strong>Event type: EVID_ENTEREDAREA</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" rowspan="2">Members:</td>
+    <td align="right"><strong>type</strong></td>
+    <td width="100%">EVID_ENTEREDAREA</td>
+  </tr>
+  <tr>
+    <td align="right"><strong>source</strong></td>
+    <td width="100%">mobile that entered the area near the NPC</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td colspan="2">The<strong> range </strong>parameter passed to<strong> EnableEvents() </strong>when
+    this event was enabled specifies how close a mobile must be to fall within the NPC's
+    interest.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="3"><a name="leftarea"><big><big><big><strong>Event type: EVID_LEFTAREA</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" rowspan="2">Members:</td>
+    <td align="right"><strong>type</strong></td>
+    <td width="100%">EVID_LEFTAREA</td>
+  </tr>
+  <tr>
+    <td align="right"><strong>source</strong></td>
+    <td width="100%">mobile that left the area near the NPC</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td colspan="2">The<strong> range </strong>parameter passed to<strong> EnableEvents() </strong>when
+    this event was enabled specifies how close a mobile must be to fall within the NPC's
+    interest.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="3"><a name="itemgiven"><big><big><big><strong>Event type: EVID_ITEM_GIVEN</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right" rowspan="3">Members:</td>
+    <td align="right"><strong>type</strong></td>
+    <td width="100%">EVID_ITEM_GIVEN</td>
+  </tr>
+  <tr>
+    <td align="right"><strong>source</strong></td>
+    <td width="100%">PC that dragged the item onto the NPC</td>
+  </tr>
+  <tr>
+    <td align="right"><strong>item</strong></td>
+    <td width="100%">item that was dragged onto the NPC</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td colspan="2">The NPC AI script should do something with the item - move it into the
+    NPC's backpack, onto the ground, destroy it, give it back to the PC, etc.&nbsp; <p>The
+    item is stored in a container in a Storage Area until something is done with it.&nbsp; If
+    the NPC AI script does not do anything with the item - for example, if the NPC is killed
+    before its script has a chance to process the item - the item will be placed in the PC's
+    backpack if the PC is alive, or dropped to the PCs feet if the PC is dead or has no
+    backpack.</p>
+    <p>This cleanup is done when the 'event' object is destroyed - either by going out of
+    scope or by the variable being assigned a new value.</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+</body>
+</html>

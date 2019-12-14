@@ -1,0 +1,12 @@
+Use uo;
+
+Include "include/msgs";
+
+Program TextCMD_Ident(who)
+  SendSysMessagePergon(who, "Was wollt Ihr identifizieren?");
+
+  Var what:=Target(who, TGTOPT_NOCHECK_LOS);
+  If (what)
+    SendSysMessagePergon(who, "Serial "+Hex(what.serial)+", ObjType "+Hex(what.objtype));
+  EndIf
+EndProgram

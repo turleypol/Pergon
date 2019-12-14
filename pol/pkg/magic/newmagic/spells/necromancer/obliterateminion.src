@@ -1,0 +1,134 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file obliterateminion.src
+//
+// implements spell 331 <Obliterate Minion> - "Kreaturenopfer"
+//
+// scrifices randomly choosen creature of caster and deals its HP and mana
+// as damage to spelltarget [ Reflected / Resisted (Magic) ]
+
+use util;
+use vitals;
+include "../magicpergon";
+include "../resistance";
+include "include/packets";
+
+Program cast_obliterateminion(params)
+  var caster;
+  var power;
+  var where;
+  If (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    SendSysMessagePergon(caster,
+      "Wo befinden sich die Opfer?", "Where are the victims?"
+    );
+    where  := TargetArea(caster);
+    If (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_NECRO_OBLITERATEMINION);
+    SendSysMessagePergon(caster,
+      "Wo befinden sich die Opfer?", "Where are the victims?"
+    );
+    where  := TargetArea(caster);
+    If (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  If (!caster or caster.dead)
+    // bei Zielauswahl ausgeloggt, verstorben etc.
+    return;
+  EndIf
+
+  TurnCharTo(caster, where);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  // load spell data
+  var spells := ReadConfigFile("::spells");
+  var spell := FindConfigElem(spells, SPELLID_NECRO_OBLITERATEMINION);
+
+  // calc spell range according to casting power
+  var range := CInt(power*spell.range/100.0);
+
+  // alle Mobiles abklappern, Liste der Viecher des Casters machen
+  var critters := {};
+  var i := 0;
+  // for each victim
+  ForEach victim in (ListMobilesNearLocation(
+      where.x, where.y, where.z, range, where.realm
+  ))
+    // check if caster is master of victim
+    If (GetObjProperty(victim, "master") == caster.serial)
+      i += 1;
+      // add victim to casters critters
+      critters[i] := victim;
+    EndIf
+  EndForEach
+
+  If (!i)
+    SendSysMessagePergon(caster,
+      "Ihr erreicht keine Euch hörigen Kreaturen",
+      "You reach none of your enslaved creatures"
+    );
+    return;
+  Else
+    SendSysMessagePergon(caster,
+      "Höhere Mächte wählen ein Opfer",
+      "The powers that be choose a victim"
+    );
+  EndIf
+
+  // randomly choose one critter
+  var critter := critters.randomentry();
+  // calc spell damage
+  var amnt := GetHPPergon(critter) + GetManaPergon(critter);
+
+  // get target
+  SendSysMessagePergon(caster,
+    "Wen wollt Ihr mit Eurer Macht treffen?",
+    "Who do you want to strike with your power?"
+  );
+  var caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+  If (!caston)
+    SendSysMessagePergon(caster, "Kein Ziel", "No target");
+    return;
+  EndIf
+
+  If (!caster or caster.dead)
+    // bei Zielauswahl ausgeloggt, verstorben etc.
+    return;
+  EndIf
+
+  // verzoegert, damit Viech Abbruch ueberlebt
+  PlaySoundEffect(critter, SFX_SPELL_MANA_VAMPIRE);
+  PlayStationaryEffect(
+    critter.x, critter.y, critter.z, FX_SMOKE, 10, 10, 0, critter.realm
+  );
+  // hide and kill critter
+  critter.hidden := 1;
+  KillNPC(critter, "necro-obliterateminion", KILLNPC_NOCORPSE);
+
+  // get spelltarget -> possible spell reflection
+  var spelltarget := ReflectSpell(
+    caster, caston, amnt, 1, FX_GLOW_SPIKE, 10, 10, 0, SFX_SPELL_HARM
+  );
+  If (!spelltarget)
+    return;
+  EndIf
+
+  var dmg := amnt;
+  If (spell.resist)
+    // alter spell damage according to spelltargets magic resistance
+    dmg := CInt(MagicResistance(
+      spelltarget, spell.skill, spell.resist, amnt, 1
+    ));
+  EndIf
+
+  // deal damage to spelltarget
+  ApplyRawDamagePergon(spelltarget, dmg);
+EndProgram

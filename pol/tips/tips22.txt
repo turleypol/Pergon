@@ -1,0 +1,6 @@
+Mit .grab kannst du Dinge schnell einsammeln, die in der Umgebung oder Leichen herumliegen.
+
+Mit ".grab backpack" landet alles im Rucksack, mit ".grab cont" kannst du einen Zielbehaelter festlegen.
+
+".grab yes"/".grab no" legt fest, ob du bestimmte Gegenstaende (nicht) mitnimmst. Mit ".grab all" sammelst du ausnahmsweise alles ein. Mit ".grab list" kannst du die Liste der ignorierten Gegenstaende anzeigen.
+

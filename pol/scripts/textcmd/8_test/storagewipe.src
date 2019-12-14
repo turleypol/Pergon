@@ -1,0 +1,212 @@
+use os;
+use uo;
+use storage;
+include "include/msgs";
+include "include/storage";
+
+Program TextCMD_StorageWipe(me)
+  SendSysMessagePergon(me, "StorageWipe aktiviert");
+  syslog("Storage-Areas werden aufgeraeumt");
+
+  var del_items := CleanEmptyRootConts();
+  var del_conts := del_items;
+
+  // TODO: GivenItems untersuchen
+  CleanStorageByKnownNames(del_conts, del_items);
+
+  syslog(
+    "Storage-Areas: insgesamt "+del_conts+" Container ("+
+    del_items+" Items) entfernt"
+  );
+  SendSysMessagePergon(me,
+    "StorageWipe: insgesamt "+del_conts+" Container ("+
+    del_items+" Items) entfernt"
+  );
+EndProgram
+
+Function CleanEmptyRootConts() // {{{
+  var total_removed := 0;
+
+  ForEach area in (StorageAreas())
+    If (CStr(area) in (array{
+            // nicht im Betrieb den NPCs ihre Schachteln klauen,
+            // werden oft nur beim Scriptstart erzeugt
+            STORAGE_MERCHANT,
+            // da haengen eventuell Konten dran
+            STORAGE_BANK
+    }))
+      continue;
+    EndIf
+
+    var areahandle    := FindStorageArea(CStr(area));
+    var local_removed := 0;
+    var delete        := array{};
+    ForEach box in (area)
+      SleepMs(2);
+      If (EnumerateItemsInContainer(box, ENUMERATE_ROOT_ONLY).size() >= 1)
+        // nicht leer
+        continue;
+      EndIf
+      // der Container selbst wird immer mitgezaehlt, ist also leer
+
+      local_removed += 1;
+      // wenn man direkt loescht, kommt die ForEach-Schleife durcheinander
+      delete.append(box.name);
+    EndForEach
+
+    ForEach name in (delete)
+      SleepMs(2);
+      DestroyRootItemInStorageArea(areahandle, name);
+    EndForEach
+
+    If (local_removed)
+      syslog(
+        "CleanEmptyRootConts: "+CStr(area)+": "+local_removed+
+        " leere Container entfernt"
+      );
+      total_removed += local_removed;
+    EndIf
+  EndForEach
+
+  syslog(
+    "CleanEmptyRootConts: insgesamt "+total_removed+
+    " leere Container entfernt"
+  );
+  return total_removed;
+EndFunction // }}}
+
+Function CleanStorageByKnownNames(byref del_conts, byref del_items) // {{{
+  var total_removed_conts := 0;
+  var total_removed_items := 0;
+
+  ForEach area in (StorageAreas())
+    If (CStr(area) in (array{"Blackbox", "Bountbox", "GivenItems"}))
+      // keine Container drin, die man namentlich killen kann
+      continue;
+    EndIf
+
+    var areahandle          := FindStorageArea(CStr(area));
+    var local_removed_conts := 0;
+    var local_removed_items := 0;
+    var delete              := array{};
+    ForEach box in (area)
+      SleepMs(2);
+
+      var serial := box.name;
+      var type   := 0;
+
+      // Zahlen aus Namen extrahieren
+      // Haendlerboxen {{{
+      If (serial[" FS Magic"])
+        serial[" FS Magic"] := "";
+        // Rest des Namens ist Dezimalzahl
+        type := "dec";
+      EndIf
+      If (serial[" FS"])
+        serial[" FS"] := "";
+        type := "dec";
+      EndIf
+      If (serial[" FS"])
+        serial[" FS"] := "";
+        type := "dec";
+      EndIf
+      If (serial[" 1C"])
+        serial[" 1C"] := "";
+        type := "dec";
+      EndIf
+      // }}}
+      // alte Diebesboxen {{{
+      If (serial["thief storage of "])
+        serial["thief storage of "] := "";
+        type := "dec";
+      EndIf
+      If (serial["thief storage2 of "])
+        serial["thief storage2 of "] := "";
+        type := "dec";
+      EndIf
+      // }}}
+      // echte Bankboxen {{{
+      If (serial[ST_PREF_BANK])
+        serial[ST_PREF_BANK] := "";
+        type := "dec";
+      EndIf
+      // }}}
+      // Schluesselringe {{{
+      If (serial[ST_PREF_KEYRINGS])
+        serial[ST_PREF_KEYRINGS] := "";
+        type := "hex";
+      EndIf
+      // }}}
+      // kaputte Kisten {{{
+      If (serial[" errortext "])
+        type := "error";
+      EndIf
+      // }}}
+
+      If (!type)
+        // Container hat keinen passenden Namen
+        continue;
+      EndIf
+
+      // Strings mit Zahlen drin zu Integer konvertieren {{{
+      If (type == "dec")
+        If (CInt(serial) == serial)
+          serial := CInt(serial);
+          type := "ok";
+        EndIf
+
+      ElseIf (type == "hex")
+        If (Lower(Hex(CInt(serial))) == Lower(serial))
+          serial := CInt(serial);
+          type := "ok";
+        EndIf
+      // }}}
+
+      ElseIf (type == "error")
+        local_removed_conts += 1;
+        local_removed_items += EnumerateItemsInContainer(box).size();
+        delete.append(box.name);
+        continue;
+      EndIf
+
+      If (type != "ok")
+        // Zahl nicht konvertierbar
+        continue;
+      EndIf
+
+      // existiert zugehoeriges Mobile/Item noch?
+      var exist := SystemFindObjectBySerial(
+        serial, SYSFIND_SEARCH_OFFLINE_MOBILES
+      );
+      If (!exist)
+        local_removed_conts += 1;
+        local_removed_items += EnumerateItemsInContainer(box).size();
+        delete.append(box.name);
+        continue;
+      EndIf
+    EndForEach
+
+    ForEach name in (delete)
+      SleepMs(2);
+      DestroyRootItemInStorageArea(areahandle, name);
+    EndForEach
+
+    If (local_removed_conts or local_removed_items)
+      syslog(
+        "CleanStorageByKnownNames: "+CStr(area)+": "+local_removed_conts+
+        " Container mit "+local_removed_items+" Items ohne Besitzer entfernt"
+      );
+      total_removed_conts += local_removed_conts;
+      total_removed_items += local_removed_items;
+    EndIf
+  EndForEach
+
+  syslog(
+    "CleanStorageByKnownNames: insgesamt "+total_removed_conts+
+    " Container mit "+total_removed_items+" Items ohne Besitzer entfernt"
+  );
+  del_conts += total_removed_conts;
+  del_items += total_removed_items;
+EndFunction // }}}
+
+// vim: sw=2 sts=2

@@ -1,0 +1,41 @@
+///////////////////////////////////////////////////////////////////////////
+// motd -- Nachricht des Tages anzeigen
+//
+// Nachricht ist ein Item, dessen Textinhalt per Doppelklick angezeigt wird
+
+use cfgfile;
+use uo;
+include "include/msgs";
+include "include/server";
+
+Program motd(who, message)
+    var msgid := message.getprop(PROP_MOTD_ID);
+    If (!msgid)
+        SendSysMessagePergon(who,
+            "Diese Nachricht ist unleserlich geschrieben.",
+            "You cannot decypher the message."
+        );
+        syslog(
+            "WARNUNG: "+ItemInfoStr(message)+" mit ungueltiger MsgID "+msgid
+        );
+        return;
+    EndIf
+
+    var motdfile := ReadConfigFile("speech/messageoftheday");
+    var greeting := FindConfigElem(motdfile, "Begruessung");
+    If (!greeting)
+        syslog(
+            "HINWEIS: Keine Begruessung fuer 'MotD': "+greeting.errortext
+        );
+        return;
+    EndIf
+    var greettext := GetMotDText(who, greeting);
+    greettext["[Name]"] := who.name;
+
+    var entry := FindConfigElem(motdfile, msgid);
+
+    SendStringAsTipWindow(
+        who,
+        greettext+CChr(0x0d)+CChr(0x0d)+GetMotDText(who, entry)
+    );
+EndProgram

@@ -1,0 +1,19 @@
+Getting Started with Scripting
+==============================
+
+1. Set up your Environment
+   in \pol\scripts, there is a file named 'devenv.bat'.  Edit this file.
+   Change the 'POL_ROOT' directory to your POL root, for example C:\POL
+
+2. Edit POL.CFG to make script development more convenient
+   in POL.CFG, Set CacheInteractiveScripts=0
+
+3. Edit the script
+   In your favorite text editor, pick a script and edit it.
+
+4. Compile the script with 'ecompile'
+      c:\pol\scripts> cd textcmd\seer
+      c:\pol\scripts\textcmd\seer> ecompile where.src
+
+5. Run the script
+   In POL, type ".where"

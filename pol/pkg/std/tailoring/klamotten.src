@@ -1,0 +1,511 @@
+///////////////////////////////////////////////////////////////////////
+//
+//   klamotten.src
+//
+//   Author: Pauker
+//
+//   Modifications:
+//     2001/07/xx Pauker:    First Write
+//     2001/02/02 Shinigami: SkillID -> Attribute (inkl. Config-File)
+//     14.01.2002 Fraggulus: mind. 1 Material vernichten, egal ob Erfolg oder Misserfolg
+//     18.03.2002 Fraggulus: den except-Skillcheck von statisch 90% auf dynamisch skill1+40 geaendert
+//     10.04.2002 Fraggulus: wegens Schwere im Ledern und Einheitlichkeit auf (skill+35) gesetzt
+//     20.04.2002 Shinigami: wegens praktischer Unmoeglichkeit auf (skill+15) runtergesetzt
+//     20.02 2003 Iwan:      Formel für regular-quality geändert (20% varianz nach unten)und die Formel für die quality geändert
+//           Faktor für Meisterstück und exceptional item gesenkt
+//     2003/07/16 Shinigami: Items werden schon angezeigt, wenn Skill 10% niedriger
+//     24.10.2003 Fraggulus: Hanf ergaenzt
+//     26.11.2003 Phygon:    Neues MaunfactureGump
+//     08.01.2006 Fraggulus: Ressourcen aus der resources.inc nutzen
+//
+///////////////////////////////////////////////////////////////////////
+
+Use util;
+Use os;
+Use attributes;
+Use uo;
+Use cfgfile;
+
+Include "include/itemnpc";
+Include "include/modifyskill";
+Include "include/manufacturegump";
+Include "include/objtype";
+Include "include/resources";
+
+
+Const SCISSORS_SOUND := SFX_249;
+
+Program MakeKlamottenItems(character, Tool)
+  If ((!AccessiblePergon(character,Tool)) or (distance(character, Tool) > 1))
+    Return(0);
+  EndIf
+  ReserveItem(Tool);
+
+  Var retval;
+  Var maxhp;
+  Var maxhp_item;
+  Var quality;
+
+  Var Elm;
+  Var i;
+
+  Var Skill_1;          //skill needed to create the item
+  Var Skill_2;
+  Var SkillID_1;
+  Var SkillID_2;
+  Var material_1;
+  Var material_2;
+  Var material_1obj;
+  Var material_2obj;
+  Var Objtype;
+
+  Var Ok1:=0;
+  Var item_price;
+
+  // Material 1 auswaehlen
+  SendSysMessagePergon (character, "Wählt das Rohmaterial mit dem ihr arbeiten wollt.");
+  Var use_on := target(character);
+
+  Var Mat_Cfg    := ReadConfigFile(":crafting:materials");
+  Var material1:=Mat_Cfg[use_on.objtype];
+  If (!material1)
+    SendSysMessagePergon (character, "Euch ist es nicht möglich, mit diesem Material etwas zu fertigen!");
+    Return;
+  EndIf
+
+  // Material1 Skillberechnung
+  Var material1_skill:=(material1.difficulty/100.0)-1; // crafting\materials.cfg   Item.difficulty
+
+  // Werkzeug-Eigenschaften auslesen
+  Var werkzeug:=GetPropertyItem(tool);
+  Var tool_skill:=werkzeug.quality;
+
+  // --- Auswahlmenü ---
+
+  Var menuName;
+  Var stdskill;
+
+  If (use_on.objtype in GetUobjTuecher())
+    menuName := "stoffe";
+    stdskill := SKILLID_SCHNEIDERN;
+  EndIf
+  If (use_on.objtype in GetUobjLeder())
+    menuName := "leder";
+    stdskill := SKILLID_LEDEREI_SCHUSTERN;
+  EndIf
+  If (use_on.objtype in GetUobjLederGeschnitten())
+    menuName := "geschnleder";
+    stdskill := SKILLID_LEDEREI_SCHUSTERN;
+  EndIf
+
+  If (!stdskill)  // Wenn es weder Tücher, noch Leder/geschnitt. Leder sind
+    SendSysMessagePergon (character, "Dies ist nicht das richtige Material!");
+    Return;
+  EndIf
+
+  Var skillMod := (material1.difficulty/100.0)-werkzeug.quality-10;
+  Var menu := MGCreateMenuFromCFG(character, "klamotten", menuName, Tool, stdskill, skillMod);
+  If (!menu)
+    SendSysMessagePergon(character, "Ihr könnt mit dem Material nichts anfangen.");
+    Return;
+  EndIf
+
+  Var Auswahl_item := MGSelect(character, menu);
+  If (!Auswahl_item)
+    SendSysMessagePergon(character, "Abbruch", "Abort");
+    Return;
+  EndIf
+
+  If (!Auswahl_item.amount || Auswahl_item.amount < 0)
+    SendSysMessagePergon(character, "Abbruch", "Abort");
+    Return;
+  EndIf
+
+  If (Auswahl_item.amount > 10)
+    Auswahl_item.amount := 10;
+  EndIf
+  Var number := Auswahl_item.amount;
+
+  // --- Defaults im Tool speichern ---
+  MGSetDefault( Tool, menuName, Auswahl_item);
+
+  // Auslesen des angewaehlten Items aus der klamotten.cfg
+  Var cfg := ReadConfigFile("klamotten");
+  elm     := cfg[Auswahl_item.key];
+
+  // Werte aus der Config auslesen
+  Skill_1:=CDbl(elm.skill1);
+  Skill_2:=CDbl(elm.skill2);
+  SkillID_1:=GetAttributeName_(elm.attribute1);
+  SkillID_2:=GetAttributeName_(elm.attribute2);
+
+  Objtype:=CInt(elm.objtype);
+  Material_1:=CInt(elm.material1);
+  Material_2:=CInt(elm.material2);
+  Material_1Obj:=CInt(elm.material1obj);
+  Material_2Obj:=CInt(elm.material2obj);
+
+  // Auslesen von Item.maxhp Var aus beliebiger itemdesc.cfg
+  Var itemdesc   := ReadConfigFile("::itemdesc");
+  Var item_maxhp := itemdesc[Objtype];
+  MaxHP          := item_maxhp.maxhp;
+
+  Var material2;
+  Var use_on2;
+  If (material_2obj)
+    // wenn, dann welches 2. material
+    If (material_2obj==UOBJ_LOGS)
+      SendSysMessagePergon (character, "Wählt die Hoelzer mit denen ihr arbeiten wollt.");
+    EndIf
+    If (material_2obj==UOBJ_EISEN_BARREN)
+      SendSysMessagePergon (character, "Wählt die Metall Barren mit denen ihr arbeiten wollt.");
+    EndIf
+
+    // fadenkreuz fuer die auswahl
+    use_on2 := target(character);
+    material2:=Mat_Cfg[use_on2.objtype];
+    If (!material2)
+      SendSysMessagePergon (character, "Das Material ist nicht in die crafting\materials.cfg eingetragen !");
+      Return;
+    EndIf
+
+    // ob auch das richtige gewaehlt wurde
+    If ((material_2obj==UOBJ_LOGS) and (use_on2.objtype in GetUobjHoelzer()))
+      ok1:=1;
+    EndIf
+    If (
+      (material_2obj==UOBJ_EISEN_BARREN) and
+      (use_on2.objtype in GetUobjMetalle())
+    )
+      ok1:=1;
+    EndIf
+
+    If (!(ok1==1))
+      SendSysMessagePergon (character, "Mit diesem Material könnt Ihr nichts anfangen !");
+      Return;
+    EndIf
+  EndIf
+
+  Var TX:=character.x;
+  Var TY:=character.y;
+
+  // Anzahl der herzustellenden Stuecke
+  /*Var val := cint(SendTextEntryGump(character, "Wieviele wollt Ihr anfertigen? (Max 10)", 40));
+  If (!val or val>10)
+  SendSysMessagePergon(character, "Abbruch", "Abort");
+  Return(0);
+  EndIf*/
+
+  Var Near_Items;
+  Var Sound1;
+  Var Sound2;
+  Var skill1_offset;
+  Var skill2_offset;
+  Var toolinfocprop:=struct;
+  Var useobjtype:=use_on.objtype;
+  Var useobjtype2:=use_on2.objtype;
+  Var usecolor:=use_on.color;
+  Var useprice:=GetPropertyPrice(use_on);
+  Var useprice2:=0;
+  If (use_on2)
+    useprice2:=GetPropertyPrice(use_on2);
+  EndIf
+
+  For (i:=1;i<=number;i+=1)
+    toolinfocprop:=struct;
+    If (TX<>character.x or TY<>character.y)
+      Break;
+
+    Else
+      Near_Items := ListItemsNearLocation(character.x, character.y, character.z,3,character.realm);
+      Ok1:=0;
+      // Metall                    Metall
+      If ((material_1obj == UOBJ_EISEN_BARREN) || (material_2obj == UOBJ_EISEN_BARREN))
+        ForEach item in Near_Items
+          If (item.objtype in {UOBJ_ANVIL1, UOBJ_ANVIL2})
+            Ok1 := 1;
+            Break;
+          EndIf
+        EndForEach
+        If (ok1==0)
+          SendSysMessagePergon(character, "Ihr müsst neben einem Amboss stehen.");
+          Return;
+        EndIf
+      EndIf
+      // Glasblock                 Glasblock
+      If ((material_1obj == UOBJ_GLASS) || (material_2obj == UOBJ_GLASS))
+        ForEach item in Near_Items
+          If (((item.objtype >= UOBJ_FORGE_START) && (item.objtype <= UOBJ_FORGE_END)) || (item.objtype == UOBJ_SMALL_FORGE))
+            Ok1:=1;
+            Break;
+          EndIf
+        EndForEach
+        If (ok1==0)
+          SendSysMessagePergon(character, "Ihr müsst neben einem Schmiedefeuer stehen.");
+          Return;
+        EndIf
+      EndIf
+
+      Ok1:=0;
+      Var Ok2:=0;
+      Var Item1;
+      Var Item2;
+
+      If (!SkillID_2)
+        Ok2:=1;
+      ElseIf (use_on2)
+        If (GetAmount(use_on2)>=material_2)
+          Item2:=use_on2;
+          Ok2:=1;
+          reserveitem(item2);
+        EndIf
+      EndIf
+
+      If (use_on)
+        If (GetAmount(use_on)>=material_1)
+          Item1:=use_on;
+          Ok1:=1;
+          reserveitem(item1);
+        EndIf
+      EndIf
+
+      ForEach item in EnumerateItemsInContainer(character.backpack)
+        If (((!ok1) and (item.objtype==useobjtype)) and (GetAmount(item)>=material_1))
+          Item1:=item;
+          ok1:=1;
+          reserveitem(Item1);
+        ElseIf (((!ok2) and (item.objtype==useobjtype2)) and (GetAmount(item)>=material_2))
+          ok2:=1;
+          Item2:=item;
+          reserveitem(Item2);
+        EndIf
+        If ((Ok1) and (Ok2))
+          Break;
+        EndIf
+        SleepMS(2);
+      EndForEach
+
+      If (!Ok1)
+        SendSysMessagePergon(character,"Ihr habt nicht genügend "+material1.shortdesc);
+        Return;
+      EndIf
+      If (!Ok2)
+        SendSysMessagePergon(character,"Ihr habt nicht genügend "+material2.shortdesc);
+        Return;
+      EndIf
+
+      If (SkillID_2)
+        If (material_2obj == UOBJ_EISEN_BARREN)  // metall
+          sound2 := SFX_2B;
+        Else
+          If (material_2obj == UOBJ_GLASS) // glas
+            sound2 := SFX_3F;
+          Else
+            If (
+              (material_2obj in GetUobjLeder()+GetUobjTuecher()) or
+              (material_1obj in GetUobjLederGeschnitten())) // Stoff+Leder
+              sound2:=SCISSORS_SOUND;
+            Else
+              sound2:=SFX_HAMMER;  // holz, basteln, lehm, stein
+            EndIf
+          EndIf
+        EndIf
+        If (!(sound2==SCISSORS_SOUND)) performaction(character, UACTION_PICK); EndIf
+        retval := PlaySoundEffect(character, sound2);
+        sleep (2);
+        If (!(sound2==SCISSORS_SOUND)) performaction(character, UACTION_PICK); EndIf
+        retval := PlaySoundEffect(character, sound2);
+        sleep (2);
+        If (!(sound2==SCISSORS_SOUND)) performaction(character, UACTION_PICK); EndIf
+        retval := PlaySoundEffect(character, sound2);
+        sleep (2);
+
+        Var material2_skill:=(material2.difficulty/100)-1;
+        skill2_offset:=cint(skill_2+material2_skill-tool_skill);
+        If (skill2_offset<1) skill2_offset:=1; EndIf  // Sicherung, falls tool_skill>item_skill
+
+        Var Check:=CheckSkillPergon(character, SkillID_2, skill2_offset, Cint((skill_2+material2_skill)*6));
+        If (!check)
+          If (material_2 > 2) // mind. 1 Material vernichten
+            SubtractAmount(item2, cint(material_2/2));
+          Else
+            SubtractAmount(item2, 1);
+          EndIf
+          SendSysMessagePergon(character, "Ihr zerstört etwas "+material2.shortdesc+".");
+          Continue;
+        EndIf
+      EndIf
+      If (material_1obj == UOBJ_EISEN_BARREN) // metall
+        sound1 := SFX_2B;
+      Else
+        If (material_1obj == SFX_3F) // glas
+          sound1 := SFX_3F;
+        Else
+          If (
+            material_1obj in
+            // Stoff+Leder+geschnLeder
+            GetUobjLeder()+GetUobjTuecher()+GetUobjLederGeschnitten()
+          )
+            sound1:=SCISSORS_SOUND;
+          Else
+            sound1:=SFX_HAMMER;  // holz, basteln, lehm, stein
+          EndIf
+        EndIf
+      EndIf
+      If (!(sound1==SCISSORS_SOUND)) performaction(character, UACTION_PICK); EndIf
+      retval := PlaySoundEffect(character, sound1);
+      sleep (2);
+      If (!(sound1==SCISSORS_SOUND)) performaction(character, UACTION_PICK); EndIf
+      retval := PlaySoundEffect(character, sound1);
+      sleep (2);
+      If (!(sound1==SCISSORS_SOUND)) performaction(character, UACTION_PICK); EndIf
+      retval := PlaySoundEffect(character, sound1);
+      sleep (2);
+
+      skill1_offset:=Cint (skill_1+material1_skill-tool_skill);
+      If (skill1_offset<1) skill1_offset:=1; endif // Sicherung, falls tool_skill>item_skill
+
+      If (CheckSkillPergon(character, SkillID_1, skill1_offset, Cint((skill1_offset+material1_skill)*6)))
+
+        Var theitem := CreateItemInBackpackPergon(character, objtype, 1);
+        If (!theitem)
+          SendSysMessagePergon(character, "In Eurem Rucksack ist zu wenig Platz.");
+          theitem := CreateItemAtLocationPergon(character.x, character.y, character.z, objtype, 1,character.realm); // Dann halt aufm Boden versuchen
+        EndIf
+
+        theitem.movable := 1;
+
+        //now, I need to set the quality
+        If ((CheckSkillPergon(character, SkillID_1, 60,120)) and (randomint(100) < 2+tool_skill))
+          If (CheckSkillPergon(character, SkillID_1, skill1_offset + 15, skill_1 * 2))  // by F.
+            //they make an exceptional item
+            quality:=2.0;
+            Var itemnameF:=GetElemProperty(Elm, "desc");
+            toolinfocprop.+material:=material1.shortdesc;
+            Var itemnameTest:="Exceptional "+itemnameF;//+" ["+character.name+"]"+" aus "+material1.shortdesc;   // nurn Test
+            If (material_2obj)
+              toolinfocprop.material+=" und "+material2.shortdesc;
+              //itemnameTest:=itemnameTest+" und "+material2.shortdesc;
+            EndIf
+            toolinfocprop.+manufacturer:=character.name;
+            theitem.setprop(TOOLINFO,toolinfocprop);
+            SetName(theitem, itemnameTest); //
+            SendSysMessagePergon (character, "Ihr fertigt ein außergewöhnliches Stück und legt es in Euren Rucksack.");
+            item_price:=1.5;
+          Else
+            //macht ein Meisterstueck
+            quality := 1.5;
+            Var itemnameF:=GetElemProperty(Elm, "desc");
+            toolinfocprop.+material:=material1.shortdesc;
+            Var itemnameTest:="Meisterstueck "+itemnameF;//+" ["+character.name+"]"+" aus "+material1.shortdesc;   // nurn Test
+            If (material_2obj)
+              toolinfocprop.material+=" und "+material2.shortdesc;
+              //itemnameTest:=itemnameTest+" und "+material2.shortdesc;
+            EndIf
+            toolinfocprop.+manufacturer:=character.name;
+            theitem.setprop(TOOLINFO,toolinfocprop);
+            SetName(theitem, itemnameTest); //
+            SendSysMessagePergon (character, "Ihr fertigt ein Meisterstück und legt es in Euren Rucksack.");
+            item_price:=1.2;
+          EndIf
+        Else
+          //regular-quality
+          quality:=(80+(RandomInt(GetSkillPergon(character, SkillID_1))/6))/100.0;
+          Var itemnameF:=GetElemProperty(Elm, "desc");
+          toolinfocprop.+material:=material1.shortdesc;
+          //Var itemnameTest:=itemnameF+" aus "+material1.shortdesc;   // nurn Test
+          If (material_2obj)
+            toolinfocprop.material+=" und "+material2.shortdesc;
+            //itemnameTest:=itemnameTest+" und "+material2.shortdesc;
+          EndIf
+          theitem.setprop(TOOLINFO,toolinfocprop);
+          SetName(theitem, itemnameF); //
+          SendSysMessagePergon(character, "Ihr stellt den Gegenstand her und legt ihn in Euren Rucksack.");
+          item_price:=1;
+        EndIf
+
+        // material- und werkzeug-eigenschaften gehen mit in die item eigenschaften ein
+
+        Var dummy;
+        If (material_2obj)
+          dummy := quality+((material1.quality+material2.quality-2)/2.0);
+          item_price:=cint(item_price*((Material_2*useprice2)+(Material_1*useprice)));
+        Else
+          dummy := quality+material1.quality-0.5; // 0.5 ist material.quality default
+          item_price:=cint(item_price*(Material_1*useprice));
+        EndIf
+        maxhp_item:=cint(maxhp*dummy);
+        /*
+        If (character.cmdlevel >= CMDLEVEL_SEER)
+        print("******* klamotten.src ********");
+        print("Skill1: "+skill1_offset);
+        print("Skill2: "+skill2_offset);
+        print("Rohpoints1: "+Cint((skill_1+material1_skill)*4));
+        print("Quali Item orig.:"+quality);
+        print("Quali Item orig.:"+item_maxhp.type);
+        print("Quali Material1:"+material1.quality);
+        print("Quali Material2:"+material2.quality);
+        print("Material1.hp"+(material1.hp/10));
+        print("Material2.hp"+(material2.hp/10.0));
+        print("MaxHP: "+MaxHP);
+        print("-----------------------------");
+        print("Price: "+GetPropertyPrice(use_on)+" * "+Material_1+" + "+GetPropertyPrice(use_on2)+" * "+Material_2);
+        print("Item Price: "+item_price);
+        print("Itemdesc: "+theitem.desc);
+        print("Color: "+theitem.color);
+        print("Gewicht: "+theitem.weight);
+        print("Item Quality/Qualityorig: "+dummy);
+        print("Item Hp/Maxhp/Maxhporig: "+maxhp_item);
+        print("SkillID_1: "+SkillID_1);
+        print("Skill_repair: "+(skill_1+material1_skill));
+        print("*****************************");
+        EndIf
+        */
+        //item-property's setzen
+        //SetPropertyItem(item, quality, hp, maxhp, qualityorig, maxhporig, type, skillid)
+        SetPropertyItem(theitem, dummy, maxhp_item, maxhp_item, dummy, maxhp_item, item_maxhp.type, SkillID_1, skill_1+material1_skill, item_price);
+
+        dummy:=CInt(usecolor);
+        If (dummy) theitem.color := dummy; EndIf
+
+        dummy := material1.weight;
+        If (dummy) theitem.weight := (theitem.weight * dummy); EndIf
+
+        If (material_1 > 2)   // mind. 1 Material vernichten
+          SubtractAmount(item1, material_1);
+        Else
+          SubtractAmount(item1, 1);
+        EndIf
+        If (SkillID_2)
+          If (material_2 > 2) // mind. 1 Material vernichten
+            SubtractAmount(item2, material_2);
+          Else
+            SubtractAmount(item2, 1);
+          EndIf
+        EndIf
+      Else
+        If (material_1 > 2) // mind. 1 Material vernichten
+          SubtractAmount(item1, cint(material_1/2));
+        Else
+          SubtractAmount(item1, 1);
+        EndIf
+        SendSysMessagePergon(character, "Eure Anstrengungen waren umsonst, Ihr zerstört etwas "+material1.shortdesc+".");
+
+        If (SetWerkzeugSchaden(character, tool, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!"))
+          Return;
+        EndIf
+      EndIf
+    EndIf
+  EndFor
+
+EndProgram
+
+////////////////////////////////////////////////////////////////
+// GetAttributeName - Ermittelt und Prueft den Attribute-Namen
+////////////////////////////////////////////////////////////////
+
+Function GetAttributeName_(attribute)
+  If (attribute)
+    Return(GetSkillName(attribute));
+  EndIf
+EndFunction

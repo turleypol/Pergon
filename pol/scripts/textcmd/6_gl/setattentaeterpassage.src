@@ -1,0 +1,43 @@
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD SetAttentaeterPassage - Setzt das Flag das es Attentaetern erlaubt das JhelomPortal zu passieren
+//
+//     Author: Fox
+//
+//   Modifications:
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//////////////
+// Libraries
+//////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/modifyskill";
+Include "include/msgs";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program TextCMD_SetAttentaeterPassage(who)
+  SendSysMessagePergon(who, "Wählt den potentiellen Attentäter aus!", "");
+
+  Var mobile:=Target(who, TGTOPT_CHECK_LOS);
+  If (mobile.isa(POLCLASS_MOBILE) And (!mobile.isa(POLCLASS_NPC)))
+    If (GetObjProperty(mobile, TYPNEWBIE))
+      SetObjProperty(mobile, "Passierschein", 1);
+      SendSysMessagePergon(who, "Passierschein übergeben.", "");
+      SendSysMessagePergon(mobile, "Ihr erhaltet einen Passierschein.", "");
+    Else
+      SendSysMessagePergon(who, "Diese Person ist nicht mehr jung, sie ist nicht auf einen Passierschein angewiesen.", "");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

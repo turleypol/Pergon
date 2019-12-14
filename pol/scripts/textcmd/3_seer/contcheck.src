@@ -1,0 +1,66 @@
+////////////////////////////////////////////////////////////////////////
+//
+//   ContainerCheck TextCMD v1.0 (2001/03/28)
+//
+//     Dient zum ueberpruefen der Containerflaeche innerhalb des Gumps
+//
+//     Author: Shinigami
+//
+////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use cfgfile;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_ContCheck(who, params)
+  params:=SplitWords(params);
+  If (params.size() in {1,3 })
+    Var itemid;
+    If (CInt(params[1]))
+      itemid:=CInt(params[1]);
+    Else
+      itemid:=GetObjtypeByName(params[1]);
+    EndIf
+
+    If (itemid)
+      Var diffx:=0;
+      Var diffy:=0;
+      If (params.size()==3)
+        diffx:=CInt(params[2]);
+        diffy:=CInt(params[3]);
+      EndIf
+
+      Var itemdesc:=ReadConfigFile("::itemdesc");
+      If (itemdesc)
+        Var contdef:=itemdesc[itemid];
+        If (contdef.gump And contdef.minx And contdef.miny And contdef.maxx And contdef.maxy)
+          SendDialogGump(who, {"nodispose", "page 0", "gumppic 10 10 "+contdef.gump,
+            "gumppic 310 10 "+contdef.gump, "resizepic "+(310+contdef.minx)+" "+(10+contdef.miny)+
+            " 5054 "+(contdef.maxx-contdef.minx+diffx)+" "+(contdef.maxy-contdef.miny+diffy)}, { });
+        Else
+          SendSysMessagePergon(who, "'"+params[1]+"' ist kein gültiger Container!");
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Die itemdesc.cfg konnte nicht geöffnet werden!");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "'"+params[1]+"' ist keine gültige ItemID!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr müsst entweder nur die ItemID oder "+
+      "aber die ItemID und den X und Y-Korrekturwert angeben!");
+  EndIf
+EndProgram

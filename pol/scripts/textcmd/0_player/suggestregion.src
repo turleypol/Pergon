@@ -1,0 +1,152 @@
+///////////////////////////////////////////////////////////////////////////
+// suggestregion -- benannte Regionen vorschlagen
+
+use file;
+use math;
+use os;
+use uo;
+include "include/effects";
+include "include/msgs";
+include "include/server";
+include "include/varutil";
+
+Const PROP_STORE             := "sugreg";
+Const GPROP_DISALLOW_PLAYERS := "forbidsuggestregion";
+Const REGLOG                 := "log/suggestedregions.log";
+
+Program SuggestRegion(who, regname)
+    // Aufruf pruefen {{{
+    If (who.cmdlevel <= CMDLEVEL_SEER)
+        If (GetGlobalProperty(GPROP_DISALLOW_PLAYERS))
+            SendSysMessagePergon(who,
+                "Das Kommando ist derzeit für Spieler deaktiviert"
+            );
+            return;
+        EndIf
+    EndIf
+
+    If (!regname)
+        SendSysMessagePergon(who, "Bitte Regionsnamen angeben!");
+        return;
+    EndIf
+    // }}}
+
+    var first := who.getprop(PROP_STORE);
+    // neuen Vorschlag beginnen {{{
+    If (!first or first.name <> regname or first.realm <> who.realm)
+        first        := struct;
+        first.+x     := who.x;
+        first.+y     := who.y;
+        first.+z     := who.z;
+        first.+realm := who.realm;
+        first.name   := regname;
+        who.setprop(PROP_STORE, first);
+
+        SendSysMessagePergon(who,
+            "Erster Eckpunkt gespeichert. Sucht den zweiten Eckpunkt auf "+
+            "und wiederholt den Befehl."
+        );
+        return;
+    EndIf
+    // }}}
+
+    // Vorschlag errechnen {{{
+    var second    := struct;
+    second.+x     := who.x;
+    second.+y     := who.y;
+    second.+z     := who.z;
+    second.+realm := who.realm;
+    // um nach dem Schauen an die alte Position zurueckzukommen
+    var oldpos := second;
+
+    // first soll NW-Ecke werden, second SO-Ecke
+    If (first.x > second.x)
+        SwapValues(first.x, second.x);
+    EndIf
+    If (first.y > second.y)
+        SwapValues(first.y, second.y);
+    EndIf
+    // Hoehe der Marker wird aus first genommen, geringere Hoehe benutzen
+    If (first.z > second.z)
+        SwapValues(first.z, second.z);
+    EndIf
+
+    // da Regionen derzeit ein 4er-Raster haben, die Werte ggf. anpassen
+    var nw := AdjustToGrid(first,  CORNER_NW);
+    var se := AdjustToGrid(second, CORNER_SE);
+    If (nw.x <> first.x or nw.y <> first.y)
+        SendSysMessagePergon(who, "NW-Ecke wurde am Raster justiert");
+    EndIf
+    If (se.x <> second.x or se.y <> second.y)
+        SendSysMessagePergon(who, "SO-Ecke wurde am Raster justiert");
+    EndIf
+    // }}}
+
+    // Regionsecken im Uhrzeigersinn zeigen {{{
+    SendSysMessagePergon(who, "Bitte Region prüfen ...");
+    Sleep(1);
+    VisualizeRange(nw, se);
+    ShowCorner(who, nw.x, nw.y, nw.z);
+    Sleep(2);
+    ShowCorner(who, se.x, nw.y, nw.z);
+    Sleep(2);
+    ShowCorner(who, se.x, se.y, se.z);
+    Sleep(2);
+    ShowCorner(who, nw.x, se.y, nw.z);
+    // }}}
+
+    // letzte Rueckfrage und ggf. loggen {{{
+    var ret := SendYesNoGump(who,
+        "Region: '"+regname+"'<br>"+
+        "("+nw.x+", "+nw.y+") - ("+se.x+", "+se.y+")<br>"+
+        "Wirklich vorschlagen?",
+        100, 10, TE_CANCEL_ENABLE, TE_SCROLLBAR_ENABLE
+    );
+    // zurueck zur alten Position
+    MoveObjectToLocation(
+        who, oldpos.x, oldpos.y, oldpos.z, oldpos.realm,
+        MOVEOBJECT_FORCELOCATION
+    );
+    If (!ret)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    LogRegion(who, regname, nw, se);
+    who.eraseprop(PROP_STORE);
+    SendSysMessagePergon(who,
+        "Region '"+regname+"' ("+nw.x+", "+nw.y+") - ("+se.x+", "+se.y+") "+
+        "vorgeschlagen"
+    );
+    // }}}
+EndProgram
+
+// Koordinaten ans 4x4-Raster anpassen
+Const CORNER_NW := 0;
+Const CORNER_SE := 1;
+Function AdjustToGrid(pos, corner) // {{{
+    If (corner == CORNER_NW)
+        pos.x := CInt(4*Floor(pos.x/4.0));
+        pos.y := CInt(4*Floor(pos.y/4.0));
+    ElseIf (corner == CORNER_SE)
+        pos.x := CInt(4*(0.75+Floor(pos.x/4.0)));
+        pos.y := CInt(4*(0.75+Floor(pos.y/4.0)));
+    EndIf
+    return pos;
+EndFunction // }}}
+
+// Kurzfassung fuer MoveObjectToLocation
+Function ShowCorner(who, x, y, z) // {{{
+    MoveObjectToLocation(who, x, y, z, who.realm, MOVEOBJECT_FORCELOCATION);
+EndFunction
+// }}}
+
+// Logeintraege schreiben
+Function LogRegion(who, regname, nw, se) // {{{
+    LogToFile(REGLOG, "    // Vorgeschlagen von: "+CharInfoStr(who));
+    LogToFile(REGLOG, "    Name "+regname);
+    LogToFile(REGLOG, "    Realm "+nw.realm);
+    LogToFile(REGLOG, "    Range "+nw.x+" "+nw.y+" "+se.x+" "+se.y);
+    LogToFile(REGLOG, "");
+    syslog(CharInfoStr(who)+" hat die Region '"+regname+"' vorgeschlagen");
+EndFunction // }}}

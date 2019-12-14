@@ -1,0 +1,458 @@
+///////////////////////////////////////////////////////////////////////////
+// grab -- lose Items in der Naehe einsammeln
+
+include ":main_ai3:include_common/main_ai";
+include "include/itemnpc";
+include "include/msgs";
+include "include/objtype";
+include "include/server";
+include "include/utility";
+use os;
+use uo;
+
+// Constants {{{
+Const PROP_INTO_BP  := "grabintobackpack";
+Const PROP_GRABSTD  := "grabstandardcont";
+
+Const ENOERROR    := 0;
+Const ETOOFAR     := 1;
+Const EBPFULL     := 2;
+Const EISDEAD     := 3;
+
+Const BLACKLIST   := 0;
+Const NOBLACKLIST := 1;
+// }}}
+
+Program TextCMD_Grab(who, parms)
+  Case (parms)
+  // Blacklist-Befehle
+  "yes":
+    UpdateBlackListSelect(who, BLACKLIST_REMOVE);
+  "no":
+    UpdateBlackListSelect(who, BLACKLIST_ADD);
+  "list":
+    ShowBlackList(who);
+  // Auswahlbefehle
+  "back":
+  "pack":
+  "backpack":
+    ToggleAlwaysBP(who);
+  "cont":
+    ChooseCont(who);
+  // echtes Einsammeln
+  "all":
+    GrabAll(who, NOBLACKLIST);
+  "standard":
+  default:
+    GrabAll(who);
+  EndCase
+EndProgram
+
+Function ChooseCont(who) // {{{
+  SendSysMessagePergon(who,
+    "Wählt einen neuen Standardzielbehälter! (Abbruch: in Euren Rucksack)",
+    "Choose a standard target for grabbing! "+
+    "(Cancel: into your backpack; katarina aer baest)"
+  );
+  var newdest := Target(who);
+  If (newdest and newdest.isa(POLCLASS_CONTAINER))
+    // neues Standardziel gewählt
+    SetObjProperty(who, PROP_GRABSTD, newdest.serial);
+    SetObjProperty(who, PROP_INTO_BP, 2);
+  Else
+    // Backpack wird gesetzt
+    SetObjProperty(who, PROP_INTO_BP, 0);
+  EndIf
+EndFunction // }}}
+
+Function UpdateBlackListSelect(who, addrm) // {{{
+  If (addrm == BLACKLIST_ADD)
+    SendSysMessagePergon(who,
+      "Was wollt ihr zukünftig nicht mehr einsammeln?",
+      "What do you want to leave alone in future?"
+    );
+  Else
+    SendSysMessagePergon(who,
+      "Was wollt ihr zukünftig wieder einsammeln?",
+      "What do you want to collect again in future?"
+    );
+  EndIf
+
+  var tgt := Target(who);
+  If (!tgt or tgt.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  UpdateBlackList(who, tgt.objtype, addrm);
+EndFunction // }}}
+
+Function ShowBlackList(who) // {{{
+  var ret;
+  Repeat
+    var blacklist := GetObjProperty(who, PROP_GRAB_BLACKLIST);
+    If (TypeOfInt(blacklist) != OT_ARRAY)
+      SendSysMessagePergon(who,
+        "Ihr nehmt alles mit Euch.", "You collect everything."
+      );
+      return;
+    EndIf
+
+    var layout := {
+      "Page 0",
+
+      "NoDispose",
+      "ResizePic 0 0 3600 300 500",
+      "ResizePic 15 15 5054 270 35",
+      "ResizePic 15 55 5054 270 430",
+      "HTMLGump 15 22 270 20 0 0 0"
+    };
+
+    var items := array;
+    ForEach objtype in (blacklist)
+      items.append({objtype, DescEinzahl(GetItemDescriptor(objtype).desc)});
+    EndForEach
+    
+    items := SortArrayABC(items, 1, 2);
+    
+    var data := {"<CENTER><H3>Blacklist</H3></CENTER>"};
+    var page := 1;
+    var y    := 60;
+
+    ForEach item in (items)
+      layout += {
+        "Page "+page,
+
+        "Button 20 "+y+" 4020 4021 1 0 "+_item_iter,
+        "Tooltip 3000154",
+        "Text 55 "+y+" 0 "+_item_iter,
+        "TilePic 240 "+y+" "+GetItemDescriptor(item[1]).graphic
+      };
+      data.append(item[2]);
+      y += 25;
+      If (_item_iter == page*17 && _item_iter < items.size())
+        layout += {
+          "Page "+page,
+          "Button 260 22 2646 2647 0 "+(page+1),
+          "Page "+(page+1),
+          "Button 235 22 2650 2651 0 "+page
+        };
+        page += 1;
+        y := 60;
+      EndIf
+    EndForEach
+
+    ret := SendDialogGump(who, layout, data, 50, 50);
+
+    If (ret[0])
+      UpdateBlackList(who, items[ret[0]][1], BLACKLIST_REMOVE);
+    EndIf
+  Until (!ret[0]);
+
+EndFunction // }}}
+
+Function ToggleAlwaysBP(who) // {{{
+  var alwaysbp := GetObjProperty(who, PROP_INTO_BP);
+  If (!alwaysbp)
+    alwaysbp := 1;
+    SendSysMessagePergon(who,
+      "Ihr werdet jedesmal einen Zielbehälter wählen.",
+      "You will always select a destination container."
+    );
+  Else
+    alwaysbp := 0;
+    SendSysMessagePergon(who,
+      "Ihr werft nun alles wahllos in den Rucksack.",
+      "You will throw everything into your backpack."
+    );
+  EndIf
+  SetObjProperty(who, PROP_INTO_BP, alwaysbp);
+EndFunction // }}}
+
+Function StartLogging(who, item) // {{{
+  var pos := struct{
+    x     := item.x,
+    y     := item.y,
+    z     := item.z,
+    realm := item.realm
+  };
+  var param := struct{
+    who  := who,
+    // wegen abgekoppelter Auswertung nicht (mehr) aus Item auslesbar
+    info := ItemInfoStr(item, COORDS_REALM),
+    pos  := pos,
+    mul  := item.multi,
+    // weggenommene Menge (grab nimmt immer alles)
+    amt  := item.amount
+  };
+  // Auswertung ist komplizierter, daher abgekoppelt
+  Start_Script(":packethook:housepickup", param);
+EndFunction // }}}
+
+///////////////////////////////////////////
+//
+// Hauptfunktion
+//
+///////////////////////////////////////////
+
+Function GrabAll(who, black := BLACKLIST) // {{{
+  If (CInt(GetObjProperty(who, "#looting")) > ReadGameClock())
+    SendSysMessagePergon(who, "Ihr seid bereits beim Erbeuten!");
+    return;
+  EndIf
+  SetObjProperty(who, "#looting", ReadGameClock() + 60);
+
+  var dest := who.backpack;
+  If (GetObjProperty(who, PROP_INTO_BP) == 1)
+    SendSysMessagePergon(who,
+      "Wählt einen Zielbehälter! (Abbruch: in Euren Rucksack)",
+      "Select a destination container! (Cancel: into your backpack)"
+    );
+    var newdest := Target(who);
+    If (newdest and newdest.isa(POLCLASS_CONTAINER))
+        dest := newdest;
+    EndIf
+
+    // nochmal auffrischen, falls lange gewählt wurde
+    SetObjProperty(who, "#looting", ReadGameClock() + 60);
+  ElseIf (GetObjProperty(who, PROP_INTO_BP) == 2)
+    // Standardcontainer auswählen
+    var dest_serial := GetObjProperty(who, PROP_GRABSTD);
+    If (dest_serial)
+      dest := SystemFindObjectBySerial(dest_serial);
+      If (!InContainer(dest, array{who, who.backpack}))
+        SendSysMessagePergon(who,
+          "Der Standardbehälter ist nicht mehr in Eurem Rucksack! "+
+          "Bitte wählt einen Neuen.",
+          "Choosen standard container is no longer in Your backpack - "+
+          "choose a new."
+        );
+        ChooseCont(who);
+        EraseObjProperty(who, "#looting");
+        return;
+      EndIf
+    EndIf
+  EndIf
+
+  var tograb := array{};
+  var corpselist := array{};
+  // moegliche Items finden, Leichen von normalem Zeug trennen
+  ForEach item in ListItemsNearLocation(who.x, who.y, who.z, 2, who.realm)
+    SleepMS(2);
+    If (item.objtype == UOBJ_CORPSE)
+      var lifetime := GetObjProperty(item, "lifetime");
+      If (lifetime)
+        // Spielerleichen auslassen
+        continue;
+      EndIf
+      var master := GetObjProperty(item, PROP_MASTER);
+      If (master and master != who.serial)
+        // nur Tierleichen ohne Besitzer, oder von eigenen Tieren
+        continue;
+      EndIf
+      corpselist.append(item);
+    ElseIf (item.movable)
+      tograb.append(item);
+    EndIf
+  EndForEach
+
+  // Blacklist einmalig initialisieren
+  var blacklist := array{};
+  If (black == BLACKLIST)
+    blacklist := GetObjProperty(who, PROP_GRAB_BLACKLIST);
+    If (TypeOfInt(blacklist) != OT_ARRAY)
+      blacklist := array{};
+      SetObjProperty(who, PROP_GRAB_BLACKLIST, blacklist);
+    EndIf
+  EndIf
+
+  If ((tograb.size() > 0 or corpselist.size() > 0) and who.hidden)
+    // "entstecken", falls es etwas zu tun gibt
+    who.hidden := 0;
+  EndIf
+  If (tograb.size()>0)
+    // alles in Umgebung einsammeln
+    var result := GrabList(who, tograb, dest, blacklist);
+    If (result != ENOERROR)
+      // hat nicht geklappt
+      CleanUp(who, result);
+      return;
+    EndIf
+  EndIf
+
+  ForEach corpse in (corpselist)
+
+    // gestorben?
+    If (who.dead)
+      CleanUp(who, EISDEAD);
+      return;
+    EndIf
+
+    // Bueck dich, Fee!
+    who.facing := GetFacing(who.x, who.y, corpse.x, corpse.y);
+    PerformAction(who, ANIM_BOW);
+
+    var toloot := EnumerateItemsInContainer(corpse, ENUMERATE_ROOT_ONLY);
+    If (toloot.size()>0)
+      // pro Leiche knapp ueber 1 Sekunde brauchen, wenn denn was drin ist
+      Sleep(1);
+      // alles in Leiche einsammeln
+      var result := GrabList(who, toloot, dest, blacklist, 50);
+      If (result != ENOERROR)
+        // hat nicht geklappt
+        CleanUp(who, result);
+        return;
+      EndIf
+    EndIf
+  EndForEach
+
+  // Zusammenfassung
+  CleanUp(who);
+EndFunction // }}}
+
+Function GrabList(who, itemlist, dest, black, wait := 500) // {{{
+  ForEach item in (itemlist)
+    SleepMS(2);
+
+    // Blacklist pruefen
+    If (black.size()>0 and item.objtype in black)
+      continue;
+    EndIf
+
+    If (who.dead)
+      return EISDEAD;
+    EndIf
+    
+    If (Distance(who, item) > 2)
+      return ETOOFAR;
+    EndIf
+
+    If (!item.container and wait >= 500)
+      who.facing := GetFacing(who.x, who.y, item.x, item.y);
+      // Bueck dich, Fee!
+      PerformAction(who, ANIM_BOW);
+    EndIf
+
+    // ggf. Diebstahllogging versuchen
+    If (item.multi and item.multi.isa(POLCLASS_HOUSE))
+      StartLogging(who, item);
+    EndIf
+
+    var result := GrabIt(who, item, dest);
+    If (result == error)
+      return EBPFULL;
+    EndIf
+    SleepMS(wait);   
+  EndForEach
+
+  return ENOERROR;
+EndFunction // }}}
+
+Function CleanUp(who, fail := ENOERROR) // {{{
+  If (!who)
+    return;
+  EndIf
+  Case (fail)
+  ENOERROR:
+    SendSysMessagePergon(
+      who,
+      "Hmm ... sieht aus, als hättet Ihr alles!",
+      "Hmm ... looks like we got everything here!"
+    );
+
+  ETOOFAR:
+    SendSysMessagePergon(
+      who,
+      "Ihr seid zu weit weg, um noch etwas zu erbeuten.",
+      "You are too far away to grab anything."
+    );
+
+  EBPFULL:
+    SendSysMessagePergon(
+      who,
+      "Ihr könnt nicht soviel Zeug mit Euch herumschleppen!",
+      "You cannot carry the whole world around!"
+    );
+  EISDEAD:
+    SendSysMessagePergon(
+      who,
+      "Ihr seid tot und könnt nichts mit Euch nehmen!",
+      "You are dead and cannot pick that up."
+    );
+  EndCase
+  EraseObjProperty(who, "#looting");
+EndFunction // }}}
+
+Function Grabable(who, item) // {{{
+  // ein paar Tests
+  If (!item.movable)
+    return 0;
+  EndIf
+
+  If (item.invisible)
+    return 0;
+  EndIf
+
+  If (!AccessiblePergon(who, item))
+    return 0;
+  EndIf
+
+  If (!CheckLineOfSight(who, item))
+    return 0;
+  EndIf
+
+  If (item.objtype == UOBJ_CORPSE)
+    return 0;
+  EndIf
+
+  return 1;
+EndFunction // }}}
+
+Function GrabIt(who, item, dest) // {{{
+  // darf man es ueberhaupt mitnehmen?
+  If (!Grabable(who, item))
+    return 0;
+  EndIf
+
+  var result;
+  If (item.stackable)
+    If (!ReserveItem(item))
+      return 0;
+    EndIf
+    result := MoveStackingItemToContainer(item, dest);
+    // Immer gleich lösen, damit beim nächsten Item der ReserveCheck
+    // innerhalb des Stacktests auch klappt
+    ReleaseItem(item);
+    item := result;
+  Else
+    result := MoveItemToContainer(item, dest);
+  EndIf
+
+  If (result != error)
+    return item.amount;
+  EndIf
+
+  If (result.errortext in array{
+    "That container is full", "Container is too full to add that"
+  })
+    return result;
+  EndIf
+  If (result.errortext in array{"That item is being used."})
+    // kann vorkommen, ist aber unkritisch -- muss man nicht melden
+    return 0;
+  EndIf
+
+  If (result.errortext == "Invalid parameter type")
+    // haeuft sich in letzter Zeit, mal genauer gucken
+    syslog(
+      "FEHLER: "+result.errortext+" ("+CharInfoStr(who, COORDS_REALM)+", "+
+      ItemInfoStr(item)+", "+ItemInfoStr(dest)+")"
+    );
+    return 0;
+  EndIf
+
+  syslog("FEHLER: "+result.errortext);
+  return 0;
+EndFunction // }}}
+
+// vim: sts=2 sw=2

@@ -1,0 +1,118 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file manadrain.src
+//
+// implements spell 24 <Mana Drain> - "Manadieb"
+//
+// relocates mana from spelltarget to caster
+// [ Reflected / Resisted (Magic) ]
+
+include "../magicpergon";
+include "../resistance";
+include "../spellattack";
+
+Program Cast_Manadrain(params)
+  var caster;
+  var caston;
+  var power;
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  := params[3];
+    caston := params[4];
+    send_attack(caston, caster, 24);
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_COMMON_MANADRAIN);
+    caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  // lebt der Caster nach dem Zielen noch?
+  If (!caster)
+    return;
+  EndIf
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_DIR);
+
+  // get spelltarget -> spell reflection possible
+  var spelltarget := ReflectSpell(
+    caster, caston, power, 1, FX_GLOW, 5, 15, 0, SFX_SPELL_MANA_DRAIN
+  );
+  If (!spelltarget)
+    return;
+  EndIf
+
+  // load spelldata
+  var spells     := ReadConfigFile("::spells");
+  var spell      := FindConfigElem(spells, SPELLID_COMMON_MANADRAIN);
+
+  // calc amount of transfered mana according to spelltargets
+  // magic resistance and casting power
+  var dmg;
+  If (spell.resist)
+    dmg := CInt(MagicResistance(
+      spelltarget, spell.skill, spell.resist, power*spell.primary/100.0, 1
+    ));
+  Else
+    dmg := CInt(power*spell.primary/100.0);
+  EndIf
+  If (spell.primarymin and spell.primarymin > dmg)
+    dmg := spell.primarymin;
+  ElseIf (spell.primarymax and spell.primarymax < dmg)
+    dmg := spell.primarymax;
+  EndIf
+
+  If (dmg <= 0)
+    // no mana is transferred
+    If (caster)
+      SendSysMessagePergon(caster,
+        spelltarget.name+"s Wille ist zu stark",
+        spelltarget.name+"'s will is too strong"
+      );
+    EndIf
+    return;
+  EndIf
+
+  // limit damage to current spelltargets mana
+  dmg := CInt(Min(dmg, GetManaPergon(spelltarget)));
+  // decrease spelltargets mana
+  SetManaPergon(spelltarget, GetManaPergon(spelltarget) - dmg);
+
+  If (spelltarget == caster and spelltarget == caston)
+    // spelltarget is caster
+    // increase former targets mana
+    SetManaPergon(caston, GetManaPergon(caston) + dmg);
+    SendSysMessagePergon(spelltarget,
+      "Ihr habt Euch " + dmg + " Mana geraubt",
+      "You drained " + dmg + " Mana from yourself"
+    );
+  ElseIf (spelltarget == caster)
+  	SetManaPergon(caston, GetManaPergon(caston) + dmg);
+    SendSysMessagePergon(caston,
+      "Ihr habt " + dmg + " Mana erhalten",
+      "You drained " + dmg + " Mana"
+    );
+  Else
+    If (caster)
+      // increase casters mana
+      SetManaPergon(caster, GetManaPergon(caster) + dmg);
+      SendSysMessagePergon(caster,
+        "Ihr habt " + dmg + " Mana entzogen",
+        "You drained " + dmg + " Mana"
+      );
+    EndIf
+  EndIf
+EndProgram
+
+// vim: sw=2 sts=2

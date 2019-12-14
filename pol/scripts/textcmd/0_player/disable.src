@@ -1,0 +1,24 @@
+///////////////////////////////////////////////////////////////////////////
+// .disable [priv]        - disable a privilege
+
+use uo;
+use polsys;
+include "include/msgs";
+include "include/properties";
+
+Program TextCMD_Disable(who, priv)
+  If (!priv)
+    SendSysMessagePergon(who, "Ihr müsst ein Privileg angeben!");
+    return;
+  EndIf
+  priv := Lower(priv);
+
+  If (!IsValidPrivilege(priv))
+    SendSysMessagePergon(who, "Unbekanntes Privileg. Vertippt?");
+    return;
+  EndIf
+
+  who.disable(priv);
+  IncRevision(who);
+  SendSysMessagePergon(who, "Privileg '"+priv+"' ist deaktiviert.");
+EndProgram

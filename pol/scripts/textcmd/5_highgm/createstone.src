@@ -1,0 +1,32 @@
+use uo;
+
+Include "include/itemnpc";
+Include "include/msgs";
+Include "include/objtype";
+
+program textcmd_create_townstone(who)
+
+  Var townnames := GetGlobalProperty("townlist");
+  
+  if(!townnames or !len(townnames))
+  	townnames := { };
+  endif
+  
+  Var name := SendTextEntryGump( who, "Wie lautet der Stadtname?" , 50);
+  
+  if(!name)
+  	SendSysMessagePergon(who, "Abbruch", "Abort");
+  	return;
+  endif
+  
+  townnames.append(name);
+  
+  Var insertpoint := townnames.size();
+  
+  SetGlobalProperty("townlist", townnames);
+  
+  Var item := CreateItemAtLocationPergon(who.x,who.y,who.z, UOBJ_TOWNSTONE, 1,who.realm);
+  
+  SetObjProperty(item, "town", insertpoint);
+  SetObjProperty(item, "eleicao", 1);
+endprogram

@@ -1,0 +1,103 @@
+/////////////////////////////////////////////////////////////////////////
+// TextCMD Kill - Entfernt einen gewaehlten NPC
+//
+// Author: Shinigami
+
+use os;
+use uo;
+include "include/logutil";
+include "include/modifyskill";
+include "include/msgs";
+include "include/quests";
+include "include/server";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program TextCMD_Kill(who, param)
+  var params := SplitWords(param);
+
+  // Parameter gesetzt, aber falsch
+  If ((params[1]) and (!(params[1] in (array{"l", "t"}))))
+    SendSysMessagePergon(who,
+      "Parameter: .kill [l | t [<Anim-ID]]",
+      "Parameters: .kill [l | t [<Anim-ID]]"
+    );
+    return;
+  EndIf
+
+  If ((params.size() <= 2) or (!CInt(params[2])))
+    params.append(0x103f); // Tortenschlacht
+  EndIf
+
+  var mob := Target(who, TGTOPT_NOCHECK_LOS);
+  If (!mob or !mob.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (who.cmdlevel <= mob.cmdlevel and who.serial != mob.serial)
+    // nur, wenn eigener Cmdlevel hoeher oder Selbstmord
+    SendSysMessagePergon(who,
+      "Ihr könnt es nicht töten! Euch fehlen die nötigen Rechte.",
+      "You can't kill 'em. You have not enough rights."
+    );
+    return;
+  EndIf
+
+  If (mob.dead)
+    SendSysMessagePergon(who, "Das ist bereits tot!", "This is dead!");
+    return;
+  EndIf
+
+  If (who.cmdlevel == CMDLEVEL_QUESTCHAR)
+    // Ist der NPC gesondert markiert?
+    If (!GetObjProperty(mob, TYPQUESTCHAR))
+      SendSysMessagePergon(who,
+        "Dies ist kein QuestNPC!", "This is not a QuestNPC!"
+      );
+      return;
+    EndIf
+  EndIf
+
+  If (mob.isa(POLCLASS_NPC))
+    If (Lower(mob.npctemplate)["playervendor"])
+      If (SendTextEntryGump(who,
+          "Wollt ihr wirklich diesen Playerhaendler entfernen? "+
+          "('JA' um zu bestaetigen)", TE_CANCEL_ENABLE, TE_STYLE_NORMAL, 10
+        ) != "JA"
+      )
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+      EndIf
+    EndIf
+  Else
+    If (SendTextEntryGump(who,
+        "Wollt ihr den Spieler '"+mob.name+"' wirklich toeten? "+
+        "('JA' um zu bestaetigen)", TE_CANCEL_ENABLE, TE_STYLE_NORMAL, 10
+      ) != "JA"
+    )
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+  EndIf
+
+  // Logging
+  QuestCharLog(who, "TextCMD Kill: "+CharInfoStr(mob, COORDS_REALM));
+  syslog(CharInfoStr(who)+" hat "+CharInfoStr(mob, COORDS_REALM)+" gekillt");
+
+  If ((params[1]) and (who.cmdlevel >= CMDLEVEL_HIGHGM))
+    If (params[1] == "l")
+      PlayLightningBoltEffect(mob);
+      PlaySoundEffect(mob, SFX_SPELL_LIGHTNING);
+    ElseIf (param[1] == "t")
+      PlayMovingEffect(who, mob, CInt(params[2]), 5, 1);
+      PlaySoundEffect(mob, SFX_SPELL_UNLOCK);
+      PlaySoundEffect(who, SFX_SPELL_UNLOCK);
+      Sleep(CInt(Distance(who, mob)/2));
+    EndIf
+  EndIf
+  SetObjProperty(mob,  "guardkill", 1);
+  LogLastDamage(mob, "Kill [TextCMD Kill]", 1);
+  mob.kill();
+EndProgram

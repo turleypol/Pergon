@@ -1,0 +1,63 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD jewelprice - Listet die Summe alle Edelsteine im Backpack auf
+//
+//     Author: pJOTTR (thx to Shinigami`s reg.scr)
+//     eMail:
+//     date:   2003/20/05
+
+///////////////////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use uo;
+include "include/itemnpc";
+include "include/msgs";
+include "include/server";
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+var EDELSTEINE := {0x0F0F, 0x0F10, 0x0F11, 0x0F13, 0x0F15, 0x0F16, 0x0F18, 0x0F25, 0x0F30};
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_JewelPrice(who)
+  SendSysMessagePergon(who, "Wählt einen Container!");
+
+  var use_on := target(who);
+  If (!use_on)
+    SendSysMessagePergon(who, "Zielen abgebrochen");
+    return;
+  EndIf
+
+  If (!AccessiblePergon(who, use_on))
+    SendSysMessagePergon(who, "Ihr kommt da nicht ran!");
+    return;
+  EndIf
+
+  If (!use_on.isa(POLCLASS_CONTAINER))
+    SendSysMessagePergon(who, "Das ist kein zulässiger Container!");
+    return;
+  EndIf
+
+  var edelsteinsumme := 0;
+
+  ForEach item in EnumerateItemsInContainer(use_on) //Anzahl der Items ermitteln und innerhalb dieses Containers arbeiten
+    If (item.objtype in EDELSTEINE)
+      edelsteinsumme += (item.sellprice * item.amount);
+    EndIf
+    SleepMS(2);
+  EndForEach
+
+  If (edelsteinsumme)
+    SendSysMessagePergon(who, "Der Wert der Edelsteine in diesem Container beträgt " + edelsteinsumme + " Gold.");
+  Else
+    SendSysMessagePergon(who, "Es sind keine Edelsteine in diesem Container!");
+  EndIf
+EndProgram

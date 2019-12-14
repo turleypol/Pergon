@@ -1,0 +1,18 @@
+use uo;
+
+Include "include/msgs";
+
+Program TextCMD_Anzahlobjects(who)
+  SendSysMessagePergon(who, "Wählt bitte einen Behälter oder Spieler aus!");
+
+  Var object:=Target(who, TGTOPT_NOCHECK_LOS);
+  If (object.isa(POLCLASS_CONTAINER))
+    SendSysMessagePergon(who, "Dieser Behälter ("+Lower(Hex(object.objtype))+") enthält "+EnumerateItemsInContainer(object).size()+" Gegenstände.");
+  ElseIf (object.isa(POLCLASS_ITEM))
+    SendSysMessagePergon(who, "Dies ist genau ein Gegenstand.");
+  ElseIf (object.isa(POLCLASS_MOBILE) And (!object.isa(POLCLASS_NPC)))
+    SendSysMessagePergon(who, object.name+"'s Rucksack enthält "+EnumerateItemsInContainer(object.backpack).size()+" Gegenstände.");
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

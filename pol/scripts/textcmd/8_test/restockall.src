@@ -1,0 +1,40 @@
+use os;
+use storage;
+use uo;
+include "include/msgs";
+include "include/storage";
+
+Program TextCMD_RestockAll(who)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  Var storage:=FindStorageArea(STORAGE_MERCHANT);
+  If (storage)
+    Var number:=0;
+    Var subnumber:=0;
+
+    ForEach npc in ListObjectsInBox(0, 0, -128, 6143, 4095, 127)
+      If (npc.isa(POLCLASS_NPC))
+        If (npc.script<>"playermerchant")
+          Var haendlerstorage:=FindRootItemInStorageArea(storage, npc.serial+" FS");
+          If (haendlerstorage)
+            ForEach item in EnumerateItemsInContainer(haendlerstorage)
+              DestroyItem(item);
+            EndForEach
+
+            number:=number+1;
+            subnumber:=subnumber+1;
+            If (subnumber>=10)
+              subnumber:=0;
+              SendSysMessagePergon(who, number+" NPCs neu ausgerüstet");
+            EndIf
+          EndIf
+        EndIf
+      EndIf
+    EndForEach
+
+    SendSysMessagePergon(who, "Es wurden "+number+" NPCs neu ausgerüstet.");
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    SysLog("FEHLER: "+STORAGE_MERCHANT+" konnte nicht gefunden werden!");
+  EndIf
+EndProgram

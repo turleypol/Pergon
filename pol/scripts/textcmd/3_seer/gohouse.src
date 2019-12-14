@@ -1,0 +1,392 @@
+//////////////////////////////////////////////////////////////////////////
+// TextCMD GoHouse - Zu einem Spielerhaus teleportieren
+//
+// Author: Shinigami
+
+/////////////
+// Includes
+/////////////
+use os;
+use uo;
+
+include ":housing:house";
+
+///////////////
+// Konstanten
+///////////////
+
+Const HOEHE_HOUSES := 25; // Wieviel Zeilen passen in den Haus-Gump?
+Const BUTTON_HOUSE := 20; // Hausauswahl
+
+// Hausstatus
+Const HOUSE_OK            := 1;
+Const HOUSE_OWNER_DELETED := 0;
+Const HOUSE_NO_OWNER      := -1;
+
+// Hauptprogramm
+Program GoHouse(who) // {{{
+  var namesort := "name";
+  var page := 1;
+  var houseinfo := GetHouseInfo(who);
+  If (houseinfo.size() <= 0)
+    SendSysMessagePergon(who, "Es gibt keine Häuser von Spielern.");
+    return;
+  EndIf
+
+  var housedata := FillInHouseInfo(houseinfo, namesort);
+  While (who.connected)
+    // Haus auswaehlen
+    var nummer := SendDialogGump(
+      who, housedata[1][page], housedata[2][page], 0, 0
+    )[0];
+    If (!nummer)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      break;
+    EndIf
+
+    If (nummer == 2)  // Umsortieren
+      If (namesort == "name")
+        namesort := "acct"; // Sortieren nach Account
+      Else
+        namesort := "name"; // Sortieren nach Name
+      EndIf
+
+      ForEach list in (houseinfo)
+        list := SortArrayABC(list, 1, namesort);
+        SleepMS(2);
+      EndForEach
+      housedata := FillInHouseInfo(houseinfo, namesort);
+
+    Else
+      If (nummer >= BUTTON_HOUSE)  // Goto
+        var housearray := {};
+        ForEach list in (houseinfo)
+          housearray += list;
+        EndForEach
+        var house := housearray[nummer-BUTTON_HOUSE+1];
+        JumpLocationAdd(who);
+        MoveObjectToLocation(who,
+          house.x, house.y, house.z, house.realm, MOVEOBJECT_FORCELOCATION
+        );
+        Break;
+      Else  // Andere Page anzeigen
+        page := nummer-10;
+      EndIf
+    EndIf
+  EndWhile
+EndProgram // }}}
+
+// Haus-Daten ins Gump eintragen
+Function FillInHouseInfo(byref housearray, namesort) // {{{
+  // Gump-Layout
+  var layoutorig := {
+    // Seite 0 (Basisseite)
+    "page 0",
+    "nodispose",
+    "resizepic 5 25 5100 810 "+(85+HOEHE_HOUSES*20),
+    "button 10 10 5006 5007 1 1 11",   // Gilde
+    "htmlgump 10 10 88 20 0 0 0",
+    "button 98 10 5006 5007 1 0 12",   // Jhe'lom
+    "htmlgump 98 10 88 20 1 0 0",
+    "button 186 10 5006 5007 1 0 13",  // Cove
+    "htmlgump 186 10 88 20 2 0 0",
+    "button 274 10 5006 5007 1 0 14",  // Minoc
+    "htmlgump 274 10 88 20 3 0 0",
+    "button 362 10 5006 5007 1 0 15",  // Nirdana
+    "htmlgump 362 10 88 20 4 0 0",
+    "button 450 10 5006 5007 1 0 16",  // Vesper
+    "htmlgump 450 10 88 20 5 0 0",
+    "button 538 10 5006 5007 1 0 17",  // Yew
+    "htmlgump 538 10 88 20 6 0 0",
+    "button 626 10 5006 5007 1 0 18",  // Nujelm
+    "htmlgump 626 10 88 20 7 0 0",
+    "button 714 10 5006 5007 1 0 19",  // Stadtlos
+    "htmlgump 714 10 88 20 8 0 0",
+    "button 300 570 2640 2641 1 0 2",
+    "htmlgump 340 574 200 20 9 0 0",
+    "page 1"
+  };
+  // Gump-Data
+  // Sortierung muss zum Return bei GetHouseInfo passen!
+  var dataorig := {
+    "<center>Gilde/Stadt</center>",
+    "<center>Cove</center>",
+    "<center>Jhe'lom</center>",
+    "<center>Minoc</center>",
+    "<center>Nirdana</center>",
+    "<center>Nujelm</center>",
+    "<center>Vesper</center>",
+    "<center>Yew</center>",
+    "<center>Stadtlos</center>"
+  };
+
+  If (namesort == "name")
+    dataorig.append("Sortieren nach Account");
+  Else
+    dataorig.append("Sortieren nach Name");
+  EndIf
+
+  var housecount := 0;           // Zahl des einzutragenden Hauses
+  var pagecount := 1;            // Akt. Seitenzahl
+  var nextpageswap := 0;         // Wann erfolgt ein Seitenwechsel?
+  var msgbutton := BUTTON_HOUSE; // Nummer des Buttons
+  var pos_y;                     // Akt. Y-Koordinate
+
+  var layout, data;
+  // Array aus Arrays der einzelnen Listen
+  var retlayout := {}, retdata := {};
+
+  ForEach houseinfo in housearray // Alle Listen durchgehen
+    layout := layoutorig;
+    data := dataorig;
+    // Reiterkarte ist gedrückt und kein Button mehr
+    layout[4+(_houseinfo_iter-1)*2] :=
+      "gumppic "+(10+(_houseinfo_iter-1)*88)+" 10 5007";
+    ForEach house in houseinfo // Alle Haeuser eintragen
+      If (housecount == nextpageswap)  // Seitenwechsel-Buttons einfuegen?
+        If (housecount)
+          layout.append("page "+pagecount);
+        EndIf
+        layout.append("htmlgump 30 30 500 20 "+data.size()+" 0 0");
+
+        If (housecount>0)
+          layout.append("button 780 30 2650 2651 0 "+(pagecount-1));
+        EndIf
+        If (houseinfo.size()>housecount+HOEHE_HOUSES)
+          layout.append("button 760 30 2648 2647 0 "+(pagecount+1));
+          data.append(
+            "Haus auswählen ("+(housecount+1)+" bis "+
+            (housecount+HOEHE_HOUSES)+")"
+          );
+        Else
+          data.append(
+            "Haus auswählen ("+(housecount+1)+" bis "+houseinfo.size()+")"
+          );
+        EndIf
+
+        pagecount += 1;
+        nextpageswap += HOEHE_HOUSES;
+        pos_y := 60;
+      EndIf
+
+      // Goto-Button
+      If (house.is_on)
+        layout.append("button 30 "+(pos_y+4)+" 2361 2360 1 0 "+msgbutton);
+      Else
+        layout.append("button 30 "+(pos_y+4)+" 2362 2360 1 0 "+msgbutton);
+      EndIf
+
+      // Hausinformationen
+      layout.append("htmlgump 60 "+pos_y+" 300 20 "+data.size()+" 0 0");
+      data.append("<basefont color="+house.color+">"+house.name+"</basefont>");
+      If (house.acct)
+        layout.append("htmlgump 365 "+pos_y+" 140 20 "+data.size()+" 0 0");
+        data.append("<basefont color="+HTML_BLUE+">"+house.acct);
+      ElseIf (house.type)
+        layout.append("htmlgump 365 "+pos_y+" 140 20 "+data.size()+" 0 0");
+        data.append("<basefont color="+HTML_BLUE+">("+house.type+")");
+      EndIf
+      layout.append("htmlgump 505 "+pos_y+" 200 20 "+data.size()+" 0 0");
+      data.append("("+house.x+", "+house.y+", "+house.z+"; "+house.realm+")");
+
+      housecount += 1;
+      msgbutton += 1;
+      pos_y += 20;
+      SleepMS(2);
+    EndForEach
+    pagecount := 1;
+    nextpageswap := 0;
+    housecount := 0;
+    pos_y := 60;
+    retlayout.append(layout);
+    retdata.append(data);
+  EndForEach
+
+  return ({retlayout, retdata});
+EndFunction // }}}
+
+// Liefert die Informationen der Haeuser
+Function GetHouseInfo(who) // {{{
+  // FIXME: Konstanten waeren schoener
+  var houses := dictionary{
+    "guild/town" -> array{},
+
+    "cove"       -> array{},
+    "jhelom"     -> array{},
+    "minoc"      -> array{},
+    "nirdana"    -> array{},
+    "nujelm"     -> array{},
+    "vesper"     -> array{},
+    "yew"        -> array{},
+
+    "nocity"     -> array{}
+  };
+
+  ForEach houseserial in GetGlobalProperty("#houselist")
+    SleepMS(2);
+    var house := SystemFindObjectBySerial(houseserial);
+    If (!house)
+      continue;
+    EndIf
+
+    // Nur wirkliche Haeuser anzeigen ...
+    If (house.objtype in array{0x6133, 0x6172})
+      // Bauplatz-Abdeckung zaehlt nicht
+      continue;
+    EndIf
+
+    AddHouseData(houses, house);
+  EndForEach
+
+  // Seer duerfen keine Accountnamen sehen (angelehnt an .info)
+  If (who.cmdlevel <= CMDLEVEL_SEER)
+    ForEach key in (houses.keys())
+      ForEach house in (houses[key])
+        SleepMs(2);
+        house.acc := "*zensiert*";
+      EndForEach
+    EndForEach
+  EndIf
+
+  ForEach key in (houses.keys())
+    SleepMs(2);
+    houses[key] := SortArrayABC(houses[key], 1, "name");
+  EndForEach
+
+  return ({
+    houses["guild/town"],
+
+    houses["cove"],
+    houses["jhelom"],
+    houses["minoc"],
+    houses["nirdana"],
+    houses["nujelm"],
+    houses["vesper"],
+    houses["yew"],
+
+    houses["nocity"]
+  });
+EndFunction // }}}
+
+// Daten fuer einzelnes Haus ermitteln und eintragen
+Function AddHouseData(byref houses, house) // {{{
+  Const COLOR_HOUSEDEFAULT := HTML_DARKBLUE;
+  var data := struct{
+    acct   := "",
+    color  := COLOR_HOUSEDEFAULT,
+    status := HOUSE_OK,
+    // fuer den Fall, dass man mal komplett auf Structs umstellen will
+    x      := house.x,
+    y      := house.y,
+    z      := house.z,
+    realm  := house.realm,
+    // Owner online?
+    is_on  := 0
+  };
+
+  // Daten zum Besitzer eintragen {{{
+  var ownerserial := GetObjProperty(house, PROP_HS_C_OWNER);
+  If (ownerserial)
+    var owner := SystemFindObjectBySerial(
+      ownerserial, SYSFIND_SEARCH_OFFLINE_MOBILES
+    );
+    If (owner)
+      var name := GetRealName(owner);
+      name := name[1, Find(name," aus ",1)-1];
+      data.+owner := name;
+      data.acct   := "["+owner.acctname+"]";
+      If (owner.connected)
+        data.is_on := 1;
+      EndIf
+    Else
+      data.owner  := "geloeschter Besitzer";
+      data.color  := HTML_RED;
+      data.status := HOUSE_OWNER_DELETED;
+    EndIf
+  Else
+    data.owner  := "fehlender Besitzer";
+    data.color  := HTML_RED;
+    data.status := HOUSE_NO_OWNER;
+  EndIf
+  // }}}
+
+  // Daten zum Haus ergaenzen/Aenderungen vornehmen
+  If (house.isa(POLCLASS_HOUSE))
+    // Multis haben ihn ebenfalls am Schild, daher Schild suchen
+    data.+name := "unbenannt";
+    var sign := GetMultiHouseSign(house);
+    If (sign.name)
+      data.name := sign.name;
+    EndIf
+
+  ElseIf (house.name)
+    // statische Haeuser haben Namen direkt am Schild
+    data.+name := house.name;
+  Else
+    data.+name := "unbenannt";
+  EndIf
+
+  If (house.isa(POLCLASS_HOUSE))
+    // Multihaus
+    data.name := data.owner+" ("+data.name+")";
+
+  ElseIf (house.objtype in {0x7062, 0x7063, 0x7064, 0x7065, 0x7069, 0x706a})
+    // Haus, Zimmer oder Gehege/Acker
+    data.name := data.owner+" ("+data.name+")";
+    If (data.color == COLOR_HOUSEDEFAULT)
+      data.color := HTML_YELLOW;
+    EndIf
+
+  ElseIf (house.objtype in {0x7060, 0x7061})
+    // Gildenhaus
+    data.+type := "Gildenhaus";
+
+  ElseIf (house.objtype in {0x7066, 0x7067})
+    // Rathaus
+    data.+type := "Rathaus";
+  EndIf
+
+  var loc := FindLocation(house);
+  houses[loc].append(data);
+EndFunction // }}}
+
+// herausfinden, wo man das Haus eintragen muss
+Function FindLocation(house) // {{{
+  var place := PlaceName(house);
+
+  // Sonderfaelle Gildenhaus/Rathaus
+  If (!house.isa(POLCLASS_HOUSE))
+    If (house.objtype in ({0x7060, 0x7061}+{0x7066, 0x7067}))
+      // Gildenhaus
+      return "guild/town";
+    EndIf
+  EndIf
+
+  // Vorsicht, Reihenfolge ist wichtig wegen Regionen wie
+  // "Zwischen Cove und Vesper"
+  If (place["Cove"])
+    return "cove";
+
+  ElseIf (place["Vesper"])
+    return "vesper";
+
+  ElseIf (place["Minoc"])
+    return "minoc";
+
+  ElseIf (place["Yew"])
+    return "yew";
+
+  ElseIf (place["Nirdana"])
+    return "nirdana";
+
+  ElseIf (place["Nujelm"])
+    return "nujelm";
+
+  ElseIf (place["Jhe'lom"])
+    return "jhelom";
+  EndIf
+
+  return "nocity";
+EndFunction // }}}
+
+// vim: sw=2 sts=2

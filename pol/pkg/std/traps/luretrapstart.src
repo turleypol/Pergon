@@ -1,0 +1,83 @@
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Author: 	Peter -pJOTTR- Straube
+//
+//Date:		2004-03-04
+//
+// aus dem File parking.src gekupfert
+//
+// Script, um seine gezaehmten Tiere am Pflock anzubinden und stehen zu lassen, und andere Tiere anzulocken/koedern
+//
+//
+//
+// 15.11.2001 - Fraggulus - Erstentwurf
+// 05.01.2002 - Fraggulus - Standzeit wird dem Tier am Ende gutgeschrieben, bisher war das nicht der Fall
+// 2002/05/06 Shinigami: Temporaere Props in dauerhafte umgewandelt (war ein boeser Bug)
+// 30.10.2003 Phygon:    Funktionen zum Ab-/Abbinden in include/animal ausgelagert
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// auch schauen, was beim doppelklick aufs viech passiert (geht das überhaupt, welches script loift dort?)
+
+use os;
+use uo;
+//Include "include/animal";
+include "include/modifyskill";
+
+Program luretrapstart(who, pflock)
+
+	If (GetObjProperty(pflock, "lure"))                      //wenn schon nen Koeder an der Falle haengt
+	  SendSysMessagePergon(who, "Die Falle ist schon scharf!", "The trap ist ready to lure.");
+	  Return;
+	EndIf
+
+
+	SendSysMessagePergon(who, "Wählt ein Tier aus, welches Ihr zum Ködern nehmen wollt!", "Select an animal for using as a lure!");
+
+	Var tier:=Target(who, TGTOPT_CHECK_LOS);
+	If (!tier)
+	  SendSysMessagePergon(who, "Abbruch", "Abort");
+	  Return;
+	EndIf
+
+	If (!(tier.isa(POLCLASS_NPC) And (tier.script in {"enticedanimal", "tamed"})))
+	  SendSysMessagePergon(who, "Damit könnt Ihr nichts anfangen.", "You can`t do anything with this.");
+	  Return;
+	EndIf
+
+	If (GetObjProperty(tier, "master")<>who.serial)
+	  SendSysMessagePergon(who, "Das ist nicht Euer Tier!", "That`s not your animal!");
+	  Return;
+	EndIf
+
+	If (Distance(tier, pflock)>2)
+	  SendSysMessagePergon(who, "Das ist zum Anbinden zu weit weg!", "That is too far away for tying up!");
+	  Return;
+	EndIf
+
+	// Ab hier eigentliches Parken
+	If (!GetObjProperty(tier, "parking")) // Tier wird angebunden und ruhig gestellt
+	  ParkAnimal(tier, pflock);
+	  SendSysMessagePergon(who, "Der Köder ist gelegt, mal sehen ob was anbeißt.", "The lure is waiting as a dinner.");
+	Else 	// Tier wird wieder in alten Zustand versetzt
+		// pJOTTR: das Tier braucht nicht wieder losgebunden zu werden, da es eh vom angelocktem Tier "verspeisst" wird
+//		UnparkAnimal(tier);
+// 		SendSysMessagePergon(who, "Euer Tier steht Euch nun wieder zur Verfügung.", "The animnal is at your disposal again.");
+	EndIf
+EndProgram
+
+Function ParkAnimal(tier, pflock)
+	 If (GetObjProperty(tier, "RoamsFreeAt"))
+	   SetObjProperty(tier, "parking", GetObjProperty(tier, "RoamsFreeAt")); // Akt. RoamFree-Zeit merken
+	 Else
+	   SetObjProperty(tier, "parking", ReadGameClock()+60);
+	 EndIf
+
+	 // Auf eine hohe Zahl setzen, damit Vieh waehrend der Park-Phase nicht abhauen kann.
+	 // Allerdings nicht ganz Max, da sonst beim fuettern waehrend des Parkens MaxInt ueberlaeuft und das Vieh abhaut.
+	 SetObjProperty(tier, "RoamsFreeAt", 0x6fffffff);
+	 SetObjProperty(tier, "creatingtrap", pflock.serial);
+	 SetObjProperty(pflock, "lure", tier.serial);
+
+	 tier.frozen:=1;
+	 IncRevision(tier);
+EndFunction

@@ -1,0 +1,179 @@
+////////////////////////////////////////////////////////////////////////
+//
+//   NPCVernichter Script v1.0 (2000/12/29)
+//
+//     based on Meek Script (1998/April)
+//       Author: ENS
+//
+//     Author: Shinigami
+//
+//   Modification
+//     2006/08/23 Shinigami: versteckte Viecher in der Naehe enttarnen
+//
+////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use npc;
+use uo;
+include "include/animal";
+include "include/client";
+include "include/eventid";
+include "include/modifyskill";
+include "include/names";
+include "include/npc";
+include "include/place";
+
+///////////////
+// Konstanten
+///////////////
+
+Const MOVING_EFFECT_FIREBALL:=0x36d4;
+Const SCANRANGE:=20;
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+Var me:=Self();
+Var killlist:={ };
+
+////////////////////////////////////
+// NPCVernichter - Initialisierung
+////////////////////////////////////
+
+Program NPCVernichter()
+  If (GetObjProperty(me, "frozen"))
+    me.frozen:=1;
+    IncRevision(me);
+  EndIf
+
+  If (me.name["<random>"])
+    SetName(me, RandomName(me));
+  EndIf
+
+  Stats_korrigieren(me); // Ggf. MegaMonster erzeugen
+  SetWarMode(0);
+
+  NPCVernichter_MainLoop(); // Hauptschleife aufrufen
+EndProgram
+
+///////////////////////////////////////////
+// NPCVernichter_MainLoop - Hauptschleife
+///////////////////////////////////////////
+
+Function NPCVernichter_MainLoop()
+  EnableEvents(SYSEVENT_ENGAGED+SYSEVENT_DAMAGED+SYSEVENT_OPPONENT_MOVED);
+  EnableEvents(SYSEVENT_ENTEREDAREA, SCANRANGE);
+
+  Var next_wander:=ReadGameClock()+10;
+  Var ev;
+  While (1)
+    ev:=Wait_for_EventLogging(5);
+    If (ev)
+      Case (ev.type)
+        SYSEVENT_ENGAGED:
+        SYSEVENT_DAMAGED: If ((ev.source).isa(POLCLASS_NPC))
+                            KillListe_erweitern(ev.source, -10);
+                          EndIf
+
+        SYSEVENT_ENTEREDAREA: If (CheckLineOfSight(me, ev.source))
+                                KillListe_erweitern(ev.source);
+                              EndIf
+      EndCase
+    EndIf
+
+    KillListe_abarbeiten();
+
+    ForEach critter in ListMobilesNearLocationEx(me.x, me.y, me.z, 20, LISTEX_FLAG_HIDDEN, me.realm)
+      critter.hidden:=0;
+    EndForEach
+
+    ForEach critter in ListMobilesInLineOfSight(me, SCANRANGE)
+      KillListe_erweitern(critter);
+    EndForEach
+
+    If (next_wander<=ReadGameClock())
+      next_wander:=ReadGameClock()+10;
+      WanderPergon();
+    EndIf
+  EndWhile
+EndFunction
+
+/////////////////////////////////////////////////////////////
+// KillListe_erweitern - Neues potentielles Opfer einfuegen
+/////////////////////////////////////////////////////////////
+
+Function KillListe_erweitern(opponent, diff:=0)
+  If (opponent.isa(POLCLASS_NPC))
+    Var new:=1;
+
+    ForEach npc in killlist
+      If (npc[1]==opponent.serial)
+        new:=0;
+        Break;
+      EndIf
+      SleepMS(2);
+    EndForEach
+
+    If (new)
+      If (not opponent.master)
+        killlist.append({opponent.serial, ReadGameClock()+diff});
+      EndIf
+    EndIf
+  EndIf
+EndFunction
+
+/////////////////////////////////////////////////////////////////
+// KillListe_abarbeiten - Alle Viechers nach 10 Sekunden toeten
+/////////////////////////////////////////////////////////////////
+
+Function KillListe_abarbeiten()
+  If (killlist.size())
+    Var newkilllist:={ };
+    Var opponent;
+
+    ForEach npc in killlist
+      opponent:=SystemFindObjectBySerial(npc[1]);
+      If (opponent)
+        If (npc[2]+10<=ReadGameClock())
+          If (CheckLineOfSight(me, opponent))
+            KillAnNPC(opponent);
+          EndIf
+        EndIf
+
+        If (npc[2]+60>ReadGameClock())
+          newkilllist.append(npc);
+        EndIf
+      EndIf
+      SleepMS(2);
+    EndForEach
+
+    killlist:=newkilllist;
+  EndIf
+EndFunction
+
+///////////////////////////////
+// KillAnNPC - Toetet einen NPC
+///////////////////////////////
+Function KillAnNPC(opponent)
+  If (opponent.master)
+    Return;
+  EndIf
+  TurnToward(opponent);
+  SetOpponent(opponent);
+
+  RevokePrivilege(opponent, "invul");
+  SetObjProperty(opponent, "guardkill", 1);
+
+  PlayMovingEffect(me, opponent, MOVING_EFFECT_FIREBALL, 10, 1, 1);
+  PlaySoundEffect(me, SFX_SPELL_FLAME_STRIKE);
+  // FIXME: sollte von Distanz abhaengen
+  SleepMs(250);
+
+  KillMobile(opponent, "vernichter");
+
+  SetWarMode(0);
+  Sleep(1);
+EndFunction

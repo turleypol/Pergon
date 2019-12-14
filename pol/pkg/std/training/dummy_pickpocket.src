@@ -1,0 +1,57 @@
+// dummy_pickpocket.src
+//
+// NOTE: No animation of the player
+//
+// HISTORY	Author: the Writer 05/01/99
+//
+// 19.02.2003 Fraggulus Skillcheck auf 15%
+//
+
+use os;
+use attributes;
+use uo;
+
+include "include/client";
+include "include/modifyskill";
+
+Const UOBJECT_DUMMYSWING_EW := 0x1ec1;
+Const UOBJECT_DUMMYFREEZE_EW := 0x1ec0;
+Const UOBJECT_DUMMYSWING_NS := 0x1ec4;
+Const UOBJECT_DUMMYFREEZE_NS := 0x1ec3;
+
+program pickpocket_dummy( who , dummy )
+
+	// don't work correctly, use for the future
+	if (!AccessiblePergon(who, dummy))
+		SendSysMessagePergon(who, "Ihr kommt da nicht ran!");
+		return;
+	endif
+
+	if (!CheckLineOfSight( who, dummy ))
+		SendSysMessagePergon( who, "Das steht nicht in Eurer Sichtline.");
+		return;
+	endif
+
+	if (CheckSkillPergon(who, SKILLID_STEHLEN, 15, 40))
+		PlaySoundEffect(who, SFX_58);
+		SendSysMessagePergon(who, "Ihr greift unauff‰llig in die Tasche.");
+		sleepms(3600);
+	else
+		//set_critical/(1);
+
+		PlaySoundEffect(who , SFX_41);
+		SendSysMessagePergon(who, "Ihr greift ‰uﬂerst ungeschickt in die Tasche.");
+
+		if ( dummy.objtype == UOBJECT_DUMMYFREEZE_NS )
+			dummy.graphic := UOBJECT_DUMMYSWING_NS; // dummy swing
+			sleepms(3600); // show animation for (x) ms
+			dummy.graphic := UOBJECT_DUMMYFREEZE_NS; // dummy freeze
+		elseif (dummy.objtype == UOBJECT_DUMMYFREEZE_EW)
+			dummy.graphic := UOBJECT_DUMMYSWING_EW; // dummy swing
+			sleepms(3600); // show animation for (x) ms
+			dummy.graphic := UOBJECT_DUMMYFREEZE_EW; // dummy freeze
+		endif
+
+		//set_critical/(0);
+	endif
+endprogram

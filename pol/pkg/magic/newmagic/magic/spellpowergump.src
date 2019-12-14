@@ -1,0 +1,462 @@
+//////////////////////////////////////////////////////////////////////////////
+//
+//   spellpowergump - Gumpanzeige über Balken der Spellpower
+//                    (Allgemeinmagie+Subklassen)
+//
+//
+//     Author: Turley
+//
+//
+//   Modification:
+//     25.09.07 Turley - Init
+//
+//////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+
+Include ":newspells:magicpergon";
+
+Var layoutorig:={"nodispose",
+                 "nomove",
+                 "",  //Hintergrund
+                 "",  // Transparenz
+                 "",  // Übereinander/Nebeneinander Button
+                 "",  // Posändern Button
+                 "",  // Html Allgemeinmagie
+                 "",  // Balken
+                 "htmlgump 10 20 130 20 1 0 0",
+                 "htmlgump 10 35 130 20 2 0 0",
+                 "htmlgump 10 50 130 20 3 0 0",
+                 "htmlgump 10 65 130 20 4 0 0",
+                 "gumppic 102 25 2054",
+                 "gumppic 102 40 2054",
+                 "gumppic 102 55 2054",
+                 "gumppic 102 70 2054"
+                };
+Var dataorig:={"",
+               "","","","",
+               "","","","",
+               "","","",""};
+               
+Var layoutsmall:={"nodispose",
+                  "nomove",
+                  "", // Hintergrund
+                  "", // Transparenz
+                  "gumppic 2 2 2054",
+                  "",
+                  "gumppic 2 22 2054",
+                  "gumppic 2 37 2054",
+                  "gumppic 2 52 2054",
+                  "gumppic 2 67 2054"};
+
+Const BARLENGTH:=109.0;  // Wie lang ist der Anzeigebalken
+Const MAXPOWER:=300.0;   // Maxwert
+Const NORMIERUNG:=BARLENGTH/MAXPOWER;
+
+Program spellpowergump(params)
+  Var who:=params[1];
+  Var skills:=params[2];
+  Var gump;
+  Var layout,data;
+
+  If ((!who.getprop("spellpowergump")) || (who.getprop("spellpowergump").size()<>5))
+    who.setprop("spellpowergump",{0,50,50,0,0});
+  EndIf
+  gump:=who.getprop("spellpowergump");
+
+  While (who.connected)
+    If (gump[5])
+      ShowSmall(who,skills,gump,layout,data);
+    Else
+      ShowBig(who,skills,gump,layout,data);
+    EndIf
+    
+    Var ret:=SendDialogGump(who,layout,data,gump[2],gump[3]);
+    If (ret[99])  // Script soll sich beenden
+      Return;
+    EndIf
+    If (ret[1000])  // Nebeneinander/Untereinander umschalten
+      If (gump[1])
+        gump[1]:=0;
+        who.setprop("spellpowergump",gump);
+      Else
+        gump[1]:=1;
+        who.setprop("spellpowergump",gump);
+      EndIf
+    ElseIf (ret[2000])  // Posändern
+      Var layoutpos:={"nodispose",
+                      "page 0",
+                      "resizepic 0 0 5054 210 150",
+                      "htmlgump 60 40 100 20 0 0 0",
+                      "htmlgump 60 60 100 20 1 0 0",
+                      "textentry 130 40 50 20 0 10 2",
+                      "textentry 130 60 50 20 0 11 3",
+                      "htmlgump 60 85 80 20 4 0 0",
+                      "htmlgump 140 85 50 20 5 0 0",
+                      "button 180 84 2710 2711 1 0 2",
+                      "button 80 120 247 248 1 0 1"};
+
+      Var datapos:={"X-Position:","Y-Position:",gump[2],gump[3],"Transparenz:"};
+     
+      Case (gump[4])
+        2: datapos.append("total");
+        1: datapos.append("ja");
+        0: datapos.append("nein");
+      EndCase
+      Var retpos:=SendDialogGump(who,layoutpos,datapos,gump[2],gump[3]);
+      If (retpos[99])  // Script soll sich beenden
+        Return;
+      EndIf
+      If (retpos[2])  // Transparenz umschalten
+        gump[4]+=1;
+        If (gump[4]>2)
+          gump[4]:=0;
+        EndIf
+        who.setprop("spellpowergump",gump);
+      ElseIf (retpos[1])  // Koords speichern
+        Var temp:=retpos[10];
+        temp["10: "]:="";
+        If (CInt(temp))
+          gump[2]:=CInt(temp);
+        EndIf
+        temp:=retpos[11];
+        temp["11: "]:="";
+        If (CInt(temp))
+          gump[3]:=CInt(temp);
+        EndIf
+        who.setprop("spellpowergump",gump);
+      EndIf
+    ElseIf (ret[3000]) // Verkleinern/Vergrößern
+      If (gump[5])
+        gump[5]:=0;
+      Else
+        gump[5]:=1;
+      EndIf
+      who.setprop("spellpowergump",gump);
+    Else
+      If (gump[5])  // Kleines Gump wurde geschlossen also großes anzeigen
+        gump[5]:=0;
+        who.setprop("spellpowergump",gump);
+      Else
+        Break;
+      EndIf
+    EndIf
+  EndWhile
+
+  If (who.getprop("#spellpowergump"))  // Gump wurde geschlossen also Hauptscript beenden
+    var pid:=who.getprop("#spellpowergump");
+    who.eraseprop("#spellpowergump");
+    var script:=GetProcess(pid);
+    script.kill();
+  EndIf
+EndProgram
+
+
+Function ShowBig(who,skills,gump,byref layout, byref data)
+  Var x,y;
+  Var color;
+  
+  layout:=layoutorig;
+  data:=dataorig;
+  Case (gump[4])
+    2:  color:="#A0A0A0";
+    1:  color:="#A0A0A0";
+    0:  color:="#101010";
+  EndCase
+  data[1]:="<basefont color="+color+" size=5>Allgemeinmagie:";
+
+  Case (gump[1])
+    1:       x:=220;  // Nebeneinander
+             y:=20;
+             If (gump[4]==2)  // Totaltransparenz
+               layout[3]:="";
+             Else
+               layout[3]:="resizepic 0 0 5054 430 90";
+             EndIf
+             layout[5]:="button 408 2 2652 2652 1 0 1000";
+             layout[6]:="button 396 58 2653 2653 1 0 2000";
+             layout[7]:="htmlgump 110 2 130 20 0 0 0";
+             layout[8]:="gumppic 230 7 2054";
+             If (gump[4]==1)  // Transparenz
+               layout[4]:="checkertrans 4 4 422 82";
+             Else
+               layout[4]:="";
+             EndIf
+             layout.append("gumppictiled 230 7 "+CInt(skills[1]*NORMIERUNG)+" 11 2057");  // Allgemein
+             If (who.cmdlevel>=CMDLEVEL_GL)  // GL bekommt Zahlen
+               layout.append("htmlgump 235 3 "+BARLENGTH+" 20 "+data.size()+" 0 0");
+               data.append("<basefont color=#FFFFFF>"+skills[1]);
+             EndIf
+             layout.append("button 4 2 2710 2711 1 0 3000");  // Verkleiner Button
+
+    0:
+    default: x:=10;  // Untereinander
+             y:=90;
+             If (gump[4]==2)  // Totaltransparenz
+               layout[3]:="";
+             Else
+               layout[3]:="resizepic 0 0 5054 254 160";
+             EndIf
+             layout[5]:="button 230 4 2652 2652 1 0 1000";
+             layout[6]:="button 220 128 2653 2653 1 0 2000";
+             layout[7]:="htmlgump 10 2 130 20 0 0 0";
+             layout[8]:="gumppic 120 7 2054";
+             If (gump[4]==1)  // Transparenz
+               layout[4]:="checkertrans 4 4 246 152";
+             Else
+               layout[4]:="";
+             EndIf
+             layout.append("gumppictiled 120 7 "+CInt(skills[1]*NORMIERUNG)+" 11 2057");  // Allgemein
+             If (who.cmdlevel>=CMDLEVEL_GL)  // GL bekommt Zahlen
+               layout.append("htmlgump 125 3 "+BARLENGTH+" 20 "+data.size()+" 0 0");
+               data.append("<basefont color=#FFFFFF>"+skills[1]);
+             EndIf
+             layout.append("button 230 30 2710 2711 1 0 3000");  // Verkleiner Button
+  EndCase
+
+  If (skills[2])
+    Case (skills[2][1])
+      SKILLID_SEGNEN:  data[2]:="<basefont color="+color+" size=5>Segen:";
+                       data[3]:="<basefont color="+color+" size=5>Heilung:";
+                       data[4]:="<basefont color="+color+" size=5>Vergeltung:";
+                       data[5]:="<basefont color="+color+" size=5>Antimagie:";
+      SKILLID_MAGIE:   data[2]:="<basefont color="+color+" size=5>Feuer:";
+                       data[3]:="<basefont color="+color+" size=5>Wasser:";
+                       data[4]:="<basefont color="+color+" size=5>Erde:";
+                       data[5]:="<basefont color="+color+" size=5>Luft:";
+      SKILLID_FLUCHEN: data[2]:="<basefont color="+color+" size=5>Gift:";
+                       data[3]:="<basefont color="+color+" size=5>Fluchen:";
+                       data[4]:="<basefont color="+color+" size=5>Beschwoerung:";
+                       data[5]:="<basefont color="+color+" size=5>Tod:";
+    EndCase
+    layout.append("gumppictiled 102 25 "+CInt(skills[2][2]*NORMIERUNG)+" 11 2053");
+    layout.append("gumppictiled 102 40 "+CInt(skills[2][3]*NORMIERUNG)+" 11 2053");
+    layout.append("gumppictiled 102 55 "+CInt(skills[2][4]*NORMIERUNG)+" 11 2053");
+    layout.append("gumppictiled 102 70 "+CInt(skills[2][5]*NORMIERUNG)+" 11 2053");
+    If (who.cmdlevel>=CMDLEVEL_GL)  // GL bekommt Zahlen
+      layout.append("htmlgump 108 21 "+BARLENGTH+" 20 "+data.size()+" 0 0");
+      data.append("<basefont color=#FFFFFF>"+skills[2][2]);
+      layout.append("htmlgump 108 36 "+BARLENGTH+" 20 "+data.size()+" 0 0");
+      data.append("<basefont color=#FFFFFF>"+skills[2][3]);
+      layout.append("htmlgump 108 51 "+BARLENGTH+" 20 "+data.size()+" 0 0");
+      data.append("<basefont color=#FFFFFF>"+skills[2][4]);
+      layout.append("htmlgump 108 66 "+BARLENGTH+" 20 "+data.size()+" 0 0");
+      data.append("<basefont color=#FFFFFF>"+skills[2][5]);
+    EndIf
+  EndIf
+  If (skills[3])
+    layout+={"htmlgump "+x+" "+(y)+" 130 20 5 0 0",
+             "htmlgump "+x+" "+(y+15)+" 130 20 6 0 0",
+             "htmlgump "+x+" "+(y+30)+" 130 20 7 0 0",
+             "htmlgump "+x+" "+(y+45)+" 130 20 8 0 0",
+             "gumppic "+(x+92)+" "+(y+5)+" 2054",
+             "gumppic "+(x+92)+" "+(y+20)+" 2054",
+             "gumppic "+(x+92)+" "+(y+35)+" 2054",
+             "gumppic "+(x+92)+" "+(y+50)+" 2054"};
+    layout.append("gumppictiled "+(x+92)+" "+(y+5)+" "+CInt(skills[3][2]*NORMIERUNG)+" 11 2053");
+    layout.append("gumppictiled "+(x+92)+" "+(y+20)+" "+CInt(skills[3][3]*NORMIERUNG)+" 11 2053");
+    layout.append("gumppictiled "+(x+92)+" "+(y+35)+" "+CInt(skills[3][4]*NORMIERUNG)+" 11 2053");
+    layout.append("gumppictiled "+(x+92)+" "+(y+50)+" "+CInt(skills[3][5]*NORMIERUNG)+" 11 2053");
+    If (who.cmdlevel>=CMDLEVEL_GL)  // GL bekommt Zahlen
+      layout.append("htmlgump "+(x+97)+" "+(y+1)+" "+BARLENGTH+" 20 "+data.size()+" 0 0");
+      data.append("<basefont color=#FFFFFF>"+skills[3][2]);
+      layout.append("htmlgump "+(x+97)+" "+(y+16)+" "+BARLENGTH+" 20 "+data.size()+" 0 0");
+      data.append("<basefont color=#FFFFFF>"+skills[3][3]);
+      layout.append("htmlgump "+(x+97)+" "+(y+31)+" "+BARLENGTH+" 20 "+data.size()+" 0 0");
+      data.append("<basefont color=#FFFFFF>"+skills[3][4]);
+      layout.append("htmlgump "+(x+97)+" "+(y+46)+" "+BARLENGTH+" 20 "+data.size()+" 0 0");
+      data.append("<basefont color=#FFFFFF>"+skills[3][5]);
+    EndIf
+    Case (skills[3][1])
+      SKILLID_SEGNEN:  data[6]:="<basefont color="+color+" size=5>Segen:";
+                       data[7]:="<basefont color="+color+" size=5>Heilung:";
+                       data[8]:="<basefont color="+color+" size=5>Vergeltung:";
+                       data[9]:="<basefont color="+color+" size=5>Antimagie:";
+      SKILLID_MAGIE:   data[6]:="<basefont color="+color+" size=5>Feuer:";
+                       data[7]:="<basefont color="+color+" size=5>Wasser:";
+                       data[8]:="<basefont color="+color+" size=5>Erde:";
+                       data[9]:="<basefont color="+color+" size=5>Luft:";
+      SKILLID_FLUCHEN: data[6]:="<basefont color="+color+" size=5>Gift:";
+                       data[7]:="<basefont color="+color+" size=5>Fluchen:";
+                       data[8]:="<basefont color="+color+" size=5>Beschwoerung:";
+                       data[9]:="<basefont color="+color+" size=5>Tod:";
+    EndCase
+  EndIf
+  If ((skills[4]) && (who.cmdlevel>CMDLEVEL_GM))
+    If (gump[1])
+      x:=430;
+      y:=20;
+      If (gump[4]==2)  // Totaltransparenz
+        layout[3]:="";
+      Else
+        layout[3]:="resizepic 0 0 5054 640 90";
+      EndIf
+      layout[5]:="button 618 2 2652 2652 1 0 1000";
+      layout[6]:="button 606 58 2653 2653 1 0 2000";
+      If (gump[4]==1)  // Transparenz
+        layout[4]:="checkertrans 4 4 632 82";
+      Else
+        layout[4]:="";
+      EndIf
+    Else
+      x:=10;
+      y:=160;
+      If (gump[4]==2)  // Totaltransparenz
+        layout[3]:="";
+      Else
+        layout[3]:="resizepic 0 0 5054 254 225";
+      EndIf
+      layout[5]:="button 230 4 2652 2652 1 0 1000";
+      layout[6]:="button 220 193 2653 2653 1 0 2000";
+      If (gump[4]==1)  // Transparenz
+        layout[4]:="checkertrans 4 4 246 217";
+      Else
+        layout[4]:="";
+      EndIf
+    EndIf
+    layout+={"htmlgump "+x+" "+(y)+" 130 20 9 0 0",
+             "htmlgump "+x+" "+(y+15)+" 130 20 10 0 0",
+             "htmlgump "+x+" "+(y+30)+" 130 20 11 0 0",
+             "htmlgump "+x+" "+(y+45)+" 130 20 12 0 0",
+             "gumppic "+(x+92)+" "+(y+5)+" 2054",
+             "gumppic "+(x+92)+" "+(y+20)+" 2054",
+             "gumppic "+(x+92)+" "+(y+35)+" 2054",
+             "gumppic "+(x+92)+" "+(y+50)+" 2054"};
+    layout.append("gumppictiled "+(x+92)+" "+(y+5)+" "+CInt(skills[4][2]*NORMIERUNG)+" 11 2053");
+    layout.append("gumppictiled "+(x+92)+" "+(y+20)+" "+CInt(skills[4][3]*NORMIERUNG)+" 11 2053");
+    layout.append("gumppictiled "+(x+92)+" "+(y+35)+" "+CInt(skills[4][4]*NORMIERUNG)+" 11 2053");
+    layout.append("gumppictiled "+(x+92)+" "+(y+50)+" "+CInt(skills[4][5]*NORMIERUNG)+" 11 2053");
+    If (who.cmdlevel>=CMDLEVEL_GL)  // GL bekommt Zahlen
+      layout.append("htmlgump "+(x+97)+" "+(y+1)+" "+BARLENGTH+" 20 "+data.size()+" 0 0");
+      data.append("<basefont color=#FFFFFF>"+skills[4][2]);
+      layout.append("htmlgump "+(x+97)+" "+(y+16)+" "+BARLENGTH+" 20 "+data.size()+" 0 0");
+      data.append("<basefont color=#FFFFFF>"+skills[4][3]);
+      layout.append("htmlgump "+(x+97)+" "+(y+31)+" "+BARLENGTH+" 20 "+data.size()+" 0 0");
+      data.append("<basefont color=#FFFFFF>"+skills[4][4]);
+      layout.append("htmlgump "+(x+97)+" "+(y+46)+" "+BARLENGTH+" 20 "+data.size()+" 0 0");
+      data.append("<basefont color=#FFFFFF>"+skills[4][5]);
+    EndIf
+    Case (skills[4][1])
+      SKILLID_SEGNEN:  data[10]:="<basefont color="+color+" size=5>Segen:";
+                       data[11]:="<basefont color="+color+" size=5>Heilung:";
+                       data[12]:="<basefont color="+color+" size=5>Vergeltung:";
+                       data[13]:="<basefont color="+color+" size=5>Antimagie:";
+      SKILLID_MAGIE:   data[10]:="<basefont color="+color+" size=5>Feuer:";
+                       data[11]:="<basefont color="+color+" size=5>Wasser:";
+                       data[12]:="<basefont color="+color+" size=5>Erde:";
+                       data[13]:="<basefont color="+color+" size=5>Luft:";
+      SKILLID_FLUCHEN: data[10]:="<basefont color="+color+" size=5>Gift:";
+                       data[11]:="<basefont color="+color+" size=5>Fluchen:";
+                       data[12]:="<basefont color="+color+" size=5>Beschwoerung:";
+                       data[13]:="<basefont color="+color+" size=5>Tod:";
+    EndCase
+  EndIf
+EndFunction
+
+Function ShowSmall(who,skills,gump,byref layout, byref data)
+  data:={""};
+  layout:=layoutsmall;
+  
+  Case (gump[1])
+    1:        // Nebeneinander
+              If (gump[4]==2)  // Totaltransparenz
+                layout[2]:="";
+              Else
+                layout[2]:="resizepic 0 0 5054 228 82";
+              EndIf
+              If (gump[4]==1)  // Transparenz
+                layout[3]:="checkertrans 4 4 220 74";
+              Else
+                layout[3]:="";
+              EndIf
+              layout[5]:="gumppic 53 2 2054";
+              layout[6]:="gumppictiled 53 2 "+CInt(skills[1]*NORMIERUNG)+" 11 2057";  // Allgemein
+    0:
+    default:  // Untereinander
+              If (gump[4]==2)  // Totaltransparenz
+                layout[2]:="";
+              Else
+                layout[2]:="resizepic 0 0 5054 115 145";
+              EndIf
+              If (gump[4]==1)  // Transparenz
+                layout[3]:="checkertrans 4 4 107 137";
+              Else
+                layout[3]:="";
+              EndIf
+              layout[6]:="gumppictiled 2 2 "+CInt(skills[1]*NORMIERUNG)+" 11 2057";  // Allgemein
+  EndCase
+  
+  If (skills[2])
+    layout.append("gumppictiled 2 22 "+CInt(skills[2][2]*NORMIERUNG)+" 11 2053");
+    layout.append("gumppictiled 2 37 "+CInt(skills[2][3]*NORMIERUNG)+" 11 2053");
+    layout.append("gumppictiled 2 52 "+CInt(skills[2][4]*NORMIERUNG)+" 11 2053");
+    layout.append("gumppictiled 2 67 "+CInt(skills[2][5]*NORMIERUNG)+" 11 2053");
+  EndIf
+  
+  If (skills[3])
+    Case (gump[1])
+      1:        layout.append("gumppic 115 22 2054");
+                layout.append("gumppic 115 37 2054");
+                layout.append("gumppic 115 52 2054");
+                layout.append("gumppic 115 67 2054");
+                layout.append("gumppictiled 115 22 "+CInt(skills[3][2]*NORMIERUNG)+" 11 2053");
+                layout.append("gumppictiled 115 37 "+CInt(skills[3][3]*NORMIERUNG)+" 11 2053");
+                layout.append("gumppictiled 115 52 "+CInt(skills[3][4]*NORMIERUNG)+" 11 2053");
+                layout.append("gumppictiled 115 67 "+CInt(skills[3][5]*NORMIERUNG)+" 11 2053");
+    
+      0:
+      default:  layout.append("gumppic 2 85 2054");
+                layout.append("gumppic 2 100 2054");
+                layout.append("gumppic 2 115 2054");
+                layout.append("gumppic 2 130 2054");
+                layout.append("gumppictiled 2 85 "+CInt(skills[3][2]*NORMIERUNG)+" 11 2053");
+                layout.append("gumppictiled 2 100 "+CInt(skills[3][3]*NORMIERUNG)+" 11 2053");
+                layout.append("gumppictiled 2 115 "+CInt(skills[3][4]*NORMIERUNG)+" 11 2053");
+                layout.append("gumppictiled 2 130 "+CInt(skills[3][5]*NORMIERUNG)+" 11 2053");
+    EndCase
+  EndIf
+  
+  If ((skills[4]) && (who.cmdlevel>CMDLEVEL_GM))
+    Case (gump[1])
+      1:        If (gump[4]==2)  // Totaltransparenz
+                  layout[2]:="";
+                Else
+                  layout[2]:="resizepic 0 0 5054 341 82";
+                EndIf
+                If (gump[4]==1)  // Transparenz
+                  layout[3]:="checkertrans 4 4 333 74";
+                Else
+                  layout[3]:="";
+                EndIf
+                layout.append("gumppic 228 22 2054");
+                layout.append("gumppic 228 37 2054");
+                layout.append("gumppic 228 52 2054");
+                layout.append("gumppic 228 67 2054");
+                layout.append("gumppictiled 228 22 "+CInt(skills[3][2]*NORMIERUNG)+" 11 2053");
+                layout.append("gumppictiled 228 37 "+CInt(skills[3][3]*NORMIERUNG)+" 11 2053");
+                layout.append("gumppictiled 228 52 "+CInt(skills[3][4]*NORMIERUNG)+" 11 2053");
+                layout.append("gumppictiled 228 67 "+CInt(skills[3][5]*NORMIERUNG)+" 11 2053");
+    
+      0:
+      default:  If (gump[4]==2)  // Totaltransparenz
+                  layout[2]:="";
+                Else
+                  layout[2]:="resizepic 0 0 5054 115 207";
+                EndIf
+                If (gump[4]==1)  // Transparenz
+                  layout[3]:="checkertrans 4 4 107 201";
+                Else
+                  layout[3]:="";
+                EndIf
+                layout.append("gumppic 2 148 2054");
+                layout.append("gumppic 2 162 2054");
+                layout.append("gumppic 2 177 2054");
+                layout.append("gumppic 2 192 2054");
+                layout.append("gumppictiled 2 148 "+CInt(skills[3][2]*NORMIERUNG)+" 11 2053");
+                layout.append("gumppictiled 2 162 "+CInt(skills[3][3]*NORMIERUNG)+" 11 2053");
+                layout.append("gumppictiled 2 177 "+CInt(skills[3][4]*NORMIERUNG)+" 11 2053");
+                layout.append("gumppictiled 2 192 "+CInt(skills[3][5]*NORMIERUNG)+" 11 2053");
+    EndCase
+  EndIf
+EndFunction

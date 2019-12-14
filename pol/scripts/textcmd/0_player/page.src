@@ -1,0 +1,93 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD Page - Player können damit Pages an GMs schreiben
+//
+// Author: AgtMulda
+
+include "include/clock";
+include "include/logutil";
+include "include/msgs";
+include "include/server";
+use file;
+use uo;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program TextCMD_Page(who, meldung, uc_text, langcode)
+  // Macht gerade jemand was an den Pages?
+  If (GetGlobalProperty(GM_PAGE_ACTIVITY))
+    SendSysMessagePergon(who,
+      GetGlobalProperty(GM_PAGE_ACTIVITY)+
+      " schreibt oder bearbeitet gerade Pages. Versucht es später erneut."
+    );
+    return;
+  EndIf
+  SetGlobalProperty(GM_PAGE_ACTIVITY, who.name);
+
+  If (Upper(langcode) == "DEU")
+    meldung := CChrZ(uc_text);
+  EndIf
+
+  If (Len(meldung) <= 0)
+    meldung := RequestInputPergon(who, who.backpack,
+      struct{uc_text := CAscZ("Page eingeben:"), langcode := "DEU"},
+      struct{uc_text := CAscZ("Enter page:"), langcode := "ENG"});
+    If (meldung)
+      meldung := CChrZ(meldung.uc_text);
+    EndIf
+  EndIf
+
+  If (Len(meldung) <= 0 || !meldung)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    EraseGlobalProperty(GM_PAGE_ACTIVITY);
+    return;
+  EndIf
+
+  var pages := GetGlobalProperty(GM_PAGE_LIST);
+  If (!pages)
+    pages := array{};
+  EndIf
+
+  // ohne temporaere Zuweisung auf eine Variable kommt nur
+  // <unitialized object> im newpage-Struct an
+  var pos := struct{
+    x := who.x,
+    y := who.y,
+    z := who.z,
+    r := who.realm
+  };
+  var newpage   := struct;
+  newpage.+who  := who.serial;
+  newpage.+loc  := pos;
+  newpage.+time := polcore().systime;
+  newpage.+text := meldung;
+
+  pages.append(newpage);
+
+  If (SetGlobalProperty(GM_PAGE_LIST, pages));
+    SendSysMessagePergon(who, "Die Page wurde abgeschickt.");
+  Else
+    SendSysMessagePergon(who, "Fehler aufgetreten.");
+  EndIf
+  EraseGlobalProperty(GM_PAGE_ACTIVITY);
+
+  LogToFile(
+    "log/pages.log", GetDateTimeStr()+" NEU:       "+
+    CharInfoStr(who, COORDS_REALM)+": "+meldung
+  );
+
+  ForEach char in (EnumerateOnlineCharacters())
+    If (char.cmdlevel >= CMDLEVEL_SEER)
+      SendSysMessagePergon(char,
+        "Hilfe für "+who.name+": "+meldung,
+        "Help for "+who.name+": "+meldung,
+        _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+      );
+      If (char.getprop(PROP_NOTIFY_PAGE))
+        PlaySoundEffectPrivate(char, 0x05ab, char);
+      EndIf
+    EndIf
+  EndForEach
+EndProgram
+
+// vim: sw=2 sts=2

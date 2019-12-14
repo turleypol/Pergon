@@ -1,0 +1,3 @@
+<h3 id="jewelprice">jewelprice</h3>
+
+<p>Wert der Edelsteine in einem wählbaren Container ermitteln.</p>

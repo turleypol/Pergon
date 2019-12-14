@@ -1,0 +1,28 @@
+ Guild Object
+  Properties:
+   guild.guildid : integer
+   guild.members : array of offline mobilerefs
+   guild.allyguilds  : array of allied guilds
+   guild.enemyguilds : array of enemy guilds
+
+  Methods:
+   guild.ismember( who )
+   guild.isallyguild( guild )
+   guild.isenemyguild(guild)
+
+   guild.addmember( who )
+   guild.addallyguild( guild )
+   guild.addenemyguild( guild )
+
+   guild.removemember( who )
+   guild.removeallyguild( guild )
+   guild.removeenemyguild( guild )
+
+   guild.getprop( propname )
+   guild.setprop( propname, propvalue )
+   guild.eraseprop( propname )
+
+ uo.em functions:
+  ListGuilds(); // returns an array of Guild objects
+  CreateGuild(); // returns a new Guild object
+  FindGuild( guildid );

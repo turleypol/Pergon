@@ -1,0 +1,58 @@
+//**************************************************************************************************
+// Script file createdrink.src
+//
+//    implements spell 2 <Create Drink> - "Trinken"
+//
+//	creates something to drink in casters backpack
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 27.06.2003 Sebsatian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+use util;
+
+Include "../magicpergon";
+
+program cast_createdrink (params)
+
+   Var caster;
+   Var drink;
+   Var effect;
+   Var power;
+
+   if (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_COMMON_CREATEDRINK);
+   endif
+
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   effect:= CInt(power/10);								// calc spelleffect depending on casting power
+   if (effect > 10)
+      effect:= 10;
+   endif
+
+   Var level:= RandomInt(effect);		// choose drink to be created
+
+   case (level)
+      0: drink:=0xff90; // Flasche Wasser
+      1: drink:=0xff90; // Flasche Wasser
+      2: drink:=0xff90; // Flasche Wasser
+      3: drink:=0xff90; // Flasche Wasser
+      4: drink:=0xff91; // Flasche Milch
+      5: drink:=0xff91; // Flasche Milch
+      6: drink:=0xff92; // Flasche Apfelwein
+      7: drink:=0x9c7;  // Flasche Wein
+      8: drink:=0x99b;  // Flasche Schnaps
+      9: drink:=0x99f;  // Flasche Bier
+   endcase
+
+   PlaySoundEffect(caster, SFX_SPELL_CREATE_FOOD);
+   CreateItemInBackpackPergon(caster, drink, 1);	// create drink
+
+endprogram

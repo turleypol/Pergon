@@ -1,0 +1,94 @@
+///////////////////////////////////////////////////////////////////////////
+// ctf_walkon - jemand ist auf den Zentral- oder Zielstein getreten
+
+use uo;
+include "common";
+include "include/eventid";
+include "include/msgs";
+
+Program CTF_Walkon(who, item)
+    // Init {{{
+    var pid := GetGlobalProperty(PROP_CAPTURE_FLAG_PID);
+    If (!pid)
+        If (!who.isa(POLCLASS_NPC))
+            SendSysMessagePergon(who,
+                "Das Spiel ist noch nicht bereit.", "The game is not ready."
+            );
+        EndIf
+        return;
+    EndIf
+    var ctl := GetProcess(pid);
+    If (!ctl)
+        If (!who.isa(POLCLASS_NPC))
+            SendSysMessagePergon(who,
+                "Das Spiel ist leider kaputt.", "Sorry, the game is broken."
+            );
+        EndIf
+        syslog(
+            "FEHLER: CTF-Walkon findet Kontrollscript nicht: "+ctl.errortext
+        );
+        return;
+    EndIf
+    // }}}
+
+    If (item.color == FLAG_COLOR_BLUE or item.color == FLAG_COLOR_RED)
+        // ich bin ein Zielstein
+        DestinationStone(who, item, ctl);
+        return;
+    EndIf
+
+    // ansonsten bin ich ein Join/Leave-Stone
+    // Offline-Ref holen, damit man beim Logout den Namen etc. noch hat
+    who := SystemFindObjectBySerial(who.serial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+    var team := who.getprop(PROP_CAPTURE_TEAM);
+    If (team)
+        If (SendYesNoGump(who, "Spiel verlassen?/Leave game?"))
+            FlagEvent(ctl, item, EVID_ASKJOIN, who, team);
+        EndIf
+    Else
+        var team := TeamRedOrBlue(who);
+        If (team)
+            FlagEvent(ctl, item, EVID_ASKJOIN, who, team);
+        EndIf
+    EndIf
+EndProgram
+
+Function DestinationStone(byref flag, byref item, byref ctl) // {{{
+    If (!flag.isa(POLCLASS_NPC) or !flag.script["ctf_flag"])
+        // interessiert sich nur fuer Flaggen-NPCs
+        return;
+    EndIf
+
+    If (item.color == flag.color)
+        // eigene Flagge ignorieren
+        return;
+    EndIf
+
+    // Ankunft fremder Flagge melden
+    FlagEvent(ctl, item, EVID_WALK, flag);
+EndFunction // }}}
+
+// einfaches Gump zur Auswahl anzeigen
+// 0 - Abbruch, 1 - Waffen, 2 - Nahrung
+Function TeamRedOrBlue(who) // {{{
+    var layout := {
+        "nodispose",
+        "page 0",
+        "gumppic 0 0 1140",
+        "htmlgump 65 55 260 30 0 1 0",
+        "button 100 100 2474 2474 1 0 "+FLAG_COLOR_RED,
+        // "button 100 100 2061 2061 1 0 "+FLAG_COLOR_RED,
+        "button 220 100 2152 2152 1 0 "+FLAG_COLOR_BLUE
+        // "button 220 100 2061 2062 1 0 "+FLAG_COLOR_BLUE
+    };
+    var data := {
+        "<basefont color=black><center>Team Rot oder Team Blau?"+
+        "</center>"
+    };
+
+    var result := SendDialogGump(who, layout, data, 100, 100);
+    If (result)
+        return result[0];
+    EndIf
+    return 0;
+EndFunction // }}}

@@ -1,0 +1,103 @@
+/////////////////////////////////////////////////////////
+//
+//   scriptex - Nähere Infos des Scriptes
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     09.11.07 Turley: Init/Modified Basierend auf PolDistro
+//
+/////////////////////////////////////////////////////////
+
+use uo;
+use os;
+use http;
+use polsys;
+use file;
+
+include "header";
+
+program HTMLPage()
+  DoHeader("Executing Script");
+  WriteHTML("<DIV ID='container'>");
+  WriteHTML("<DIV ID='header'></DIV>");
+  WriteHTML("<DIV ID='content'>");
+  TableHeader("Executing Script");
+
+  var pid := CInt(QueryParam("PID"));
+  var script := GetProcess(pid);
+  If (!script)
+    WriteHTML("<P class=warning>Script Destroyed!</P>");
+    WriteHTML("</DIV>");
+    DoFooter();
+    Return;
+  EndIf
+
+  WriteHTML("<P>Executing Script Information</P>");
+
+  WriteHTML("<TABLE WIDTH='500' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='2'><B>Script Status</B></TH>");
+  WriteHTML("</TR>");
+
+  WriteHTML("<TR><TD>Script Name</TD><TD>"+script.name+"</TD></TR>");
+  WriteHTML("<TR><TD>PID</TD><TD>"+script.pid+"</TD></TR>");
+  WriteHTML("<TR><TD>Cycles</TD><TD>"+script.instr_cycles+"</TD></TR>");
+  WriteHTML("<TR><TD>State</TD><TD>"+script.state+"</TD></TR>");
+  WriteHTML("<TR><TD>Sleep Cycles</TD><TD>"+script.sleep_cycles+"</TD></TR>");
+  WriteHTML("<TR><TD>Consecutive Cycles</TD><TD>"+script.consec_cycles+"</TD></TR>");
+  WriteHTML("<TR><TD>Prog Counter</TD><TD>"+script.PC+"</TD></TR>");
+  WriteHTML("<TR><TD>Call Depth</TD><TD>"+script.call_depth+"</TD></TR>");
+  WriteHTML("<TR><TD>Variable Size:</TD><TD>"+script.var_size+"</TD></TR>");
+  WriteHTML("<TR><TD>Attached To</TD><TD><A HREF='objviewer.ecl?Serial="+Hex(CInt(script.attached_to.serial))+"&"+A_PARAM+"'>"+Hex(CInt(script.attached_to.serial))+"</A></TD></TR>");
+  WriteHTML("<TR><TD>Controller</TD><TD><A HREF='objviewer.ecl?Serial="+Hex(CInt(script.controller.serial))+"&"+A_PARAM+"'>"+Hex(CInt(script.controller.serial))+"</A></TD></TR>");
+  Var scriptname_:=script.name;
+  scriptname_[".ecl"]:=".dbg";
+  If (FileExists(scriptname_))
+    script.LoadSymbols();
+    WriteHTML("<TR><TH COLSPAN='2'><A HREF='debug.ecl?PID="+script.pid+"&"+A_PARAM+"'><B>DEBUG</B></A></TH></TR>");
+  EndIf
+  WriteHTML("</TABLE>");
+
+  WriteHTML("</P>");
+
+  WriteHTML("<TABLE WIDTH='100%' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='4'><B>Global Variables</B></TH>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH ALIGN='LEFT'>Name</TH>");
+  WriteHTML("<TH ALIGN='LEFT'>Type</TH>");
+  WriteHTML("<TH ALIGN='LEFT'>Size</TH>");
+  WriteHTML("<TH ALIGN='LEFT'>Value</TH>");
+  WriteHTML("</TR>");
+
+  Var result;
+  foreach global in ( script.globals )
+    WriteHTML("<TR>");
+    WriteHTML("<TD>"+_global_iter+"</TD>");
+    WriteHTML("<TD>"+TypeOf(global)+"</TD>");
+    WriteHTML("<TD>"+SizeOf(global)+"</TD>");
+    result:=CStr(global);
+    If (Len(result)>0)
+      result:=StrReplace(result,"<","&lt;");
+      result:=StrReplace(result,">","&gt;");
+    EndIf
+    WriteHTMLRaw("<TD>"+result);
+    If ((TypeOf(global)["Ref"]) && (global.serial))
+      WriteHTMLRaw(": name "+global.name+", serial "+global.serial);
+    EndIf
+    WriteHTML("</TD>");
+    WriteHTML("</TR>");
+
+    SleepMS(2);
+  endforeach
+
+  WriteHTML("</TABLE>");
+
+  WriteHTML("</DIV>");
+
+  DoFooter();
+endprogram

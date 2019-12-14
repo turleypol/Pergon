@@ -1,0 +1,420 @@
+///////////////////////////////////////////////////////////////////////////
+// carpentry.src - carpentry tool doubleclick script
+//
+//  NOTE: Furnature only faces one way, the "open" armoire gfx doesnt
+//        open as a Container and wont switch to the closed gfx.
+
+use attributes;
+use cfgfile;
+use file;
+use os;
+use uo;
+use util;
+include "include/itemnpc";
+include "include/manufacturegump";
+include "include/modifyskill";
+include "include/objtype";
+
+Program MakeCarpentryItems(character, Tool)
+  If (!AccessiblePergon(character,Tool))
+    SendSysMessagePergon(character, "Ihr kommt nicht an das Werkzeug heran!");
+    return 0;
+  EndIf
+
+  If (distance(character, Tool) > 1)
+    SendSysMessagePergon(character, "Das Werkzeug ist zu weit entfernt!");
+    return 0;
+  EndIf
+  ReserveItem(Tool);
+
+  var retval;
+  var quality;
+
+  var Elm;
+  var i := 1;
+
+  // Werkzeug-Eigenschaften auslesen
+  var werkzeug := GetPropertyItem(tool);
+
+  // Holzsorte auswaehlen
+  SendSysMessagePergon (character, "Wählt die Hölzer mit denen ihr arbeiten wollt.");
+  var use_on := target(character);
+
+  If (!AccessiblePergon(character,use_on))
+    SendSysMessagePergon(character, "Ihr kommt da nicht ran!");
+    return 0;
+  EndIf
+
+  If (distance(character, use_on) > 1)
+    SendSysMessagePergon(character, "Das ist zu weit entfernt!");
+    return 0;
+  EndIf
+
+  var itemcfg_hoelzer := ReadConfigFile(":lumberjacking:itemdesc");
+  var holz := itemcfg_hoelzer[use_on.objtype];
+
+  If (!holz)
+    SendSysMessagePergon (character, "Das ist keine zulässige Holzsorte!");
+    return;
+  EndIf
+
+  ReserveItem(use_on);
+
+  var holz_Mat_Cfg := ReadConfigFile(":crafting:materials");
+  var holz_special := holz_Mat_Cfg[use_on.objtype];
+
+  If (!holz_special)
+    SendSysMessagePergon(character, "Das Holz " + holz.shortdesc + " ist noch nicht in die Configs eingetragen!");
+    SendSysMessagePergon(character, "Benachrichtigt den zuständigen GM.");
+    syslog("Das Holz " + holz.shortdesc + " ist noch nicht in die Materials-Config eingetragen!");
+    ReleaseItem(use_on);
+    return;
+  EndIf
+
+  // NPC - Werkzeug
+  var werkzeugqual;
+  If (!werkzeug.quality)
+    werkzeugqual := 0.5;
+  Else
+    werkzeugqual := werkzeug.quality;
+  EndIf
+
+  // commander: werkzeug gut genug fuer material?; kein check bei mischholz
+  If ((holz_special.quality > werkzeugqual) and (use_on.objtype != 0x1bdd))
+    SendSysMessagePergon(character, "Euer Werkzeug ist nicht gut genug für dieses Material!");
+    return;
+  EndIf
+
+  var material1_skill := holz_special.difficulty/100;
+
+  //  --- Auswahlmenu ---
+
+  var skillMod := material1_skill - werkzeugqual;
+  var menu := MGCreateMenuFromCFG(character, "carpentry", "carpentry", Tool, SKILLID_HOLZVERARBEITUNG, skillMod);
+  If (!menu)
+    SendSysMessagePergon(character, "Ihr könnt mit dem Material nichts anfangen.");
+    ReleaseItem(use_on);
+    return;
+  EndIf
+
+  var op := MGSelect(character, menu);
+  If (!op)
+    SendSysMessagePergon(character, "Abbruch", "Abort");
+    ReleaseItem(use_on);
+    return;
+  EndIf
+
+  If (!op.amount || op.amount < 0)
+    SendSysMessagePergon(character, "Abbruch", "Abort");
+    ReleaseItem(use_on);
+    return;
+  EndIf
+  If (op.amount > 10)
+    op.amount := 10;
+  EndIf
+
+  // --- Defaults im Tool speichern ---
+  MGSetDefault(Tool, "carpentry", op);
+
+  // Werte aus der Config auslesen
+  var cfg := ReadConfigFile("carpentry");
+  elm := cfg[op.key];
+
+  var Skill := CDbl(elm.skill); // skill needed to create the item
+  var Skill2 := CDbl(elm.skill2);
+  var SkillID := GetAttributeName_(elm.attribute);
+
+  var Objtype := CInt(elm.objtype);
+  var Material := CInt(elm.material);
+  var Material2 := CInt(elm.material2);
+  var Material2Obj := CInt(elm.material2obj);
+
+  // Auslesen von Item.maxhp var aus beliebiger itemdesc.cfg
+  var itemdesc := ReadConfigFile("::itemdesc");
+  var item_maxhp := itemdesc[Objtype];
+  var MaxHP := item_maxhp.maxhp;
+
+  // print("Skill:"+skill);
+  // print("Skill2:"+skill2);
+  // print("SkillID:"+SkillID);
+  // print("Material:"+Material);
+  // print("Material2:"+Material2);
+  // print("material2obj:"+material2obj);
+  // print("Maxhp:"+maxhp);
+
+  // var val := CInt(SendTextEntryGump(character, "Wieviele wollt Ihr anfertigen? (Max 10)", 40));
+  // If (!val or val>10)
+  //   SendSysMessagePergon(character, "Abbruch", "Abort");
+  //   ReleaseItem(use_on);
+  //   return 0;
+  // EndIf
+
+  var meister_hp;
+  var maxhp_item;
+  var item_price;
+
+  var val := op.amount;
+  var meister_oder_except;
+  var TX := character.x;
+  var TY := character.y;
+  For (i := 1; i <= val; i += 1)
+    If (TX<>character.x or TY<>character.y || character.dead)
+      break;
+    Else
+
+      var Ok1 := 0;
+      var Ok2 := 0;
+      var Item1;
+      var Item2;
+      If (!SkillID)
+        Ok2 := 1;
+      EndIf
+
+      ForEach item in EnumerateItemsInContainer(character.backpack)
+        If (((!ok1) and (item.objtype == use_on.objtype)) and (GetAmount(item)>=material))
+          Item1 := item;
+          ok1 := 1;
+          reserveitem(Item1);
+        ElseIf (((!ok2) and (item.objtype == material2obj)) and (GetAmount(item)>=material2))
+          ok2 := 1;
+          Item2 := item;
+          reserveitem(Item2);
+        EndIf
+        If ((Ok1) and (Ok2))
+          Break;
+        EndIf
+        SleepMS(2);
+      EndForEach
+
+      If (!Ok1)
+        SendSysMessagePergon(character,"Ihr habt nicht genügend Hoelzer.");
+        ReleaseItem(use_on);
+        return;
+      ElseIf (!Ok2)
+        SendSysMessagePergon(character,"Ihr habt genügend Holz, aber weiteres Material fehlt.");
+        ReleaseItem(use_on);
+        return;
+      EndIf
+      If (SkillId)
+        retval := PlaySoundEffect(character, SFX_HAMMER);
+        Sleep (2);
+        retval := PlaySoundEffect(character, SFX_HAMMER);
+        Sleep (2);
+        retval := PlaySoundEffect(character, SFX_HAMMER);
+        Sleep (2);
+        var Check := CheckSkillPergon(character, SkillID, CInt(skill2), CInt(skill2*4));
+        // print("check:"+check);
+        If (!check)
+          SubtractAmount(item2, CInt(material2/2));
+          SendSysMessagePergon(character, "Ihr zerstört etwas Material");
+          continue;
+        EndIf
+      EndIf
+      // print("Skill:"+skill);
+      retval := PlaySoundEffect(character, SFX_HAMMER);
+      Sleep (2);
+      retval := PlaySoundEffect(character, SFX_HAMMER);
+      Sleep (2);
+      retval := PlaySoundEffect(character, SFX_HAMMER);
+      Sleep (2);
+
+      var skill1_offset := CInt(skill + material1_skill - werkzeugqual);
+      If (skill1_offset<1)
+        // Sicherung, falls tool_skill>item_skill
+        skill1_offset := 1;
+      EndIf
+
+      If (CheckSkillPergon(character, SKILLID_HOLZVERARBEITUNG, skill1_offset, CInt((skill+material1_skill)*4)))
+
+        var theitem := CreateItemInBackpackPergon(character, objtype, 1);
+        If (!theitem)
+          SendSysMessagePergon(character, "In Eurem Rucksack ist zu wenig Platz.");
+          theitem := CreateItemAtLocationPergon(character.x, character.y, character.z, objtype, 1 ,character.realm); // Dann halt aufm Boden versuchen
+        EndIf
+
+        theitem.movable := 1;
+
+        // Logging
+        // var text := theitem.desc+" ["+Lower(Hex(objtype))+"] mit "+tool.desc+" ["+Lower(Hex(tool.objtype))+" / "+werkzeug+"] aus "+
+        //   use_on.desc+" "+holz_special.quality+" ["+Lower(Hex(use_on.objtype))+"] ";
+        // var time := GetDateTimeStr();
+
+        // Meisterstuecke und Excepts
+        //   matquality   [Rohstoffe]         = 0.69  bis 3.79
+        //   werkzeugqual [Werkzeug]          = 0.552 bis 4.7375
+        //   char_skill   [Herstellungsskill] = 0     bis 130
+
+        var matquality;
+        If (SkillID)
+          // Logging
+          // text := text+"und "+material2.quality+" ["+Lower(Hex(Material2Obj))+"] ";
+          matquality := holz_special.quality*0.8+material2.quality*0.2;
+        Else
+          matquality := holz_special.quality;
+        EndIf
+
+        var char_skill := GetSkillPergon(character, SKILLID_HOLZVERARBEITUNG);
+
+        // Logging
+        // text := text+"mit Skill "+SKILLID_HOLZVERARBEITUNG+" (Check "+skill1_offset+"% von "+char_skill+"%) und Meister/Excep-Rate=(("+
+        //   matquality+"-0.69)*(-62.9)+250)+("+werkzeugqual+"*6.333)+("+char_skill+"/8.67)="+
+        //   (((matquality-0.69)*(-62.9)+250)+(werkzeugqual*6.333)+(char_skill/8.67));
+
+        If ((RandomInt(5000)<((matquality-0.69)*(-62.9)+250)+(werkzeugqual*6.333)+(char_skill/8.67)) And (char_skill>40))
+          CheckSkillPergon(character, SKILLID_HOLZVERARBEITUNG, (char_skill-40)*0.78+50, 120); // Meisterstuecke/Excepts geben auch Punkte
+
+          If (CheckSkillPergon(character, SKILLID_HOLZVERARBEITUNG, skill1_offset + 15, skill * 2))  // by F.
+            //they make an exceptional item
+            // Logging
+            // text := "Exceptional "+text;
+
+            //quality := 4.5; //original
+            quality := ((char_skill/100.0)+((LogE(char_skill))/1.5)); //Mai: bei 130 skill -> 4.5
+            //meister_hp := 4.0; // + zu den Material hp //original
+            meister_hp := ((char_skill/100.0)+((LogE(char_skill))/1.8)); //Mai: bei 130 skill -> 4.0
+            item_price := 1.5;
+            var itemnameF := GetElemProperty(Elm, "desc");
+            var itemnameTest := "Exceptional "+itemnameF;//+" ["+character.name+"]"+" aus "+holz_special.shortdesc;   // nurn Test
+
+            meister_oder_except := 1;
+            theitem.setprop(TOOLINFO,struct{material := holz_special.shortdesc,manufacturer := character.name});
+            SetName(theitem, itemnameTest); //
+            SendSysMessagePergon (character, "Ihr fertigt ein außergewöhnliches Stück und legt es in Euren Rucksack.");
+          Else
+            // Logging
+            // text := "Meisterstueck "+text;
+
+            //macht ein Meisterstueck
+            //quality := 2.5; //original
+            quality := ((char_skill/100.0)+((LogE(char_skill))/3.5)); //Mai: bei 130 skill -> 2.6
+            //meister_hp := 2.5; // + zu den Material hp //original
+            meister_hp := ((char_skill/100.0)+((LogE(char_skill))/3.5)); //Mai: bei 130 skill -> 2.6
+            item_price := 1.2;
+            var itemnameF := GetElemProperty(Elm, "desc");
+            var itemnameTest := "Meisterstueck "+itemnameF;//+" ["+character.name+"]"+" aus "+holz_special.shortdesc;   // nurn Test
+
+            meister_oder_except := 0.5;
+            theitem.setprop(TOOLINFO,struct{material := holz_special.shortdesc,manufacturer := character.name});
+            SetName(theitem, itemnameTest); //
+            SendSysMessagePergon (character, "Ihr fertigt ein Meisterstück und legt es in Euren Rucksack.");
+          EndIf
+
+          //  Commander: Anpassung an Thaumaturgie, CProp status_except [0;20]
+          //  Werkzeug, Skill, Material & Zufall geht zu gleichen Teilen ein
+          //  Holzqualitaet maximal 3.79
+          //  Skill / 25 -> ab Legende 5 Punkte
+          //  Werkzeug - Qualitaet ist maximal 4.7375, auf [0;5] skalieren
+          //  Materialeinfluss, bei 2 Materialien liegt der max. Schnitt bei 4.1
+          //  abschliessend Zufallswert in [0;5]
+          //  Meisterstueck nur die Haelfte des Bonus
+
+          var except_bonus;
+          except_bonus := CInt(GetSkillPergon(character, SKILLID_HOLZVERARBEITUNG) / 25);
+          except_bonus += CInt(werkzeugqual / 4.7375 * 5);
+          except_bonus += CInt(holz_special.quality / 3.79 * 5);
+          except_bonus += RandomInt(6);
+
+          If (except_bonus >= 20)
+            except_bonus := 20;
+          EndIf
+
+          except_bonus := CInt(except_bonus * meister_oder_except);
+
+          SetObjProperty(theitem, "status_except", except_bonus);
+
+
+        Else
+          //regular-quality
+          quality := CInt(60+GetSkillPergon(character, SKILLID_HOLZVERARBEITUNG))/100.0;
+          meister_hp := 0;
+          item_price := 1.0;
+          var itemnameF := GetElemProperty(Elm, "desc");
+          var itemnameTest := itemnameF;//+" aus "+holz_special.shortdesc;   // nurn Test
+          theitem.setprop(TOOLINFO,struct{material := holz_special.shortdesc});
+          SetName(theitem, itemnameTest); //
+          SendSysMessagePergon(character, "Ihr stellt den Gegenstand her und legt ihn in Euren Rucksack.");
+        EndIf
+
+        // Holzeigenschaften gehen mit in die item eigenschaften ein
+        var dummy := quality+matquality-0.5; // Wird vorm Except-Check vorberechnet / 0.5 ist material.quality default
+        If (SkillID)
+          // syslog("quality gesamt: " + dummy);
+          maxhp_item := CInt(maxhp*((holz_special.hp/10)+meister_hp));
+          item_price := CInt(item_price*((material2*GetPropertyPrice(item2))+(material*GetPropertyPrice(item1))));
+        Else
+          maxhp_item := CInt(maxhp*((holz_special.hp/10)+meister_hp));
+          item_price := CInt(item_price*(material*GetPropertyPrice(item1)));
+        EndIf
+
+
+        //item-property's setzen
+        theitem.color := holz_special.color;
+        theitem.weight := holz_special.weight*theitem.weight;
+        /*
+        If (character.cmdlevel >= CMDLEVEL_SEER)
+        print("**********carpentry.src***********");
+        print("Tool_skill:"+werkzeugqual);
+        print("Tool_hp:"+tool_hp);
+        print("Tool_Maxhp:"+tool_maxhp);
+        print("----------------------------------");
+        print("Skill1: "+skill1_offset);
+        print("Rohpoints1: "+CInt((skill+material1_skill)*4));
+        print("Quali Material1:"+holz_special.quality);
+        print("Material1.hp"+(holz_special.hp/10));
+        print("Qualy/Qualyorig: "+dummy);
+        print("Hp/Maxhp/Maxhporig: "+maxhp_item);
+        print("Price: "+material+" * "+GetPropertyPrice(item1)+" + "+material2+" * "+GetPropertyPrice(item2));
+        print("Item Price: "+item_price);
+        EndIf
+        */
+        //SetPropertyItem(item, quality, hp, maxhp, qualityorig, maxhporig, type, skillid)
+        SetPropertyItem(theitem, dummy, maxhp_item, maxhp_item, dummy, maxhp_item, "c", SKILLID_HOLZVERARBEITUNG, CInt(skill+material1_skill), item_price);
+
+        // Logging
+        // text := character.name+" ["+character.x+", "+character.y+"] "+text+" ("+GetObjProperty(theitem, "Werkzeug")+")";
+        // LogToFile("z_carpentry.log", time+text);
+        // LogToFile("z_char_c_"+character.name+" - "+Lower(Hex(character.serial))+".log", time+text);
+
+        If (theitem.objtype in {UOBJ_LUTE, UOBJ_HARP, 0x0EB1}) // lieber gezielter eingrenzen, weils sonst zuviel Datenmuell wird
+          SetObjProperty(theitem, "material", CInt(use_on.objtype)); // eigentlich sollte das lieber mit in die SetPropertyItem-Funktion rein, aber das ist zuviel Aufwand jetzt
+        EndIf
+
+        //syslog("material " + CInt(GetObjProperty(theitem, "material")));
+        ReleaseItem(use_on);
+        SubtractAmount(item1, material);
+        If (SkillID)
+          SubtractAmount(item2, material2);
+        EndIf
+
+        //  kleine Wahrscheinlichkeit auf Beschaedigung der Werkzeugs
+        If (RandomInt(100) < 2)
+          If (SetWerkzeugSchaden(character, tool, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!"))
+            return;
+          EndIf
+        EndIf
+
+
+      Else
+        ReleaseItem(use_on);
+        SubtractAmount(item1, CInt(material/2));
+        SendSysMessagePergon(character, "Ihr zerstoert einige Hoelzer.");
+        If (SetWerkzeugSchaden(character, tool, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!"))
+          return;
+        EndIf
+      EndIf //If (CheckSkillPergon
+
+    EndIf
+  EndFor
+EndProgram
+
+////////////////////////////////////////////////////////////////
+// GetAttributeName - Ermittelt und Prueft den Attribute-Namen
+////////////////////////////////////////////////////////////////
+
+Function GetAttributeName_(attribute)
+  If (attribute)
+    return (GetSkillName(attribute));
+  EndIf
+EndFunction
+
+// vim: sw=2 sts=2

@@ -1,0 +1,58 @@
+///////////////////////////////////////////////////////////////////////////
+// towncruft -- Staedteweise Items durchzaehlen
+//
+// ermittelt Anzahl und Wert herumliegender Items und Items in NPCs
+
+use math;
+use os;
+use uo;
+include ":items:cleanup";
+include "include/msgs";
+include "include/objtype";
+include "include/place";
+include "include/stringcalc";
+include "include/varutil";
+
+Program TownCruft(who) // {{{
+    var realm := who.realm;
+    var name  := PlaceName(who);
+
+    var all := struct;
+    all.+items := 0;
+    all.+worth := 0.0;
+    ForEach range in (PlaceRanges(who))
+        var coord := CIntArray(SplitWords(range));
+        ForEach obj in (ListObjectsInBox(
+                coord[1], coord[2], -128, coord[3], coord[4], 127, realm
+        ))
+            SleepMs(2);
+            var res := 0;
+            // NPC-Backpacks durchzaehlen (insbesondere Packtiere)
+            If (obj.isa(POLCLASS_NPC))
+                If (obj.backpack)
+                    res := AmountAndWorth(obj.backpack);
+                EndIf
+            EndIf
+
+            // normale Items durchzaehlen
+            If (obj.isa(POLCLASS_ITEM))
+                res := AmountAndWorth(obj);
+            EndIf
+
+            // wenn was herauskam, addieren
+            If (res.items)
+                all.items += res.items;
+            EndIf
+            If (res.worth)
+                all.worth += res.worth;
+            EndIf
+        EndForEach
+    EndForEach
+
+    var worth := StrPrettyPrint(PrettyPrintDouble(all.worth));
+    SendSysMessagePergon(who,
+        "Items in Region '"+name+"': "+all.items+
+        "; grober Wert: "+worth+" Gold"
+    );
+    syslog("CRUFT: "+name+" - Items: "+all.items+" - Wert: "+worth);
+EndProgram // }}}

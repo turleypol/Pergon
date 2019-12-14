@@ -1,0 +1,197 @@
+//**************************************************************************************************
+// Script file charybdis.src
+//
+//    implements spell 130 <Charybdis> - "Charybdis"
+//
+//	caster summons whirling water with deals heavy water damage
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//
+//  2002/09/15 Fraggulus: ApplyRawDamagePergon() durch SetHPPergon() ersetzt
+//				(became obsolete due to change in spell design)
+//
+//	Vers. 1.1	- 30.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//  					- 19.09.2005 Seppel - grafisch etwas aufpoliert
+//
+//**************************************************************************************************
+
+
+use os;
+use util;
+use vitals;
+
+Include "../magicpergon";
+Include "../resistance";
+Include "../spellattack";
+Include "include/packets";
+
+program cast_charybdis (params)
+
+   Var caster;
+   Var where;
+   Var victims;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_MAGE_CHARYBDIS);
+   Var resist;
+   Var dmg;
+   Var basedmg:=  spell.primary;
+   Var mindmg:=   spell.primarymin;
+   Var maxdmg:=   spell.primarymax;
+   Var range:=    spell.range;
+   Var minrange:= spell.rangemin;
+   Var maxrange:= spell.rangemax;
+   Var dur:=      spell.duration;
+   Var mindur:=   spell.durationmin;
+   Var maxdur:=   spell.durationmax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      where:=struct{x,y,z,realm};
+      where.x:=params[4].x;
+      where.y:=params[4].y;
+      where.z:=params[4].z;
+      where.realm:=params[4].realm;
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      where:=  TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_MAGE_CHARYBDIS);
+      where:= TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, where);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   basedmg:= CDbl(power*basedmg/100.0);			// calc spell damage, duration and range
+   range:=   CInt(power*range/100.0);				// according to casting power
+   dur:=CInt(power*dur/100.0);
+   if (minrange and minrange > range)
+      range:= minrange;
+   elseif (maxrange and maxrange < range)
+      range:= maxrange;
+   endif
+   if (mindur and mindur > dur)
+      dur:= mindur;
+   elseif (maxdur and maxdur < dur)
+      dur:= maxdur;
+   endif
+
+   Var charybdis:= CreateItemAtLocationPergon(where.x, where.y, where.z, 0x37CC, 1,where.realm);		// create charybdis
+
+   charybdis.movable:= 0;
+   SetObjProperty(charybdis, "f", power);
+   SetObjProperty(charybdis, "creator", caster.serial);
+
+   Var hit:= 0.0;
+
+   while (charybdis && hit < dur)							// wait duration and check if charybdis is not dispelled
+   																	// get possible victims
+      victims:= ListMobilesNearLocationEx(where.x, where.y, where.z, range,  LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN,where.realm);
+      if (victims.size())
+         foreach victim in victims
+            if (victim <> caster && !victim.dead)							// preserve caster and ghosts
+               if (victim.isa(POLCLASS_NPC))
+                  send_attack(victim, caster, 130);
+               endif
+
+               resist:= 1 - CDbl(GetResistance(victim, "water"));										// get victims water resistance
+               dmg:= CInt((1.0 - Distance(where, victim) / (range + 1)) * basedmg * resist);	// alter spell damage
+               if (mindmg and mindmg > dmg)
+                  dmg:= mindmg;
+               elseif (maxdmg and maxdmg < dmg)
+                  dmg:= maxdmg;
+               endif
+
+               ApplyRawDamagePergon(victim, dmg);									// apply spell damage to victim
+
+	       		if (RandomInt(GetStrPergon(victim)) < power / 5 * (2.0 - Distance(where, victim) / range))
+         	  		Pull(victim, where);											// pull victim towards charybdis
+               endif
+            endif
+            SleepMS(2);
+         endforeach
+      endif
+
+      PlaySoundEffect(charybdis, 0x118);																						//watersound
+      PlaySoundEffect(charybdis, 0x16);
+      																																							//charybdis effect
+      PlayMovingEffectXYZ(where.x - range + RandomInt(2 * range+1), where.y - range +RandomInt(2 * range+1), where.z + RandomInt(range), where.x, where.y, where.z, 0x375A, 1 ,1,0,where.realm);
+      PlayMovingEffectXYZ(where.x - range + RandomInt(2 * range+1), where.y - range +RandomInt(2 * range+1), where.z + RandomInt(range), where.x, where.y, where.z, 0x375A, 1 ,1,0,where.realm);
+      PlayMovingEffectXYZ(where.x - range + RandomInt(2 * range+1), where.y - range +RandomInt(2 * range+1), where.z + RandomInt(range), where.x, where.y, where.z, 0x376A, 1 ,1,0,where.realm);
+      PlayMovingEffectXYZ(where.x - range + RandomInt(2 * range+1), where.y - range +RandomInt(2 * range+1), where.z + RandomInt(range), where.x, where.y, where.z, 0x3779, 1 ,1,0,where.realm);
+      PlayMovingEffectXYZ(where.x - range + RandomInt(2 * range+1), where.y - range +RandomInt(2 * range+1), where.z + RandomInt(range), where.x, where.y, where.z, 0x3779, 1 ,1,0,where.realm);
+
+      SleepMS(500);
+      hit+= 0.5;
+   endwhile
+
+	if (charybdis)
+   	PlayStationaryEffect(charybdis.x, charybdis.y, charybdis.z, FX_SMOKE, 10, 10, 0,charybdis.realm);
+   	DestroyItem(charybdis);
+   endif
+
+endprogram
+
+
+
+Function Pull (who, where)
+
+   if (who.y > where.y)							// who is south of where
+      if (who.x > where.x)									// who is east of where
+         if (who.x - where.x > 2 * (who.y - where.y))			// who is way more east than south
+            MoveObjectToLocation(who, who.x - 1, who.y, who.z, who.realm, MOVEOBJECT_NORMAL);			// => who is moved west
+         elseif (who.y - where.y > 2 * (who.x - where.x))	// who is way more south than east
+            MoveObjectToLocation(who, who.x, who.y - 1, who.z, who.realm, MOVEOBJECT_NORMAL);			// => who is moved north
+         else																// who is southeast
+            MoveObjectToLocation(who, who.x - 1, who.y - 1, who.z, who.realm, MOVEOBJECT_NORMAL);	// => who is moved northwest
+         endif
+      else														// who is west of where
+         if (where.x - who.x > 2 * (who.y - where.y))			// who is way more west than south
+            MoveObjectToLocation(who, who.x + 1, who.y, who.z, who.realm, MOVEOBJECT_NORMAL);			// => who is moved east
+         elseif (who.y - where.y > 2 * (where.x - who.x))	// who is way more south than west
+            MoveObjectToLocation(who, who.x, who.y - 1, who.z, who.realm, MOVEOBJECT_NORMAL);			// => who is moved north
+         else																// who is southwest
+            MoveObjectToLocation(who, who.x + 1, who.y - 1, who.z, who.realm, MOVEOBJECT_NORMAL);	// => who is moved northeast
+         endif
+      endif
+   elseif (who.y < where.y)					// who is north of where
+      if (who.x > where.x)									// who is east of where
+         if (who.x - where.x > 2 * (where.y - who.y))			// who is way more east than north
+            MoveObjectToLocation(who, who.x - 1, who.y, who.z, who.realm, MOVEOBJECT_NORMAL);			// => who is moved west
+         elseif (where.y - who.y > 2 * (who.x - where.x))	// who is way more north than east
+            MoveObjectToLocation(who, who.x, who.y + 1, who.z, who.realm, MOVEOBJECT_NORMAL);			// => who is moved south
+         else																// who is northeast
+            MoveObjectToLocation(who, who.x - 1, who.y + 1, who.z, who.realm, MOVEOBJECT_NORMAL);	// => who is moved soutwest
+         endif
+      else														// who is west of where
+      	if (where.x - who.x > 2 * (where.y - who.y))			// who is way more west than north
+            MoveObjectToLocation(who, who.x + 1, who.y, who.z, who.realm, MOVEOBJECT_NORMAL);			// => who is moved east
+         elseif (where.y - who.y > 2 * (where.x - who.x))	// who is way more north than west
+            MoveObjectToLocation(who, who.x, who.y + 1, who.z, who.realm, MOVEOBJECT_NORMAL);			// => who is moved south
+         else																// who is northwest
+            MoveObjectToLocation(who, who.x + 1, who.y + 1, who.z, who.realm, MOVEOBJECT_NORMAL);	// => who is moved southeast
+         endif
+      endif
+   else												// who is neither north nor south of where
+      if (who.x > where.x)									// who is east of where
+         MoveObjectToLocation(who, who.x - 1, who.y, who.z, who.realm, MOVEOBJECT_NORMAL);				// => who is moved west
+      elseif (who.x < where.x)							// who is west of where
+         MoveObjectToLocation(who, who.x + 1, who.y, who.z, who.realm, MOVEOBJECT_NORMAL);				// => who is moved east
+      endif
+   endif												// implicit: who is exactly at where => nothing happens...
+
+EndFunction

@@ -1,0 +1,7 @@
+Use os;
+
+Include "include/pergonutil";
+
+Program StatCap_Start()
+  //Start_ScriptPergon("statcap");
+EndProgram

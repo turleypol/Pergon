@@ -1,0 +1,249 @@
+///////////////////////////////////////////////////////////////////////////
+// Healer Script - Control script for NPC Merchants
+//
+// Fight hostiles, heal/cure players
+//
+// Healers will wander and defend themselves from attack,
+// tho somewhat more passively. They will only heal/cure
+// if thr mobile is not an npc, they have LOS, they need
+// the heal/cure, and neither the healer nor the healee
+// have any hostiles on them.
+//
+// Author: Racalac
+
+
+use npc;
+use os;
+use uo;
+include "include/bank";
+include "include/merchant";
+include "include/modifyskill";
+include "include/npccast";
+include "include/poison";
+include "include/properties";
+
+// Konstanten
+Const ACTION_EFFECT_CAST2 := 0x11;
+Const HEALER_FACT         := "cost_factor_healer";
+Const ONLY_FREE           := 1;
+Const saywords            := 1;
+
+// Healer - Initialisierung
+Function SetMerchantType(meprototype)
+  meprototype.buynsold             := 0;
+  meprototype.entered_area         := 1;
+  meprototype.ghost_speech_default := 1;
+  meprototype.merchanttype         := "Healer";
+  meprototype.speech_default       := 1;
+  meprototype.speech_name          := 1;
+
+  return meprototype;
+EndFunction
+
+/////////////////////
+// Hook_Move_Action
+/////////////////////
+Function Hook_Move_Action(me, medata, ev)
+  return;
+  me := 1;
+  medata := 1;
+  ev := 1;
+EndFunction
+
+///////////////////////
+// Hook_Merchant_Sold
+///////////////////////
+Function Hook_Merchant_Sold(me, medata, ev)
+  return;
+  me := 1;
+  medata := 1;
+  ev := 1;
+EndFunction
+
+//////////////////////
+// Hook_Entered_Area
+//////////////////////
+Function Hook_Entered_Area(me, medata, ev)
+  NPCSayTextTraditional(
+    me, Answering("seid_gegruesst", medata.minelocation, me), ""
+  );
+  HealerStuff(me, ev.source, ONLY_FREE);
+EndFunction
+
+///////////////////
+// Hook_Left_Area
+///////////////////
+Function Hook_Left_Area(me, medata, ev)
+  return;
+  me := 1;
+  medata := 1;
+  ev := 1;
+EndFunction
+
+/////////////////////////////
+// Hook_Item_Given_Sleeping
+/////////////////////////////
+Function Hook_Item_Given_Sleeping(me, medata, ev)
+  return;
+  me := 1;
+  medata := 1;
+  ev := 1;
+EndFunction
+
+////////////////////
+// Hook_Item_Given
+////////////////////
+Function Hook_Item_Given(me, medata, ev)
+  return;
+  me := 1;
+  medata := 1;
+  ev := 1;
+EndFunction
+
+/////////////////////
+// Hook_Speech_Open
+/////////////////////
+Function Hook_Speech_Open(me, medata, ev)
+  return;
+  me := 1;
+  medata := 1;
+  ev := 1;
+EndFunction
+
+/////////////////////////
+// Hook_Speech_Sleeping
+/////////////////////////
+Function Hook_Speech_Sleeping(me, medata, ev)
+  return;
+  me := 1;
+  medata := 1;
+  ev := 1;
+EndFunction
+
+/////////////////////
+// Hook_Speech_Name
+/////////////////////
+Function Hook_Speech_Name(me, medata, ev)
+  NPCSayTextTraditional(me, "Nennt mich einfach nur "+medata.minename, "");
+  return;
+  ev := 1;
+EndFunction
+
+////////////////////////
+// Hook_Speech_Default
+////////////////////////
+Function Hook_Speech_Default(me, medata, ev, sayed)
+  var proceeded := 0;
+
+  If (sayed["heile"])
+    HealerStuff(me, ev.source);
+    proceeded := 1;
+  EndIf
+
+  return proceeded;
+  medata := 1;
+EndFunction
+
+//////////////////////////////
+// Hook_Ghost_Speech_Default
+//////////////////////////////
+Function Hook_Ghost_Speech_Default(me, medata, ev, sayed)
+  return Hook_Speech_Default(me, medata, ev, sayed);
+EndFunction
+
+Function Hook_Buy(me, medata, who)
+  return;
+  me     := 1;
+  medata := 1;
+  who    := 1;
+EndFunction
+
+///////////////////////////////////////////////
+// HealerStuff - Fuehrt die Heilung[en] durch
+///////////////////////////////////////////////
+Function HealerStuff(me, mobile, free := 0)
+  If (IsPoisoned(mobile))
+    If (ListHostiles(me).size() == 0)
+      TurnToward(mobile);
+
+      NPCSayTextTraditional(me, "Körper und Seele mögen gereinigt sein!", "");
+      PerformAction(me, ACTION_EFFECT_CAST2);
+      CastSpellAI(me, mobile, "archcure");
+    Else
+      NPCSayTextTraditional(me,
+        "Ich kann Euch erst helfen, wenn ich dieses Problem los bin!", ""
+      );
+    EndIf
+  ElseIf (GetHPPergon(mobile) < GetMaxHPPergon(mobile))
+    If (ListHostiles(me).size() == 0)
+      TurnToward(mobile);
+
+      var cost := GetHealingCost(me, mobile);
+
+      If (GetObjProperty(mobile, TYPNEWBIE) > 0)
+        // Neulinge zahlen nichts
+        NPCSayTextTraditional(me,
+          "Ihr seht unerfahren aus, daher behandele ich Euch kostenlos.", ""
+        );
+        cost := 0;
+      ElseIf (cost > 0)
+        // Texte anpassen
+        var textmod := "werde";
+        If (free == ONLY_FREE)
+          textmod := "würde";
+        EndIf
+
+        NPCSayTextTraditional(me,
+          "Ich "+textmod+" Eure Verletzungen für nur "+cost+
+          " Goldstücke behandeln.", ""
+        );
+      Else
+        NPCSayTextTraditional(me,
+          "Ich werde Eure Verletzungen behandeln.", ""
+        );
+      EndIf
+
+      If (free == ONLY_FREE and cost > 0)
+        return;
+      EndIf
+
+      If (cost == 0 or TryToGetPayment(mobile, cost))
+        PerformAction(me, ACTION_EFFECT_CAST2);
+        HealTarget(mobile);
+      Else
+        NPCSayTextTraditional(me,
+          "Meine Heilungen kosten Euch "+cost+
+          " Gold, aber soviel habt ihr nicht auf dem Konto.", ""
+        );
+      EndIf
+    Else
+      NPCSayTextTraditional(me,
+        "Ich kann Euch erst helfen, wenn ich dieses Problem los bin!", ""
+      );
+    EndIf
+  Else
+    NPCSayTextTraditional(me, "Ihr seht gesund aus.", "");
+  EndIf
+EndFunction
+
+Function GetHealingCost(me, mobile)
+  // Kosten aus Skill und globalem/lokalen Heilerfaktor ziehen
+  return CInt(
+    GetSkillAverage(mobile, SKILLTYP_BERUF)*
+    GetObjPropOrDefault(me, HEALER_FACT, 1)*
+    GetGlobalPropOrDefault(HEALER_FACT, 1)
+  );
+EndFunction
+
+Function HealTarget(mobile)
+    Sleep(3);
+    var heal_hp := RandomDiceRoll("5d8+6");
+    If (saywords)
+      SpeakPowerWords(me, 29);
+    EndIf
+    PlayObjectCenteredEffect(mobile, FX_BLESS_EFFECT, 7, 0x10);
+    PlaySoundEffect(mobile, SFX_1F3);
+    HealDamage(mobile, heal_hp);
+EndFunction
+
+// vim: sw=2 sts=2

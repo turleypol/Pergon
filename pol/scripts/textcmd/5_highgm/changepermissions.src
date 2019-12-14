@@ -1,0 +1,437 @@
+use uo;
+use basic;
+use datafile;
+
+include "include/pergonutil";
+include "include/client";
+include "include/server";
+include "include/onlinesearch";
+include "include/permissions";
+include "include/msgs";
+
+Enum Buttons
+  BTN_CANCEL := 10,
+  BTN_OKAY
+EndEnum
+
+var permissions := {
+  PERMISSION_RUNE, PERMISSION_HOUSE, PERMISSION_CHANGESKILLS, PERMISSION_JAIL, PERMISSION_CHECKIP, 
+  PERMISSION_CHANGECPROPS, PERMISSION_ACCESSMAIL, PERMISSION_ACCESSACCOUNTS, PERMISSION_ACCESSPASSWORDS, 
+  PERMISSION_CREATENPC, PERMISSION_ACCESSWEB, PERMISSION_ACCESSWEBFULL, PERMISSION_CHANGENAMES, PERMISSION_CHANGEPERMISSIONS
+};
+
+var commandlevels := {
+  CMDLEVEL_PLAYER, CMDLEVEL_COUNSELOR, CMDLEVEL_QUESTCHAR, CMDLEVEL_SEER, CMDLEVEL_GM,
+  CMDLEVEL_HIGHGM, CMDLEVEL_GL, CMDLEVEL_SCRIPTER, CMDLEVEL_DEVELOPER
+};
+
+Program TextCMD_ChangePermissions(who, params)
+  
+  If (who[1] == "Init" or (who.cmdlevel >= CMDLEVEL_SCRIPTER and lower(params)["init"]))
+    var overwrite := 0;
+    If (lower(params)["overwrite"])
+      overwrite := 1;
+    EndIf
+    If (InitPermissions(overwrite));
+      SetGlobalProperty("PermissionsActive", 1);
+    EndIf
+    return;
+  EndIf
+  
+  If (!AllowedToChangePermissions(who))
+    SendSysMessagePergon(who,
+      "Ihr seid nicht befugt, diesen Befehl zu benutzen!",
+      "You are not authorized to use this command!"
+    );
+    return;
+  EndIf
+  
+  If (params["?"] or params["help"]);
+    SendSysMessagePergon(who, "Parameter: .ChangePermissions [level]");
+    SendSysMessagePergon(who, "[level] - Verwalten der MindestCMDLevel");
+    return;
+  EndIf
+
+  params := SplitWords(params);  
+  
+  var permdat := OpenDataFile("::Permissions");
+  permissions := permdat.keys();
+  
+  If (params.size())
+    EditPermMinLevels(who, permdat);
+    return;
+  EndIf
+  
+  var buchstabe, buchstabendata := FillInAccountBuchstaben();
+
+  Repeat
+    // Einen Anfangsbuchstaben auswaehlen
+    buchstabe := ChooseAccountBuchstabe(who, buchstabendata);
+    If (buchstabe != -1)
+      // Einen Account auswaehlen
+      var accountname := ChooseAccountName(who, FillInAccountNames(buchstabe));
+      If (accountname)
+        // Einen Character auswaehlen
+        var whom := ChooseCharacter(who, FillInCharacter(accountname));
+        If (whom)
+          ChoosePermissions(who, whom, permdat);
+        EndIf
+      EndIf
+    EndIf
+  Until (buchstabe == -1);
+  return;
+  
+EndProgram
+
+Function EditPermMinLevels(who, permdat)
+  
+  var chosenpermission := permdat.keys()[1];
+  var layout := GetLayout();
+  var data   := GetData();
+  data[1]    := "Waehlt die Berechtigung und das dazugehoerige MindestCMDLevel";
+  
+  var minLevels := dictionary;
+  ForEach permission in (permdat.keys())
+    minLevels[permission] := permdat.FindElement(permission).getprop("minLevel");
+  EndForEach
+  
+  var ret, chosencmdlevel;
+  Repeat
+    chosencmdlevel := minLevels[chosenpermission];
+    var status, y := 72, shrink := layout.size();
+    ForEach commandlevel in (commandlevels)
+      If (chosencmdlevel == commandlevel)
+        status := 1;
+      Else
+        status := 0;
+      EndIf
+      layout.append("Radio 25 "+y+" 2117 2224 "+status+" "+(commandlevel+100));
+      y += 30;
+    EndForEach
+    
+    y := 72;
+    ForEach permission in (permdat.keys())
+      layout.append("Text 250 "+(y-2)+" "+FONTCOLOR_GREEN+" "+(_permission_iter+9));
+      If (Compare(permission, chosenpermission))
+        layout.append("GumpPic 225 "+y+" 2224");
+      Else
+        layout.append("Button 225 "+y+" 2117 2224 1 0 "+(_permission_iter+49));
+      EndIf
+      y += 30;
+    EndForEach
+    
+    ret := SendDialogGump(who, layout, data);
+    
+    If (!ret[BTN_CANCEL])
+      If (chosencmdlevel != ret.keys[ret.keys.size()]-100)
+        minLevels[chosenpermission] := ret.keys[ret.keys.size()]-100;
+      EndIf
+      chosenpermission := permdat.keys()[ret[0] - 49];
+      layout.shrink(shrink);
+    EndIf
+    
+  Until (ret[BTN_OKAY] or ret[BTN_CANCEL]);
+  
+  If (ret[BTN_OKAY])
+    var change := 0;
+    ForEach permission in (permdat.keys())
+      If (minLevels[permission] != permdat.FindElement(permission).getprop("minLevel"))
+        permdat.FindElement(permission).setprop("minLevel", minLevels[permission]);
+        change += 1;
+      EndIf
+    EndForEach
+    SendSysMessagePergon(who, change+" Änderungen wurden übernommen.");
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+  
+  return;
+EndFunction
+
+Function ChoosePermissions(who, whom, permdat)
+  
+  var acctname := Lower(whom.acctname);
+  var chosenlevel  := whom.cmdlevel;
+  var layout := GetLayout(who, whom);
+  var data := GetData();
+  data[1]  := "Waehlt das Commandlevel und die Berechtigungen fuer "+whom.name;
+  
+  var ret;
+  Repeat
+    var status, y := 72, shrink := layout.size();
+    ForEach commandlevel in (commandlevels)
+      status := 0;
+      If (chosenlevel == commandlevel)
+        layout.append("GumpPic 25 "+y+" 2224");
+      ElseIf (whom.cmdlevel > who.cmdlevel)
+      	layout.append("GumpPic 25 "+y+" 2117");
+      ElseIf (who.cmdlevel < commandlevel)
+      	layout.append("GumpPic 25 "+y+" 2117");
+      Else
+        layout.append("Button 25 "+y+" 2117 2224 1 0 "+(commandlevel+100));
+      EndIf
+      y += 30;
+    EndForEach
+    
+    Case (who.cmdlevel)
+      CMDLEVEL_GL: 
+        If (who.serial != whom.serial)          
+          layout[layout.size()-2] := "GumpPic 25 252 2117";      // CMDLEVEL_GL nicht auswählbar
+        EndIf
+        layout[layout.size()-1] := "GumpPic 25 282 2117";        // CMDLEVEL_SCRIPTER nicht auswählbar
+        layout[layout.size()] := "GumpPic 25 312 2117";          // CMDLEVEL_DEVELOPER nicht auswählbar
+      CMDLEVEL_SCRIPTER: 
+        If (who.serial != whom.serial)
+          layout[layout.size()-1] := "GumpPic 25 282 2117";      // CMDLEVEL_SCRIPTER nicht auswählbar
+        EndIf
+        layout[layout.size()] := "GumpPic 25 312 2117";          // CMDLEVEL_DEVELOPER nicht auswählbar
+    EndCase
+
+    y := 72;
+    ForEach permission in (permdat.keys())
+      var status      := 0;
+      var currentperm := permdat.FindElement(permission);
+      var enabled := currentperm.GetProp("enabled");
+	    var disabled := currentperm.GetProp("disabled");
+      var fontcolor   := FONTCOLOR_RED;
+      If (chosenlevel >= currentperm.getprop("minLevel"))
+        If (!(acctname in disabled))
+          status := 1;
+          fontcolor := FONTCOLOR_GREEN;
+        Else
+        	fontcolor := FONTCOLOR_YELLOW;
+        EndIf       
+      ElseIf (acctname in enabled)
+        status := 1;
+        fontcolor := FONTCOLOR_WHITE;
+      EndIf
+      layout.append("Text 250 "+(y-2)+" "+fontcolor+" "+(_permission_iter+9));
+      layout.append("CheckBox 225 "+y+" 2117 2224 "+status+" "+(_permission_iter+49));
+      y += 30;
+    EndForEach
+    
+    ret := SendDialogGump(who, layout, data);
+    If (!ret[BTN_CANCEL] and !ret[BTN_OKAY])
+      chosenlevel := ret[0]-100;
+    EndIf
+    
+    layout.shrink(shrink);
+  Until (ret[BTN_OKAY] or ret[BTN_CANCEL]);
+  
+  If (ret[BTN_OKAY])
+    ChangeCMDLevel(who, whom, chosenlevel);
+    ChangePermissions(who, whom, ret, permdat);
+  EndIf
+  
+  return;
+EndFunction
+
+Function ChangeCMDLevel(who, player, newlevel)
+  
+  If (player.cmdlevel != newlevel)
+    var oldlevelname := GetCMDLevelTitle(player.cmdlevel);
+    var newlevelname := GetCMDLevelTitle(newlevel);
+
+    player.cmdlevel  := newlevel;
+    If (newlevel <= CMDLEVEL_COUNSELOR)
+      player.concealed := CMDLEVEL_PLAYER;
+    EndIf
+
+    SendSysMessagePergon(who,
+      "CMDLevel von "+oldlevelname+" auf "+newlevelname+" geändert.",
+      "Changed commandlevel from "+oldlevelname+" to "+newlevelname+"."
+    );
+    If (who.serial != player.serial)
+      var text := "Euer CMDLevel wurde von "+who.name+" von "+
+        oldlevelname+" auf "+newlevelname+" geaendert.";
+      If (player.connected)
+        SendStringAsTipWindow(player, text);
+      Else
+        player.setprop("LogonMessage", text);
+      EndIf
+    EndIf
+
+    IncRevision(player);
+
+    // Logging
+    SysLog(
+      CharInfoStr(who)+" gewaehrt "+CharInfoStr(player)+" das CMDLevel "+
+      newlevelname
+    );
+  EndIf
+      
+EndFunction
+
+Function ChangePermissions(who, whom, ret, byref permdat)
+  
+  var acctname := Lower(whom.acctname);
+  ForEach permission in (permdat.keys())
+    var currentperm := permdat.FindElement(permission);
+    
+    var enabled := currentperm.getprop("enabled");
+    If (!enabled)
+      enabled := {};
+    EndIf
+    
+    var disabled := currentperm.getprop("disabled");
+    If (!disabled)
+      disabled := {};
+    EndIf
+    
+    If (whom.cmdlevel >= currentperm.getprop("minLevel"))
+      // Wenn whom das geforderte MindestCMDLevel erreicht hat ...
+      If (!ret[_permission_iter + 49])
+        // ... aber er die Berechtigung nicht erhält ...
+        If (!(acctname in disabled))
+          // ... dann muss er als ausgeschlossen vermerkt werden.
+          disabled.append(acctname);
+          currentperm.setprop("disabled", SortArrayABC(disabled));
+          
+          If (acctname in enabled)      
+            ForEach acct in enabled
+              If (Compare(acct, acctname))
+                enabled.erase(_acct_iter);
+                currentperm.setprop("enabled", enabled);
+                break;
+              EndIf
+            EndForEach
+          EndIf
+          
+          SysLog(
+            CharInfoStr(who)+" entzieht "+CharInfoStr(whom)+" die Berechtigung "+
+            permission
+          );
+        EndIf        
+      Else
+        // ... und die Berechtigung auch ausgewählt wurde ...
+        If (acctname in enabled+disabled)
+          // ... dann braucht keine Information gespeichert zu bleiben.
+          If (acctname in enabled)      
+            ForEach acct in enabled
+              If (Compare(acct, acctname))
+                enabled.erase(_acct_iter);
+                currentperm.setprop("enabled", enabled);
+                break;
+              EndIf
+            EndForEach
+          EndIf
+          
+          If (acctname in disabled)
+            ForEach acct in disabled
+              If (Compare(acct, acctname))
+                disabled.erase(_acct_iter);
+                currentperm.setprop("disabled", disabled);
+                break;
+              EndIf
+            EndForEach
+            
+            SysLog(
+              CharInfoStr(who)+" hebt die Beschraenkung "+CharInfoStr(whom)+" fuer die Berechtigung "+
+              permission+" auf"
+            );
+          EndIf
+        EndIf
+      EndIf
+    Else
+      // Wenn whom das geforderte MindestCMDLevel nicht erreicht hat ...
+      If (!ret[_permission_iter + 49])
+        // ... und die Berechtigung auch nicht ausgewählt wurde
+        If (acctname in enabled+disabled)
+          // ... dann braucht keine Information gespeichert zu bleiben.
+          If (acctname in enabled)      
+            ForEach acct in enabled
+              If (Compare(acct, acctname))
+                enabled.erase(_acct_iter);
+                currentperm.setprop("enabled", enabled);
+                break;
+              EndIf
+            EndForEach
+          
+            SysLog(
+              CharInfoStr(who)+" entzieht "+CharInfoStr(whom)+" die Erlaubnis fuer die Berechtigung "+
+              permission
+            );
+          EndIf
+          
+          If (acctname in disabled)
+            ForEach acct in disabled
+              If (Compare(acct, acctname))
+                disabled.erase(_acct_iter);
+                currentperm.setprop("disabled", disabled);
+                break;
+              EndIf
+            EndForEach
+          EndIf
+        EndIf
+      Else
+        // ... aber dennoch die Berechtigung erteilt wurde ...
+        If (!(acctname in enabled))
+          // ... dann muss er als berechtigt vermerkt werden.
+          enabled.append(acctname);
+          currentperm.setprop("enabled", SortArrayABC(enabled));
+          
+          If (acctname in disabled)      
+            ForEach acct in disabled
+              If (Compare(acct, acctname))
+                disabled.erase(_acct_iter);
+                currentperm.setprop("disabled", disabled);
+                break;
+              EndIf
+            EndForEach
+          EndIf
+        
+          SysLog(
+            CharInfoStr(who)+" gewaehrt "+CharInfoStr(whom)+" die Berechtigung "+
+            permission
+          );
+        EndIf        
+      EndIf
+    EndIf
+  EndForEach
+  
+EndFunction
+
+Function GetLayout(who := 0, whom := 0)
+	
+  var layout := {
+    "Page 0",
+    "NoDispose",
+    "NoClose",
+    "ResizePic 10 10 2620 440 500",    
+    "GumpPic 30 40 2621",
+    "GumpPic 160 40 2621",
+    "GumpPic 200 70 2623",
+    "GumpPic 200 240 2623",
+    "CheckerTrans 15 16 430 488",
+    
+    "Page 1",
+    "Text 30 19 40 0",
+    "Button 370 470 2130 2129 1 0 "+BTN_OKAY,
+    "Button 30 470 2121 2120 1 0 "+BTN_CANCEL
+  };
+  
+  var fontcolor;
+  var y := 70;
+  ForEach commandlevel in (commandlevels)
+  	fontcolor := FONTCOLOR_GREEN;
+  	If (whom && whom.cmdlevel == commandlevel)
+  		fontcolor := FONTCOLOR_WHITE;
+  	ElseIf (who && commandlevel > who.cmdlevel)
+  		fontcolor := FONTCOLOR_RED;
+  	EndIf
+  	layout.append("Text 50 "+y+" "+fontcolor+" "+_commandlevel_iter);
+  	y += 30;
+  EndForEach
+  
+  return layout;
+
+EndFunction
+
+Function GetData()
+  var data := {""};
+  ForEach commandlevel in (commandlevels)
+    data.append(GetCMDLevelTitle(commandlevel));
+  EndForEach
+  data += permissions;
+  return data;
+EndFunction

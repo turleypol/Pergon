@@ -1,0 +1,123 @@
+///////////////////////////////////////////////////////////////////////////
+// Move - Bewegt alle Items aus bestimmten Container in anderen Container
+
+use uo;
+include "include/itemnpc";
+include "include/msgs";
+include "include/utility";
+
+var ignoreList := {
+  // Mensch
+  0x2004, 0x203b, 0x203c, 0x203d, 0x2044, 0x2045, 0x2046, 0x2047, 0x2048,
+  0x2049, 0x204a,
+  // Elf maennlich extra Haare
+  0x2fbf, 0x2fc0, 0x2fc1, 0x2fc2, 0x2fcd, 0x2fce, 0x2fcf, 0x2fd1,
+  // Elf weiblich extra Haare
+  0x2fcc, 0x2fd0,
+  // Baerte
+  0x2005, 0x203e, 0x203f, 0x2040, 0x2041, 0x204b, 0x204c, 0x204d,
+  // Mountitem
+  0xf021
+};
+
+Program TextCMD_Move(who)
+    // Quellcontainer
+    SendSysMessagePergon(who,
+        "Quellbehaelter auswählen!",
+        "Select a source container!"
+    );
+    var fromcont := Target(who);
+    If (fromcont and fromcont.isa(POLCLASS_MOBILE))
+        // bequemes Auswaehlen von Packtieren erlauben
+        fromcont := fromcont.backpack;
+    EndIf
+    If (!fromcont or !fromcont.isa(POLCLASS_CONTAINER))
+        SendSysMessagePergon(who,
+            "Abbruch: Kein Container.",
+            "Abort: Not a container."
+        );
+        return;
+    EndIf
+
+    // Zielcontainer
+    SendSysMessagePergon(who,
+        "Zielbehälter auswaehlen!",
+        "Select the destination container!"
+    );
+    var tocont := Target(who);
+    If (tocont and tocont.isa(POLCLASS_MOBILE))
+        // bequemes Auswaehlen von Packtieren erlauben
+        tocont := tocont.backpack;
+    EndIf
+    If (!tocont or !tocont.isa(POLCLASS_CONTAINER))
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (!IsMine(who, fromcont) and fromcont.getprop("myserial") != who.serial)
+        SendSysMessagePergon(who,
+            "Abbruch: Quellbehälter muss euch gehören.",
+            "Abort: you must own the source container."
+        );
+        return;
+    EndIf
+    If (!IsMine(who, tocont) and tocont.getprop("myserial") != who.serial)
+        SendSysMessagePergon(who,
+            "Abbruch: Zielbehälter muss euch gehören.",
+            "Abort: you must own the destination container."
+        );
+        return;
+    EndIf
+
+    If (fromcont.serial == tocont.serial)
+        SendSysMessagePergon(who,
+            // zwei Original-Filmzitat
+            "Es tut mir leid, Dave, aber das kann ich nicht tun.",
+            "You see? You see? Your stupid minds! Stupid! Stupid!"
+        );
+        return;
+    EndIf
+
+    // Verschieben vorbereiten
+    If (!ReserveItem(fromcont) or !ReserveItem(tocont))
+        return;
+    EndIf
+
+    var items := EnumerateItemsInContainer(fromcont, ENUMERATE_ROOT_ONLY);
+    var done  := 0;
+    ForEach item in (items)
+        If (item.objtype in ignoreList)
+            continue;
+        EndIf
+        
+        SleepMS(2);
+
+        var success;
+        var amount := item.amount;
+        If (item.stackable)
+            success := MoveStackingItemToContainer(item, tocont);
+        Else
+            success := MoveItemToContainer(item, tocont);
+        EndIf
+
+        If (success)
+            done += amount;
+        ElseIf (success.errortext in (array{
+                "Container is too full to add that",
+                "That container is full"
+        }))
+            SendSysMessagePergon(who,
+                "Euer Zielbehälter ist zu voll!",
+                "Your destination container is too full."
+            );
+            break;
+        EndIf
+    EndForEach
+
+    SendSysMessagePergon(who,
+        "Fertig. "+done+" Objekte verschoben.",
+        "Done.  "+done+" items moved."
+    );
+    ReleaseItem(fromcont);
+    ReleaseItem(tocont);
+EndProgram

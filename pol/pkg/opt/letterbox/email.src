@@ -1,0 +1,368 @@
+///////////////////////////////////////////////////////////////////////////
+// email - Briefkastensystem, halt Nachrichten schicken (.letterbox)
+//
+//     OrigAuthor: 2006-08-03 07:19:21Z austinheilman
+//
+//     Author: Turley
+
+///////////////////////////////////////////////////////////////////////////
+// Externes Starten:
+// Start_ScriptPergon(
+//     ":letterbox:email",{mobile,box_id,send_to,subject,message}
+// );
+//
+// mobile:   MobileRef
+// box_id:   ID der Box vom Mobile (BoxID==Mobile.serial)
+// to_list:  String mit den Adressen
+// subject:  String mit dem Betreff
+// message:  String mit der Nachricht
+//
+// {mobile,box} - Wie per TxtCmd Startschirm anzeigen
+// {mobile,box,send_to} - direkt Nachricht verfassen Fenster
+// {mobile,box,send_to,subject} - Nachricht verfassen mit vorhandenem Betreff
+// {mobile,box,send_to,subject,message} - Nachricht direkt verschicken
+// {0,0,send_to,subject,message} - System Nachricht verschicken
+
+use datafile;
+use os;
+use uo;
+include ":letterbox:gumps";
+include "include/client";
+include "include/clock";
+include "include/datafile";
+include "include/msgs";
+
+Var settings:=struct{"AddressBookEntries":=56,
+                     "BlockListEntries":=56,
+                     "MaxMessages":=50};
+
+//Global because its just easier.
+Var email_data_file := DFOpenDataFile(":letterbox:emails", DF_CREATE);
+Var address_data_file := DFOpenDataFile(":letterbox:AddressBooks", DF_CREATE);
+Var blocked_data_file := DFOpenDataFile(":letterbox:BlockLists", DF_CREATE);
+
+Program EmailClient(parm)
+// var mobile  := parm[1];
+// var box_id  := parm[2];
+// var send_to := parm[3];
+// var subject := parm[4];
+// var message := parm[5];
+// var status  := parm[6];
+
+  If (parm[3])
+    If (parm[5])
+      If (TypeOfInt(parm[5]) != OT_ARRAY)
+        parm[5] := GFWordWrap(parm[5], 595);
+      EndIf
+      SendEMail(parm[1], parm[2], parm[3], parm[4], parm[5], parm[6]);
+    Else
+      var mess := ComposeEmail(parm[1], parm[2], parm[3], parm[4]);
+      If (mess)
+        SendEmail(
+          parm[1], parm[2], mess.recipient, mess.subject, mess.message,
+          parm[6]
+        );
+      EndIf
+    EndIf
+  Else
+    IndexGump(parm[1], parm[2]);
+  EndIf
+EndProgram
+
+Function IndexGump(mobile, box_id)
+  Var gump, input;
+  Var mail_elem := DFFindElement(email_data_file, Hex(box_id), DF_CREATE);
+
+  While (mobile.connected)
+    gump := BuildInboxGump(box_id, mail_elem);
+    input := SendDialogGump(mobile, gump[1],gump[2],50,50);
+
+    If (input[UPDATE_INBOX_BTN])
+      //nütschts
+    ElseIf (input[DELETE_ALL_BTN])
+      ForEach mail_number in (mail_elem.PropNames())
+        mail_elem.EraseProp(Hex(mail_number));
+        SleepMS(2);
+      EndForEach
+    ElseIf (input[BLOCK_LIST_BTN])
+      BlockList(mobile, box_id);
+    ElseIf (input[ADDRESS_BOOK_BTN])
+      AddressBook(mobile, box_id);
+    ElseIf (input[NEW_LETTER_BTN])
+      var mess := ComposeEmail(mobile, box_id);
+      If (mess)
+        SendEmail(
+          mobile, box_id, mess.recipient, mess.subject, mess.message
+        );
+      EndIf
+    ElseIf (input[CLOSE_EMAIL_BTN])
+      SendSysMessagePergon(mobile, "Abbruch", "Abort");
+      Return;
+    ElseIf (input.keys[2]>=READMAIL_START)
+      var key := input.keys[2] - READMAIL_START;
+      ReadMessage(mobile, box_id, key, mail_elem);
+    EndIf
+
+  EndWhile
+
+  Return(1);
+EndFunction
+
+Function ReadMessage(mobile, box_id, mail_num, byref mail_elem)
+  mail_num := Hex(CInt(mail_num));
+
+  Var email := mail_elem.GetProp(mail_num);
+  email.read:=email.read+1;
+  mail_elem.SetProp(mail_num, email);
+
+  Var gump := BuildReaderGump(email);
+  Var input := SendDialogGump(mobile, gump[1],gump[2],50,50);
+  If (!input[0])
+    Return(1);
+  ElseIf (input[DELETE_MSG_BTN])
+    mail_elem.EraseProp(mail_num);
+    Return(1);
+  ElseIf (input[CLOSE_EMAIL_BTN])
+    Return(1);
+  Else
+    var mess := ComposeEmail(mobile, box_id, email.from_box);
+    If (mess)
+      SendEmail(
+        mobile, box_id, mess.recipient, mess.subject, mess.message
+      );
+    EndIf
+  EndIf
+EndFunction
+
+Function BlockList(mobile, box_id)
+  Var data_elem := DFFindElement(blocked_data_file, Hex(box_id), DF_CREATE);
+
+  Var entry_list := array;
+  Var gump := BuildBlockListGump(data_elem, entry_list);
+  var input := SendDialogGump(mobile, gump[1], gump[2], 50, 50);
+
+  If (input[UPDATE_LIST_BTN])
+    Var entry_num, block_id, name, i:=0;
+    For (entry_num:=1; entry_num<=(settings.BlockListEntries); entry_num:=entry_num+1)
+      block_id:=input[entry_num+4+i];
+      If (block_id)
+        block_id[1,Len(CStr(entry_num+4+i))+2]:="";
+        name:=input[entry_num+5+i];
+        If (name)
+          name[1,Len(CStr(entry_num+4+i))+2]:="";
+          data_elem.SetProp(Hex(entry_num), struct{"boxid":=block_id, "name":=name});
+        EndIf
+      EndIf
+      i+=1;
+      SleepMS(2);
+    EndFor
+  ElseIf (input[DELETE_ALL_BTN])
+    ForEach propname in (data_elem.PropNames())
+      data_elem.EraseProp(propname);
+      SleepMS(2);
+    EndForEach
+  EndIf
+
+  Return(1);
+EndFunction
+
+Function AddressBook(mobile, box_id, byref send_to:="", writing:=0)
+  Var data_elem := DFFindElement(address_data_file, Hex(box_id), DF_CREATE);
+
+  Var entry_list := array;
+  Var gump := BuildAddressBookGump(data_elem, entry_list);
+  Var input := SendDialogGump(mobile, gump[1],gump[2],50,50);
+
+  If (input[UPDATE_LIST_BTN])
+    Var entry_num, block_id, name, i:=0;
+    For (entry_num:=1; entry_num<=settings.AddressBookEntries; entry_num+=1)
+      block_id:=input[entry_num+4+i];
+      If (block_id)
+        block_id[1,Len(CStr(entry_num+4+i))+2]:="";
+        name:=input[entry_num+5+i];
+        If (name)
+          name[1,Len(CStr(entry_num+4+i))+2]:="";
+          data_elem.SetProp(Hex(entry_num), struct{"boxid":=block_id, "name":=name});
+        EndIf
+      EndIf
+      i+=1;
+      SleepMS(2);
+    EndFor
+  ElseIf (input[DELETE_ALL_BTN])
+    ForEach propname in (data_elem.PropNames())
+      data_elem.EraseProp(propname);
+      SleepMS(2);
+    EndForEach
+  ElseIf (input.keys[input.keys.size()] >= ADDYBOOK_START)
+    Var entry_info := data_elem.GetProp(Hex(input.keys[input.keys.size()]-ADDYBOOK_START));
+    If (entry_info)
+      send_to+=" "+entry_info.boxid;
+      If (!writing)
+        var mess := ComposeEmail(mobile, box_id, send_to);
+        If (mess)
+          SendEmail(
+            mobile, box_id, mess.recipient, mess.subject, mess.message
+          );
+        EndIf
+      EndIf
+    EndIf
+  EndIf
+
+  Return(1);
+EndFunction
+
+Function ComposeEmail(
+  mobile, box_id, send_to := "", subject := "", message := array{}
+)
+  While (mobile.connected)
+    var gump := BuildComposeGump(send_to, subject, message);
+    var input := SendDialogGump(mobile, gump[1],gump[2],50,50);
+
+    If (CLOSE_EMAIL_BTN in input.keys)
+      var ret := error;
+      ret.errortext := "Cancelled";
+      return ret;
+    EndIf
+
+    // Retrieve gump input data and word-wrap
+    send_to := input[SEND_TO_TXT];
+    send_to[1, Len(CStr(SEND_TO_TXT))+2] := "";
+    If (!send_to)
+      send_to := "";
+    EndIf
+
+    subject := input[SUBJECT_TXT];
+    subject[1,Len(CStr(SUBJECT_TXT))+2]:="";
+    If (!subject)
+      subject := "";
+    EndIf
+
+    var i, temp_string := "";
+    For (i := 1; i <= message.Size(); i += 1)
+      var temp_data := input[message[i]];
+      temp_data[1,Len(CStr(TXT_START))+2]:="";
+      If (temp_data)
+        temp_string +=" "+temp_data;
+      EndIf
+      SleepMS(2);
+    EndFor
+
+    message := GFWordWrap(temp_string, 595);
+
+    // Process buttons other than cancellation.
+    If (input[ADDRESS_BOOK_BTN])
+      AddressBook(mobile, box_id, send_to, 1);
+    ElseIf(input[SEND_EMAIL_BTN])
+      var mess := struct;
+      mess.+recipient := send_to;
+      mess.+subject := subject;
+      mess.+message := message;
+      return mess;
+    EndIf
+
+    SleepMS(2);
+  EndWhile
+
+  var ret := error;
+  ret.errortext := "Connection lost";
+  return ret;
+EndFunction
+
+Function SendEmail(
+  mobile, box_id, send_to, subject, msg_array, status := SEND_STATUS
+)
+  If (!mobile.IsA(POLCLASS_MOBILE))
+    mobile := struct{"name":="SYSTEM", "acctname":="N/A", "ip":=0};
+  EndIf
+
+  send_to := SplitWords(send_to);
+
+  If (subject)
+    subject:=Trim(subject);
+  EndIf
+
+  var email := struct;
+  email.+subject := subject;
+  email.+message := msg_array;
+  email.+from_name := mobile.name;
+  email.+from_acct := mobile.acctname;
+  email.+from_ip := mobile.ip;
+  email.+from_box := box_id;
+  email.+time := GetDateTimeStr();
+  email.+read := 0;
+  Var layout:={"page 0",
+               "resizepic 0 0 3600 640 480",
+               "resizepic 15 15 5054 610 450",
+               "htmlgump 15 25 620 20 0 0 0"
+              };
+  Var data:={"<basefont color=#FFFFFF><center>Sendestatus</center>"};
+
+  Var y_pos := 55;
+  Var inbox_elem, next_msg;
+  ForEach boxid in (send_to)
+    inbox_elem := DFFindElement(email_data_file, Hex(boxid), DF_CREATE);
+    If (!inbox_elem)
+      layout.append("text 20 "+y_pos+" 2100 "+data.size());
+      data.append(boxid+" existiert nicht.");
+      y_pos+=20;
+    ElseIf (IsBlocked(box_id, boxid))
+      layout.append("text 20 "+y_pos+" 2100 "+data.size());
+      data.append("Nachricht konnte an Briefkasten "+boxid+" nicht gesendet werden.");
+      y_pos+=20;
+    Else
+      next_msg := inbox_elem.GetProp("NextMsgID");
+      If (!next_msg)
+        next_msg := 1;
+      ElseIf (next_msg > settings.MaxMessages)
+        next_msg := 1;
+      Else
+        next_msg+=1;
+      EndIf
+
+      inbox_elem.SetProp("NextMsgID", next_msg);
+      inbox_elem.SetProp(Hex(next_msg), email);
+
+      layout.append("text 20 "+y_pos+" 2100 "+data.size());
+      data.append("Nachricht an Briefkasten "+boxid+" wurde gesendet.");
+      y_pos+=20;
+      SendNotification(mobile,SystemFindObjectBySerial(CInt(boxid)));
+    EndIf
+    SleepMS(2);
+  EndForEach
+
+  If (mobile.IsA(POLCLASS_MOBILE) and status == SEND_STATUS)
+    SendDialogGump(mobile, layout,data,50,50);
+  EndIf
+
+  return 1;
+EndFunction
+
+Function IsBlocked(serial, box_id)
+  Var prop_info;
+  serial := CInt(serial);
+  Var block_list := DFFindElement(blocked_data_file, Hex(box_id));
+  ForEach entry in (block_list.PropNames())
+    prop_info := block_list.GetProp(Hex(entry));
+    If (serial == CInt(prop_info.boxid))
+      Return(1);
+    EndIf
+    SleepMS(2);
+  EndForEach
+
+  Return(0);
+EndFunction
+
+Function SendNotification(mobile, sendto)
+  If (sendto)
+    SendSysMessagePergon(sendto,
+      "Ihr habt eine Nachricht von "+mobile.name+" erhalten.",
+      "You received a message from "+mobile.name,
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+    If (sendto.getprop(PROP_NOTIFY_LETTER))
+      PlaySoundEffectPrivate(sendto, 0x003e, sendto);
+    EndIf
+  EndIf
+EndFunction
+
+// vim: sts=2 sw=2

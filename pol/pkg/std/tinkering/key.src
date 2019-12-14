@@ -1,0 +1,211 @@
+// key.src - key double-click script
+//  They're all lockid-style keys now.
+//
+//  use a key on itself to rename it.
+//  use a blank key on a key to copy it.
+//  use a key on a lock to lock/unlock it.
+//
+//  use a keyring on a key to move the key to the keyring
+//  use a keyring on itself to remove all the keys.
+//  use a keyring on a lock to lock/unlock it.
+//
+//  TODO: Make the key utility autosearch keyring contents as
+//      well as the player's pack.
+//
+//      -Dundee
+//
+//
+// Added to config/itemdesc.cfg:
+//
+// Item 0x1011
+// {
+//  Name            keyring
+//  Script          key
+//  VendorSellsFor  12
+//  VendorBuysFor   4
+// }
+//
+// Also:  Add all the keys and a keyring to a vendor so players can buy them!
+//
+//  27.05.2003 Fraggulus: Schluesselkopie uebernimmt auch den Namen des kopierten Schluessels
+//
+
+use storage;
+use uo;
+include ":doorsnew:common";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/msgs";
+include "include/objtype";
+include "include/storage";
+
+Program use_key(who, key)
+    var thetarget := Target(who);
+    If (!AccessiblePergon(who, thetarget, IGNORE_LOCKEDDOWN))
+        // Ohne das Ignore kann man Tueren in Haeusern nich oeffnen
+        PrintTextAbovePrivatePergon(who, "Ihr kommt da nicht ran", "", who);
+        return;
+    EndIf
+
+    If (key.objtype == UOBJ_KEY_RING)
+        Use_KeyRing(who, key, thetarget);
+        return;
+
+    ElseIf (thetarget.serial == key.serial)
+        RenameKey(who, key);
+        return;
+    EndIf
+
+    var lockid := GetObjProperty(key, "lockid");
+    var targetlockid := GetObjProperty(thetarget, "lockid");
+
+    If (!targetlockid)
+        PrintTextAbovePrivatePergon(thetarget,
+            "Das ist nicht verschlossen.", "", who
+        );
+        return;
+    EndIf
+
+    If (!lockid)
+        CopyKey(who, key, thetarget);
+        return;
+    EndIf
+
+    If (lockid != targetlockid)
+        PrintTextAbovePrivatePergon(thetarget,
+            "Das ist der falsche Schlüssel!", "", who
+        );
+        return;
+    Else
+        If (IsAKey(thetarget))
+            PrintTextAbovePrivatePergon(who, "These keys match", "", who);
+            return;
+        Else
+            UnLockIt(thetarget, who);
+            return;
+        EndIf
+    EndIf
+EndProgram
+
+Function UnLockIt(thetarget, who)
+    If (thetarget.graphic in { GID_PLANK_EXTENDED_FACING_EAST,
+                               GID_PLANK_EXTENDED_FACING_WEST,
+                               GID_PLANK_EXTENDED_FACING_NORTH,
+                               GID_PLANK_EXTENDED_FACING_SOUTH }
+    )
+        PrintTextAbovePrivatePergon(thetarget,
+            "Ihr könnt die Planke nicht abschliessen, solange "+
+            "sie nicht eingeholt wurde.", "", who
+        );
+        return;
+    EndIf
+
+    thetarget.locked := (not thetarget.locked);
+    var linked := SystemFindObjectBySerial(CInt(thetarget.getprop("linked")));
+    If (linked)
+        linked.locked := thetarget.locked;
+    EndIf
+
+    If (thetarget.locked)
+        PrintTextAbovePrivatePergon(thetarget, "Ihr sperrt es ab.", "", who);
+    Else
+        PrintTextAbovePrivatePergon(thetarget,
+            "Ihr schliesst es auf.", "", who
+        );
+    EndIf
+
+    // einem eventuell laufenden Schlossknackscript mitteilen,
+    // die Tuer nicht mehr zu schliessen (siehe Script)
+    EraseObjProperty(thetarget, "#LockPicked");
+    EraseObjProperty(linked, "#LockPicked");
+EndFunction
+
+Function Use_KeyRing(who, key, thetarget)
+    var lockid := GetObjProperty(key, "lockid");
+    var targetlockid := GetObjProperty(thetarget, "lockid");
+    var insidering := GetBoxInStorageArea(
+        STORAGE_KEYRINGS, ST_PREF_KEYRINGS+Hex(key.serial)
+    );
+
+    // target the keyring to dump the contents all over your pack
+    If (key.serial == thetarget.serial)
+        PrintTextAbovePrivatePergon(who,
+            "Ihr könnt die Schlüssel nicht vom Ring entfernen.", "", who
+        );
+        ForEach otherkey in EnumerateItemsInContainer(insidering)
+            MoveItemToContainer(otherkey, who.backpack);
+        EndForEach
+        key.graphic := 4113;
+        return;
+    EndIf
+
+    // exit if the target is not a lock or is a blank key
+    If (!targetlockid)
+        PrintTextAbovePrivatePergon(thetarget,
+            "Das ist nicht verschlossen.", "", who
+        );
+        return;
+    EndIf
+
+    // if the target is a key, move it into the keyring,
+    // otherwise try to unlock it
+    If (IsAKey(thetarget))
+        PrintTextAbovePrivatePergon(who,
+            "Ihr hängt den Schlüssel mit an den Ring.", "", who
+        );
+        MoveItemToContainer(thetarget, insidering);
+        If (!key.graphic)
+            key.graphic := 4113;
+        EndIf
+        If (key.graphic == 4113)
+            key.graphic := 5993;
+        ElseIf (key.graphic < 5995)
+            key.graphic := key.graphic + 1;
+        EndIf
+        return;
+    Else
+        // check the lockid of all the keyring's contents against the lock
+        ForEach otherkey in EnumerateItemsInContainer(insidering)
+            lockid := GetObjProperty(otherkey, "lockid");
+            If (lockid == targetlockid)
+                UnlockIt(thetarget, who);
+                return;
+            EndIf
+        EndForEach
+    EndIf
+
+    PrintTextAbovePrivatePergon(key,
+        "Keiner Eurer Schlüssel passt zum Schloss.", "", who
+    );
+    return;
+EndFunction
+
+Function RenameKey(who, key)
+    var keyDescription := RequestInputPergon(who, key,"Gebt eine Beschreibung für den Schlüssel ein. (max. 20 Zeichen)");
+
+    If (keyDescription)
+        keyDescription := CChrZ(keyDescription.uc_text);
+        If (Len(keyDescription) <= 20)
+            key.name := "Ein Schluessel: "+ keyDescription;
+            SendSysMessagePergon(who, "Schlüssel wurde umbenannt.");
+        Else
+            SendSysMessagePergon(who, "Der Name ist zu lang.");
+        EndIf
+    EndIf
+EndFunction
+
+Function CopyKey(who, key, thetarget)
+    var targetlockid := GetObjProperty(thetarget, "lockid");
+
+    If (IsAKey(thetarget))
+        SetObjProperty(key, "lockid", targetlockid);
+        SetName(key, thetarget.desc);
+        PrintTextAbovePrivatePergon(key,
+            "Ihr fertigt einen Zweitschlüssel.", "", who
+        );
+    Else
+        PrintTextAbovePrivatePergon(key,
+            "Dieser Schlüssel ist noch unbenutzt.", "", who
+        );
+    EndIf
+EndFunction

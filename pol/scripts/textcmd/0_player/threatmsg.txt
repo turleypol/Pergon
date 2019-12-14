@@ -1,0 +1,8 @@
+<h3 id="threatmsg">threatmsg</h3>
+
+<h4>Parameter: keiner oder <kbd>&lt;Charactername&gt;</kbd></h4>
+
+<p>Mit Parameter kann man dem angegebenen Spieler eine Drohung senden,
+sofern er online ist. Ohne Parameter werden Character aufgelistet, die
+gerade online sind. Man kann aus der Liste ein Opfer auswählen und
+diesem die Drohung senden.</p>

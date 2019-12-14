@@ -1,0 +1,70 @@
+use math;
+use os;
+use uo;
+use cfgfile;
+
+Include "include/msgs";
+
+Var number := 0;
+program npcres( you )
+
+//set_critical/(0);
+Var npccfg;
+Var npcelem;
+Var npcentry;
+Var npctype;
+
+Var x := 0;
+Var y, z;
+
+npccfg := ReadConfigFile ("opentime");
+if (!npccfg)
+ SendSysMessagePergon (you, "can't read opentime.cfg");
+ return;
+endif
+
+for( x := 6144 ; x > 16 ; x := x  - 32)
+   SendSysMessagePergon (You, "Changing NPCs, X=" + x );
+    for( y := 16; y < 4096; y := y + 32 )
+        for( z := -60; z <= 60; z := z + 30 )
+            foreach npc in ListMobilesNearLocation( x, y, z, 32,REALM_BRITANNIA )
+	        npctype := GetObjProperty(npc,"MerchantType");
+		if (npctype)
+		  npcelem := FindConfigElem(npccfg,npctype);
+		  if (!npcelem)
+		    SendSysMessagePergon (you,"Fehler beim Öffnen fuer: "+npctype);
+		    sleep (1);
+		  else
+		    npcentry := GetConfigString(npcelem,"open");
+  		    if (!npcentry)
+		       SendSysMessagePergon (you,"Fehler beim Lesen von 'Open': "+npctype);
+		       sleep (1);
+		       SetObjProperty(npc,"open","06:00");
+ 		       SendSysMessagePergon (you,"Setze Standardöffnungszeit");
+		       sleep (1);
+		       number := number + 1;
+  	            else
+		       SetObjProperty(npc,"open",npcentry);
+ 		       number := number + 1;
+		    endif
+		    npcentry := GetConfigString(npcelem,"close");
+  		    if (!npcentry)
+		       SendSysMessagePergon (you,"Fehler beim Lesen von 'Close': "+npctype);
+		       sleep (1);
+		       SetObjProperty(npc,"close","20:00");
+ 		       SendSysMessagePergon (you,"Setze Standardschliesszeit");
+		       sleep (1);
+		       number := number + 1;
+		    else
+		       SetObjProperty(npc,"close",npcentry);
+ 		       number := number + 1;
+		    endif
+	         endif
+		endif
+            endforeach
+        endfor
+    endfor
+    SendSysMessagePergon(you, "Insg. NPCs restarted:" + number);
+endfor
+
+endprogram

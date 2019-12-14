@@ -1,0 +1,87 @@
+///////////////////////////////////////////////////////////////////////////
+// LootCorpse - Lootet eigene Leiche (gestartet ueber popupmenu.src)
+//
+// Author: Turley
+
+use uo;
+Include "include/msgs";
+Include "include/utility";
+
+var haare := {
+  // Mensch
+  0x2004, 0x203b, 0x203c, 0x203d, 0x2044, 0x2045, 0x2046, 0x2047, 0x2048,
+  0x2049, 0x204a,
+  // Elf maennlich extra Haare
+  0x2fbf, 0x2fc0, 0x2fc1, 0x2fc2, 0x2fcd, 0x2fce, 0x2fcf, 0x2fd1,
+  // Elf weiblich extra Haare
+  0x2fcc, 0x2fd0,
+  // Baerte
+  0x2005, 0x203e, 0x203f, 0x2040, 0x2041, 0x204b, 0x204c, 0x204d,
+  // Mountitem
+  0xf021
+};
+
+Program LootCorpse(params)
+  var who    := params[1];
+  var corpse := params[2];
+
+  SendSysMessagePergon(who,
+    "Wählt einen Container! (Abbruch = in den Rucksack)",
+    "Choose a container! (Cancel = put into backpack)"
+  );
+  var tgt := Target(who);
+  If (!tgt)
+    tgt := who.backpack;
+  ElseIf (tgt.isa(POLCLASS_MOBILE))
+    tgt := tgt.backpack;
+  EndIf
+
+  If (!tgt.isa(POLCLASS_CONTAINER))
+    SendSysMessagePergon(who,
+      "Das ist kein Container!", "That's no container!"
+    );
+    return;
+  EndIf
+
+  If (!IsMine(who, tgt))
+    SendSysMessagePergon(who,
+      "Das Ziel gehört Euch nicht; Abbruch",
+      "Target container is not yours; cancelled"
+    );
+    return;
+  EndIf
+
+  // selbst gestorben?
+  var mycorpse := 0;
+  If (corpse.getprop("myserial") == who.serial)
+    mycorpse := 1;
+  EndIf
+
+  ForEach item in EnumerateItemsInContainer(corpse, ENUMERATE_ROOT_ONLY)
+    SleepMs(5);
+    If (item.objtype in haare)
+      continue;
+    EndIf
+
+    item.movable := 1;
+    var success := 1;
+    If (item.stackable and !mycorpse)
+      // Inhalt fremde Leichen wird gestapelt, wenn es moeglich ist
+      // (eigener Backpack-Inhalt wird nachtraeglich nicht gestapelt;
+      // die Leute werden schon wissen, warum sie die Sachen einzeln
+      // herumtragen)
+      success := MoveStackingItemToContainer(item, tgt);
+    Else
+      success := MoveItemToContainer(item, tgt);
+    EndIf
+
+    If (!success)
+      // Wenns Backpack voll ist dann Abbruch
+      SendSysMessagePergon(who,
+        "Euer Rucksack ist voll.", "Your backpack is full."
+      );
+      return;
+    EndIf
+  EndForEach
+  SendSysMessagePergon(who, "Fertig.", "Finished.");
+EndProgram

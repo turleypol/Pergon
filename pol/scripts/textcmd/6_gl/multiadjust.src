@@ -1,0 +1,58 @@
+use uo;
+
+include ":housing:house";
+include "include/multi";
+
+Program MultiAdjust(who, params)
+    var param := SplitWords(params);
+
+    If (!who.multi)
+        SendSysMessagePergon(who,
+            "Begebt Euch in/auf das Multi, das ihr ausrichten wollt."
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Achtung: Das Verschieben von Multis löst Items an der "+
+        "alten Position!"
+    );
+
+    // Playerhaeuser gehen kaputt, daher verbieten
+    If (who.multi.getprop(PROP_HS_C_OWNER))
+        SendSysMessagePergon(who,
+            "Playerhäuser vertragen eine Verschiebung nicht. Abbruch"
+        );
+        return;
+    EndIf
+
+    // Parameter auswerten
+    If (param.size() < 1 or !(param[1] in (array{"x", "y", "z"})))
+        SendSysMessagePergon(who,
+            "Es ist mindestens ein Parameter ('x', 'y' oder 'z') nötig!"
+        );
+        return;
+    EndIf
+
+    // Koordinaten vorbereiten
+    var dest := struct{
+        x     := who.multi.x,
+        y     := who.multi.y,
+        z     := who.multi.z,
+        realm := who.realm
+    };
+
+    // abhaengig von Parameter 1 auf x, y oder z das val verrechnen
+    var val := CInt(param[2]);
+    If (val == 0)
+        val := 1;
+    EndIf
+    dest[param[1]] += val;
+
+    var result := MoveMultiToLocation(
+        who.multi, dest.x, dest.y, dest.z, dest.realm
+    );
+    If (!result)
+        SendSysMessagePergon(who, "Fehler: "+result.errortext);
+    EndIf
+EndProgram

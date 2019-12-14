@@ -1,0 +1,87 @@
+include "rune";
+include ":musicianship:common";
+include "include/mobile";
+
+Program CastTheRecall(param)
+  If (
+    (GetObjProperty(param.caster, PROP_MUSIC_BARDING)[1] == LIED_ABENTEUER) and
+    (CInt(GetSkillPergon(param.caster, SKILLID_MUSIZIEREN)) >= 100) and
+    (param.caster.party)
+  )
+    var mage_skill := Max(CInt(GetSkillPergon(param.caster, SKILLID_MAGIE)),
+                      Max(CInt(GetSkillPergon(param.caster, SKILLID_SEGNEN)),
+                          CInt(GetSkillPergon(param.caster, SKILLID_FLUCHEN))));
+    var members := 0;
+    var passengers := CInt(((CInt(GetSkillPergon(param.caster, SKILLID_MUSIZIEREN))-100)/2));
+    If (mage_skill >= 80)
+      Foreach member in (param.caster.party.members)
+        SleepMS(2);
+        If (
+          (member.connected) and
+          (GetObjProperty(member, PROP_MUSIC_LISTEN)[param.caster.serial]) and
+          (member.serial != param.caster.serial)
+        )
+          If (members <= passengers)
+            var newz:=CanWalk(member.movemode,param.dest.x,param.dest.y,param.dest.z,members&7,CANWALK_DIR,param.dest.realm);
+            If (newz<>error)
+              var dest := struct{
+                  x := param.dest.x+ConvertDirectionToLocX(members),
+                  y := param.dest.y+ConvertDirectionToLocY(members), z := newz, realm := param.dest.realm
+              };
+              var memberparam := struct{
+                  caster := member, dest := dest, rune := 0, gump := 1, bard := param.caster
+              };
+              Start_ScriptPergon(":runebook:castrecall", memberparam);
+            Else
+              SendSysMessagePergon(member,
+                "Es ist Euch nicht möglich dem Barden zu folgen.",
+                "It's not possible for you to follow the bard.",
+                _DEFAULT_TEXT_FONT, MSG_COLOR_FAIL
+              );
+            EndIf
+            members += 1;
+          Else
+            Break;
+          EndIf
+        EndIf
+      Endforeach
+      Sleep(5);
+    EndIf
+  EndIf
+
+  If (param.gump)
+    If (YesNoGump(param.caster))
+      If (!GetObjProperty(param.caster, PROP_MUSIC_LISTEN)[param.bard.serial])
+        SendSysMessagePergon(param.caster,
+          "Die Wirkung des Liedes ist bereits vergangen!",
+          "The effect of the song already disappeard!",
+          _DEFAULT_TEXT_FONT, MSG_COLOR_FAIL
+        );
+        return;
+      EndIf
+    EndIf
+  EndIf
+
+  CastRecallReal(param.caster, param.dest, param.rune);
+EndProgram
+
+Function YesNoGump(member)
+  var layout := {
+    "page 0",
+    "nodispose",
+    "noclose",
+    "gumppic 300 230 2070",
+    "button 330 305 2073 2072 1 0 0",
+    "button 400 305 2076 2075 1 0 1",
+    "text 332 264 40 0"
+  };
+
+  var data := {"Dem Barden folgen?"};
+  
+  var ret := SendDialogGump(member, layout, data);
+  If (!ret)
+    return 0;
+  Else
+    return 1;
+  EndIf
+EndFunction

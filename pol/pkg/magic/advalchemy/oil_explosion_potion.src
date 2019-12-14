@@ -1,0 +1,69 @@
+use os;
+use uo;
+
+include "include/eventid";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/msgs";
+include "include/pergonutil";
+
+Const MOVING_EFFECT_OIL_POTION := 0x1C19;
+Const SOUND_EFFECT_EXPLOSION   := 0x208;
+Const EFFECT_EXPLOSION         := 0x36b0;
+
+Program use_explosion(who, potion)
+    If (!AccessiblePergon(who, potion))
+        SendSysMessagePergon(who,"Da kommt Ihr nicht ran!");
+        return;
+    EndIf
+
+    //set_critical/(1);
+    If (getobjproperty(potion, "#bomb"))
+        SendSysMessagePergon(who, "Das explodiert gleich !!!");
+        return;
+    Else
+        setobjproperty(potion, "#bomb", 1);
+    EndIf
+    //set_critical/(0);
+
+    If (who.hidden) // Um unnoetige Events zu sparen...
+        who.hidden := 0;
+    EndIf
+
+    SendSysMessagePergon (who, "Ziel wählen");
+    var parms := {};
+    parms[1] := potion;
+    parms[2] := who;
+    Start_ScriptPergon("explosiontimer", parms);
+    var cast_on := TargetCoordinates(who);
+    If (!cast_on)
+        return;
+    EndIf
+    If (!potion)
+        return;
+    EndIf
+
+    If (!CheckLosAt(who, cast_on.x, cast_on.y, cast_on.z))
+        SendSysMessagePergon(who, "Ihr könt das nicht sehen!");
+        return;
+    EndIf
+    If (!potion)
+        return;
+    EndIf
+
+    Detach();
+    If (!potion)
+        return;
+    EndIf
+    PlayMovingEffectXYZ(
+      who.x, who.y, who.z+15, cast_on.x, cast_on.y, cast_on.z,
+      MOVING_EFFECT_OIL_POTION, 8, 0, 0 , who.realm
+    );
+    If (!potion)
+        return;
+    EndIf
+    MoveObjectToLocation(
+      potion, cast_on.x, cast_on.y, cast_on.z, cast_on.realm,
+      MOVEOBJECT_FORCELOCATION
+    );
+EndProgram

@@ -1,0 +1,129 @@
+//**************************************************************************************************
+// Script file invisibility.src
+//
+//    implements spell 26 <Invisibility> - "Unsichtbarkeit"
+//
+//	renders spelltarget invisible and allows some stealthy steps
+//	       [ Resisted (Magic) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 27.06.2003 Sebsatian 'Bihinos' Giese - ueberarbeitet
+//
+// // 2005/03/21 Shinigami: Zu schnelles verstecken ist nicht mehr moeglich
+//    2007/02/21 Seppel: man kann nun wieder NPCs verstecken
+//
+//**************************************************************************************************
+use os;
+
+Include "../magicpergon";
+//Include "../resistance";
+Include "include/spellcheck";
+
+program cast_invisibility (params)
+
+   Var caster;
+   Var caston;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_COMMON_INVISIBILITY);
+   Var difficulty:= spell.skill;
+   Var resist:=   spell.resist;
+   Var steps:=    spell.primary;
+   Var minsteps:= spell.primarymin;
+   Var maxsteps:= spell.primarymax;
+   Var dur:=      spell.duration;
+   Var mindur:=   spell.durationmin;
+   Var maxdur:=   spell.durationmax;
+   Var power;
+
+   if (params[1] == "#SCROLL")
+      caster:= params[2];
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel");
+         return;
+      endif
+      power:=  params[3];
+   else
+      caster:= params[1];
+
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel");
+         return;
+      EndIf      
+      power:= GetCastPowerPergon(caster, SPELLID_COMMON_INVISIBILITY);
+   endif
+
+   if (caston.hidden)
+      If (caster.serial<>caston.serial)
+        SendSysMessagePergon(caster, caston.name+" ist bereits unsichtbar", caston.name+" is already invisible");
+      EndIf
+      SendSysMessagePergon(caston, "Ihr seid bereits unsichtbar", "You are already invisible");
+      return;
+   endif
+
+   // Funzt nich, weil es nur das theoretische Maximalende beruecksichtigt
+  // Var last_fired:=GetObjProperty(caston, "#spell_invis");
+  // If (last_fired)
+  //   Var delay:=last_fired+5-ReadGameClock();
+  //   If (delay>0) // Darf ich mich erneut verstecken?
+  //     SendSysMessagePergon(caston, "Ihr duerft euch nicht zu schnell hintereinander verstecken!");
+  //     Sleep(delay);
+  //   EndIf
+  // EndIf
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   PlaySoundEffect(caster, SFX_SPELL_INVISIBILITY);
+   PlaySoundEffect(caston, SFX_SPELL_INVISIBILITY);
+
+   If (caston.isa(POLCLASS_NPC))
+       dur:=dur*4; //etwas länger versteckt bleiben
+   EndIf
+
+								// calc duration according to spelltargets magic resistance
+   if (resist)				// and casting power
+      dur:=   CInt(MagicResistance(caston, difficulty, resist, power*dur/100.0, 1));
+      steps:= CInt(MagicResistance(caston, difficulty, resist, power*steps/100.0, 0));
+   else
+      dur:=   CInt(power*dur/100.0);
+      steps:= CInt(power*steps/100.0);
+   endif
+
+   if (mindur and mindur > dur)
+      dur:= mindur;
+   elseif (maxdur and maxdur < dur)
+      dur:= maxdur;
+   endif
+   if (minsteps and minsteps > steps)
+      steps:= minsteps;
+   elseif (maxsteps and maxsteps < steps)
+      steps:= maxsteps;
+   endif
+
+   caston.hidden:= 1;								// make spelltarget invisible
+   If (caster.serial==caston.serial) // Sonst wird der Spruch zu maechtig
+     caston.stealthsteps:= steps;					// allow stealthy steps
+   EndIf
+
+   Var tag:= array;
+   tag[1]:= ReadGameClock() + dur;
+   tag[2]:= ReadMilliSecondClock();
+
+   SetObjProperty(caston, "spell_invis", tag);						// tag spelltarget for spellchecker
+   SetObjProperty(caston, "hiding_diff", CInt(power * 2/5));	// tag spelltarget w/ hiding difficulty
+   SendSpellWaiter(caston, "spell_invis", dur, tag[2], caston);
+
+  // Var stealthdelay:=CInt(dur/2); // Nur die Haelfte der Zeit ueber kann man Schleichen
+  // If (stealthdelay<1)
+  //   stealthdelay:=1;
+  // EndIf
+  // SetObjProperty(caston, "#spell_invis", tag-stealthdelay); // Ab wann kann ich mich wieder verstecken?
+  //
+  // Detach();
+  // Sleep(stealthdelay);
+  // caston.stealthsteps:=0;
+
+endprogram

@@ -1,0 +1,332 @@
+///////////////////////////////////////////////
+// Drinking-System - Drunken
+//
+// Author: Shinigami
+
+//////////////
+// Bibliotheken&Includes
+//////////////
+use os;
+use uo;
+use util;
+include "common";
+include "include/animal";
+include "include/msgs";
+include "include/poison";
+
+Program Drunk(who)
+    var level := CDbl(who.getprop(PROP_ALCOHOL));
+
+    If (level == ALC_LEVEL_SOBER)
+        return;
+    EndIf
+
+    If (level < ALC_LEVEL_PRIMED)
+        SendSysMessagePergon(who,
+            "Wenn Ihr weiter so trinkt, seid Ihr bald betrunken.",
+            "You will surely get drunk if you proceed this way."
+        );
+    EndIf
+
+    // Schleife, da man jederzeit weitertrinken kann
+    While (!who.dead and level > ALC_LEVEL_SOBER)
+        // beim Ausloggen abbrechen, geht beim Login weiter
+        If (!who)
+            return;
+        EndIf
+
+        If (level >= ALC_LEVEL_DRUNK)
+            If (PetDisMount(who, who))
+                SendSysMessagePergon(who,
+                    "Ihr könnt Euch nicht mehr auf Eurem Tier halten.",
+                    "You fall off your mount."
+                );
+            EndIf
+        EndIf
+
+        If (level >= ALC_LEVEL_CRITICAL)
+            CriticalDrunk(who, level);
+        ElseIf (level >= ALC_LEVEL_HEAVY_DRUNK)
+            HeavyDrunk(who, level);
+        ElseIf (level >= ALC_LEVEL_DRUNK)
+            Drunken(who, level);
+        ElseIf (level >= ALC_LEVEL_PRIMED)
+            Primed(who, level);
+        Else
+            level := UpdateLevel(who);
+        EndIf
+
+        SleepMs(2);
+    EndWhile
+
+
+    // Gestorben oder nuechtern
+    If (level <= ALC_LEVEL_SOBER)
+        // restlos ausgenuechtert
+        SendSysMessagePergon(who, "Ihr seid wieder nüchtern.");
+    EndIf
+    who.setprop(PROP_ALCOHOL, ALC_LEVEL_SOBER);
+EndProgram
+
+// Alkoholspiegel senken/setzen
+Function UpdateLevel(who, set_to := "") // {{{
+    If (TypeOfInt(set_to) in (array{OT_DOUBLE, OT_LONG}) and set_to >= 0)
+        who.setprop(PROP_ALCOHOL, set_to);
+        return set_to;
+    EndIf
+
+    var old_critical := Is_Critical();
+    Set_Critical(1);
+
+    var level := CDbl(who.getprop(PROP_ALCOHOL));
+    If (level >= ALC_LEVEL_HEAVY_DRUNK)
+        level -= 1;
+    ElseIf (level >= ALC_LEVEL_PRIMED)
+        level -= 0.5;
+    Else
+        level -= 0.25;
+    EndIf
+    who.setprop(PROP_ALCOHOL, level);
+
+    Set_Critical(old_critical);
+
+    return level;
+EndFunction // }}}
+
+
+// ab und an ein Hickser
+Function Primed(who, byref level) // {{{
+    // nur zur Sicherheit noch ein Test
+    If (ALC_LEVEL_PRIMED > level or level >= ALC_LEVEL_DRUNK)
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Ihr seid angetrunken und stolpert herum.",
+        "You are primed and stumble around."
+    );
+
+    While (who and ALC_LEVEL_PRIMED <= level and level < ALC_LEVEL_DRUNK)
+        If (RandomInt(2))
+            Hickup(who);
+        Else
+            Stumble(who);
+        EndIf
+        level := UpdateLevel(who);
+        Sleep(RandomIntMinMax(15, 26));
+        // beim Ausloggen abbrechen
+        If (!who)
+            return;
+        EndIf
+    EndWhile
+EndFunction // }}}
+
+// Hickser, Rumfurzen, ab und an Kotzen
+Function Drunken(who, byref level) // {{{
+    // nur zur Sicherheit noch ein Test
+    If (ALC_LEVEL_DRUNK > level or level >= ALC_LEVEL_HEAVY_DRUNK)
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Ihr seid betrunken.",
+        "You are drunk."
+    );
+
+    While (ALC_LEVEL_DRUNK <= level and level < ALC_LEVEL_HEAVY_DRUNK)
+        If (RandomInt(50) == 0)
+            Puke(who);
+        Else
+            Case (RandomInt(3))
+                0: FartAndMore(who);
+                1: Stumble(who, RandomInt(2));
+                2: Hickup(who);
+            EndCase
+        EndIf
+        level := UpdateLevel(who);
+        Sleep(RandomIntMinMax(15, 26));
+        // beim Ausloggen abbrechen
+        If (!who)
+            return;
+        EndIf
+    EndWhile
+EndFunction // }}}
+
+// langsam wird es schlimm
+Function HeavyDrunk(who, byref level) // {{{
+    // nur zur Sicherheit noch ein Test
+    If (ALC_LEVEL_HEAVY_DRUNK > level or level >= ALC_LEVEL_CRITICAL)
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Ihr seid stark betrunken. Holt Euch keine Alkoholvergiftung!",
+        "You are wasted. Try to avoid a alcoholic poisoning."
+    );
+
+    While (ALC_LEVEL_HEAVY_DRUNK <= level and level < ALC_LEVEL_CRITICAL)
+        Case (RandomInt(50))
+        0: 1:
+            SelfPiss(who);
+        2: 3: 4:
+            If (!Undress(who))
+                SelfPiss(who);
+            EndIf
+        5: 6: 7: 8:
+            Puke(who);
+        default:
+            Case (RandomInt(3))
+                0: FartAndMore(who);
+                1: Stumble(who, RandomInt(3));
+                2: Hickup(who);
+            EndCase
+        EndCase
+        level := UpdateLevel(who);
+        Sleep(RandomIntMinMax(15, 26));
+        // beim Ausloggen abbrechen
+        If (!who)
+            return;
+        EndIf
+    EndWhile
+EndFunction // }}}
+
+// zu schlimm
+Function CriticalDrunk(who, byref level) // {{{
+    Stumble(who, 1);
+    Hickup(who);
+    Sleep(RandomIntMinMax(5, 16));
+    var alc_pois := CInt(level - ALC_LEVEL_CRITICAL);
+    If (alc_pois)
+        SendSysMessagePergon(who,
+            "Ihr habt Euch eine Alkoholvergiftung zugezogen!",
+            "You got an alcoholic poisoning!"
+        );
+        AddPoisonLevel(who, alc_pois);
+    EndIf
+    level := UpdateLevel(who, ALC_LEVEL_CRITICAL - 0.1);
+EndFunction // }}}
+
+
+Function Hickup(who) // {{{
+    PrintTextAbovePergon(who, who, "*hick*");
+    If (who.gender)
+        PlaySoundEffect(who, 0x31f);
+    Else
+        PlaySoundEffect(who, 0x42f);
+    EndIf
+EndFunction // }}}
+
+Function Stumble(who, type := 0) // {{{
+    PrintTextAbovePergon(who, who, "*stolper*");
+    // links oder rechts drehen
+    var mod := RandomInt(2);
+    If (mod == 0)
+        mod := -1;
+    EndIf
+    // &7 sorgt für "swap" bei negativen Zahlen
+    who.facing := (who.facing + mod) & 7;
+    If (type == 0)
+        return;
+    EndIf
+    If (RandomInt(2))
+        PerformAction(who, ANIM_WALK_UNARMED);
+    Else
+        PerformAction(who, ANIM_DIE_FOR);
+    EndIf
+    Sleep(1);
+    MoveObjectToLocation(who,
+        who.x+ConvertDirectionToLocX(who.facing),
+        who.y+ConvertDirectionToLocY(who.facing),
+        who.z, who.realm
+    );
+EndFunction // }}}
+
+Function FartAndMore(who) // {{{
+    PerformAction(who, ANIM_BOW);
+    // Bissle mehr Sound
+    Case (RandomInt(8))
+    0: Case (who.gender)
+        0: PlaySoundEffect(who, 0x43e);
+        1: PlaySoundEffect(who, 0x32c);
+        EndCase
+    1: Case (who.gender)
+        0: PlaySoundEffect(who, 0x43f);
+        1: PlaySoundEffect(who, 0x32d);
+        EndCase
+    2: Case (who.gender)
+        0: PlaySoundEffect(who, 0x42f);
+        1: PlaySoundEffect(who, 0x31f);
+        EndCase
+    3: Case (who.gender)
+        0: PlaySoundEffect(who, 0x42b);
+        1: PlaySoundEffect(who, 0x31b);
+        EndCase
+    4: Case (who.gender)
+        0: PlaySoundEffect(who, 0x429);
+        1: PlaySoundEffect(who, 0x319);
+        EndCase
+    5: Case (who.gender)
+        0: PlaySoundEffect(who, 0x41e);
+        1: PlaySoundEffect(who, 0x30f);
+        EndCase
+    6: Case (who.gender)
+        0: PlaySoundEffect(who, 0x41f);
+        1: PlaySoundEffect(who, 0x310);
+        EndCase
+    EndCase
+EndFunction // }}}
+
+Function SelfPiss(who) // {{{
+    SendSysMessagePergon(who,
+        "Ihr spürt ein warmes Gefühl am Bein.",
+        "You sense something warm on your leg."
+    );
+    var desc := struct{
+        Color    := 1174,
+        Graphic  := 0x122e,
+        Movable  := 1,
+        ObjClass := "Item",
+        ObjType  := 0x122e
+    };
+    var item := CreateItemAtLocation(
+        who.x, who.y, who.z, desc, 1, who.realm
+    );
+    If (item)
+        item.name := "Urin";
+    EndIf
+EndFunction // }}}
+
+Function Undress(who) // {{{
+    var to_undress := array{};
+    ForEach layer in (array{
+            LAYER_ARMS,     LAYER_CAPE,  LAYER_CHEST, LAYER_GLOVES,
+            LAYER_HELMET,   LAYER_LEGS,  LAYER_NECK,  LAYER_PANTS,
+            LAYER_ROBE,     LAYER_SHIRT, LAYER_SHOES, LAYER_SKIRT,
+            LAYER_TALISMAN, LAYER_TUNIC, LAYER_WAIST
+    })
+        SleepMs(2);
+        var equipped := GetEquipmentByLayer(who, layer);
+        If (equipped)
+            to_undress.append(equipped);
+        EndIf
+    EndForEach
+
+    If (to_undress.size() <= 0)
+        return 0;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Ihr reisst Euch die Kleider vom Leib!",
+        "You begin an undress maneuver!"
+    );
+    ForEach item in (to_undress)
+        var result := MoveItemToContainer(item, who.backpack);
+        If (!result)
+            MoveObjectToLocation(item, who.x, who.y, who.z, who.realm);
+        EndIf
+        Sleep(1);
+    EndForEach
+
+    return to_undress.size();
+EndFunction // }}}
+

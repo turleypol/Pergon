@@ -1,0 +1,91 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  paralyzecontrol.src - Control Script for ParalyzeFields
+//
+//  Modifications:
+//
+//  21.01.2002 - Bihinos - Rewrite for new Magic
+//  17.03.2003 - Fraggulus - zusaetzlich zum Paralyze wird noch gefrozen
+//  06.10.2003 - Bihinos - ueberarbeitet / an spellchecker angepasst
+//  09.02.2004 - Bihinos - removed creator as scriptcontroller (misused by players)
+//                         minor changes
+//  14.07.2004 - Fox - Einfuegen der Pause beim Start
+//  16.03.2005 - Seppel  - creator als scriptcontroller wieder angeschaltet (wurde ausgenutzt bei Playern)
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use uo;
+use cfgfile;
+use os;
+
+Include "include/client";
+Include "include/objtype";
+Include "include/spellcheck";
+
+Program ParalyzeControl (item)
+  SleepMS(50); // von Fox wegen Problemen beim Aufruf, das Feld friert den Spieler immer wieder ein ohne das er gefreezt wird
+  Var fields:= ReadConfigFile("magicfields");     // read Config-File for magic fields
+
+  if (fields)
+
+    SleepMS(50);                        // wait 50 ms to get CProps set on item
+    If (!item)  // Nach den 0,1s noch existent?
+      Return;
+    EndIf
+    Var boss:= SystemFindObjectBySerial(CInt(GetObjProperty(item, "creator"))); // get creator of field
+    if (boss) // make creator attacker
+      SetScriptController(boss);
+    endif
+
+    Var fielddata:= FindConfigElem(fields, "paralyze");           // get field data from Config
+    Var dmg:= CInt(GetObjProperty(item, "f") * fielddata.dmg / 100);  // read and calc fields base damage
+    Var res:= CInt(fielddata.resist);                       // read resistance amount
+    item.setprop("dmg",dmg);  // Speichern für nächstesmal
+    item.setprop("res",res);
+    Var mobiles:= ListMobilesNearLocation(item.x, item.y, item.z, 0,item.realm);  // get possible victims
+    Var dur;
+    Var tag:= array;
+
+    Set_Priority(1);
+
+    if (mobiles.size())
+      foreach mobile in mobiles
+        If (mobile.getprop("ignorefields"))  // DynDungeon Vieh ignoriert alle Felder
+          continue;
+        EndIf
+        if (!mobile.dead)                             // no damage to ghosts
+          if (res)        // get duration of paralyze according to mobiles magic resistance (if res is enabled)
+            dur:= CInt(MagicResistance(mobile, 90, res, dmg, 1)); // skill is 90 here - same as skill for spell!
+          else
+            dur:= dmg;
+          endif
+          if (!(GetObjProperty(mobile,"spell_statue")))
+            mobile.paralyzed:= 1;       // paralyze mobile
+            mobile.frozen   := 1;       // freeze mobile
+            IncRevision(mobile);
+          endif
+          ApplyRawDamagePergon(mobile, 0);  // Damit Repsysanspringt
+
+          tag[1]:= ReadGameClock() + dur;
+          tag[2]:= dmg;
+          tag[3]:= res;
+          tag[5]:= ReadMilliSecondClock();
+
+          SetObjProperty(mobile, "spell_paralyze", tag);  // tag spelltarget for spellchecker
+          SendSpellWaiter(mobile, "spell_paralyze", dur, tag[5], mobile);
+
+
+          PlayObjectCenteredEffect(mobile, FX_CURSE_EFFECT, 10, 5);
+          PrintTextAbovePrivatePergon(mobile, "Ihr wurdet paralysiert", "You have been paralysed", mobile);
+        
+          DestroyItem(item);        // Wandteil zerstören
+        
+        endif
+      endforeach
+    endif
+
+  else
+    SysLog("FEHLER: MagicFields-ConfigFile nicht gefunden!");
+  endif
+
+EndProgram

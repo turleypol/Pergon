@@ -1,0 +1,244 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  WindArenaSwitch.src - Walkover Script for Arena in Wind - switching Multis
+//
+//  Modifications:
+//    27.08.2006 Turley - Sperre gegen gleichzeitiges Createn, fix für Multidestroy, falls doch mal was schief geht
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use cfgfile;
+use util;
+use math;
+use uo;
+use os;
+
+include "include/modifyskill";
+
+Const CHANGETIME:= 1800;
+
+Program WindArenaSwitch (mobile, tile)
+
+  if (mobile.isa(POLCLASS_NPC))         // do not trigger on npcs
+    return;
+  endif
+
+  Set_Critical(1);
+  If (GetGlobalProperty("WindArenaSwitchTimeout")) //Sperre damit nicht gleichzeitig created wird
+    If (CInt(GetGlobalProperty("WindArenaSwitchTimeout"))>ReadGameClock())
+      Set_Critical(0);
+      Return;
+    Else
+      SetGlobalProperty("WindArenaSwitchTimeout",ReadGameClock()+300); //5Minuten Timeout
+    EndIf
+  Else
+    SetGlobalProperty("WindArenaSwitchTimeout",ReadGameClock()+300); //5Minuten Timeout
+  EndIf
+  Set_Critical(0);
+
+  if (!mobile.dead)                 // no effect for ghosts
+
+    if (tile.z == 24)               // main magic multis
+      if ((tile.x == 5249) && (tile.y == 106))
+        CreateArenaMulti(mobile, "ankh");
+      elseif ((tile.x == 5249) && (tile.y == 131))
+        CreateArenaMulti(mobile, "necro");
+      elseif ((tile.x == 5236) && (tile.y == 119))
+        CreateArenaMulti(mobile, "mage");
+      elseif ((tile.x == 5261) && (tile.y == 119))
+        CreateArenaMulti(mobile, "cleric");
+      else
+        syslog("Wind Arena: MultiSwitch Walkover at undefined location " + tile.x + " " + tile.y + " " + tile.z);
+      endif
+    elseif (tile.z == 44)           // common purpuse multis
+      if ((tile.x == 5236) && (tile.y == 132))
+        CreateArenaMulti(mobile, "penta");
+      elseif ((tile.x == 5236) && (tile.y == 106))
+        CreateArenaMulti(mobile, "bibo");
+      elseif ((tile.x == 5262) && (tile.y == 132))
+        CreateArenaMulti(mobile, "arena");
+      elseif ((tile.x == 5262) && (tile.y == 106))
+        CreateArenaMulti(mobile, "bar");
+      else
+        syslog("Wind Arena: MultiSwitch Walkover at undefined location " + tile.x + " " + tile.y + " " + tile.z);
+      endif
+    else                        // undefined
+      syslog("Wind Arena: MultiSwitch Walkover at undefined location " + tile.x + " " + tile.y + " " + tile.z);
+    endif
+
+  endif
+  EraseGlobalProperty("WindArenaSwitchTimeout"); // Und wieder löschen
+EndProgram
+
+
+
+Function CreateArenaMulti (mobile, newmulti)
+
+  var oldmulti:= GetGlobalProperty("WindArenaMulti");
+  var multinameger, multinameeng;
+
+  case (newmulti)
+    "ankh":   multinameger:= "den gemeinsamen Tempel";
+              multinameeng:= "common temple";
+    "necro":  multinameger:= "den Nekromantenkeller";
+              multinameeng:= "necromantic dungeon";
+    "mage":   multinameger:= "den Magierturm";
+              multinameeng:= "mage tower";
+    "cleric": multinameger:= "den Priestertempel";
+              multinameeng:= "cleric temple";
+    "penta":  multinameger:= "das Labor";
+              multinameeng:= "laboratory";
+    "bibo":   multinameger:= "die Bibliothek";
+              multinameeng:= "library";
+    "arena":  multinameger:= "die Arena";
+              multinameeng:= "arena";
+    "bar":    multinameger:= "die Bar";
+              multinameeng:= "bar";
+    default:  syslog("Wind Arena: Found undefined multi in CreateArenaMulti");
+              return 0;
+  endcase
+
+  if ((oldmulti[3] < ReadGameClock()) || (!oldmulti) || (mobile.cmdlevel >= CMDLEVEL_SEER))     // "timeout" check
+    foreach object in ListObjectsInBox(5243, 113, 40, 5254, 124, 120,REALM_BRITANNIA)
+      if ((object.isa(POLCLASS_MOBILE)) && (!object.isa(POLCLASS_NPC)))
+        SendSysMessagePergon(mobile, "Ihr könnt " + multinameger + " nur herbeirufen, wenn sich niemand mehr im Zentrum befindet",
+                                     "You can conjure the " + multinameeng + " only, if nobody is in the centre");
+        return;
+      endif
+    endforeach
+
+    if (oldmulti[2] == newmulti)                            // check if 'desired' multi already exists
+      return;
+    endif
+
+    var multi;
+    var effectfield:= {};
+    var temparray:= {};
+    var fxx, fxy, fxz, fx;
+
+    if (oldmulti)
+      foreach object in (ListObjectsInBox(5243, 113, 39, 5254, 125, 120,REALM_BRITANNIA))
+        if (object.isa(POLCLASS_ITEM))
+          // Falls irgendwer seinen Mist nicht wegraeumen kann
+          DestroyItem(object);
+        elseif (object.isa(POLCLASS_NPC))
+          // Falls irgendwer unbedingt NPCs in die Pampa stellen musste
+          KillNPC(object, "windarenaswitch", KILLNPC_NOCORPSE);
+        endif
+      endforeach
+      multi:= SystemFindObjectBySerial(oldmulti[1]);
+      DestroyMulti(multi);
+      EraseGlobalProperty("WindArenaMulti");
+    endif
+    // Multis nochmal extra suchen, da per ListObjectsInBox diese nicht gefunden werden.
+    ForEach object in (ListMultisInBox(5243, 113, 39, 5254, 125, 120,REALM_BRITANNIA))
+      DestroyMulti(object);
+    EndForEach
+    SleepMS(1000);
+
+    for (fxx:= 1; fxx <= 10; fxx+= 1)
+      for (fxy:= 1; fxy <= 10; fxy+= 1)
+        temparray[fxy]:= 0;
+      endfor
+      effectfield[fxx]:= temparray;
+    endfor
+
+    for (fx:= 0; fx < 11; fx+= 1)
+      repeat
+        fxx:= RandomInt(10) + 1;
+        fxy:= RandomInt(10) + 1;
+      until !(effectfield[fxx][fxy]);
+      effectfield[fxx][fxy]:= 1;
+      fxz:= RandomInt(7);
+      PlayStationaryEffect(5243 + fxx, 113 + fxy, 40 + fxz, 0x375a, 10, 10, 0,REALM_BRITANNIA);
+    endfor
+
+    foreach mobile in (ListMobilesNearLocationEx(5249, 119, 24, 15, LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN + LISTEX_FLAG_GHOST,REALM_BRITANNIA))
+      PlaySoundEffect(mobile, SFX_F8);
+    endforeach
+
+    SleepMS(1000);
+
+    case (newmulti)
+      "ankh":   multi:= CreateMultiAtLocation(5248, 118, 40, 0x6857, CRMULTI_IGNORE_ALL,REALM_BRITANNIA);
+      "necro":  multi:= CreateMultiAtLocation(5248, 118, 40, 0x6851, CRMULTI_IGNORE_ALL,REALM_BRITANNIA);
+      "mage":   multi:= CreateMultiAtLocation(5248, 119, 40, 0x6855, CRMULTI_IGNORE_ALL,REALM_BRITANNIA);
+      "cleric": multi:= CreateMultiAtLocation(5249, 119, 40, 0x6853, CRMULTI_IGNORE_ALL,REALM_BRITANNIA);
+      "penta":  multi:= CreateMultiAtLocation(5248, 118, 40, 0x6858, CRMULTI_IGNORE_ALL,REALM_BRITANNIA);
+      "bibo":   multi:= CreateMultiAtLocation(5248, 118, 40, 0x6856, CRMULTI_IGNORE_ALL,REALM_BRITANNIA);
+      "arena":  multi:= CreateMultiAtLocation(5248, 118, 40, 0x6854, CRMULTI_IGNORE_ALL,REALM_BRITANNIA);
+      "bar":    multi:= CreateMultiAtLocation(5248, 118, 40, 0x6852, CRMULTI_IGNORE_ALL,REALM_BRITANNIA);
+    endcase
+
+    if (multi)
+      SetGlobalProperty("WindArenaMulti", {multi.serial, newmulti, ReadGameClock() + CHANGETIME});
+      SpecialTreatment(newmulti);
+    else
+      syslog("Wind Arena: Failure when creating new multi: " + multinameeng + " with " + multi.errortext);
+    endif
+  else
+    SendSysMessagePergon(mobile, "Ihr solltet noch ein wenig warten, bevor Ihr versucht, " + multinameger + " herbeizurufen",
+                                 "You should wait a little, before trying to conjure the " + multinameeng);
+  endif
+
+EndFunction
+
+
+
+Function SpecialTreatment (type)
+
+  var multicfg:= ReadConfigFile("windarenamultis");
+  var multikey;
+
+  if (!multicfg)
+    syslog("Wind Arena - Specials: WindArenaMultis.cfg not found");
+    return 0;
+  endif
+
+  case (type)
+    "necro":  multikey:= "0x1de0";
+    "cleric": multikey:= "0x1de2";
+    "mage":   multikey:= "0x1de4";
+    "ankh":   multikey:= "0x1de6";
+    "bar":    multikey:= "0x1de1";
+    "arena":  multikey:= "0x1de3";
+    "bibo":   multikey:= "0x1de5";
+    default:  return;
+  endcase
+
+  var multi:= multicfg[multikey];
+  var itemdata;
+  var item;
+  var desc, descidx;
+  var basex:= 5244;
+  var basey:= 114;
+  var basez:= 40;
+
+  if (multi)
+    foreach entry in (GetConfigStringArray(multi, "item"))
+      itemdata:= SplitWords(entry);
+      item:= CreateItemAtLocationPergon(basex + CInt(itemdata[2]), basey + CInt(itemdata[3]), basez + CInt(itemdata[4]), CInt(itemdata[1]), 1,REALM_BRITANNIA);
+      if (item)
+        item.color:= CInt(itemdata[5]);
+        item.movable:= 0;
+        item.decayat:= 0;
+        if (itemdata[6])
+          desc:= "";
+          descidx:= 6;
+          while (itemdata[descidx])
+            desc+= itemdata[descidx] + " ";
+            descidx+=1;
+          endwhile
+          desc[Len(desc)]:="";
+          item.name:=desc;
+        endif
+      else
+        syslog("Wind Arena - Specials: Could not create entry " + entry + " in multi " + multikey);
+        syslog(item);
+      endif
+    endforeach
+  else
+    syslog("Wind Arena - Special: No Configfile Entry for " + type + "-Multi " + multikey);
+  endif
+
+EndFunction

@@ -1,0 +1,116 @@
+//
+// aus der Pol090-Distro
+//
+// 30.09.2000 - Fraggulus - editiert und angepasst
+// 04.01.2002 - Fraggulus - Entfernungsformel geaendert
+// 22.01.2006 - Seppel    - Delay eingebaut
+// 17.05.2007 - Fox       - nutzen von Property PROP_PEACEMAKING zur Koordinierung mit der main_ai2
+//
+//
+// Skill =   0: Range = 1
+// Skill =  50: Range = 5
+// Skill =  80: Range = 15 // allg. Maximum
+// Skill = 100: Range = 25
+// Skill = 209: Range = 127
+//
+Use os;
+Use attributes;
+Use uo;
+Use cfgfile;
+
+Include "include/objtype";
+Include "include/bard";
+Include "include/eventid";
+Include "include/modifyskill";
+Include "include/properties";
+
+
+Program bard_peacemake(character)
+  If (!can_sing(character, 2))
+    Return;
+  EndIf
+
+  Var instrument := findinstrument(character);
+
+  If (!instrument)
+    SendSysMessagePergon(character, "Ihr besitzt kein Instrument zum Spielen!");
+    Return;
+  EndIf
+
+  If (GetObjProperty(character, "#UsesSkill") > ReadGameClock())
+    SendSysMessagePergon(character, "Ihr müsst noch ein wenig warten bevor ihr wieder Frieden stiften könnt");
+    Return(0);
+  EndIf
+
+  SetObjProperty(character, "#UsesSkill", ReadGameClock() + 2);           // Delay bis zur nächsten Nutzung eines Skills 2 Sekunden
+
+  Var skill := GetSkillPergon(character, SKILLID_FRIEDENSTIFTEN);
+  Var range := CInt((2*skill*skill - 55*skill + 600)/600); // aeusserst komplizierte Formel zur Entfernungsberechnung ;o) // damit die Range mit steigendem Skill ueberproportional steigt
+  If (range < 1)
+    range := 1;
+  EndIf
+
+  //Event löst die Peacemaking Behandlung in der KI aus
+  Var ev :=struct;
+  ev.+ type;
+  ev.type := EVID_PEACEMADE;
+  //Property steuert das Timout für beruhigen eines Ziels
+  //- Für die KI ist wichtig das der Timout groß genug ist,
+  //  dass sowohl der Kampf abgebrochen (2s) werden kann, als auch verbliebene
+  //  Damage, Attack usw. Events ablehnend bearbeitet werden konnten (je nach Lagg vieleicht 1s).
+  //- Gut wäre auch wenn ein bereits beruhigtes Tier nicht gleich wieder beruhigt
+  // werden kann, wenn es angegriffen wurde. Um zu verhindern das man einen NPC
+  // zwischen Friedenstiften und Damage machen fangen kann und man so eine Kill Hilfe bekommt.
+  // Hier muss man darauf achten, dass Friedenstiften skillen auch noch möglich ist. Dafür muss
+  // der Barde sich nur gegen Angriffe entsprechend schützen (Rüstung, Mauern eca.)
+  Var prop:=struct;
+  prop.timeout:=ReadGameClock()+10; //10s bis zum nächsten Peacemake
+  prop.done:=1; //wird von der KI auf 1 gesetzt, wenn das Event verarbeitet wurde (nur main_ai2)
+
+  //erstmal den test auf musik bestehen
+  If (musicpeace(character, instrument, 20))
+    Var give_stats := ADVANCESTATS;
+    //wenn bestanden, fuer alle mobiles in der umgebung die im warmode sind friedenstift-test
+    ForEach TheTarg in ListMobilesNearLocation(character.x,character.y,character.z,range,character.realm)
+      SleepMS(2);
+      If ( TheTarg.isa(POLCLASS_NPC ) ) //man kann nur npcs friedenstiften
+        //PrintTextAbovePergon(character, thetarg, "ich hoers! " + TheTarg.warmode);
+        var tametimer :=  GetObjProperty(TheTarg, "TameTimer");
+        If (TheTarg.warmode || tametimer)
+          Var elem := GetNPCConfig(TheTarg.npctemplate);
+          Var difficulty;
+
+          If (elem)
+            difficulty := elem.provoke;
+          EndIf
+          If (!difficulty)
+            difficulty := 100;
+          EndIf
+
+          If (CheckSkillPergon(character, SKILLID_FRIEDENSTIFTEN, cint(difficulty), cint(difficulty * 1.5),UNQUALIFIZIERT,give_stats))
+            give_stats:=DONTADVANCESTATS; // nureinmal statserhöhen
+            Var peace_prop:=GetObjProperty(thetarg, PROP_PEACEMAKING);
+            If (peace_prop)
+              If (ReadGameClock() <= peace_prop.timeout)
+                PlayObjectCenteredEffect( thetarg, 0x37c4, 0xff, 0xa );
+                Return;
+              EndIf
+            EndIf
+            If (tametimer)
+              EraseObjProperty(TheTarg, "TameTimer");
+            EndIf
+            SetObjProperty(thetarg, PROP_PEACEMAKING, prop);
+            SendEvent(thetarg, ev); //unterstützt von main_ai und main_ai2
+            PlayObjectCenteredEffect( thetarg, 0x375a, 0xff, 0x2f );
+          EndIf
+        EndIf
+      EndIf
+    EndForEach
+  Else
+    PrintTextAbovePergon(character, character, "*"+ character.name + " spielt das Musikinstrument... ärmlich*");
+  EndIf
+
+
+  sleep(7);
+
+EndProgram

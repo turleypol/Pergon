@@ -1,0 +1,92 @@
+//**************************************************************************************************
+// Script file restorehealth.src
+//
+//    implements spell 214 <Restore Health> - "Gesundheit"
+//
+//	fully restores HP of spelltarget / removes poison
+//		[ Resisted (Magic) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 03.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//						- 20.09.2005 Seppel - Spamm beim entgiften entfernt
+//
+//**************************************************************************************************
+
+use vitals;
+
+Include "../magicpergon";
+Include "include/poison";
+
+program cast_restorehealth (params)
+
+   Var caster;
+   Var caston;
+   Var amnthealth;
+   Var amntpoison;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_RESTOREHEALTH);
+   Var difficulty:= spell.skill;
+   Var resist:= spell.resist;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_RESTOREHEALTH);
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+
+   Var poison:= GetPoisonLevel(caston); 											// get poison level of spelltarget
+   Var health:= CInt(GetMaxHPPergon(caston) - GetHPPergon(caston));		// get missing HP of spelltarget
+
+   if (resist)											// calc actual spelleffects according to its magic resistance
+      amnthealth:= CInt(MagicResistance(caston, difficulty, resist, health, 1));
+      amntpoison:= CInt(MagicResistance(caston, difficulty, resist, poison, 0));
+   else
+      amnthealth:= health;
+      amntpoison:= poison;
+   endif
+
+   PlayObjectCenteredEffect(caston, FX_HEAL_EFFECT, 5, 25);
+   PlaySoundEffect(caston , SFX_SPELL_HEAL);
+
+   HealDamage(caston, amnthealth);													// heal HP
+   SendSysMessagePergon(caster, "Ihr heilt " + amnthealth + " Lebenspunkte",
+   									  "You heal " + amnthealth + " hitpoints");
+	 
+	 Var origpoison:= GetPoisonLevel(caston);
+   Var poisonlevel:= AddPoisonLevel(caston, -amntpoison); 					// cure poison
+
+   If (poisonlevel > 1)																							//restore health never detoxicates completely
+     	SendSysMessagePergon(caster, "Ihr lindert die Vergiftung von " + caston.name,
+     										  "You weakened the poison in " + caston.name + "'s body");
+     PrintTextAbovePrivatePergon(caston, caster.name + " hat Eure Vergiftung gelindert",
+           	                         	  caster.name + " weakened the poison flowing through you", caston);
+   elseif (origpoison > 0)
+     SendSysMessagePergon(caster, caston.name + " wurde durch Euch vom Gift befreit",
+                                  "You released " + caston.name + " from the poison");
+     PrintTextAbovePrivatePergon(caston, caster.name + " hat Euch vom Gift befreit",
+                                         caster.name + " released you from the poison", caston);
+   endif
+
+endprogram

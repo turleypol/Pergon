@@ -1,0 +1,44 @@
+//
+// .DestroySet - Zerstoert ein aufgebautes Set
+//
+//  03.12.2003 Fraggulus: create
+//  23.02.2004 Fraggulus: extra Abfrage, wenn keine Itemserial uebergeben wurde
+//
+
+Use uo;
+
+Include "include/set";
+Include "include/msgs";
+
+Program TextCMD_DestroySet(who, params)
+
+    //params := SplitWords(params);
+    Var set_name;
+    Var serial := 0;
+    If (params)
+        serial := CInt(params);
+    EndIf
+
+    If (!serial)
+        SendSysMessagePergon(who, "Wählt das erste Setitem.",
+                                  "Choose the first setitem.");
+        Var tgt := Target(who, TGTOPT_NOCHECK_LOS+TGTOPT_NEUTRAL);
+        If (tgt.isa(POLCLASS_ITEM) || tgt.isa(POLCLASS_NPC))
+            serial  := tgt.serial;
+            set_name := tgt.GetProp("set_name");
+        EndIf
+    EndIf
+
+    if (!set_name)
+        // Wenn kein set_name vorhanden ist, dann auch kein destroyset!
+        SendSysMessagePergon(who, "Das Item/der NPC gehört zu keinem Set!");
+    Else
+        Var Set := DestroySet(CInt(serial));
+        If (Set > 0)
+            SendSysMessagePergon(who, "Das Set wurde zerstört. (" + Set + " Items)");
+        Else
+            SendSysMessagePergon(who, "Das Set konnte nicht zerstört werden!");
+        EndIf
+    EndIf
+
+EndProgram

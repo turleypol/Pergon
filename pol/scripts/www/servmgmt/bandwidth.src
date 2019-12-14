@@ -1,0 +1,65 @@
+/////////////////////////////////////////////////////////
+// bandwidth - Stats der Bandbreite
+//
+// Author: Turley
+
+use http;
+use math;
+use os;
+use uo;
+include "header";
+include "include/varutil";
+
+Program HTMLPage()
+  DoHeader("Bandwidth");
+
+  WriteHTML("<div id='container'>");
+  WriteHTML("<div id='header'></div>");
+  WriteHTML("<div id='content'>");
+
+  TableHeader("Bandwidth");
+  
+  DenyAccess(isALLOWED_STRICT);
+
+  WriteHTML("<br>");
+
+  WriteHTML("<table>");
+  WriteHTML("<tr>");
+  WriteHTMLRaw("<th>Minute</th>");
+  WriteHTMLRaw("<th>Players</th>");
+  WriteHTMLRaw("<th>Bytes Sent</th>");
+  WriteHTMLRaw("<th>per Player</th>");
+  WriteHTMLRaw("<th>Bytes Received</th>");
+  WriteHTML("<th>per Player</th>");
+  WriteHTML("</tr>");
+
+  ForEach index in (GetGlobalProperty("SysBandWidth"))
+    WriteHTML("<tr>");
+    WriteHTMLRaw("<td class='num'>"+_index_iter+"</td>");
+    var playercount := CInt(index[7]);
+    WriteHTMLRaw("<td class='num'>"+playercount+"</td>");
+    WriteHTMLRaw("<td class='num'>"+PrettyPrintPrefix(index[1], "B", 1024)+"</td>");
+    If (playercount)
+      WriteHTMLRaw("<td class='num'>"+PrettyPrintPrefix(index[3], "B", 1024)+"</td>");
+    Else
+      WriteHTMLRaw("<td>&nbsp;</td>");
+    EndIf
+    WriteHTMLRaw("<td class='num'>"+PrettyPrintPrefix(index[2], "B", 1024)+"</td>");
+    If (playercount)
+      WriteHTMLRaw("<td class='num'>"+PrettyPrintPrefix(index[4], "B", 1024)+"</td>");
+    Else
+      WriteHTMLRaw("<td>&nbsp;</td>");
+    EndIf
+    WriteHTML("");
+    WriteHTML("</tr>");
+
+    SleepMS(2);
+  EndForEach
+
+  WriteHTML("</table>");
+
+  WriteHTML("</div>");
+  DoFooter();
+EndProgram
+
+// vim: sw=2 sts=2 nowrap

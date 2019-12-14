@@ -1,0 +1,37 @@
+/////////////////////////////////////////////////////////
+//
+//   cleanupbaumarkt - Zerstört alle "verschollenen" Items
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     24.11.09 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+use uo;
+use os;
+
+include "include/msgs";
+
+Enum BaumarktRange
+  X1:=5396,
+  Y1:=1536,
+  X2:=5631,
+  Y2:=1775
+EndEnum
+
+program CleanUpBauMarkt(who)
+  var counter:=0;
+  ForEach item in ListObjectsInBox(X1, Y1, -128, X2, Y2, -1,REALM_BRITANNIA)
+    If (item.isa(POLCLASS_ITEM))
+      DestroyItem(item);
+      counter+=1;
+    EndIf
+    SleepMS(2);
+  EndForEach
+   SendSysMessagePergon(who, counter+" Items wurden gelöscht.",
+    counter+" items were destroyed.");
+EndProgram

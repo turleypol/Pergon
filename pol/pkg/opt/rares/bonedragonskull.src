@@ -1,0 +1,120 @@
+///////////////////////////////////////////////////////////////////////////
+//  bonedragonskull.src -
+// Schädel eines Drachen, der bei Benutzung einen Skelettdrachen erzeugt
+
+use cfgfile;
+use math;
+use os;
+use uo;
+use util;
+use vitals;
+include ":newspells:magicpergon";
+include "include/modifyskill";
+
+Program bonedragonskull(character,item)
+
+  Var rares:=   ReadConfigFile("rares");                            //Rare Config auslesen
+  Var rare:=    FindConfigElem(rares, item.objtype);
+  Var dur:=     rare.duration;
+  Var tbu:=     rare.timebetweenuses;
+  Var powrand:= rare.powerrandom;
+  Var diff:=    rare.difficulty;
+
+  If (item.container || item.movable == 0)                          //Item muss auf dem Boden liegen und lose sein
+    Case (RandomInt(4))
+      0: SendSysMessagePergon(character, "So wird das nichts");
+      1: SendSysMessagePergon(character, "Hmmm");
+      2: SendSysMessagePergon(character, "Das muss irgendwie anders gehen");
+      3: SendSysMessagePergon(character, "Da stimmt was nicht");
+    EndCase
+    Return;
+  EndIf
+
+  If (CInt(GetObjProperty(item, "lastuse") + tbu) > ReadGameClock())    //letze Benutzung muss lange genug her sein
+    SendSysMessagePergon(character, "Ihr könnt den Schädel nicht schon wieder benutzen!");
+    Return;
+  EndIf
+
+  Var necroskill;
+  If ((CInt(GetSkillPergon(character, SKILLID_FLUCHEN))>20)  || (CInt(GetSkillPergon(character, SKILLID_VERFLUCHTEGEGENST))>20))            //Necromantieskill muss vorhanden sein
+    necroskill:= 1;
+  EndIf
+
+  SendSysMessagePergon(character, "Da tut sich was");
+  Var x:= item.x;
+  Var y:= item.y;
+  Var z:= item.z + 1;
+
+  Var skullx:= item.x;                                            //Schädelposition initialisieren mit alter Position
+  Var skully:= item.y;
+  Var skullz:= item.z;
+  Var skullrealm:=character.realm;
+
+  DestroyItem(item);                                              //Originalschädel wird zerstört
+
+  Var skull:=CreateItemAtLocationPergon(x,y,z+1, 0x2250,1,character.realm);       //Schädelgrafik an gleicher Stelle erzeugen
+  PlaySoundEffect(skull, 0xF9);
+  SleepMS(5000);
+  PlaySoundEffect(skull, SFX_1C8);
+  DestroyItem(skull);
+
+  Var i;
+  For (i:=0; i<50; i+=1)
+    PlayMovingEffectXYZ(x + RandomInt(20) - 10, y + RandomInt(20) - 10, z + 5, x, y, z + CInt(i/3), 0xF7E  ,5,0,0,character.realm);     //fliegende Knochen  -  Geschwindigkeit hinzugefügt
+    If ((i % 2) == 0)
+      PlayStationaryEffect(x,y,z + CInt(i/3), 0x2250, 1, 5,0,character.realm);                                                //Schädel schwebt nach oben
+    EndIf
+    SleepMS(30);
+  EndFor
+
+  Detach();
+
+  Var power:= CInt(GetIntPergon(character) + GetDexPergon(character) + GetStrPergon(character));            //stärke des casters berechnen
+  power:= CInt(power + RandomInt(powrand));
+
+  Var parms:= struct;                         //controlscript vorbereiten
+  parms.+CProps:=dictionary;
+  If ((power > diff) && necroskill)       //Benutzer stark genug und Necromantiskill vorhanden --> bonedragon beherrschbar
+    parms.+script:= "enticedanimal";
+    parms.CProps.insert("master", character.serial);                         //Benutzer = Maste
+    parms.+Master:=character.serial;
+    parms.CProps.insert("RoamsFreeAt", ReadGameClock() + 1000);              //setze 'enticed time'
+  EndIf
+  parms.CProps.insert(PROP_SUMMONED, SUMMON_BY_UNDEF);
+  parms.CProps.insert("exp",0); // Exp löschen für selbstbeschworene Viecher
+
+  Var bonedragon:=CreateNpcFromTemplate("bonedragon", x, y, z, parms,character.realm);            //bonedragon erzeugen
+  PlaySoundEffect(bonedragon, 0x489);
+
+  If (parms.script <> "enticedanimal")
+    PrintTextAbovePergon(bonedragon, bonedragon, "Du wagst es mich zu wecken? Dafür wirst du leiden!", "", _DEFAULT_TEXT_FONT, 33);
+  Else
+    PrintTextAbovePergon(bonedragon,bonedragon, "Zu Befehl Meister");
+  EndIf
+
+  i:=0;
+
+  Repeat
+    i+=1;
+    If (bonedragon)
+      skullx:=bonedragon.x;                   //standpunkt des Bonedragons merken
+      skully:=bonedragon.y;
+      skullz:=bonedragon.z;
+      skullrealm:=bonedragon.realm;
+    EndIf
+    SleepMS(1000);
+  Until (!bonedragon || i>dur);
+
+  If (bonedragon)                              //zeit vorbei und BOnedragon lebt noch
+    PrintTextAbovePergon(bonedragon,bonedragon, "Ich werde zurückgerufen!");
+    SleepMS(4500);
+    PlaySoundEffect(bonedragon, 0x48C);
+    SleepMS(500);
+    KillMobile(bonedragon, "BoneDragonSkull");
+  EndIf
+
+  Var newskull:=CreateItemAtLocationPergon(skullx, skully, skullz+1, 0xdb81,1,skullrealm);   //neuen Schädel an der letzten Position des Bonedragons erstellen
+  SetObjProperty(newskull, "lastuse", ReadGameClock());                           //Benutzung merken
+  newskull.movable:=1;
+
+EndProgram

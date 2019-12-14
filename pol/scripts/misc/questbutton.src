@@ -1,0 +1,27 @@
+//////////////////////////////////
+//
+//   Quest-Button in der Paperdoll
+//
+//     Author: Turley
+//
+//////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+include "include/pergonutil";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program QuestButton(who)
+  Start_ScriptPergon("textcmd/0_player/quest",who);
+EndProgram

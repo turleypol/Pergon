@@ -1,0 +1,41 @@
+use uo;
+
+Include "include/itemnpc";
+Include "include/msgs";
+Include "include/objtype";
+Include "include/yesno";
+
+program textcmd_create_townstone(who)
+
+    Var townnames := GetGlobalProperty("townlist");
+
+    if(!townnames or !len(townnames))
+      	townnames := { };
+    endif
+
+    Var name := SendTextEntryGump( who, "Wie lautet der Stadtname?" , 50);
+    var anlegen := 0;
+
+    foreach Stadt in townnames
+        if (Stadt == name)
+            anlegen := YesNo(who, "Diese Stadt gibts es schon. Trotzdem erstellen?");
+            if (!anlegen)
+                return;
+            endif
+        endif
+    endforeach
+
+    if(!name)
+      	SendSysMessagePergon(who, "Abbruch", "Abort");
+      	return;
+    endif
+
+    if (!anlegen) // nicht anlegen, falls der Name schon existiert.
+        townnames.append(name);
+        SetGlobalProperty("townlist", townnames);
+    endif
+    Var item := CreateItemAtLocationPergon(who.x,who.y,who.z, UOBJ_TOWNSTONE, 1,who.realm);
+    SetObjProperty(item, "Stadt", name);
+    SetObjProperty(item, "EinwohnerZahl", 0);
+    SetObjProperty(item, "Steuerbetrag", 60000);
+endprogram

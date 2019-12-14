@@ -1,0 +1,158 @@
+///////////////////////////////////////////////////////////////////////////
+// forgive - Leute aus dem Knast entlassen
+
+
+
+
+
+ 
+use file;
+use os;
+use uo;
+use util;
+include "include/clock";
+include "include/logutil";
+include "include/msgs";
+include "include/pergonutil";
+include "include/permissions";
+include "include/server";
+include "include/modifyskill";
+
+
+Program TextCMD_Forgive(who, param)
+    var player;
+	// Aufruf per Script?
+	  If (who[1] == "#SCRIPT")
+		who := who[2];
+		param := who.serial;
+	  EndIf
+
+	  // Hilfe
+	  If ( param and ( (lower(param) == "help") or (lower(param) == "hilfe") or (param == "?") or (param == "-?") or (param == "/?") ) )
+		SendSysMessagePergon(who,
+		  "Benutzung: .forgive [Char-Serial]",
+		  "Usage: .forgive [char serial]"
+		);
+		return;
+	  EndIf
+	  
+	  If (!param)
+		SendSysMessagePergon(who,
+		  "Wem soll vergeben werden?", "Who should be forgive?"
+		);
+		player := Target(who, TGTOPT_NOCHECK_LOS);
+		If (!player)
+		  SendSysMessagePergon(who, "Abbruch", "Abort");
+		  return;
+		EndIf
+		param := player.serial;
+	  EndIf
+	  
+  // immer OfflineRef holen, damit die Leute durch Ausloggen ihrer
+  // Strafe nicht entgehen
+  player := SystemFindObjectBySerial(CInt(param), SYSFIND_SEARCH_OFFLINE_MOBILES);
+  
+  
+     // moegliche Fehler abfangen
+  If (!player)
+    SendSysMessagePergon(who,
+      "Konnte Spieler mit der angegebenen Serial nicht finden",
+      "Couldn't find player with that serial"
+    );
+    return;
+  ElseIf (player.isa(POLCLASS_NPC))
+    SendSysMessagePergon(who,
+      "Das funktioniert nur bei Spielern.", "That only works on players."
+    );
+    return;
+  ElseIf (!player.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(who,
+      "Spieler nicht gefunden.", "Player not found."
+    );
+    return;
+  EndIf
+
+  // nur niedere CmdLevel bestrafen
+  If (player.cmdlevel > who.cmdlevel)
+    SendSysMessagePergon(who,
+      "Der CmdLevel des Ziels ist nicht niedriger als Euer eigener!",
+      "Target players command level isn't lower than yours!"
+    );
+    return;
+  EndIf
+  
+  //Funktion Pruefen
+  // Bei Seern und GMs muss ein HighGM (oder hoeher) zustimmen
+  // Wer einknasten kann, darf auch vergeben, daher so
+    If (!AllowedToJail(who))
+      If (!AskForPermission(who, player))
+        SendSysMessagePergon(who,
+          "Das Aussprechen der Gnade wurde Euch verwehrt.",
+          "You got no persmission to forgive."
+        );
+        return;
+      EndIf
+    EndIf
+	
+    Sleep(1);
+    SendSysMessagePergon(player,
+      "Die Götter haben euch vergeben, lasst euch nicht nochmal hier blicken!",
+      "The gods have forgiven you, let you do not look here again!",
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+    SendSysMessagePergon(who, CharInfoStr(player)+" wurde aus dem Knast entlassen.");
+  
+  If (!AutoForgive(player, who))
+        SendSysMessagePergon(who, "Dieser Account war nicht gejailt.");
+  EndIf
+  
+  // AutoForgive(player, param)
+  
+    syslog("FORGIVE: "+CharInfoStr(player)+" wurde von "+CharInfoStr(who)+"aus dem Knast entlassen.");
+EndProgram
+
+
+
+
+
+
+// Fragt nach einem anwesenden HighGM, der der Strafe zustimmen soll
+Function AskForPermission(who, vict) // {{{
+  SendSysMessagePergon(who,
+    "Wählt einen HighGM (oder höher), der die Strafe genehmigen soll.",
+    "Choose a HighGM (or higher) who allows the punishment."
+  );
+  var tgt_gm := who;
+  While (tgt_gm.cmdlevel < CMDLEVEL_HIGHGM)
+    SleepMs(2);
+    tgt_gm := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!tgt_gm)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return 0;
+    EndIf
+
+    If (tgt_gm.cmdlevel < CMDLEVEL_HIGHGM)
+      SendSysMessagePergon(who,
+        "Das ist kein HighGM (oder höher)",
+        "No HighGM (or higher) chosen!"
+      );
+    EndIf
+  EndWhile
+
+  SendSysMessagePergon(who,
+    tgt_gm.name+" wird gebeten, die Aktion zu genehmigen.",
+    tgt_gm.name+" is asked to give his or her permission."
+  );
+
+  SendSysMessagePergon(who,
+    "Bitte wartet einen Augenblick auf die Entscheidung.",
+    "Please wait a moment for the decision."
+  );
+
+  SendSysMessagePergon(tgt_gm,
+    who.name+" braucht Genehmigung für die Freilassung von "+vict.name,
+    who.name+"need permission for the release of "+vict.name
+  );
+
+  return SendYesNoDialog(tgt_gm, "Gestattet Ihr die Freilassung?", 100, 100);
+EndFunction // }}}

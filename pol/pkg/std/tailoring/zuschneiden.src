@@ -1,0 +1,268 @@
+///////////////////////////////////
+//
+//   scissors.src
+//
+//   Author: Pauker
+//
+//   Modifications:
+//     2001/07/xx Pauker:    ReWrite
+//     20.02.2003 Fraggulus: Wartezeiten zw. Schnippeleien halbiert
+//     26.05.2003 Shinigami: Pruefung der Farbzuweisungen der Felle beim Haeuten
+//     24.10.2003 Fraggulus: Hanf ergaenzt
+//     09.02.2005 Turley:    Mehrfachnutzung verhindert
+//     08.01.2006 Fraggulus: Ressourcen aus der resources.inc nutzen
+//
+///////////////////////////////////
+
+use util;
+use attributes;
+use os;
+use cfgfile;
+use uo;
+
+include "include/client";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/objtype";
+include "include/resources";
+
+Const SCISSORS_SOUND := SFX_249;
+
+var i;
+
+
+Program use_scissors(character, scissors)
+
+  SendSysMessagePergon(character, "Was wollt Ihr zuschneiden ?");
+  var use_on := Target(character);
+
+  var Mat_Cfg := ReadConfigFile(":crafting:materials");
+  var mat_special := FindConfigElem(Mat_Cfg, use_on.objtype);
+
+  If ((use_on.objtype in GetUobjStoff()) || (use_on.objtype in GetUobjTuecher()))
+    If (!mat_special)
+      SendSysMessagePergon(character, use_on.objtype+" ist noch nicht in die Configs eingetragen!");
+      SendSysMessagePergon(character, "Benachrichtigt den zuständigen GM.");
+      return;
+    EndIf
+
+    make_tuecher(character, scissors, use_on, mat_special);
+  Else
+    If (use_on.objtype in GetUobjLeder())
+      If (!mat_special)
+        SendSysMessagePergon(character, use_on.objtype+" ist noch nicht in die Configs eingetragen!");
+        SendSysMessagePergon(character, "Benachrichtigt den zuständigen GM.");
+        return;
+      EndIf
+      make_geschn_leder(character, scissors, use_on, mat_special);
+    Else
+      SendSysMessagePergon(character, "Das kann nicht zugeschnitten werden.");
+      return;
+    EndIf
+  EndIf
+
+EndProgram
+
+Function make_tuecher(character, scissors, use_on, mat_special)
+
+  var x := character.x; var y:=character.y; var z:=character.z; // Char Position wird festgestellt fuer Abbruch
+
+  ReserveItem(scissors);
+  If (!ReserveItem(use_on))
+    SendSysMessagePergon(character, "Dieser Gegenstand ist bereits in Gebrauch.");
+    return;
+  EndIf
+
+  var Menu := CreateMenu("Was wollt Ihr anfertigen?");
+  AddMenuItem(menu, UOBJ_BANDAGE, "Bandagen"); 
+  If (use_on.objtype in GetUobjStoff())
+    AddMenuItem(menu, 0X175d, "gefaltete Tuecher");
+  EndIf
+  
+
+  var Op := SelectMenuItem2(character, menu);
+  Print("OP:"+op.index);
+
+  If (op.index==1)
+      // Werkzeug-Eigenschaften auslesen
+      var werkzeug := GetPropertyItem(scissors);
+
+      var tool_hp := werkzeug.hp;
+      var tool_skill := werkzeug.quality;
+
+      var points := 30+tool_skill;
+      var skill := 5;   // Bandagen ab skill schneidern 5%
+  /*
+      If (character.cmdlevel >= CMDLEVEL_SEER)
+              print("Tool Quality: "+tool_skill);
+              print("Tool Hp: "+tool_hp);
+              print("Tool MaxHp: "+tool_maxhp);
+              print("skill Schneidern: "+GetSkillPergon(character, SKILLID_SCHNEIDERN));
+              print("amount: "+use_on.amount);
+              print("difficulty: "+cint(skill));
+              print("rohpoints: "+cint(points));
+      EndIf
+  */
+      var retval;
+      var t := use_on.amount;
+
+      For (i := 1;i<=t;i+=1)
+     retval := PlaySoundEffect(character, SCISSORS_SOUND);
+           SleepMS (750);
+
+           If (!((character.x==x) and (character.y==y) and (character.z==z)))   // fall's sich der char bewegt, Abbruch der Schleife
+               SendSysMessagePergon(character, "Abbruch", "Abort");
+               return;
+           EndIf
+
+           If (tool_hp<20)
+         SendSysMessagePergon(character,"Euer Werkzeug ist kaum noch zu gebrauchen.");
+     EndIf
+
+           If(CheckSkillPergon(character,SKILLID_SCHNEIDERN,cint(skill),points))
+             If (use_on.objtype in GetUobjStoff())
+                CreateItemInBackpackPergon(character, UOBJ_BANDAGE, 50);
+                SendSysMessagePergon(character, "Ihr schneidet 50 Bandagen aus dem Stoff.");
+                SubtractAmount(use_on, 1);
+             Else
+              If (use_on.amount >= 5) 
+                CreateItemInBackpackPergon(character, UOBJ_BANDAGE, 5);
+                SendSysMessagePergon(character, "Ihr konntet 5 Bandagen zuschneiden.");
+                SubtractAmount(use_on, 5);
+              Else
+                SendSysMessagePergon(character, "Ihr braucht mindestens 5 Tücher.");
+                return;
+              EndIf  
+             EndIf
+
+           Else
+              SendSysMessagePergon(character, "Euch fehlen noch die Fähigkeiten ...");
+              i := t+1;
+              If (SetWerkzeugSchaden(character, scissors, "Euere Schere hat gelitten!", "Euere Schere ist stark beschdigt!", "Euere Schere ist zerbrochen!"))
+                   return;
+              EndIf
+           EndIf
+      EndFor
+
+  Else
+      If (op.index==2)
+          // Werkzeug-Eigenschaften auslesen
+          var werkzeug := GetPropertyItem(scissors);
+          var tool_hp := werkzeug.hp;
+          var tool_skill := werkzeug.quality;
+
+          var points := cint((mat_special.difficulty+tool_skill)*6);
+          var skill := mat_special.difficulty-tool_skill;           // aus der crafting\materials.cfg
+          If (skill<1) skill := 1; EndIf
+  /*
+          If (character.cmdlevel >= CMDLEVEL_SEER)
+              print("Tool Quality: "+tool_skill);
+              print("Tool Hp: "+tool_hp);
+              print("Tool MaxHp: "+tool_maxhp);
+              print("amount: "+use_on.amount);
+              print("skill Schneidern: "+GetSkillPergon(character, SKILLID_SCHNEIDERN));
+              print("difficulty: "+cint(skill));
+              print("rohpoints: "+cint(points));
+          EndIf
+  */
+          var retval;
+
+          While (getamount(use_on)>0)
+         retval := PlaySoundEffect(character, SCISSORS_SOUND);
+               SleepMS (750);
+
+               If (!((character.x==x) and (character.y==y) and (character.z==z)))   // fall's sich der char bewegt, Abbruch der Schleife
+                   SendSysMessagePergon(character, "Abbruch", "Abort");
+                   return;
+               EndIf
+
+               If (tool_hp<20)
+     SendSysMessagePergon(character,"Euer Werkzeug ist kaum noch zu gebrauchen.");
+               EndIf
+
+               If(CheckSkillPergon(character,SKILLID_SCHNEIDERN,cint(skill),points))
+                  CreateItemInBackpackPergon(character, mat_special.product, 50);
+                  SubtractAmount(use_on, 1);
+                  SendSysMessagePergon(character, "Ihr schneidet 50 Tücher.");
+               Else
+                  SendSysMessagePergon(character, "Euch fehlen noch die Fähigkeiten ...");
+                  If (SetWerkzeugSchaden(character, scissors, "Euere Schere hat gelitten!", "Euere Schere ist stark beschädigt!", "Euere Schere ist zerbrochen!"))
+                      return;
+                  EndIf
+               EndIf
+          EndWhile
+
+      Else
+        SendSysMessagePergon(character, "Abbruch", "Abort");
+        return;
+      EndIf
+  EndIf
+EndFunction
+
+
+Function make_geschn_leder(character, scissors, use_on, mat_special)
+
+  // Werkzeug-Eigenschaften auslesen
+  var werkzeug := GetPropertyItem(scissors);
+  var tool_hp := werkzeug.hp;
+  var tool_skill := werkzeug.quality;
+
+
+  var points := cint((mat_special.diffzuschneiden+tool_skill)*6); // diffzuschneiden aus der crafting\materials.cfg
+  var skill := mat_special.diffzuschneiden-tool_skill;
+  If (skill<1) skill := 1; EndIf
+  /*
+  If (character.cmdlevel >= CMDLEVEL_SEER)
+      print("Tool Quality: "+tool_skill);
+      print("Tool Hp: "+tool_hp);
+      print("Tool MaxHp: "+tool_maxhp);
+      print("amount: "+use_on.amount);
+      print("skill Gerben: "+GetSkillPergon(character, SKILLID_GERBEN_FAERBEN));
+      print("difficulty: "+cint(skill));
+      print("rohpoints: "+cint(points));
+  EndIf
+  */
+  var retval;
+  var x := character.x; var y:=character.y; var z:=character.z; // Char Position wird festgestellt fuer Abbruch
+
+  ReserveItem(scissors);
+  If (!ReserveItem(use_on))
+    SendSysMessagePergon(character, "Dieser Gegenstand ist bereits in Gebrauch.");
+    return;
+  EndIf
+
+  While(getamount(use_on)>0)
+       retval := PlaySoundEffect(character, SCISSORS_SOUND);
+       SleepMS (750);
+
+       If (!((character.x==x) and (character.y==y) and (character.z==z)))   // fall's sich der char bewegt, Abbruch der Schleife
+           SendSysMessagePergon(character, "Abbruch", "Abort");
+           return;
+       EndIf
+
+       If (tool_hp<20)
+     SendSysMessagePergon(character,"Euer Werkzeug ist kaum noch zu gebrauchen.");
+       EndIf
+
+       If(CheckSkillPergon(character,SKILLID_GERBEN_FAERBEN,cint(skill),points))
+          var item := CreateItemInBackpackPergon(character, mat_special.product, 1, use_on.color);
+
+          If (item.color<>use_on.color) // Shinigami: Evtl. nur 'n ItemDesc-Fehler, evtl. aber auch 'n Problem...
+            SysLog("WARNUNG: Die Farbe "+item.color+" des Leders "+Lower(Hex(item.objtype))+" weicht von der Farbe "+
+              use_on.color+" des ungeschnittenen Leders '"+Lower(Hex(use_on.objtype))+"' ab. Stacking ist deshalb nicht moeglich.");
+          EndIf
+
+         // item.color := use_on.color;
+          SubtractAmount(use_on, 1);
+          SendSysMessagePergon(character, "Ihr schneidet 1 Leder.");
+       Else
+          SendSysMessagePergon(character, "Euch fehlen noch die Fähigkeiten ...");
+          If (randomint(100)>60)
+              SubtractAmount(use_on, 1);
+          EndIf
+          If (SetWerkzeugSchaden(character, scissors, "Eure Schere hat gelitten!", "Eure Schere ist stark beschädigt!", "Eure Schere ist zerbrochen!"))
+              return;
+          EndIf
+       EndIf
+  EndWhile
+EndFunction

@@ -1,0 +1,599 @@
+/////////////////////////////////////////////////////////
+//
+//   performance_diff - Wie der Txtcmd nur halt in schön
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     08.05.08 Turley: Init
+//     19.05.08 Turley: Um den Server nicht unnötig zu belasten und die "usability"
+//                      zu erhöhen, Rowdaten werden übertragen, Sortierung und
+//                      Filter per Javascript selber lokal machen
+//
+/////////////////////////////////////////////////////////
+
+use uo;
+use os;
+use http;
+use math;
+use util;
+
+include "header";
+
+Var chr22:=CChr(0x22); // "
+Var chr5C:=CChr(0x5C); // \
+
+program HTMLPage()
+  DoHeader("Performance Diff");
+  WriteHTML("<DIV ID='container'>");
+  WriteHTML("<DIV ID='header'></DIV>");
+  WriteHTML("<DIV ID='content'>");
+  TableHeader("Performance Diff");
+
+  DenyAccess(isALLOWED_STRICT);
+
+  Var zeit := CInt(QueryParam("DiffSeconds"));
+  If (!zeit)
+    zeit:=60;
+  EndIf
+
+  If (QueryParam("SubmitSearch")=="Submit")
+    // Pause zwischen 1s und 5min
+    zeit:=CInt(Max(Min(zeit,300),1));
+    GetInfos(zeit);
+  Else
+    StartPoint();
+  EndIf
+  DoFooter();
+endprogram
+
+Function StartPoint()
+  WriteHTML("<BR>");
+  WriteHTML("<FORM METHOD='GET'>");
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='2' ALIGN='LEFT'>Search</TH>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD>Diff Seconds</TD><TD><INPUT TYPE='TEXT' SIZE='3' MAXLENGTH='3' NAME='DiffSeconds'></TD>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD COLSPAN='2' ALIGN='CENTER'><INPUT TYPE='SUBMIT' NAME='SubmitSearch' VALUE='Submit'></TD>");
+  WriteHTML("</TR>");
+  WriteHTML("<input type=hidden name=user value="+user+">");
+  WriteHTML("<input type=hidden name=pass value="+pass+">");
+  WriteHTML("</FORM>");
+  WriteHTML("</TABLE>");
+EndFunction
+
+Function GetInfos(zeit)
+  WriteHTML("<BR>");
+  WriteHTML("<TABLE WIDTH='300' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='2' ALIGN='LEFT'>Search Params</TH>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD>Diff Seconds</TD><TD>"+zeit+"</TD>");
+  WriteHTML("</TR>");
+  WriteHTML("</TABLE>");
+
+  //Daten Referenz holen Start
+  var vall_scriptsR := polcore().all_scripts;
+
+  //Daten festschreiben
+  Var scriptK:=struct{pid,name,instr_cycles};
+  Var vall_scripts_start_map:=dictionary;
+  foreach script in vall_scriptsR
+    scriptK.pid:=script.pid;
+    scriptK.name:=script.name;
+    scriptK.instr_cycles:=script.instr_cycles;
+    vall_scripts_start_map[script.pid]:=scriptK;
+    SleepMS(2);
+  endforeach
+
+  WriteHTML("<UL>");
+  WriteHTML("<LI>Waiting...");
+  //Pause
+  Sleep(zeit);
+  WriteHTML("<LI>Building Tables...");
+  WriteHTML("</UL>");
+
+  //Daten Referenz holen Ende
+  vall_scriptsR := polcore().all_scripts;
+
+  //Daten festschreiben
+  scriptK:=struct{pid,name,instr_cycles};
+  Var vall_scripts_ende:=array;
+  Var attached;
+  foreach script in vall_scriptsR
+    scriptK.pid:=script.pid;
+    attached:=GetProcess(script.pid).attached_to;
+    if (attached.isa(POLCLASS_NPC))
+      scriptK.name:=script.name+" ("+attached.npctemplate+")";
+    ElseIf (attached.isA(POLCLASS_MOBILE))
+      scriptK.name:=script.name+" ("+attached.name+")";
+    ElseIf (attached.isA(POLCLASS_ITEM))
+      scriptK.name:=script.name+" ("+Hex(attached.objtype)+")";
+    Else
+      scriptK.name:=script.name;
+    EndIf
+    scriptK.instr_cycles:=script.instr_cycles;
+    vall_scripts_ende.append(scriptK);
+    SleepMS(2);
+  endforeach
+
+  //Differenz bilden und Summe Diff Instructions
+  Var diff_scripts:=array;
+  Var i;
+  Var scriptD:=struct{pid,name,diff_instr,percent};
+  Var scripts_start:=struct;
+  Var sum_instr:=0;
+  foreach script in vall_scripts_ende
+    scripts_start:=vall_scripts_start_map[script.pid];
+    If (scripts_start)
+      scriptD.pid:=script.pid;
+      scriptD.name:=script.name;
+      scriptD.diff_instr:=script.instr_cycles-scripts_start.instr_cycles;
+      diff_scripts.append(scriptD);
+      sum_instr+=scriptD.diff_instr;
+    EndIf
+    sleepms(2);
+  endforeach
+
+  //Prozente ausrechnen Gesamtübersicht
+  For( i := 1; i <= diff_scripts.size(); i += 1 )
+    diff_scripts[i].percent:=CDbl(Ceil((diff_scripts[i].diff_instr/CDbl(sum_instr))*1000.0))/10.0;
+    SleepMS(2);
+  EndFor
+  
+
+  //Ermitteln NPC-Template Übersicht
+  Var template_sum_instr:=0;
+  Var template_data := dictionary;
+  Var template;
+  Var structT:=struct;
+  structT.+sum_instr;
+  structT.+anzahl;
+  structT.+npc;
+  structT.+script;
+  foreach script in diff_scripts
+    attached:=GetProcess(script.pid).attached_to;
+    if (attached.isa(POLCLASS_NPC))
+      template:=attached.npctemplate+" "+attached.script;
+      If (template_data.exists(template))
+        template_data[template].sum_instr:=template_data[template].sum_instr+script.diff_instr;
+        template_data[template].anzahl:=template_data[template].anzahl+1;
+      Else
+        structT.sum_instr:=script.diff_instr;
+        structT.anzahl:=1;
+        structT.npc:=attached.npctemplate;
+        structT.script:=attached.script;
+        template_data[template]:=structT;
+      EndIf
+      template_sum_instr+=script.diff_instr;
+    endif
+    SleepMS(2);
+  endforeach
+
+  WriteHTML("<FORM NAME='Filter' action=''>");
+  WriteHTML("<TABLE WIDTH='460' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='2' ALIGN='LEFT'>Filter</TH>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD>Max Count</TD><TD><INPUT TYPE='TEXT' SIZE='4' MAXLENGTH='4' NAME='MaxCount' VALUE='10'>"
+           +"<INPUT TYPE='BUTTON' WIDTH='60' class='button' value='  Send   ' ONCLICK='Schreibe_TabelleScript(Tabellendaten)'></TD>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD>Filter Word</TD><TD><INPUT TYPE='TEXT' SIZE='40' MAXLENGTH='35' NAME='FilterWord'>"
+           +"<INPUT TYPE='BUTTON' WIDTH='60' class='button' value='  Send   ' ONCLICK='Schreibe_TabelleScript(Tabellendaten)'></TD>");
+  WriteHTML("</TR>");
+  WriteHTML("</TABLE>");
+  WriteHTML("</FORM>");
+  WriteHTML("<BR>");
+
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='2' ALIGN='LEFT'>Misc Infos</TH>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD>Sum Instructions</TD><TD>"+sum_instr+"</TD>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD>Percentage NPC's on entire Load</TD><TD>"+(template_sum_instr*100.0/sum_instr)+"%</TD>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD>Count of observed Scripts</TD><TD>"+diff_scripts.size()+"</TD>");
+  WriteHTML("</TR>");
+  
+  //gibt die 1000 Einträge mit höchsten diff_instr zurück
+  //wenn alle geschickt werden verreckt der Browser
+  If (diff_scripts.size()>1000)
+    var ref:=QuickSortSelect(diff_scripts.size()-1000, diff_scripts);
+    diff_scripts.reverse();  // Größte Einträge nach vorne
+    diff_scripts.shrink(1000); // Und kleinere Abschneiden
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Minimum Diff_instr send</TD><TD>"+ref.diff_instr+" ("+ref.percent+"%)</TD>");
+    WriteHTML("</TR>");
+  EndIf
+  
+  WriteHTML("</TABLE>");
+
+  WriteHTML("<BR>");
+
+  Writehtml("<div id="+chr22+"ScriptTabelle"+chr22+"></div>");
+  
+  SortScript(diff_scripts);
+  
+  WriteHTML("<BR>");
+  
+  Writehtml("<div id="+chr22+"NPCTabelle"+chr22+"></div>");
+  
+  SortNPCs(template_data,sum_instr);
+
+EndFunction
+
+// javascript
+// geklaut von SelfHTML
+Function SortScript(byref daten)
+  WriteHtml("<script type="+chr22+"text/javascript"+chr22+">");
+  WriteHtml("<!--");
+  WriteHtml("var Tabellendaten = new Array(");
+  ForEach script in daten
+    WriteHtmlRaw("Array(");
+    WriteHtmlRaw(chr22+script.pid+chr22+","
+                +chr22+script.name+chr22+","
+                +chr22+script.diff_instr+chr22+","
+                +chr22+script.percent+chr22);
+    WriteHtmlRaw(")");
+    If (_script_iter<daten.size())
+      WriteHtml(",");
+    EndIf
+    SleepMS(2);
+  EndForEach
+
+  WriteHtml(");");
+
+  WriteHtml("var sortierte_Tabellendaten = new Array(Tabellendaten.length);");
+
+  WriteHtml("var Spaltenueberschriften = new Array(");
+  WriteHtml(""+chr22+"<B>PID</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>Name</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>diff_instr</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>diff_percent</B>"+chr22+"");
+  WriteHtml(");");
+
+  WriteHtml("var Spalten = Spaltenueberschriften.length;");
+
+  WriteHtml("var Spaltensortierungen = new Array(");
+  WriteHtml(""+chr22+"numerisch"+chr22+","+chr22+"alphabetisch"+chr22+","+chr22+"numerisch"+chr22+","+chr22+"numerisch"+chr22+"");
+  WriteHtml(");");
+
+  WriteHtml("var Ordinalzahlenspalte = 1;");
+
+  WriteHtml("var Sortierzeile = "+chr22+""+chr22+";");
+
+  WriteHtml("var MaxCount = 10;");
+
+  WriteHtml("function Erzeuge_Sortierzeile(Nummer,Richtung) {");
+  WriteHtml("  Sortierzeile = "+chr22+"<tr>"+chr22+";");
+  WriteHtml("  if(Ordinalzahlenspalte)");
+  WriteHtml("    Sortierzeile += "+chr22+"<th> <"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  for(var j = 0; j < Spalten; ++j) {");
+  WriteHtml("    Sortierzeile += "+chr22+"<th>"+chr22+";");
+  WriteHtml("    if(Richtung == "+chr22+"aufsteigend"+chr22+" && j == Nummer) {");
+  WriteHtml("      Sortierzeile += "+chr22+"auf "+chr22+";");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','absteigend')"+chr5C+""+chr22+">ab</a>"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    else if(Richtung == "+chr22+"absteigend"+chr22+" && j == Nummer) {");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','aufsteigend')"+chr5C+""+chr22+">auf</a>"+chr22+";");
+  WriteHtml("      Sortierzeile += "+chr22+" ab"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    else {");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','aufsteigend')"+chr5C+""+chr22+">auf</a> "+chr22+";");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','absteigend')"+chr5C+""+chr22+">ab</a><"+chr5C+"/td>"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    Sortierzeile += "+chr22+"<"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  }");
+  WriteHtml("  Sortierzeile += "+chr22+"</tr>"+chr22+";");
+  WriteHtml("}");
+
+  WriteHtml("function Sortiere_nach_Spalte(Nummer,Art,Richtung) {");
+  WriteHtml("  sortierte_Tabellendaten=Tabellendaten;");
+  WriteHtml("  sortierte_Tabellendaten.sort(cmpWrapper(Nummer,Art,Richtung));");
+  WriteHtml("  Erzeuge_Sortierzeile(Nummer,Richtung);");
+  WriteHtml("  Schreibe_TabelleScript(sortierte_Tabellendaten);");
+  WriteHtml("}");
+  
+  WriteHtml("function Schreibe_TabelleScript(Array) {");
+  WriteHtml("  var Tabelleninhalt = "+chr22+""+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<table WIDTH='100%' CELLSPACING='1' CELLPADDING='2'>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<thead>"+chr22+";");
+  WriteHTML("  Tabelleninhalt += "+chr22+"<TR>"+chr22+";");
+  WriteHTML("  Tabelleninhalt += "+chr22+"<TH COLSPAN='5' ALIGN='LEFT'>Script Infos</TH>"+chr22+";");
+  WriteHTML("  Tabelleninhalt += "+chr22+"</TR>"+chr22+";");
+  WriteHtml("  if(Ordinalzahlenspalte)");
+  WriteHtml("    Tabelleninhalt += "+chr22+"<th> <"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  for(var j = 0; j < Spalten; ++j)");
+  WriteHtml("    Tabelleninhalt += "+chr22+"<th>"+chr22+" + Spaltenueberschriften[j] + "+chr22+"<"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/tr>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += Sortierzeile;");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/thead>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<tbody>"+chr22+";");
+
+  WriteHtml("  MaxCount=window.document.Filter.MaxCount.value;");
+  WriteHtml("  if (MaxCount<=0)");
+  WriteHtml("    MaxCount=10;");
+  WriteHtml("  var showZeilen = MaxCount;");
+  WriteHtml("  if (showZeilen > Array.length)");
+  WriteHtml("    showZeilen = Array.length;");
+  WriteHtml("  var ShowCount=0;");
+  WriteHtml("  var FilterWord= "+chr22+chr22+";");
+  WriteHtml("  FilterWord= window.document.Filter.FilterWord.value.toLowerCase();");
+
+  WriteHtml("  for(var i = 0; i < Array.length; ++i) {");
+ 
+  WriteHtml("    if (FilterWord.length>0){");
+  WriteHtml("      temp=Array[i][1].toLowerCase();");
+  WriteHtml("      if (temp.search(FilterWord)>=0){");
+  WriteHtml("        ++ShowCount;");
+  WriteHtml("        Tabelleninhalt += "+chr22+"<tr>"+chr22+";");
+  WriteHtml("        if(Ordinalzahlenspalte)");
+  WriteHtml("          Tabelleninhalt += "+chr22+"<td>"
+                       +"<A HREF='scriptex.ecl?PID="+chr22+"+Array[i][0]+"+chr22+"&"+A_PARAM+"'>"+chr22+" + (i+1) + "+chr22+".</A><"+chr5C+"/td>"+chr22+";");
+  WriteHtml("       for(var j = 0; j < Array[i].length; ++j)");
+  WriteHtml("         Tabelleninhalt += "+chr22+"<td>"+chr22+" + Array[i][j] + "+chr22+"<"+chr5C+"/td>"+chr22+";");
+  WriteHtml("       Tabelleninhalt += "+chr22+"<"+chr5C+"/tr>"+chr22+";");
+  WriteHtml("      }");
+  WriteHtml("    }");
+  WriteHtml("    else {");
+  WriteHtml("      ++ShowCount;");
+  WriteHtml("      Tabelleninhalt += "+chr22+"<tr>"+chr22+";");
+  WriteHtml("      if(Ordinalzahlenspalte)");
+  WriteHtml("        Tabelleninhalt += "+chr22+"<td>"
+                     +"<A HREF='scriptex.ecl?PID="+chr22+"+Array[i][0]+"+chr22+"&"+A_PARAM+"'>"+chr22+" + (i+1) + "+chr22+".</A><"+chr5C+"/td>"+chr22+";");
+  WriteHtml("      for(var j = 0; j < Array[i].length; ++j)");
+  WriteHtml("        Tabelleninhalt += "+chr22+"<td>"+chr22+" + Array[i][j] + "+chr22+"<"+chr5C+"/td>"+chr22+";");
+  WriteHtml("      Tabelleninhalt += "+chr22+"<"+chr5C+"/tr>"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    if (ShowCount>=showZeilen)");
+  WriteHtml("      break;");
+  WriteHtml("  }");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/tbody>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/table>"+chr22+";");
+  WriteHtml("  if(document.getElementById)");
+  WriteHtml("    document.getElementById("+chr22+"ScriptTabelle"+chr22+").innerHTML = Tabelleninhalt;");
+  WriteHtml("  else if(document.all)");
+  WriteHtml("    document.all.ScriptTabelle.innerHTML = Tabelleninhalt;");
+  WriteHtml("  else if(document.layers) {");
+  WriteHtml("    document.ScriptTabelle.document.open();");
+  WriteHtml("    document.ScriptTabelle.document.write(Tabelleninhalt);");
+  WriteHtml("    document.ScriptTabelle.document.close();");
+  WriteHtml("  }");
+  WriteHtml("}");
+
+  WriteHtml("function Numsort(a,b)");
+  WriteHtml("  { return a-b; }");
+  
+  WriteHtml("function cmpWrapper(i,Art,Richtung)");
+  WriteHtml("{");
+  WriteHtml("  return function(a, b) {");
+  WriteHtml("    if (a[i] == b[i])");
+  WriteHtml("    {");
+  WriteHtml("      return 0;");
+  WriteHtml("    }");
+  WriteHtml("    else");
+  WriteHtml("    {");
+  WriteHtml("      var a2 = [a[i], b[i]];");
+  WriteHtml("      if (Art=="+chr22+"alphabetisch"+chr22+")");
+  WriteHtml("      {");
+  WriteHtml("        a2[0]=a2[0].toLowerCase();");
+  WriteHtml("        a2[1]=a2[1].toLowerCase();");
+  WriteHtml("        a2.sort();");
+  WriteHtml("      }");
+  WriteHtml("      else");
+  WriteHtml("        a2.sort(Numsort);");
+  WriteHtml("      if (Richtung=="+chr22+"aufsteigend"+chr22+")");
+  WriteHtml("        a2.reverse();");
+  WriteHtml("      if (a2[0] == a[i].toLowerCase())");
+  WriteHtml("      {");
+  WriteHtml("        return 1;");
+  WriteHtml("      }");
+  WriteHtml("      else");
+  WriteHtml("      {");
+  WriteHtml("        return -1;");
+  WriteHtml("      }");
+  WriteHtml("    }");
+  WriteHtml("  };");
+  WriteHtml("} ");
+
+  WriteHtml("Sortiere_nach_Spalte(3,Spaltensortierungen[3],'absteigend');");
+  WriteHtml("//-->");
+
+  WriteHtml("</script>");
+EndFunction
+
+// javascript
+// geklaut von SelfHTML
+Function SortNPCs(byref daten,byref sum_instr)
+  WriteHtml("<script type="+chr22+"text/javascript"+chr22+">");
+  WriteHtml("<!--");
+  WriteHtml("var TabellendatenNPC = new Array(");
+  Var percent;
+  var i:=0;
+  ForEach npc in daten
+    i+=1;
+    WriteHtmlRaw("Array(");
+    percent:=CDbl(Ceil((npc.sum_instr/CDbl(sum_instr)*1000.0))/10.0);
+    WriteHtmlRaw(chr22+npc.npc+chr22+","
+                +chr22+npc.script+chr22+","
+                +chr22+npc.anzahl+chr22+","
+                +chr22+npc.sum_instr+chr22+","
+                +chr22+percent+chr22);
+    WriteHtmlRaw(")");
+    If (i<daten.keys().size())
+      WriteHtml(",");
+    EndIf
+    SleepMS(2);
+  EndForEach
+  WriteHtml(");");
+
+  WriteHtml("var sortierte_TabellendatenNPC = new Array(TabellendatenNPC.length);");
+
+  WriteHtml("var SpaltenueberschriftenNPC = new Array(");
+  WriteHtml(""+chr22+"<B>NPC-Template</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>Script</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>Anzahl</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>sum_instr</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>diff_percent</B>"+chr22);
+  WriteHtml(");");
+
+  WriteHtml("var SpaltenNPC = SpaltenueberschriftenNPC.length;");
+
+  WriteHtml("var SpaltensortierungenNPC = new Array(");
+  WriteHtml(""+chr22+"alphabetisch"+chr22+","+chr22+"alphabetisch"+chr22+","+chr22+"numerisch"+chr22+","+chr22+"numerisch"+chr22+","+chr22+"numerisch"+chr22);
+  WriteHtml(");");
+
+  WriteHtml("var SortierzeileNPC = "+chr22+""+chr22+";");
+
+  WriteHtml("function Erzeuge_SortierzeileNPC(NummerNPC,RichtungNPC) {");
+  WriteHtml("  SortierzeileNPC = "+chr22+"<tr>"+chr22+";");
+  WriteHtml("  for(var j = 0; j < SpaltenNPC; ++j) {");
+  WriteHtml("    SortierzeileNPC += "+chr22+"<th>"+chr22+";");
+  WriteHtml("    if(RichtungNPC == "+chr22+"aufsteigend"+chr22+" && j == NummerNPC) {");
+  WriteHtml("      SortierzeileNPC += "+chr22+"auf "+chr22+";");
+  WriteHtml("      SortierzeileNPC += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_SpalteNPC("+chr22+" + j + "+chr22+",'"+chr22+" + SpaltensortierungenNPC[j] + "+chr22+"','absteigend')"+chr5C+""+chr22+">ab</a>"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    else if(RichtungNPC == "+chr22+"absteigend"+chr22+" && j == NummerNPC) {");
+  WriteHtml("      SortierzeileNPC += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_SpalteNPC("+chr22+" + j + "+chr22+",'"+chr22+" + SpaltensortierungenNPC[j] + "+chr22+"','aufsteigend')"+chr5C+""+chr22+">auf</a>"+chr22+";");
+  WriteHtml("      SortierzeileNPC += "+chr22+" ab"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    else {");
+  WriteHtml("      SortierzeileNPC += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_SpalteNPC("+chr22+" + j + "+chr22+",'"+chr22+" + SpaltensortierungenNPC[j] + "+chr22+"','aufsteigend')"+chr5C+""+chr22+">auf</a> "+chr22+";");
+  WriteHtml("      SortierzeileNPC += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_SpalteNPC("+chr22+" + j + "+chr22+",'"+chr22+" + SpaltensortierungenNPC[j] + "+chr22+"','absteigend')"+chr5C+""+chr22+">ab</a><"+chr5C+"/td>"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    SortierzeileNPC += "+chr22+"<"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  }");
+  WriteHtml("  SortierzeileNPC += "+chr22+"</tr>"+chr22+";");
+  WriteHtml("}");
+
+  WriteHtml("function Sortiere_nach_SpalteNPC(NummerNPC,ArtNPC,RichtungNPC) {");
+  WriteHtml("  sortierte_TabellendatenNPC=TabellendatenNPC;");
+  WriteHtml("  sortierte_TabellendatenNPC.sort(cmpWrapper(NummerNPC,ArtNPC,RichtungNPC));");
+  WriteHtml("  Erzeuge_SortierzeileNPC(NummerNPC,RichtungNPC);");
+  WriteHtml("  Schreibe_TabelleScriptNPC(sortierte_TabellendatenNPC);");
+  WriteHtml("}");
+
+  WriteHtml("function Schreibe_TabelleScriptNPC(ArrayNPC) {");
+  WriteHtml("  var TabelleninhaltNPC = "+chr22+""+chr22+";");
+  WriteHtml("  TabelleninhaltNPC += "+chr22+"<table WIDTH='100%' CELLSPACING='1' CELLPADDING='2'>"+chr22+";");
+  WriteHtml("  TabelleninhaltNPC += "+chr22+"<thead>"+chr22+";");
+  WriteHTML("  TabelleninhaltNPC += "+chr22+"<TR>"+chr22+";");
+  WriteHTML("  TabelleninhaltNPC += "+chr22+"<TH COLSPAN='5' ALIGN='LEFT'>NPC Infos</TH>"+chr22+";");
+  WriteHTML("  TabelleninhaltNPC += "+chr22+"</TR>"+chr22+";");
+  WriteHtml("  for(var j = 0; j < SpaltenNPC; ++j)");
+  WriteHtml("    TabelleninhaltNPC += "+chr22+"<th>"+chr22+" + SpaltenueberschriftenNPC[j] + "+chr22+"<"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  TabelleninhaltNPC += "+chr22+"<"+chr5C+"/tr>"+chr22+";");
+  WriteHtml("  TabelleninhaltNPC += SortierzeileNPC;");
+  WriteHtml("  TabelleninhaltNPC += "+chr22+"<"+chr5C+"/thead>"+chr22+";");
+  WriteHtml("  TabelleninhaltNPC += "+chr22+"<tbody>"+chr22+";");
+
+  WriteHtml("  for(var i = 0; i < ArrayNPC.length; ++i) {");
+  WriteHtml("      TabelleninhaltNPC += "+chr22+"<tr>"+chr22+";");
+  WriteHtml("      for(var j = 0; j < ArrayNPC[i].length; ++j)");
+  WriteHtml("        TabelleninhaltNPC += "+chr22+"<td>"+chr22+" + ArrayNPC[i][j] + "+chr22+"<"+chr5C+"/td>"+chr22+";");
+  WriteHtml("      TabelleninhaltNPC += "+chr22+"<"+chr5C+"/tr>"+chr22+";");
+  WriteHtml("  }");
+  WriteHtml("  TabelleninhaltNPC += "+chr22+"<"+chr5C+"/tbody>"+chr22+";");
+  WriteHtml("  TabelleninhaltNPC += "+chr22+"<"+chr5C+"/table>"+chr22+";");
+  WriteHtml("  if(document.getElementById)");
+  WriteHtml("    document.getElementById("+chr22+"NPCTabelle"+chr22+").innerHTML = TabelleninhaltNPC;");
+  WriteHtml("  else if(document.all)");
+  WriteHtml("    document.all.NPCTabelle.innerHTML = TabelleninhaltNPC;");
+  WriteHtml("  else if(document.layers) {");
+  WriteHtml("    document.NPCTabelle.document.open();");
+  WriteHtml("    document.NPCTabelle.document.write(TabelleninhaltNPC);");
+  WriteHtml("    document.NPCTabelle.document.close();");
+  WriteHtml("  }");
+  WriteHtml("}");
+
+  WriteHtml("Sortiere_nach_SpalteNPC(0,SpaltensortierungenNPC[0],'aufsteigend');");
+  WriteHtml("//-->");
+
+  WriteHtml("</script>");
+EndFunction
+
+
+// Wenn ich schon Random von denen Klaue kann man auch mal nen gescheiten Vorsortieralgorithmus
+// klauen
+// Based on: Numerical Recipes Third Edition
+// Keine genaue Sortierung! (Dafür aber sehr schnell auch bei großen Arrays (wie hier))
+// Sortiert die k-kleinsten Einträge nach vorne
+Function QuickSortSelect(k, byref arr)
+//Given k in [0..n-1] returns an array value from arr[0..n-1] such that k array values are
+//less than or equal to the one returned. The input array will be rearranged to have this value in
+//location arr[k], with all smaller elements moved to arr[0..k-1] (in arbitrary order) and all
+//larger elements in arr[k+1..n-1] (also in arbitrary order).
+
+  var i,ir,j,l,mid,n:=arr.size();
+  var a;
+  l:=1;
+  ir:=n;
+  While (1)
+    If (ir <= l+1)  //Active partition contains 1 or 2 elements.
+      If ((ir == l+1) && (arr[ir].diff_instr < arr[l].diff_instr))// Case of 2 elements.
+        SWAP(arr[l],arr[ir]);
+      EndIf
+      return arr[k+1];
+    Else
+      mid:=(l+ir) >> 1;// Choose median of left, center, and right elements
+      //as partitioning element a. Also
+      //rearrange so that arr[l] <= arr[l+1],arr[ir]>=  arr[l+1].
+      SWAP(arr[mid],arr[l+1]);
+      if (arr[l].diff_instr > arr[ir].diff_instr)
+        SWAP(arr[l],arr[ir]);
+      endif
+      if (arr[l+1].diff_instr > arr[ir].diff_instr)
+        SWAP(arr[l+1],arr[ir]);
+      endif
+      if (arr[l].diff_instr > arr[l+1].diff_instr)
+        SWAP(arr[l],arr[l+1]);
+      endif
+      i:=l+1; //Initialize pointers for partitioning.
+      j:=ir;
+      a:=arr[l+1]; //Partitioning element.
+      While (1) //Beginning of innermost loop.
+        repeat 
+          i+=1;
+          SleepMS(2);
+        until (arr[i].diff_instr >= a.diff_instr); //Scan up to find element > a.
+        repeat 
+          j-=1; 
+          SleepMS(2);
+        until (arr[j].diff_instr <= a.diff_instr); //Scan down to find element < a.
+        if (j < i) 
+          break;  //Pointers crossed. Partitioning complete.
+        Endif
+        SWAP(arr[i],arr[j]);
+        SleepMS(2);
+      endwhile //End of innermost loop.
+      arr[l+1]:=arr[j]; //Insert partitioning element.
+      arr[j]:=a;
+      if (j >= k) 
+        ir:=j-1; //Keep active the partition that contains the
+      endif
+      if (j <= k) 
+        l:=i; //kth element.
+      endif
+    endif
+    SleepMS(2);
+  Endwhile
+EndFunction
+
+Function SWAP(byref a1, byref a2)
+  var temp:=a1;
+  a1:=a2;
+  a2:=temp;
+EndFunction

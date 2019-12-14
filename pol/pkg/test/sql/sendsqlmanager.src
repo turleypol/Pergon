@@ -1,0 +1,5 @@
+include "include/pergonutil";
+
+Program Script_SendSQLManager(params)
+  SendSQLManager(params.obj, params.status, params.detail);
+EndProgram

@@ -1,0 +1,489 @@
+// cooking.src
+//
+// Create food by combining two items
+
+use attributes;
+use cfgfile;
+use os;
+use polsys;
+use uo;
+use util;
+include "include/client";
+include "include/logutil";
+include "include/modifyskill";
+include "include/msgs";
+include "include/objtype";
+include "include/server";
+include "include/utility";
+
+const NO_INGRED := "Missing ingredient";
+const NO_TOOL   := "Missing tool";
+
+program Cook(who, trigger) // {{{
+    If ((!AccessiblePergon(who, trigger)) || (!trigger.movable))
+        SendSysMessagePergon(who, "Das kommt Ihr nicht ran!");
+        return;
+    EndIf
+
+    HandleTrigger(who, trigger);
+endprogram
+// }}}
+
+// creates a bunch of items in backpack, returns 1 on success, 0 on failure
+Function MyBackpackCreate(who, product, amount) // {{{
+    var result := CreateItemInBackpackPergon(who, product, amount);
+    If (result)
+        return 1;
+    EndIf
+
+    If (result.errortext ==
+        "That item is not stackable.  Create one at a time."
+    )
+        For count := 1 To amount
+            SleepMS(2);
+            CreateItemInBackpackPergon(who, product, 1);
+        EndFor
+        return 1;
+    EndIf
+
+    syslog("FEHLER: Create gescheitert mit: "+result.errortext);
+    SendSysMessagePergon(who,
+        "Konnte kein Produkt erzeugen. Staff wurde informiert."
+    );
+    return 0;
+EndFunction
+// }}}
+
+Function CookTextLoop(who, length) // {{{
+    var i;
+    For (i := 0; i < length; i += 1)
+        Case (RandomInt(6)+1)
+            1: SendSysMessagePergon(who,
+                "Hmmm ... das riecht schon ganz gut.");
+            2: SendSysMessagePergon(who,
+                "Fast fertig.");
+            3: SendSysMessagePergon(who,
+                "Hmmm ... das wird fein.");
+            4: SendSysMessagePergon(who,
+                "*schnüffel* ... hmmm");
+            5: SendSysMessagePergon(who,
+                "Bald fertig.");
+            6: SendSysMessagePergon(who,
+                "*schnupper* ... hmmm ... lecker!");
+        EndCase
+        Sleep(2);
+    EndFor
+EndFunction
+// }}}
+
+// macht aus Array von Strings ein Dictionary aus Arrays; das erste Wort
+// wird jeweils zum Key
+Function SplitArrayValues(arr_in) // {{{
+    var outd := dictionary;
+    ForEach elem in (arr_in)
+        SleepMS(2);
+        If (find(elem, " ", 1) > 0)
+            // there are multiple object separated by spaces
+            var words := splitwords(elem, " ");
+            // build dictionary
+            var first := words[1];
+            words.erase(1);
+
+            var newwords := array{};
+            ForEach word in (words)
+                SleepMS(2);
+                If (word["-"])
+                    // Bereich
+                    newwords += ResolveRange(word);
+                Else
+                    // Einzelwert
+                    newwords.append(CInt(word));
+                EndIf
+            EndForEach
+            outd.insert(first, newwords);
+        EndIf
+    EndForEach
+    return outd;
+EndFunction // }}}
+
+// check if all items in given amounts are found in backpack
+// returns dictionary of objects (values are used amounts) or error if some
+// were not found
+Function CheckIngredients(who, ingr_dict, prefer := array{}) // {{{
+    var ingr_out := dictionary;
+    var missed := error{errortext := NO_INGRED};
+
+    // check preferred first
+    ForEach thing in (prefer)
+        SleepMS(2);
+        If (!thing)
+            continue;
+        EndIf
+
+        // prefer items only when used
+        If (!(ingr_dict[LHex(thing.objtype)]))
+            continue;
+        EndIf
+
+        // test if enough
+        If (thing.amount < ingr_dict[LHex(thing.objtype)][1])
+            // not enough
+            SendSysMessagePergon(who,
+                "Ihr habt nicht genug "+thing.desc+" benutzt."
+            );
+            return missed;
+        ElseIf (!thing.movable)
+            SendSysMessagePergon(who,
+                "Das könnt ihr nicht benutzen."
+            );
+            return missed;
+        Else
+            ingr_out.insert(thing, ingr_dict[LHex(thing.objtype)][1]);
+            ingr_dict.erase(LHex(CInt(thing.objtype)));
+        EndIf
+    EndForEach
+
+    // all done with preferred objects?
+    If (ingr_dict.size() == 0)
+        return ingr_out;
+    EndIf
+
+    ForEach obj in (ingr_dict.keys())
+        SleepMS(2);
+        var found :=
+            FindSubstance(who.backpack, CInt(obj), ingr_dict[obj][1]);
+        If (!found)
+            // not enough
+            SendSysMessagePergon(
+                who,
+                "Ihr habt nicht genug "+
+                GetItemDescriptor(CInt(obj))["Desc"]+"."
+            );
+            return missed;
+        EndIf
+        var amount := CInt(ingr_dict[obj][1]);
+        // maybe multiple stacks are involved
+        ForEach item in (found)
+            SleepMS(2);
+            ingr_out.insert(item, CInt(min(amount, item.amount)));
+            amount := CInt(max(0, amount - item.amount));
+        EndForEach
+    EndForEach
+
+    return ingr_out;
+EndFunction // }}}
+
+// returns preferred item on success, nothing else
+Function IsPrefTool(tool_type, prefer) // {{{
+    ForEach pref in (prefer)
+        SleepMS(2);
+        If (pref.objtype in tool_type)
+            return pref;
+        EndIf
+    EndForEach
+
+    return;
+EndFunction // }}}
+
+Function CheckTools(who, tool_dict, prefer := array{}) // {{{
+    var tool_arr := array{};
+    var missed   := error{errortext := NO_TOOL};
+
+    ForEach tool in (tool_dict.keys())
+        SleepMS(2);
+
+        // wird ein Werkzeug bevorzugt?
+        var pref := IsPrefTool(tool_dict[tool], prefer);
+        If (pref)
+            tool_arr.append(pref);
+            tool_dict.erase(tool);
+            continue;
+        EndIf
+
+        var found := 0;
+        // Player hat Item dabei?
+        ForEach type in (tool_dict[tool])
+            SleepMS(2);
+            var res := FindSubstance(who.backpack, type, 1);
+            If (res)
+                tool_arr.append(res[1]);
+                tool_dict.erase(tool);
+                found := 1;
+                break;
+            EndIf
+        EndForEach
+        If (found)
+            continue;
+        EndIf
+
+        // Item befindet sich in der Umgebung
+        var near_items :=
+            ListItemsNearLocation(
+                who.x, who.y, who.z, 3, who.realm
+            )+
+            ListStaticsNearLocation(
+                who.x, who.y, who.z, 3, 0, who.realm
+            );
+        ForEach item in (near_items)
+            SleepMS(2);
+            If (item.objtype in tool_dict[tool])
+                If (item.serial)
+                    // Statics kann man eh nicht abnutzen
+                    tool_arr.append(item);
+                EndIf
+                tool_dict.erase(tool);
+                found := 1;
+                break;
+            EndIf
+        EndForEach
+        If (found)
+            continue;
+        EndIf
+
+        // nicht gefunden; Fehler melden
+        // ggf. vorher Unterstriche ersetzen
+        tool := StrReplace(tool, "_", " ");
+        SendSysMessagePergon(who, "Ihr benötigt "+tool+".", "You need "+tool+".");
+        return missed;
+    EndForEach
+
+    return tool_arr;
+EndFunction // }}}
+
+// apply damage to user tools
+Function DamageTools(who, tools) // {{{
+    // zufaelliges Werkzeug beschädigen
+    If (tools.size()>0)
+        var to_damage := tools[RandomInt(tools.size())+1];
+        If (to_damage.movable or to_damage.getprop(PROP_HS_C_FIXED))
+            SetWerkzeugSchaden(
+                who, to_damage,
+                "Euer "+to_damage.desc+" hat gelitten.",
+                "Euer "+to_damage.desc+" ist stark beschädigt.",
+                "Euer "+to_damage.desc+" ist zerbrochen."
+            );
+        EndIf
+    EndIf
+EndFunction // }}}
+
+// prepare food described by recipe; checks ingredients and tools
+Function PrepareLoop(who, recipe, trigger, used_on := 0) // {{{
+    // prueft Skill und ersetzt ihn durch Skill-ID
+    var skill := GetMatchingSkill(who, recipe);
+    If (!skill)
+        // Fallback
+        var name := "Kochen oder Backen";
+        If (recipe.skill)
+            // ah, ein exakter Skill ist angegeben, nehmen wir den
+            name := GetSkillName(recipe.skill);
+        EndIf
+        SendSysMessagePergon(who,
+            "Ihr benötigt die Fähigkeit "+name+" für dieses Rezept.",
+            "You need the skill "+name+" to prepare that."
+        );
+        return;
+    EndIf
+
+    // 1 - 100 Runden moeglich, abhaengig vom Skill
+    var max_rounds := Min(100, Max(1, GetSkillPergon(who, skill)));
+    var pos := struct{x := who.x, y := who.y};
+    var cur_round := 1;
+    While (
+        // noch da
+        who and
+        // noch nicht zuviele Runden
+        (cur_round <= max_rounds)
+    )
+        If (!Prepare(who, recipe, trigger, skill, used_on))
+            break;
+        EndIf
+        If (CoordinateDistance(pos.x, pos.y, who.x, who.y) > 0)
+            break;
+        EndIf
+        Sleep(4);
+        cur_round += 1;
+    EndWhile
+
+    If (cur_round > 1)
+        SendSysMessagePergon(who,
+            "Ihr beendet das Kochen.", "You stop cooking"
+        );
+    EndIf
+EndFunction // }}}
+
+Function Prepare(who, recipe, trigger, skill, used_on := 0) // {{{
+    // get recipe
+    var ingreds := CheckIngredients(
+        who,
+        SplitArrayValues(GetConfigStringArray(recipe, "Ingredient")),
+        array{trigger, used_on}
+    );
+    // something with the ingredients was not okay
+    // (wrong amount, missing stuff)
+    If (!ingreds)
+        return;
+    EndIf
+
+    var tools := CheckTools(
+        who,
+        SplitArrayValues(GetConfigStringArray(recipe, "Made_With")),
+        array{trigger, used_on}
+    );
+    If (!tools)
+        return;
+    EndIf
+
+    var products := SplitArrayValues(
+        GetConfigStringArray(recipe, "Product")
+    );
+
+    var min_skill    := GetConfigInt(recipe, "Skill_Needed");
+    var points       := GetConfigInt(recipe, "Skill_Award");
+
+    // Items reservieren
+    ForEach item in (ingreds.keys()+tools)
+        SleepMS(2);
+        If (!ReserveItem(item))
+            SendSysMessagePergon(who,
+                "Etwas ist schiefgelaufen!"
+            );
+            return;
+        EndIf
+    EndForEach
+
+    CookTextLoop(who, 3);
+
+    var success := 0;
+    If (CheckSkillPergon(who, skill, min_skill, points))
+        // Zutaten vernichten
+        ForEach item in (ingreds.keys())
+            SleepMS(2);
+            SubtractAmount(item, ingreds[item]);
+        EndForEach
+
+        // Gericht erzeugen
+        ForEach prod in (products)
+            SleepMS(2);
+            var amount := CInt(prod[1]);
+            MyBackpackCreate(who, CInt(_prod_iter), amount);
+        EndForEach
+
+        SendSysMessagePergon(who,
+            "Ahh, genau richtig! Ihr legt das Essen in Euren Rucksack."
+        );
+
+        // ab und an Werkzeug beschädigen
+        If (RandomInt(100)>97)
+            DamageTools(who, tools);
+        EndIf
+        success := 1;
+    Else
+        SendSysMessagePergon(who,
+            "Oha! Euer Essen ist voellig ungenießbar!"
+        );
+
+        // zufällig Zutaten vernichten
+        ForEach item in (ingreds.keys())
+            SleepMS(2);
+            If (RandomInt(100)<25)
+                // in wenigen Faellen ueberleben die Zutaten
+                continue;
+            EndIf
+
+            var verlust := CInt(RandomInt(ingreds[item]) + 1);
+            SubtractAmount(item, verlust);
+        EndForEach
+
+        DamageTools(who, tools);
+    EndIf
+
+    // Items wieder freigeben
+    ForEach item in (ingreds.keys()+tools)
+        SleepMS(2);
+        ReleaseItem(item);
+    EndForEach
+
+    return success;
+EndFunction // }}}
+
+// find out what we can do with trigger
+Function HandleTrigger(who, trigger) // {{{
+    var config := ReadConfigFile("recipes");
+    // If the trigger does it alone ...
+    var recipe := config[lower(Hex(trigger.objtype))+"_alone"];
+
+    If (recipe)
+        PrepareLoop(who, recipe, trigger);
+        return;
+    EndIf
+
+    // Else we need something to use the trigger on
+    SendSysMessagePergon(who, "Worauf wollt Ihr das anwenden?");
+    var what := Target(who, TGTOPT_CHECK_LOS);
+
+    // target was cancelled
+    If (!what)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (what.mobile)
+        // used on an mobile
+        SendSysMessagePergon(who, "So kocht man das nicht!");
+        return;
+    EndIf
+
+    // assume it's used on an item in the world
+    var used_on := what;
+    If (what.item.objtype)
+        // used on an item in a container
+        used_on := what.item;
+    EndIf
+
+    recipe := config[lower(Hex(trigger.objtype)+"_on_"+Hex(used_on.objtype))];
+
+    If (!recipe)
+        SendSysMessagePergon(who,
+            "Ihr wisst nichts, was man damit zubereiten kann.");
+        return;
+    EndIf
+
+    PrepareLoop(who, recipe, trigger, used_on);
+EndFunction
+// }}}
+
+// fehlt der Skill (waehlt passenden Skill, wenn Rezept offen ist)
+Function GetMatchingSkill(byref who, byref recipe) // {{{
+    var can_bake := HasPlayerSkill(who, SKILLID_BACKEN);
+    var can_cook := HasPlayerSkill(who, SKILLID_KOCHEN_BRATEN);
+
+    Case (recipe.skill)
+    SKILLID_BACKEN:
+        If (can_bake)
+            // Skill vorhanden, gut
+            return SKILLID_BACKEN;
+        EndIf
+
+    SKILLID_KOCHEN_BRATEN:
+        If (can_cook)
+            return SKILLID_KOCHEN_BRATEN;
+        EndIf
+
+    default:
+        // Rezept ist fuer beide Skills geeignet, passenden Skill
+        // zum Anstieg waehlen
+        If (can_bake and can_cook)
+            // kann beides, zufaellig waehlen
+            return array{SKILLID_BACKEN, SKILLID_KOCHEN_BRATEN}.RandomEntry();
+        ElseIf (can_bake)
+            // kann nur Backen
+            return SKILLID_BACKEN;
+        ElseIf (can_cook)
+            // kann nur Kochen
+            return SKILLID_KOCHEN_BRATEN;
+        EndIf
+    EndCase
+
+    // kann weder Kochen noch Backen
+    return 0;
+EndFunction // }}}

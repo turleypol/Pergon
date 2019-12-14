@@ -1,0 +1,100 @@
+///////////////////////////////////////////////////////////////////////////
+// Crystal Control -- Sprache empfangen und an Empfaenger leiten
+
+use os;
+use storage;
+use uo;
+include "common";
+include "include/eventid";
+include "include/itemnpc";
+include "include/msgs";
+include "include/storage";
+
+Program ReceiverControl(crystal)
+    RegisterForSpeechEvents(crystal, RANGE_LISTEN);
+    EnableEvents(SYSEVENT_SPEECH,    RANGE_LISTEN);
+
+    While (crystal)
+        SleepMs(2);
+        var ev := Wait_for_Event(300);
+
+        // Hinderungsgruende fuer Nachrichtenversand {{{
+        If (!ev or ev.type <> SYSEVENT_SPEECH)
+            continue;
+        EndIf
+
+        If (!crystal.getprop(PROP_STATUS))
+            // nicht aktiv
+            continue;
+        EndIf
+
+        If (IsInBankbox(crystal))
+            // in Bankbox nicht reagieren
+            continue;
+        EndIf
+
+        var charges := crystal.getprop(PROP_CHARGES);
+        If (charges <= 0)
+            // Kristall entladen, deaktivieren
+            crystal.eraseprop(PROP_STATUS);
+            continue;
+        EndIf
+        // }}}
+
+        // Sendeversuch
+        SendMessageToReceivers(crystal, ev);
+    EndWhile
+EndProgram
+
+// Nachrichten an verfuegbare Empfaenger verschicken
+Function SendMessageToReceivers(crystal, ev) // {{{
+    var links := crystal.getprop(PROP_LINKS);
+    If (!links or links.size() <= 0)
+        // keine Empfaenger definiert
+        return;
+    EndIf
+
+    var charges := crystal.getprop(PROP_CHARGES);
+    var used    := 0;
+    ForEach link in (links)
+        var receiver := SystemFindObjectBySerial(link);
+        If (!receiver)
+            continue;
+        EndIf
+
+        PrintTextAboveLocalizedPergon(receiver,
+            "Nachricht von "+ev.source.name+": " + ev.text,
+            "Message from " +ev.source.name+": " + ev.text
+        );
+
+        charges -= 1;
+        used    += 1;
+        If (charges <= 0)
+            break;
+        EndIf
+    EndForEach
+    crystal.setprop(PROP_CHARGES, charges);
+
+    SendSysMessagePergon(ev.source,
+      "Nachricht gesendet, "+used+" Ladungen verbraucht, "+
+      charges+ " Ladungen übrig.",
+      "Message sent, "+used+" charges consumed, "+charges+" charges left."
+    );
+EndFunction // }}}
+
+// guckt, ob uebergebenes Item in Bankbox ist
+Function IsInBankbox(item) // {{{
+    var top := GetTopContainer(item);
+
+    // TODO: umstaendliche Notation ist noetig, damit "bank" als Array
+    // interpretiert wird; nach Core-Aenderung sollte Test direkt per
+    // If (top in StorageAreas()[STORAGE_BANK].$member) funktionieren
+    var bank := StorageAreas()[STORAGE_BANK];
+    ForEach box in (bank)
+        If (box.serial == top.serial)
+            return 1;
+        EndIf
+    EndForEach
+
+    return 0;
+EndFunction // }}}

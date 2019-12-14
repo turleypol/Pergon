@@ -1,0 +1,79 @@
+
+include "include/msgs";
+include "include/modifyskill";
+
+Program GateOfLife(who, gate)
+  
+  // man sollte schon tot sein
+  If (!who.dead)
+    return;
+  EndIf
+
+  If (gate.invisible)
+    SendSysMessagePergon(who,
+      "Die Energien des Tores sind noch nicht wieder vollkommen regeneriert.",
+      "The energies of the gate have not been fully regenerated yet."
+    );
+    return;
+  EndIf
+
+  If (GetObjProperty(who, "spell_doomed"))
+    SendsysMessagePergon(who,
+      "Ihr seid dazu verdammt, unter den Toten zu wandeln.",
+      "You are doomed to dwell amongst the dead."
+    );
+    return;
+  EndIf
+  
+  who.frozen := 1;
+  gate.invisible := 1;
+   
+  var items := reseffects(who, gate);
+  
+  // Wiederbeleben
+  SendSysMessagePergon(who, "Lebe wieder!", "Live again!");
+  PlaySoundEffect(who, SFX_SPELL_RESSURECTION);
+  ResurrectPergon(who);
+  ResPenalties(who);
+  Sleep(1);
+  PlayObjectCenteredEffect(who, FX_HEAL_EFFECT, 7, 14);
+  SendSysMessagePergon(who,
+    "Euer Körper fühlt sich wieder wärmer an.",
+    "Your body feels warmer."
+  );
+
+  ForEach item in (items)
+    DestroyItem(item);
+  EndForEach
+
+  gate.invisible := 0;
+EndProgram
+
+// Effektfeuerwerk um Zeit bis zur Wiederbelebung zu überbrücken
+Function reseffects(who, gate)
+  
+  var i, j;
+  For (i := 5; i > 0; i -= 1)
+    For(j := 0; j < 8; j += 1)
+      PlayStationaryEffect(gate.x+MovementVectorX(j)*i, gate.y+MovementVectorY(j)*i, gate.z, 0x37B9, 0, 40);
+    EndFor
+    PlaySoundEffectXYZ(gate.x, gate.y, gate.z, 0x5CA);
+    SleepMS(500);
+  EndFor
+  
+  PlaySoundEffectXYZ(gate.x, gate.y, gate.z, SFX_SPELL_PARALYZE_FIELD);
+  var sparkle := CreateItemAtLocationPergon(gate.x, gate.y, gate.z, 0x375A, 1);
+  
+  Sleep(2);
+  
+  PlaySoundEffectXYZ(gate.x, gate.y, gate.z, SFX_SPELL_GATE_TRAVEL);
+  PlayStationaryEffect(gate.x, gate.y, gate.z, FX_SUMMON_GATE, 0, 30);
+  
+  SendSysMessagePergon(who, "Das Tor zur Welt der Lebenden öffnet sich!");
+  SleepMS(1400);
+  
+  var bluegate := CreateItemAtLocationPergon(gate.x, gate.y, gate.z, 0x0F6C, 1);
+  PlaySoundEffectXYZ(gate.x, gate.y, gate.z, 0x5CF);
+  
+  return {sparkle, bluegate};
+EndFunction

@@ -1,0 +1,195 @@
+#
+#  PCS.TXT: Player-Character Data
+#
+#  In addition to PC data, this also contains hair, beards, death shrouds,
+#  and backpacks, but not the contents of each backpack.
+#
+
+Character
+{
+	Account	blah
+	CharIdx	0
+	Name	Blah
+	Serial	0x3
+	ObjType	0x190
+	Graphic	0x190
+	Color	0x4df
+	X	2317
+	Y	1090
+	Z	0
+	Facing	2
+	CProp	LastLog i1
+	CProp	MsgOfDayID i61
+	CProp	NewSpells i1
+	CProp	SkBeruf sNecromant
+	CProp	SkCh_Lumberjacking sHaupt
+	CProp	SkCh_Magery sBeruf
+	CProp	SkCh_Verfluchen sNeben
+	CProp	SkKlasse sNone
+	CProp	Sk_Ackerbau i0
+	CProp	Sk_Alchemy i0
+	CProp	Sk_Anatomy i0
+	CProp	Sk_AnimalLore i0
+	CProp	Sk_AnimalTaming i0
+	CProp	Sk_Archery i0
+	CProp	Sk_ArmsLore i0
+	CProp	Sk_Ausweichen i0
+	CProp	Sk_Backen i0
+	CProp	Sk_Begging i0
+	CProp	Sk_Blacksmithy i0
+	CProp	Sk_Bowcraft i0
+	CProp	Sk_Brauen i0
+	CProp	Sk_Camping i1048601
+	CProp	Sk_Carpentry i1048576
+	CProp	Sk_Cartography i1048669
+	CProp	Sk_Cooking i0
+	CProp	Sk_DetectingHidden i0
+	CProp	Sk_Enticement i4545
+	CProp	Sk_EvaluatingIntelligence i262222
+	CProp	Sk_Fallenstellen i0
+	CProp	Sk_FeinSchmied i0
+	CProp	Sk_Fencing i0
+	CProp	Sk_Fishing i0
+	CProp	Sk_Fluchgegenst i1048576
+	CProp	Sk_Foersterei i0
+	CProp	Sk_ForensicEvaluation i0
+	CProp	Sk_Gerben i1048576
+	CProp	Sk_GlasVerarb i0
+	CProp	Sk_Haeuten i65536
+	CProp	Sk_Healing i1001267
+	CProp	Sk_Heilmittel i0
+	CProp	Sk_Herding i65536
+	CProp	Sk_Hiding i0
+	CProp	Sk_Inscription i2084
+	CProp	Sk_ItemID i0
+	CProp	Sk_Lederei i1048621
+	CProp	Sk_LockPicking i0
+	CProp	Sk_Lumberjacking i262144
+	CProp	Sk_MaceFighting i1073741869
+	CProp	Sk_Magery i786717
+	CProp	Sk_MagicResistance i0
+	CProp	Sk_Mahlen i0
+	CProp	Sk_Meditation i0
+	CProp	Sk_Mining i0
+	CProp	Sk_Musicianship i0
+	CProp	Sk_Parry i0
+	CProp	Sk_PeaceMaking i0
+	CProp	Sk_Poisoning i0
+	CProp	Sk_Provocation i0
+	CProp	Sk_RemoveTrap i0
+	CProp	Sk_Rezepte i0
+	CProp	Sk_Ruten i0
+	CProp	Sk_Schiffbau i0
+	CProp	Sk_Schlachten i0
+	CProp	Sk_Snooping i1048576
+	CProp	Sk_Stealing i1048576
+	CProp	Sk_Stealth i0
+	CProp	Sk_Studieren i0
+	CProp	Sk_SwordsmanShip i0
+	CProp	Sk_Tactics i1073742756
+	CProp	Sk_Tailoring i0
+	CProp	Sk_TasteIdentification i0
+	CProp	Sk_Tinkering i0
+	CProp	Sk_Tracking i0
+	CProp	Sk_Verfluchen i1048576
+	CProp	Sk_Verzaubern i0
+	CProp	Sk_Veterinary i0
+	CProp	Sk_WaffenSchmied i0
+	CProp	Sk_Weben i65536
+	CProp	Sk_WerkzeugSchmied i1048612
+	CProp	Sk_Wrestling i0
+	CProp	Sk_Zauberrollen i0
+	CProp	St_Dexterity i2049421451
+	CProp	St_Intelligence i2049427694
+	CProp	St_Strength i2049421117
+	CProp	decaylongcountat i1426667
+	CProp	decayshortcountat i1196117
+	CProp	guardignore i1
+	CProp	heaven a0:
+	CProp	hungrylevel r13
+	CProp	karma i-1
+	CProp	level_alcohol i0
+	CProp	level_drink r10
+	CProp	lifetime i1387532
+	CProp	livetime i108532302
+	CProp	livetime_counter i27684696
+	CProp	logontime i1187870
+	CProp	longmurders i0
+	CProp	myname sBrendan
+	CProp	myserial i3
+	CProp	obst i0
+	CProp	onlinetimer i1555015
+	CProp	origform i400
+	CProp	petname sRaeuber
+	CProp	shortmurders i0
+	CProp	sleepmsg i1
+	CProp	talkto sOgden
+	CProp	townquest i1
+	CProp	waterdamage i0
+	CProp	waterresistance i-41
+	CmdLevel	test
+	Concealed	5
+	TrueColor	0x3fc
+	TrueObjtype	0x190
+	Gender	0
+	Camping	100
+	Carpentry	100
+	Cartography	100
+	Enticement	21
+	EvaluatingIntelligence	80
+	Healing	99
+	Herding	60
+	Inscription	10.1
+	Magery	95
+	Tactics	200
+	Snooping	100
+	Stealing	100
+	MaceFighting	200
+	Lumberjacking	80
+	WerkzeugSchmied	100
+	Fluchgegenst	100
+	Verfluchen	100
+	Weben	60
+	Gerben	100
+	Haeuten	60
+	Lederei	100
+	Strength	209
+	Dexterity	209
+	Intelligence	209
+	Life	209
+	Mana	209
+	Stamina	209
+	MoveMode	LSA
+	Privs	all any clotheany freemove invul moveany renameany seeany seeghosts seehidden seeinvis seeinvisitems 
+	Settings	all freemove seeany seeghosts seehidden seeinvis seeinvisitems 
+	CreatedAt	2620
+}
+
+Item
+{
+	Serial	0x4000001f
+	ObjType	0x2041
+	Graphic	0x2041
+	Color	0x457
+	X	0
+	Y	0
+	Z	0
+	CProp	faceloc 1
+	Layer	16
+	Container	0x3
+	DecayAt	2620
+}
+
+Item
+{
+	Serial	0x40000020
+	ObjType	0xe75
+	Graphic	0xe75
+	X	5278
+	Y	1185
+	Z	0
+	Layer	21
+	Container	0x3
+	DecayAt	3220
+}
+

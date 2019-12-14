@@ -1,0 +1,30 @@
+// Made By Charles Haustron
+// Loweer str
+use util;
+
+include "drinkpotion";
+include "include/tempmod";
+include "include/modifyskill";
+
+program drink_weaken (character, potion)
+if (!checkifcandrink(character))
+        return;
+endif
+    Var potion_strength := get_potion_strength(potion);
+
+
+    if (is_poison(potion))
+        do_poison(character, potion);
+    else
+        Var thestring := cstr(potion_strength) + "d8";
+        Var str_mod := RandomDiceRoll( thestring )*(-1);
+        empty_bottle (character, potion);
+
+        if (can_stat_mod(character, "str"))
+                SetStrModPergon(character, GetStrModPergon(character)+str_mod);
+                do_temp_mod(character, "str", str_mod, cint(potion_strength *50));
+                allow_stat_mod(character, "str",  cint(potion_strength *50));
+        endif
+    endif
+
+endprogram

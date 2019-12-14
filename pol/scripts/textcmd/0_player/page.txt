@@ -1,0 +1,11 @@
+<h3 id="page">page</h3>
+
+<h4>Parameter: keiner oder <kbd>&lt;Text&gt;</kbd></h4>
+
+<p>Sendet eine Page. Mit Parameter wird der angegebene Text geschickt,
+ansonsten erfolgt die Eingabe danach. Pages sind kurze Nachrichten an die
+Spielleitung, mit der man auf Fehler und Probleme hinweisen kann.
+Längere Berichte sollte man generell in den News oder im Forum
+schildern.</p>
+
+<p>Siehe auch: <a data-href="#forum">forum</a></p>

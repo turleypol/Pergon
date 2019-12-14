@@ -1,0 +1,24 @@
+//
+// .kick {target} - Kick a user offline (doesn't ban, though)
+//
+
+use os;
+use uo;
+
+Include "include/msgs";
+
+program textcmd_kick( who )
+  SendSysMessagePergon( who, "Wer soll gekickt werden?" );
+
+  Var victim := Target( who );
+
+  if(who.cmdlevel > victim.cmdlevel)
+     if (victim)
+	//Logging
+        SysLog( "GMCMD: " + who.acctname +":" + who.name + "(" + who.x + " " + who.y + " " + who.z + ")" + " hat " + victim.name + " gekickt" );
+        DisconnectClient( victim );
+     endif
+  else
+     SendSysMessagePergon( who, "Ihr könnt ihn nicht kicken. Er steht über Euch." );
+  endif
+endprogram

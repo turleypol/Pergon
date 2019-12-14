@@ -1,0 +1,170 @@
+//////////////////////////////////////////
+// StaticsImport - Import Static Items
+//
+// Author: Shinigami
+
+use cfgfile;
+use os;
+use uo;
+include "include/importexport";
+include "include/itemnpc";
+include "include/msgs";
+include "include/varutil";
+
+const TYPE_STATIC    := 0;
+const TYPE_MOVABLE   := 1;
+
+Program TextCMD_StaticsImport(who, params)
+  Var options := GetOptions(params);
+  Var filename := options["name"];
+  Var testrun := options["test"];
+  Var checkduplicates := options["checkdups"];
+
+  SendSysMessagePergon(who,
+    "Items werden importiert ...", "Importing items ..."
+  );
+  ImportArea(who, filename, testrun, checkduplicates);
+EndProgram
+
+// ImportArea - Importiert die Items
+Function ImportArea(who, name, testrun, checkduplicates)
+  // Configs laden {{{
+  var file_movable := ReadConfigFile(FileMovable(name));
+  var file_statics := ReadConfigFile(FileStatics(name));
+
+  If (file_movable == error)
+    var errtxt := FileMovable(name)+": "+file_movable.errortext;
+    SendSysMessagePergon(who,
+      "Fehler beim Lesen der Configdatei: "+errtxt,
+      "Error while reading config file: "+errtxt
+    );
+    return;
+  EndIf
+
+  If (file_statics == error)
+    var errtxt := FileStatics(name);
+    SendSysMessagePergon(who,
+      "Hinweis: Kann Datei "+errtxt+" nicht lesen.",
+      "Notice: Cannot read file "+errtxt+"."
+    );
+  EndIf
+  // }}}
+
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+  If (file_statics and !testrun)
+    ForEach name in GetConfigStringKeys(file_statics)
+      var entry := file_statics[name];
+      If (entry)
+        ItemImportCreate(who, entry, TYPE_STATIC);
+      EndIf
+    EndForEach
+  EndIf
+  Var new:=0;
+  Var old:=0;
+  If (file_movable)
+    ForEach name in GetConfigStringKeys(file_movable)
+      var entry := file_movable[name];
+      If (entry)
+        If (testrun)
+          TestImport(who, entry, new, old);
+        Else
+          If (checkduplicates and isDuplicate(entry,who.realm))
+            continue;
+          EndIf
+          ItemImportCreate(who, entry, TYPE_MOVABLE);
+          new+=1;
+        EndIf
+      EndIf
+    EndForEach
+  EndIf
+
+  UnloadConfigFile(FileStatics(name));
+  UnloadConfigFile(FileMovable(name));
+
+  If (testrun)
+    SendSysMessagePergon(who,"{} neue items und {} duplikate".format(new,old));
+  Else
+    SendSysMessagePergon(who,"{} neue items".format(new));
+  EndIf
+
+  SendSysMessagePergon(who, "Import beendet.", "Import finished.");
+EndFunction
+
+Function TestImport(who, entry, byref new, byref old)
+  If (isDuplicate(entry,who.realm))
+    old+=1;
+  Else
+    new+=1;
+  EndIf
+EndFunction
+
+Function isDuplicate(entry,realm)
+  var currentitems:=ListItemsAtLocation(entry.x,entry.y,entry.z,realm);
+  ForEach item in currentitems
+    If (item.objtype == entry.objtype)
+      return 1;
+    EndIf
+  EndForEach
+  return 0;
+EndFunction
+
+Function ItemImportCreate(who, entry, type);
+  // passenden ItemDescriptor bauen
+  var objtype;
+  If (type == TYPE_STATIC)
+    objtype := entry.id;
+  Else // TYPE_MOVABLE
+    objtype := entry.objtype;
+  EndIf
+  var desc := GetItemDescriptor(objtype);
+  If (!desc)
+    desc := struct;
+    desc.+ObjClass := "Item";
+    desc.+ObjType  := objtype;
+  EndIf
+  desc.Color     := entry.color;
+  desc.Movable   := CInt(entry.movable);
+
+  // CProps uebernehmen
+  If (entry.cprops)
+    var cprops := Unpack(entry.cprops);
+    // "ct" setzen ist nicht sehr sinnvoll
+    cprops.erase("ct");
+    If (cprops.size() >= 1)
+      // restliche CProps sind interessant
+      desc.CProps := cprops;
+    EndIf
+  EndIf
+
+  If (type == TYPE_MOVABLE)
+    // Name ist nur bei Movable sinnvoll, bei Statics immer "#"
+    If (entry.name)
+      desc.Desc := entry.name;
+    EndIf
+    If (entry.graphic)
+      desc.Graphic := entry.graphic;
+    EndIf
+  EndIf
+
+  var object := CreateItemAtLocation(
+    entry.x, entry.y, entry.z, desc, Max(array{1, entry.amount}), who.realm
+  );
+  If (!object)
+    var errtxt;
+    If (type == TYPE_STATIC)
+      errtxt := "(Statics): "+object.errortext;
+    Else // TYPE_MOVABLE
+      errtxt := "(Movable): "+object.errortext;
+    EndIf
+    SendSysMessagePergon(who,
+      "Item bei "+CoordStr(entry)+" konnte nicht erzeugt werden "+errtxt,
+      "Could not create item at "+CoordStr(entry)+" "+errtxt
+    );
+    return object;
+  EndIf
+
+  object.decayat := 0;
+  return object;
+EndFunction
+
+// vim: sw=2 sts=2

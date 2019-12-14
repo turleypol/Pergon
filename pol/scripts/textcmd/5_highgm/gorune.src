@@ -1,0 +1,39 @@
+///////////////////////////////////////////////////////////////////////////
+// GoRune - Springt zur Spawnrune mit der angegebenen Nummer
+
+use uo;
+include "include/msgs";
+include ":spawnnet_new:spawnnet";
+
+Program Textcmd_GoRune(who, number)
+  If (!number)
+    SendSysMessagePergon(who, "Wählt einen NPC, zu dessen Rune Ihr wollt!");
+    var npc := Target(who);
+    If (!npc.IsA(POLCLASS_NPC))
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+    number := npc.getprop(CPROP_NR);
+    If (!number)
+      SendSysMessagePergon(who, "NPC hat keine Spawnrune.");
+      return;
+    EndIf
+    number := number[1];
+  EndIf
+
+  var rune := SystemFindObjectBySerial(CInt(number));
+
+  If (!rune)
+    SendSysMessagePergon(who, "Rune nicht gefunden.", "Rune not found.");
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Gehe zur Rune "+LHex(rune.serial)+"...",
+    "Jumping to rune "+LHex(rune.serial)+"..."
+  );
+  JumpLocationAdd(who);
+  MoveObjectToLocation(
+    who, rune.x, rune.y, rune.z, rune.realm, MOVEOBJECT_FORCELOCATION
+  );
+EndProgram

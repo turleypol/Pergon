@@ -1,0 +1,36 @@
+///////////////////////////////////////////////////////////////////////////
+// savenow -- manuelle Weltsicherung
+
+use uo;
+include ":saver:saveopts";
+include "include/msgs";
+
+Program TextcmdSaveNow()
+    SetGlobalProperty(SAVER_GPROP, 1);
+    BroadcastPergon(
+      "Sichere Welt. Einen Augenblick bitte ...",
+      "Saving the world. One moment please ...",
+      _DEFAULT_TEXT_FONT, COLOR_GOOD
+    );
+    Sleep(1);
+
+    var res := SaveWorldState();
+    If (!res)
+      BroadcastPergon(
+        "Fehler beim Sichern der Welt!",
+        "Error while saving the world!",
+        _DEFAULT_TEXT_FONT, COLOR_BAD
+      );
+      syslog("Fehler beim Sichern der Welt! ("+res+")");
+      return;
+    EndIf
+
+    Sleep(1);
+    EraseGlobalProperty(SAVER_GPROP);
+    var difftime := CInt(res.elapsedmilliseconds / 1000);
+    BroadcastPergon(
+      "Welt gesichert in "+difftime+" Sekunden.",
+      "World saved in "+difftime+" seconds.",
+      _DEFAULT_TEXT_FONT, COLOR_GOOD
+    );
+EndProgram

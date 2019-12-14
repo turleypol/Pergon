@@ -1,0 +1,85 @@
+///////////////////////////////////////////////////////////////////////////
+// Designed by:		Cassandra White of Nirvana Shard
+// Last Updated:	Feb, 19, 2000
+// Status:		Fully tested
+
+///////////////////////////////////////////////////////////////////////////
+// Notes:
+// Three warnings are given to players. The first is based on basetime in
+// minutes. The second warning is based on basetime - 1/3. The final
+// warning is basetime - 2/3.
+//
+// An easy reminder For times are keypress * 6 minutes.
+//
+// Messages are sent to console display and all online characters.
+//
+// console.cfg will need to concur with 1-0 entries.
+//
+// You are welcome too add/subtract/adjust basetimes as you see fit. If
+//
+// I hope it helps - ENJOY!!! :o)
+// *Thanks to Syzygy For help scripting and much needed commands!*
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.9  2008/12/05 04:25:50  mehdorn
+// - fuer externen Aufruf erweitert
+//
+// Revision 1.8  2008/09/11 03:39:47  mehdorn
+// - Shutdown ist nun abbrechbar
+//
+// Revision 1.7  2008/09/09 16:00:17  mehdorn
+// - umgebaut auf zentrale Routine
+//
+// Revision 1.6  2008/08/02 04:58:39  mehdorn
+// - Funktionen aus messages.inc in msgs.inc uebernommen
+// - messages.inc entsorgt
+// - Scripte angepasst
+//
+// 2007/05/05 Shinigami:
+// Server via ListOnlineCharacterInfos als Offline anzeigen
+//
+// 2002/05/06 Shinigami:
+// Man kann nun direkt eine Message angeben
+//
+// 2000/06/18 Shinigami:
+// ReWrite
+
+/////////////
+// Includes
+/////////////
+include "include/clock";
+include "include/msgs";
+include "include/npc";
+include "include/onlinesearch";
+include "include/pergoninfos";
+include "include/pergonutil";
+include ":sqlmanager:sqlmanager";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_ShutDown(who, params)
+  If (TypeOfInt(who) == OT_STRUCT)
+    params := who["params"];
+    who    := who["who"];
+  EndIf
+
+  If (GetGlobalProperty(PROP_SHUTDOWN_RUNNING))
+    // bereits laufender Shutdown soll nur manuell unterbrechbar sein
+    If (!who)
+      return;
+    EndIf
+    SendSysMessagePergon(who, "Der ShutDown-Prozess wird abgebrochen", "");
+    EraseGlobalProperty(PROP_SHUTDOWN_RUNNING);
+    SendSQLManager(0,SQLStatus_SetShutdownMsg);
+    return;
+  EndIf
+
+  // verzoegerter Shutdown mit uebergebenen Wert(-en)
+  TimedShutdown(params);
+EndProgram
+
+// vim: sw=2 sts=2

@@ -1,0 +1,150 @@
+//**************************************************************************************************
+// Script file blessweapon.src
+//
+//    implements spell 212 <Bless Weapon> - "Waffensegen"
+//
+//  raises damage of a (equipped) weapon
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//    2004/09/09 Shinigami: BugFix bzgl. negativem dmg_mod
+//  Vers. 1.1 - 01.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+Include "include/thaumaturgy";
+Include "include/spellcheck";
+Include "../magicpergon";
+
+Program cast_blessweapon (params)
+
+  Var caster;
+  Var caston;
+  Var item;
+
+  Var spells:= ReadConfigFile("::spells");                   // load spelldata
+  Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_BLESSWEAPON);
+  Var amnt:=    spell.primary;
+  Var minamnt:= spell.primarymin;
+  Var maxamnt:= spell.primarymax;
+  Var dur:=     spell.duration;
+  Var mindur:=  spell.durationmin;
+  Var maxdur:=  spell.durationmax;
+  Var power;
+
+  If (params[1] == "#SCROLL")
+    caster:= params[2];
+    power:=  params[3];
+    caston:= TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      Return;
+    EndIf
+  Else
+    caster:= params[1];
+
+    power:= GetCastPowerPergon(caster, SPELLID_CLERIC_BLESSWEAPON);
+    caston:= TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      Return;
+    EndIf
+  EndIf
+  // check if casted on NPC, multi or house
+  If (caston.isa(POLCLASS_NPC) || caston.isa(POLCLASS_MULTI))
+    SendSysMessagePergon(caster, "Das kann nicht mit einem Waffensegen belegt werden",
+                                 "You cannot a Weapon Blessing on that");
+    Return;
+  EndIf
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  dur:= CInt(power * dur/100.0);           // calc spell duration according to casting power
+  If (mindur and mindur > dur)
+    dur:= mindur;
+  ElseIf (maxdur and maxdur < dur)
+    dur:= maxdur;
+  EndIf
+
+  If (caston.isa(POLCLASS_MOBILE) && !caston.isa(POLCLASS_NPC))    // spell has been casted on player
+
+    PlayObjectCenteredEffect(caston, FX_BLESS_EFFECT, 10, 10);
+
+    item:= caston.weapon;
+
+    If (item.objtype == 0xf020)                 // check if caston is unarmed
+      PlaySoundEffect(caster, SFX_1EB);
+      SendSysMessagePergon(caster, "Euer Ziel trägt keine Waffe", "Your target carries no weapon");
+    ElseIf ((GetObjProperty(item, "spell_bless")) || (item.getprop("spell_damage")))        // check if weapon is already blessed
+      PlaySoundEffect(caster, SFX_1EB);
+      SendSysMessagePergon(caster, "Die Waffe Eures Ziels ist bereits gesegnet",
+                                   "Your target's weapon is already blessed");
+      Return; // Ganz bloeder Bug... der ist nie rausgehuepft und hat den Wert ins negative gekehrt
+    Else
+      PlaySoundEffect(caston, SFX_1F8);
+
+      amnt:= CInt(power * amnt/100.0);             // calc amount according to casting power
+      If (minamnt and minamnt > amnt)
+        amnt:= minamnt;
+      ElseIf (maxamnt and maxamnt < amnt)
+        amnt:= maxamnt;
+      EndIf
+
+      Var tag:= array;
+
+      tag[1]:= ReadGameClock() + dur;
+      tag[2]:= amnt;
+      tag[3]:= "bless";
+      tag[5]:= ReadMilliSecondClock();
+
+      SetObjProperty(item, "spell_bless", tag);        // tag weapon for spellchecker
+      SendSpellWaiter(item, "spell_bless", dur, tag[5], caston);
+      CalcItemQualityBonus(item);                // calcs new item bonus
+      IncRevision(item);
+
+      SendSysMessagePergon(caster, "Ihr segnet " + item.desc, "You bless " + item.desc);
+    EndIf
+
+  ElseIf (caston.isa(POLCLASS_WEAPON))                   // spell has been casted on item
+
+    PlayObjectCenteredEffect(caster, FX_BLESS_EFFECT, 10, 10);
+
+    If ((GetObjProperty(caston, "spell_bless")) || (item.getprop("spell_damage")))        // check if weapon is already blessed
+      PlaySoundEffect(caster, SFX_1EB);
+      SendSysMessagePergon(caster, "Das ist bereits gesegnet", "This already has been blessed");
+      Return; // Ganz bloeder Bug... der ist nie rausgehuepft und hat den Wert ins negative gekehrt
+    Else
+      PlaySoundEffect(caster, SFX_1F8);
+
+      amnt:= CInt(power * amnt/100.0);             // calc amount according to casting power
+      If (minamnt and minamnt > amnt)
+        amnt:= minamnt;
+      ElseIf (maxamnt and maxamnt < amnt)
+        amnt:= maxamnt;
+      EndIf
+      item:=caston;
+      While (caston.container) // Wer trägt es
+        caston:=caston.container;
+      EndWhile
+
+      Var tag:= array;
+
+      tag[1]:= ReadGameClock() + dur;
+      tag[2]:= amnt;
+      tag[3]:= "bless";
+      tag[5]:= ReadMilliSecondClock();
+
+      SetObjProperty(item, "spell_bless", tag);      // tag weapon for spellchecker
+      SendSpellWaiter(item, "spell_bless", dur, tag[5], caston);
+      CalcItemQualityBonus(item);                // calcs new item bonus
+      IncRevision(item);
+
+      SendSysMessagePergon(caster, "Ihr segnet " + item.desc, "You bless " + item.desc);
+    EndIf
+
+  Else
+    SendSysMessagePergon(caster, "Das ist keine Waffe", "This is no weapon");
+    Return;
+  EndIf
+
+EndProgram

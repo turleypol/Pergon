@@ -1,0 +1,50 @@
+use uo;
+use os;
+
+Include ":popuphook:popupmenu";
+Include ":protocol:protocol";
+Include "include/server";
+Include "include/varutil";
+
+Program Install()
+	return 1;
+EndProgram
+
+Exported Function haspopup(mobile)
+	return 1;
+	mobile := mobile;
+EndFunction
+
+Exported Function popupinfo(mobile, who)
+	var status := GetObjProperty(mobile, PROP_STATUS);
+	
+	If (CanCommand(status, who))
+	  var info   := array;
+	
+	  If (!status.proto)
+      info.append({ID_PROTOCOL_OPEN, CLILOC_PROTOCOL_OPEN});
+	  Else
+		  If (!status.pause)
+			  info.append({ID_PROTOCOL_PAUSE, CLILOC_PROTOCOL_PSTART});
+		  Else
+			  info.append({ID_PROTOCOL_PAUSE, CLILOC_PROTOCOL_PEND});
+		  EndIf
+	    info.append({ID_PROTOCOL_CLOSE, CLILOC_PROTOCOL_CLOSE});
+	  EndIf
+	  
+	  info.append({ID_PROTOCOL_MASTERS, CLILOC_PROTOCOL_MASTERS});
+	  
+	  If (who.cmdlevel >= CMDLEVEL_HIGHGM)
+	    info.append({ID_PROTOCOL_MADD, CLILOC_PROTOCOL_MADD});
+	    If (MasterList(status) != "")
+	      info.append({ID_PROTOCOL_MDEL, CLILOC_PROTOCOL_MDEL});
+	    EndIf
+	  EndIf
+	  
+	  info.append({ID_PROTOCOL_RANGE, CLILOC_PROTOCOL_RANGE});
+	  
+	  return info;
+  Else
+  	return 0;
+  EndIf
+EndFunction

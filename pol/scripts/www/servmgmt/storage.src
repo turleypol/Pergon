@@ -1,0 +1,117 @@
+/////////////////////////////////////////////////////////
+// storage - Zeigt die StorageArea's an
+//
+// Author: Turley
+
+use http;
+use os;
+use polsys;
+use storage;
+use uo;
+include "header";
+
+Program HTMLPage()
+  DoHeader("Storage");
+  WriteHTML("<div id='container'>");
+  WriteHTML("<div id='header'></div>");
+  WriteHTML("<div id='content'>");
+  TableHeader("Storage");
+
+  DenyAccess(isALLOWED_STRICT);
+
+  var storage_area := QueryParam("Area");
+  var container    := QueryParam("Root");
+
+  If (storage_area && container)
+    ShowContainer(storage_area, container);
+  ElseIf (storage_area)
+    ShowStorageArea(storage_area);
+  Else
+    ListStorageAreas();
+  EndIf
+
+  WriteHTML("</DIV>");
+
+  DoFooter();
+EndProgram
+
+Function ShowContainer(storage_area, container)
+  container := SystemFindObjectBySerial(CInt(container));
+
+  WriteHTML(
+    "<h2>Storage Area - <a href='storage.ecl?Area="+
+    EscapeLink(storage_area)+"&"+A_PARAM+"'>"+storage_area+"</a></h2>"
+  );
+  WriteHTML("<h3>Root Container - "+container.desc+"</h3>");
+
+  WriteHTML("<table style='width:auto'>");
+  WriteHTML("<tr>");
+  WriteHTML("<th>Name</th><th>Serial</th>");
+  WriteHTML("</tr>");
+  ForEach item in (EnumerateItemsInContainer(container, ENUMERATE_ROOT_ONLY))
+    WriteHTML("<tr>");
+    WriteHTML("<td>"+item.desc+"</td>");
+    WriteHTML(
+      "<td><a href='objviewer.ecl?Serial="+item.serial+"&"+A_PARAM+"'>"+
+      Lower(Hex(item.serial))+"</a></td>"
+    );
+    WriteHTML("</tr>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</table>");
+EndFunction
+
+Function ShowStorageArea(storage_area)
+  var storage_areas := StorageAreas();
+  var area          := storage_areas[storage_area];
+
+  WriteHTML("<h2>Storage Area - "+storage_area+"</h2>");
+  WriteHTML("<ul>");
+  WriteHTML("<li>Root Items: "+area.count+"</li>");
+  WriteHTML("<li>Total Items: "+area.totalcount+"</li>");
+  WriteHTML("</ul>");
+
+  WriteHTML("<table style='width:auto'>");
+  WriteHTML("<tr>");
+  WriteHTML("<th>Name</th><th>Item Count</th><th>Serial</th>");
+  WriteHTML("</tr>");
+  ForEach container in (area)
+    WriteHTML("<tr>");
+    WriteHTML(
+      "<td><a href='storage.ecl?Area="+EscapeLink(storage_area)+
+      "&Root="+Hex(container.serial)+"&"+A_PARAM+"'>"+container.desc+"</td>"
+    );
+    WriteHTML("<td>"+(container.item_count - 1)+"</td>");
+    WriteHTML(
+      "<td><a href='objviewer.ecl?Serial="+container.serial+"&"+A_PARAM+"'>"+
+      Lower(Hex(container.serial))+"</a></td>"
+    );
+    WriteHTML("</tr>");
+    SleepMS(2);
+  EndForEach
+
+  WriteHTML("</table>");
+EndFunction
+
+Function ListStorageAreas()
+  WriteHTML("<h2>Storage Areas</h2>");
+
+  WriteHTML("<table style='width:auto'>");
+  WriteHTML("<tr>");
+  WriteHTML("<th>Area Name</th>");
+  WriteHTML("<th>Root Item Count</th>");
+  WriteHTML("<th>Total Items</th>");
+  ForEach area in (StorageAreas())
+    WriteHTML("<tr>");
+    WriteHTML(
+      "<td><a href='storage.ecl?Area="+EscapeLink(CStr(area))+
+      "&"+A_PARAM+"'>"+area+"</a></td>"
+    );
+    WriteHTML("<td>"+area.count+"</td>");
+    WriteHTML("<td>"+area.totalcount+"</td>");
+    WriteHTML("</tr>");
+    SleepMS(2);
+  EndForEach
+
+  WriteHTML("</table>");
+EndFunction

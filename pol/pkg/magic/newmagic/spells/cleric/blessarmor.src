@@ -1,0 +1,160 @@
+//**************************************************************************************************
+// Script file blessarmor.src
+//
+//    implements spell 211 <Bless Armor> - "Ruestungssegen"
+//
+//  raises AR of a (randomly choosen) (equipped) armor piece
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//    2004/09/09 Shinigami: BugFix bzgl. negativem ar_mod
+//  Vers. 1.1 - 01.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+use util;
+
+Include "include/thaumaturgy";
+Include "include/spellcheck";
+Include "../magicpergon";
+
+program cast_blessarmor (params)
+
+	Var caster;
+	Var caston;
+	Var item;
+
+	Var spells:= ReadConfigFile("::spells");                   // load spelldata
+	Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_BLESSARMOR);
+	Var amnt:=    spell.primary;
+	Var minamnt:= spell.primarymin;
+	Var maxamnt:= spell.primarymax;
+	Var dur:=     spell.duration;
+	Var mindur:=  spell.durationmin;
+	Var maxdur:=  spell.durationmax;
+	Var power;
+
+	if (params[1] == "#SCROLL")
+		caster:= params[2];
+		power:=  params[3];
+		caston:= TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+		if (!caston)
+			SendSysMessagePergon(caster, "Kein Ziel", "No target");
+			return;
+		endif
+	else
+		caster:= params[1];
+
+		power:= GetCastPowerPergon(caster, SPELLID_CLERIC_BLESSARMOR);
+		caston:= TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+		if (!caston)
+			SendSysMessagePergon(caster, "Kein Ziel", "No target");
+			return;
+		endif
+	endif
+	// check if casted on NPC, multi or house
+	if (caston.isa(POLCLASS_NPC) || caston.isa(POLCLASS_MULTI))
+		SendSysMessagePergon(caster, "Das kann nicht mit einem Rüstungssegen belegt werden",
+		"You cannot cast an Armor Blessing on that");
+		return;
+	endif
+
+	TurnCharTo(caster, caston);
+	PerformAction(caster, ANIM_CAST_AREA);
+
+	dur:= CInt(power * dur/100.0);           // calc spell duration according to casting power
+	if (mindur and mindur > dur)
+		dur:= mindur;
+	elseif (maxdur and maxdur < dur)
+		dur:= maxdur;
+	endif
+
+	if (caston.isa(POLCLASS_MOBILE) && !caston.isa(POLCLASS_NPC))  // spell has been casted on player
+
+		PlayObjectCenteredEffect(caston, FX_BLESS_EFFECT, 10, 10);
+
+		Var armor:= {};
+		Var count:= 0;
+		Var equipment:= ListEquippedItems(caston);            // get equipment of spelltarget
+
+		foreach item in equipment                       // get unblessed armor from equipment
+			if (item.isa(POLCLASS_ARMOR) and !GetObjProperty(item, "spell_bless"))
+				count+= 1;
+				armor[count]:= item;
+			endif
+		endforeach
+
+		if (count)
+			PlaySoundEffect(caston, SFX_1F8);
+
+			item:= armor[randomint(count) + 1];          // choose random armor piece
+
+			amnt:= CInt(power * amnt/100.0);           // calc amount according to casting power
+			if (minamnt and minamnt > amnt)
+				amnt:= minamnt;
+			elseif (maxamnt and maxamnt < amnt)
+				amnt:= maxamnt;
+			endif
+
+			Var tag:= array;
+
+			tag[1]:= ReadGameClock() + dur;
+			tag[2]:= amnt;
+			tag[3]:= "bless";
+			tag[5]:= ReadMilliSecondClock();
+
+			SetObjProperty(item, "spell_bless", tag);      // tag armor piece for spellchecker
+			SendSpellWaiter(item, "spell_bless", dur, tag[5], caston);
+			CalcItemQualityBonus(item);              // calcs new item bonus
+			IncRevision(item);
+
+			SendSysMessagePergon(caster, "Ihr segnet " + item.desc, "You bless " + item.desc);
+		else
+			PlaySoundEffect(caster, SFX_1EB);
+			SendSysMessagePergon(caster, "Ihr könnt kein Rüstungsteil Eures Ziels segnen",
+			                             "You cannot bless any piece of your target's armor");
+			Return; // Ganz bloeder Bug... der ist nie rausgehuepft und hat den Wert ins negative gekehrt
+		endif
+
+	elseif (caston.isa(POLCLASS_ARMOR))                    // spell has been casted on item
+
+		PlayObjectCenteredEffect(caster, FX_BLESS_EFFECT, 10, 10);
+
+		if (GetObjProperty(caston, "spell_bless"))      // check if item is already blessed
+			PlaySoundEffect(caster, SFX_1EB);
+			SendSysMessagePergon(caster, "Das ist bereits gesegnet", "This already has been blessed");
+			Return; // Ganz bloeder Bug... der ist nie rausgehuepft und hat den Wert ins negative gekehrt
+		else
+			PlaySoundEffect(caster, SFX_1F8);
+
+			amnt:= CInt(power * amnt/100.0);           // calc amount according to casting power
+			if (minamnt and minamnt > amnt)
+				amnt:= minamnt;
+			elseif (maxamnt and maxamnt < amnt)
+				amnt:= maxamnt;
+			endif
+			item := caston;
+			While (caston.container) // Wer trägt es
+        caston:=caston.container;
+      EndWhile
+
+			Var tag:= array;
+
+			tag[1]:= ReadGameClock() + dur;
+			tag[2]:= amnt;
+			tag[3]:= "bless";
+			tag[5]:= ReadMilliSecondClock();
+
+			SetObjProperty(item, "spell_bless", tag);    // tag armor piece for spellchecker
+			CalcItemQualityBonus(item);              // calcs new item bonus
+			SendSpellWaiter(item, "spell_bless", dur, tag[5], caston);
+			IncRevision(item);
+
+			SendSysMessagePergon(caster, "Ihr segnet " + item.desc, "You bless " + item.desc);
+		endif
+
+	else
+		SendSysMessagePergon(caster, "Das ist kein Teil einer Rüstung", "This is no armor piece");
+		return;
+	endif
+
+endprogram

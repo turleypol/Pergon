@@ -1,0 +1,144 @@
+///////////////////////////////////////////////////////////////////////////
+// .share - Zum Verteilen der Jagdbeute auf n Beutel, welche sich bei der
+// Jagdbeute befinden.
+//
+// Author: Taya
+
+use uo;
+include "include/msgs";
+
+// Es wird ein (Quell-)Container ausgewählt. Darin befinden sich eine
+// Anzahl an Items und eine Anzahl an (Ziel-)Containern, sowie ein
+// (Rest-)Container. Diese (Ziel-)Container werden umbenannt in "Verteiler
+// 1" bis  "Verteiler n". Achtung: Die enthaltenen (Ziel-)Container müssen
+// leer sein. Der (Rest-)Container wird in "Rest" umbenannt.
+
+Program TextCMD_share(who)
+  // Konstanten
+  const RestContainerName := "Reste";
+  // Variablen
+  Var SuchContainer;
+  Var RestContainer;
+  Var ZielContainers := {};
+  Var VerteilDict := dictionary;        // hier werden die zu verteilen Item eingestellt
+  Var MeinArray;
+  Var Eintrag;
+  Var Liste;
+  Var VerteilMenge;
+  Var VerteilRest;
+  Var TempMenge;
+
+  // zuerst die Ziel- und RestContainer suchen und ins BackPack packen.
+    SendSysMessagePergon(who, "Wählt den Container mit der Jagdbeute. Beutel zum Verteilen müssen enthalten sein.");
+
+  SuchContainer:=Target(who);
+  if (SuchContainer == who.backpack)
+    SendSysMessagePergon(who, "Backpack wird nicht verteilt.");
+  EndIf
+  If (SuchContainer.isa(POLCLASS_CONTAINER))
+    // Anzahl enthaltener Container herausbekommen
+//    SendSysMessagePergon(who, "SuchContainer: " + SuchContainer.serial);
+    ForEach ding in EnumerateItemsInContainer(SuchContainer)
+      If (ding.isa(POLCLASS_CONTAINER) && ding.container.serial == SuchContainer.serial)
+//        SendSysMessagePergon(who, "ding.container: " + ding.container.serial);
+        if (ding.name == RestContainerName  && !RestContainer)
+          RestContainer := ding;
+        Else
+          ZielContainers.append(ding);
+//          SendSysMessagePergon(who, "hinzugefügt ding.dsc/.name: " + ding.desc + " / " + ding.name);
+        EndIf
+      EndIf
+    EndForEach
+    // bei mehr als 1 Ziel-Container wirds erst interessant.
+    If (ZielContainers.size() > 1)
+      if (!RestContainer)
+        RestContainer := ZielContainers[1];
+        RestContainer.name := RestContainerName;
+        ZielContainers.erase(1);
+      EndIf
+      SendSysMessagePergon(who, "Es wird in " + ZielContainers.size() + " Container verteilt.");
+      ForEach ding in ZielContainers
+        If (!MoveItem(ding, who.backpack, who))
+          return;
+        EndIf
+      EndForEach
+      If (!MoveItem(RestContainer, who.backpack, who))
+        return;
+      EndIf
+      ForEach ding in EnumerateItemsInContainer(SuchContainer)
+        // sortieren alles Objekte im SuchContainer in folgedes Dictionary
+        // {ObjType -> {GesCount, {item1, item2, ...}}, {}...}
+        If (VerteilDict.exists( ding.objtype ))
+            VerteilDict[ding.objtype][1] := VerteilDict[ding.objtype][1] + ding.amount;
+            VerteilDict[ding.objtype][2].append(ding);
+        Else
+          VerteilDict.insert(ding.objtype, {ding.amount,{ding}});
+        EndIf
+      EndForEach
+
+      //Jetzt die Dinger in die ZielContainer verteilen
+      MeinArray := VerteilDict.Keys();
+      ForEach key in MeinArray
+        Eintrag := VerteilDict[key];
+        VerteilMenge := CInt(Eintrag[1] / ZielContainers.size());
+        VerteilRest := Eintrag[1] - VerteilMenge * ZielContainers.size();
+        Liste := Eintrag[2];
+        // lohnt es sich das überhaupt zu Verteilen?
+        If (VerteilMenge > 0)
+          // TempMenge muss jetzt in jeden ZielContainer gesteckt werden.
+          ForEach Cont in ZielContainers
+            TempMenge := VerteilMenge;
+            Repeat
+              If (Liste[1].amount > TempMenge)
+                If (!copyItem(Liste[1], TempMenge, Cont, who))
+                  return;
+                EndIf
+                TempMenge := 0;
+              Else // TempMenge >= Liste[1].amount
+                // zuerst das bestehende Object löschen, damit der char nicht
+                // überladen werden kann.
+                If (!MoveItem(Liste[1], Cont, who))
+                  return;
+                EndIf
+                TempMenge -= Liste[1].amount;
+                Liste.erase(1);
+              EndIf
+            until (TempMenge <= 0);
+          EndForEach
+        Endif
+        // nu noch die Reste verstauen
+        If (VerteilRest > 0)
+          // Einfach alles in den RestContainer
+          ForEach ding in Liste
+            If (!MoveItem( ding, RestContainer, who))
+              return;
+            EndIf
+          EndForEach
+        Endif
+      EndForEach
+    Else
+      SendSysMessagePergon(who, "Wo sind die mind. 3 leeren Container?");
+      return;
+    EndIf
+  Endif
+EndProgram
+
+Function MoveItem(item, Container, who)
+  if (!MoveItemToContainer( item, Container))
+    SendSysMessagePergon(who, "Es passt nichts mehr ins Backpack.");
+    return 0;
+  EndIf
+  return 1;
+EndFunction
+
+Function CopyItem(item, menge, Container, who)
+  var NeuItem := CreateItemCopyAtLocation(0,0,0,item,item.realm);
+  subtractamount(NeuItem, NeuItem.amount - menge);
+  subtractamount(item,menge);
+  If (!MoveItem(NeuItem, Container, who))
+    DestroyItem(NeuItem);
+    addamount(item,menge);
+    return 0;
+  EndIf
+  return 1;
+EndFunction

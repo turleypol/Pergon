@@ -1,0 +1,7 @@
+Um mit einem NPC zu sprechen genügt ein einfacher Klick auf diesen und schon werden dir die gebräuchlichsten Redeoptionen zur Auswahl gestellt.
+
+Noch einfacher funktioniert das Ganze, indem du dem NPC einfach in einem Wort beschreibst, was du von ihm willst.
+Einige dieser Sprachkommandos sind auch im Handbuch (.handbook) nachzulesen.
+
+Nicht alle Redeoptionen sind sofort verfügbar.
+Beispielsweise wird dir ein Auftraggeber nur unter bestimmten Umständen einen Auftrag erteilen.

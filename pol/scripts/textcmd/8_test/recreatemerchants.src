@@ -1,0 +1,47 @@
+use uo;
+use os;
+
+Include "include/modifyskill";
+
+Var number := 0;
+Program TextCMD_RecreateMerchant(you)
+
+//set_critical/(0);
+Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+Var x, y, z;
+syslog ("Restart all started by "+you.name);
+for( x := 6144 ; x > 16 ; x := x  - 32)
+   SendSysMessagePergon (You, "Recreating NPCs, X=" + x );
+    for( y := 16; y < 4096; y := y + 32 )
+        for( z := -60; z <= 60; z := z + 30 )
+            foreach npc in ListMobilesNearLocation( x, y, z, 32,REALM_BRITANNIA )
+
+              If ((GetObjProperty(npc, "MerchantType")) And
+                 (!GetObjProperty(npc, "#ReCreated")))
+
+                Var obj := npc.mobile.npctemplate;
+                Var x := npc.mobile.x;
+		Var y := npc.mobile.y;
+		Var z := npc.mobile.z;
+		Var mob := npc.mobile;
+	        RevokePrivilege( mob, "invul" );
+		setobjproperty(mob, "guardkill", 1);
+		KillMobile(mob, "TextCMD ReCreateMerchants");
+		sleep(2);
+
+		Var new:=createnpcfromtemplate(obj,x,y,z,0,you.realm);
+                SetObjProperty(new, "#ReCreated", 1);
+
+		number := number + 1;
+
+              EndIf
+
+            endforeach
+        endfor
+    endfor
+    SendSysMessagePergon(you, "Insg. NPCs recreated:" + number);
+endfor
+SendSysMessagePergon (you, "Fertig");
+syslog ("Recreate all (by "+you.name+") ended");
+EndProgram

@@ -1,0 +1,179 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD gc - GuildChat verschickt Nachrichten an eigene/Ally/alle Gilden
+//              einstellbar über .guild
+//
+// Author: Turley
+
+///////////////////////////////////////////////////////////////////////////
+//  CProps:
+//  "guild_hear": 1 - Hört nur auf eigene Gilde
+//                2 - Hört auf Ally und eigene Gilde
+//                3 - Hört auf alle Gilden
+//                4 - Keine Gilde/ bzw Prop nicht existent
+//  "guild_talk": 1 - Verschickt nur an eigene Gilde
+//                2 - Verschickt an Ally und eigene Gilde
+//                3 - Verschickt an alle Gilden
+
+use os;
+use uo;
+include "include/client";
+include "include/msgs";
+
+Program gc(who, text, uctext, langcode)
+  var msg := Struct;
+
+  If (who[4] == "Hook")  // Aufruf per PacketHook?
+    langcode := who[3];
+    uctext   := who[2];
+    who      := who[1];
+  EndIf
+
+  // Checks {{{
+  If (!who)
+    // fehlerhafter externer Aufruf?
+    return;
+  EndIf
+
+  If (!who.guild)
+    SendSysMessagePergon(who,
+      Struct{uc_text := CAscZ("Ihr gehört keiner Gilde an!"), lang := "DEU"},
+      Struct{uc_text := CAscZ("You are not in a guild!"), lang := "ENU"}
+    );
+    return;
+  EndIf
+
+  var talkmode := CInt(who.getprop("gc_talk"));
+  If (talkmode <= 0 or talkmode > 3)
+    SendSysMessagePergon(who,
+      Struct{uc_text := CAscZ(
+          "Ihr habt keine Gildenchat-Option ausgewählt, "+
+          "bitte benutzt '.guild'."
+        ), lang := "DEU"
+      },
+      Struct{uc_text := CAscZ(
+          "You have not choosed a guildchat option use '.guild'."
+        ), lang := "ENU"
+    });
+    return;
+  EndIf
+  // }}}
+
+  // Textholphase {{{
+  If ((!text) && (!uctext.size()))
+    // kein Text, interaktiv besorgen und gleich nach Unicode umbauen
+    msg := Message(who);
+    If (!who)
+      // zwischendurch ausgeloggt?
+      return;
+    EndIf
+
+    If (!msg)
+      SendSysMessagePergon(who,
+        Struct{uc_text := CAscZ("Abbruch"), lang := "DEU"},
+        Struct{uc_text := CAscZ("Abort"), lang := "ENU"}
+      );
+      return;
+    EndIf
+  Else
+    // Text zusammenbasteln
+    If (uctext)  // Unicode
+      msg.+uc_text :=
+        CAscZ("["+ who.guild.getprop("guild_tag") +"] "+who.name+": ")+uctext;
+      msg.+lang := langcode;
+    Else  // Ascii
+      msg.+uc_text :=
+        CAscZ("["+ who.guild.getprop("guild_tag") +"] "+ who.name +": "+text);
+      msg.+lang := "DEU";
+    EndIf
+  EndIf
+  // }}}
+
+  // Sendephase
+  Case (talkmode)
+  1: // Nur eigene Gilde {{{
+    ForEach person in EnumerateOnlineCharacters()
+      SleepMS(2);
+      If (!person.guild)
+        // Leute ohne Gilde ignorieren
+        continue;
+      EndIf
+
+      If (
+        // eigene Gilde und
+        person.guild.guildid == who.guild.guildid &&
+        // will Gildenchat hoeren
+        person.getprop("gc_hear")
+      )
+        SendTheMessage(person, FONTCOLOR_GUILD_OWN, msg);
+      EndIf
+    EndForEach
+    // }}}
+
+  2: // eigene + Ally Gilde {{{
+    ForEach person in EnumerateOnlineCharacters()
+      SleepMS(2);
+      If (!person.guild)
+        continue;
+      EndIf
+
+      If (
+        (
+          // eigene Gilde und
+          person.guild.guildid == who.guild.guildid &&
+          // will Chat hoeren
+          person.getprop("gc_hear")
+        ) or (
+          // allierte Gilde und
+          who.guild.isallyguild(person.guild) &&
+          // will Fremdchat hoeren
+          person.getprop("gc_hear") in (array{2, 3})
+        )
+      )
+        SendTheMessage(person, FONTCOLOR_GUILD_ALLY, msg);
+      EndIf
+    EndForEach
+    // }}}
+
+  3: // alle Gilden {{{
+    ForEach person in EnumerateOnlineCharacters()
+      SleepMS(2);
+      If (!person.guild)
+        continue;
+      EndIf
+
+      If (
+        (
+          // eigene Gilde und
+          person.guild.guildid == who.guild.guildid &&
+          // will Gildenchat hoeren
+          person.getprop("gc_hear")
+        ) or
+        // will fremde Gilden hoeren
+        (person.getprop("gc_hear") == 3)
+      )
+        SendTheMessage(person, FONTCOLOR_GUILD_ALL, msg);
+      EndIf
+    EndForEach
+    // }}}
+  EndCase
+EndProgram
+
+Function Message(who)
+  var text := RequestInputPergon(who, who.backpack,
+                Struct{uc_text := CAscZ("Welche Nachricht möchtet Ihr schicken?"), lang := "DEU"},
+                Struct{uc_text := CAscZ("Which message do you want to send to?"),lang := "ENG"});
+
+  If (text)
+    // Rest wird nicht benötigt
+    text.uc_text := CAscZ(
+      "["+ who.guild.getprop("guild_tag") +"] "+ who.name +": "
+    )+text.uc_text;
+    return text;
+  EndIf
+
+  return 0 ;
+EndFunction
+
+Function SendTheMessage(person, color, text)
+  SendSysMessagePergon(person, text, text, FONT_NORMAL, color);
+EndFunction

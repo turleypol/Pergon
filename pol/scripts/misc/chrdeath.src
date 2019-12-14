@@ -1,0 +1,485 @@
+///////////////////////////////////////////////////////////////////////////
+// Obnoxious Character Death (misc/chrdeath.src)
+// Implemented by: Sigismund, 19-Jul-99
+//
+// Essentially an overhaul of the existing chrdeath.src, this causes
+// one of 25 random messages to be displayed when a PC is offed.
+
+// Bibliotheken&Includes
+use file;
+use math;
+use os;
+use uo;
+use util;
+include ":drinking:common";
+include ":newinscription:artefacts/common";
+include "include/animal";
+include "include/client";
+include "include/death";
+include "include/eventid";
+include "include/logutil";
+include "include/onlinesearch";
+include "include/pergonutil";
+include "include/poison";
+include "include/server";
+include "include/spellcheck";
+include ":sqlmanager:sqlmanager";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program ChrDeath(corpse, ghost)
+    // Kleine Pause damit das "fading" passt
+    SleepMS(400);
+    // Fenster wird schwarz... "Your are dead."
+    SendPacket(ghost, "2C02");
+
+    // Turnierstein
+    var tspid := CInt(ghost.getprop("tournamentpid"));
+    If (tspid)
+        If (GetProcess(tspid).name == "pkg/opt/games/tournamentstone.ecl")
+            GetProcess(tspid).sendevent(struct{
+                    source := ghost,
+                    type   := EVID_TOURNAMENT_CHAR_DIED
+            });
+            // Leiche wird freundlicherweise direkt geborgen
+            MoveCorpseItems(corpse, ghost.backpack);
+        EndIf
+        ghost.eraseprop("tournamentpid");
+    EndIf
+
+    // Todeszeitpunkt
+    var corpsetime := ReadGameClock();
+    // Zwecks Protokollierung im GraveStoneCreate
+    SetObjProperty(corpse, "corpseinfo", {ghost.serial, corpsetime});
+
+    // Einige Informationen zum Hergang des Todes mitloggen
+    var text := CharInfoStr(ghost, COORDS_NO)+" ist um "+corpsetime+
+        " gestorben bei "+CoordStr(corpse, COORDS_REALM)+" mit Corpse "+
+        LHex(corpse.serial)+
+        " (Hunger: "+CInt(GetObjProperty(ghost, PROP_HUNGER))+
+        "/Durst: "+CInt(GetObjProperty(ghost, PROP_THIRST))+
+        "/Gift: "+GetPoisonLevel(ghost)+
+        "/Murderer: "+ghost.murderer+
+        "/Criminal: "+ghost.criminal+
+        "/Outlaw: "+((ghost.getprop("longmurders")>4) && (!ghost.getprop(TYPKILLER)));
+    If (ghost.reportables.size())
+        var reps := array{};
+        ForEach rep in (ghost.reportables)
+            reps.append(CharInfoStr(rep.killer)+" (Zeit: "+rep.gameclock+")");
+        EndForEach
+        text += "/Reportables: "+join(", ", reps);
+    EndIf
+    If (ghost.aggressorto.size())
+        var reps := array{};
+        ForEach rep in (ghost.aggressorto)
+            reps.append(CharInfoStr(rep.ref)+" (Timeout: "+rep.seconds+")");
+        EndForEach
+        text += "/AggressorTo: "+join(", ", reps);
+    EndIf
+    If (ghost.lawfullydamaged.size())
+        var reps := array{};
+        ForEach rep in (ghost.lawfullydamaged)
+            reps.append(CharInfoStr(rep.ref)+" (Timeout: "+rep.seconds+")");
+        EndForEach
+        text += "/LawfullyDamaged: "+join(", ", reps);
+    EndIf
+    var last := ghost.getprop(LOG_LASTDAMAGE);
+    If (last)
+        text += "/Last damage: "+last;
+    EndIf
+    last := ghost.getprop(LOG_LASTHIT);
+    If (last)
+        text += "/Last hit: "+last;
+    EndIf
+    text += ")";
+    LogToFile("log/corpses.log", text, LOG_DATETIME);
+    syslog("TOD: "+text);
+
+    // DeathCounter und Todesortliste aktualisieren
+    UpdateDeathCounter(ghost, corpse);
+
+    // Char entfreezen (Fuer den Fall, dass er beim Sterben gefrozen war)
+    ghost.frozen := 0;
+    IncRevision(ghost);
+
+    // Geistergrafik ggf. setzen
+    SetGhostGraphic(ghost);
+
+    // Eventuelle Polymorph-CProp loeschen
+    EraseObjProperty(ghost, "spell_poly"); // neue Magie
+
+    // Den Namen zum Anzeigen ermitteln
+    var corpsename := GetObjProperty(ghost, "myname");
+    If (!corpsename)
+        corpsename := ghost.name;
+    EndIf
+
+    // Die Leiche umbenennen
+    SetName(corpse, "Leichnam von "+corpsename);
+
+    var arena := GetObjProperty(ghost, ARENABATTLE);
+    // Todesmeldungen anzeigen
+    If (ghost.cmdlevel >= CMDLEVEL_SEER)
+        // Wenn ein CMDLevel-Char draufgeht, dann ist das schon was besonderes
+        If (!GetGlobalProperty("#Mute")) // Ruhe?
+            BroadcastPergon(
+                GenderMsg(ghost, "Der", "Die")+ " mächtige "+corpsename+
+                " erlag "+GenderMsg(ghost, "seinen", "ihren")+" Verletzungen."
+            );
+
+            // Liste mit {char.name, char}
+            ForEach player in EnumerateOnlineCharactersCanSeeMe(ghost)
+                PlaySoundEffect(player[2], SFX_THUNDER);
+                If ((player[2].x<5120) And (!player[2].dead))
+                    PlayLightningBoltEffect(player[2]);
+                EndIf
+            EndForEach
+        EndIf
+    ElseIf (arena)
+        // Wenn man in einer Arena stirbt, ist es etwas besonderes
+        If (!GetGlobalProperty("#Mute")) // Ruhe?
+            BroadcastPergon(
+                corpsename+" erlag "+GenderMsg(ghost, "seinen", "ihren")+
+                " Verletzungen in der Arena!"
+            );
+        EndIf
+    Else
+        If (!GetGlobalProperty("#Mute")) // Ruhe?
+            BroadcastPergon(
+                "Der Todesschrei "+GenderMsg(ghost, "des", "der")+" "+
+                corpsename+" hallt über das Land!"
+            );
+        EndIf
+
+        // Todessound damit auch alle umstehenden es hören :)
+        If (!ghost.gender)
+            // Maennerschreie
+            var screams := array{
+                0x15B, 0x15C, 0x15D, 0x15E, 0x424, 0x425, 0x426, 0x427, 0x428
+            };
+            PlaySoundEffect(corpse, screams.randomentry());
+        Else
+            // Frauenschreie
+            var screams := array{
+                0x151, 0x152, 0x153, 0x154, 0x315, 0x316, 0x317, 0x318
+            };
+            PlaySoundEffect(corpse, screams.randomentry());
+        EndIf
+
+        // Und noch eine Todesmeldung anzeigen, weil sonst zu eintoenig ;)
+        RandomDeathMessage(ghost, corpse, corpsename);
+    EndIf
+    
+    // Der Reiter ist gestorben und das Tier wird nun "wiedererschaffen"
+    PetMasterDeath(ghost);
+
+    // Hunger, Trinken und Vergiftung resetten, sowie GuardKill beseitigen
+    SetObjProperty(ghost, PROP_HUNGER, 10.0);
+    SetObjProperty(ghost, PROP_THIRST, 10.0);
+    SetObjProperty(ghost, PROP_ALCOHOL, ALC_LEVEL_SOBER);
+    SetPoisonLevel(ghost, 0);
+    EraseObjProperty(ghost, "guardkill");
+
+    // Der Leiche die Reportables des Chars uebergeben (zwecks Obduktion)
+    If (ghost.reportables.size()>0)
+        SetObjProperty(corpse, "Reportables", ghost.reportables);
+    EndIf
+    SetObjProperty(corpse, "RepSysState", array{
+            ghost.murderer, ghost.criminal,
+            ((ghost.getprop("longmurders")>4) && (!ghost.getprop(TYPKILLER)))
+    });
+    If (ghost.aggressorto.size())
+        SetObjProperty(corpse, "AggressorTo", ghost.aggressorto);
+    EndIf
+    If (ghost.lawfullydamaged.size())
+        SetObjProperty(corpse, "LawfullyDamaged", ghost.lawfullydamaged);
+    EndIf
+
+    // Zur Info der Götter an die Leichen Angriffsinformationen hängen
+    SetObjProperty(corpse, LOG_LASTHIT, GetObjProperty(ghost, LOG_LASTHIT));
+    SetObjProperty(
+        corpse, LOG_LASTDAMAGE, GetObjProperty(ghost, LOG_LASTDAMAGE)
+    );
+
+    // Prüfen ob veraltete Drohungen zu entfernen sind (siehe threatmsg.src)
+    var timediff;
+    var threatdict := GetObjProperty(ghost, "threats");
+    If (threatdict)
+        var threatdict_new := threatdict;
+        ForEach threat in threatdict
+            timediff := polcore().systime+7200-threat.time;
+            If (timediff > (60*60*24*7))
+            // 1 Woche haben Drohungen Gültigkeit, danach werden sie gelöscht
+                threatdict_new.erase(threat.serial);
+            EndIf
+        EndForEach
+        If (threatdict_new.size() > 0)
+            SetObjProperty(ghost, "threats", threatdict_new);
+            SetObjProperty(corpse, "threats", threatdict_new);
+        Else
+            EraseObjProperty(ghost, "threats");
+            EraseObjProperty(corpse, "threats");
+        EndIf
+    EndIf
+
+	//Statue kann von Stadtwachen getötet werden, Spruch entfernen
+	If (GetObjProperty(ghost, "spell_statue"))             
+		   
+	   Var tag:= GetObjProperty(ghost, "spell_statue");			
+       Var name:= ghost.name;											
+
+       name[1, 16]:= "";												
+				
+       tag[1]:= ReadGameClock();   									
+       tag[5]+=1;
+       SetObjProperty(ghost, "spell_statue", tag);
+       SendSpellWaiter(ghost, "spell_statue", 1, tag[5], ghost);
+       foreach equip in (EnumerateItemsInContainer( corpse, ENUMERATE_ROOT_ONLY ))
+          tag:=GetObjProperty(equip, "spell_statue");
+          If (tag)
+             tag[1]:= ReadGameClock();
+         	 tag[5]+=1;
+         	 SetObjProperty(equip, "spell_statue", tag);
+             SendSpellWaiter(equip, "spell_statue", 1, tag[5], ghost);
+             if (equip.isa(POLCLASS_WEAPON) or equip.isa(POLCLASS_ARMOR))
+               equip.movable:= 1;
+             endif
+          EndIf
+       endforeach
+    EndIf
+
+    //Todesritter kann von Stadtwachen getötet werden, Spruch entfernen
+    If (GetObjProperty(ghost, "spell_curse")[3] == "dead knight")
+       Var tag := GetObjProperty(ghost, "spell_curse");
+       tag[1]:= ReadGameClock();
+       tag[6]+=1;
+       SetObjProperty(ghost, "spell_curse", tag);
+       SendSpellWaiter(ghost, "spell_curse", 1, tag[6], ghost);
+    EndIf
+         
+    // Wer in Arena oder Turnier kaempft, wird aus der Reportables-Liste
+    // genommen und kann nicht als Moerder markiert werden
+    // (kampf in Arena/Turnier gilt als gegenseitiges Einverstaendnis zum PVP)
+    If (GetGlobalProperty("Turnier") Or arena)
+        If (GetObjProperty(ghost, "Turnier") Or arena)
+            // Die Liste der potentiellen Moerder bereinigen
+            ForEach reportable in (ghost.reportables)
+                ghost.removereportable(
+                    reportable.serial, reportable.gameclock
+                );
+            EndForEach
+        EndIf
+    Else
+        EraseObjProperty(ghost, "Turnier");
+    EndIf
+
+    // Hat mich wer attackiert?
+    SendReportGump(ghost);
+
+    // Wenn er in der Arena gestorben ist, dann seine Leiche leeren
+    If (arena)
+        // Leiche wird freundlicherweise direkt geborgen
+        MoveCorpseItems(corpse, ghost.backpack);
+
+        // Abbruch, um Zuflucht zu vermeiden
+        return;
+    EndIf
+    If (tspid)
+        // Abbruch, um Zuflucht zu vermeiden
+        return;
+    EndIf
+
+    // Zufluchtssteine ggf. aktivieren
+    // erst einmal alle Steine suchen
+    var stones :=
+        FindSubstance(ghost.backpack, 0xe124, 1, 0, FINDSUBSTANCE_FIND_ALL)+
+        FindSubstance(ghost.backpack, 0xe224, 1, 0, FINDSUBSTANCE_FIND_ALL)+
+        FindSubstance(ghost.backpack, 0xe324, 1, 0, FINDSUBSTANCE_FIND_ALL);
+    ForEach stone in (stones)
+        SleepMs(2);
+        If (
+            // muss aktiviert und
+            stone.getprop(ARTEFACT_ACTIVATED) and
+            // eingeschaltet sein
+            stone.getprop(ARTEFACT_ENABLED)
+        )
+            syslog(
+                "Zuflucht nach Tod fuer "+CharInfoStr(ghost, COORDS_REALM)+
+                " (per "+ItemInfoStr(stone)+")"
+            );
+            Sleep(10);
+            var params := struct{who := ghost, item := stone};
+            Start_ScriptPergon(
+                ":newinscription:artefacts/resortstone", params
+            );
+            return;
+        EndIf
+    EndForEach
+
+    // Wenn Spieler beim Recallen stirbt, wird er zum Corpse zurueckbewegt
+    // recallen braucht 5s und damit er nicht auch zurück bewegt wird wenn
+    // er nur rennt oder in die Nähe beamt der Mindestabstand von 50
+    Detach();
+    SendSQLManager(ghost, SQLStatus_UpdateRegion);
+    Sleep(5);
+    If ((Abs(ghost.x-corpse.x)>50) Or (Abs(ghost.y-corpse.y)>50))
+        syslog(
+            CharInfoStr(ghost, COORDS_REALM)+
+            " ist beim Recallen gestorben!"
+        );
+        MoveObjectToLocation(
+            ghost, corpse.x, corpse.y, corpse.z, corpse.realm,
+            MOVEOBJECT_FORCELOCATION
+        );
+    EndIf
+EndProgram
+
+Function UpdateDeathCounter(ghost, corpse)
+    // Da isser endlich, der lang ersehnte Todescounter ...
+    ForEach prop in (array{LOG_DEATHCOUNT, LOG_DEATHCOUNTM})
+        var counter := CInt(GetObjProperty(ghost, prop));
+        If (counter)
+            counter += 1;
+        Else
+            counter := 1;
+        EndIf
+        SetObjProperty(ghost, prop, counter);
+    EndForEach
+
+    // Letzten 10 Todesorte speichern ... wer weiss was man damit alles
+    // anstellen kann ;)
+    var deathLocation := GetObjProperty(ghost, "LastDeathLocation");
+    If (!deathLocation || (deathLocation.size()<10))
+        deathLocation := array;
+        deathLocation[10] := {};
+    EndIf;
+    deathLocation.insert(
+        1, {
+            corpse.x, corpse.y, corpse.z, corpse.realm, corpse.serial,
+            polcore().systime
+        }
+    );
+    deathLocation.shrink(10);
+
+    SetObjProperty(ghost, "LastDeathLocation", deathLocation);
+EndFunction
+
+Function SetGhostGraphic(ghost)
+    // Wenn ein Spieler stirbt und keine menschliche Grafik hat, wird die
+    // Todesgrafik gesetzt
+    If (!ghost.race)
+        // Mensch
+        If (!ghost.gender)
+            If (ghost.graphic != 402)
+                ghost.graphic := 402;
+            EndIf
+        Else
+            If (ghost.graphic != 403)
+                ghost.graphic := 403;
+            EndIf
+        EndIf
+    Else
+        // Elf
+        If (!ghost.gender)
+            If (ghost.graphic != 607)
+                ghost.graphic := 607;
+            EndIf
+        Else
+            If (ghost.graphic != 608)
+                ghost.graphic := 608;
+            EndIf
+        EndIf
+    EndIf
+EndFunction
+
+////////////////////////////////////////////////////////////
+// GenderMsg - Meldung geschlechtsspezifisch zusammenbauen
+////////////////////////////////////////////////////////////
+Function GenderMsg(char, maennlich, weiblich)
+    // Wenn schon Perfektionismus, dann aber richtig :o)
+    If (char.gender)
+        return weiblich;
+    Else
+        return maennlich;
+    EndIf
+EndFunction
+
+Function RandomDeathMessage(ghost, corpse, corpsename)
+    var text;
+    Case (RandomInt(25)+1)
+    1:  text := corpsename+" hat "+GenderMsg(ghost, "seine", "ihre")+
+            " sterblichen Überreste verlassen.";
+    2:  text := "Alas, "+GenderMsg(ghost, "armer", "arme")+" "+corpsename+
+            ", wir kannten dich kaum.";
+    3:  text := corpsename+" hat aufgehört zu existieren.";
+    4:  text := corpsename+" war einmal.";
+    5:  text := corpsename+" ist vergangen.";
+    6:  text := "Asche zu Asche und Staub zu Staub - "+corpsename+".";
+    7:  text := "Die Welt braucht "+corpsename+" nicht länger zu ertragen.";
+    8:  text := corpsename+", ist ein gefundenes Fressen für die Geier.";
+    9:  text := corpsename+", ist in eine bessere Welt gegangen.";
+    10: text := "Des Lebens überdrüssig, ruht "+corpsename+" in Frieden.";
+    11: text := corpsename+" ist ins Reich der Toten eingekehrt.";
+    12: text := corpsename+" ist gefallen.";
+    13: text := "Nicht länger wird "+corpsename+" vom Leben geplagt werden.";
+    14: text := corpsename+" - Staub ward "+
+            GenderMsg(ghost, "er und Staub ist er", "sie und Staub ist sie")+
+            " nun wieder.";
+    15: text := corpsename+" ist nun Geschichte.";
+    16: text := corpsename+" hatte gelebt.";
+    17: text := "Die Ahnen haben "+corpsename+" gerufen.";
+    18: text := "Aus und vorbei, "+corpsename+"!";
+    19: text := corpsename+" existierte nicht lang.";
+    20: text := corpsename+" hätte "+GenderMsg(ghost, "seine", "ihre")+
+            " Überlebensskills trainieren sollen.";
+    21: text := corpsename+" sollte eine neue Betätigung finden.";
+    22: text := "Gib nicht auf, "+corpsename+".";
+    23: text := corpsename+" hat eine neue Bedeutung für das Wort "+
+            "Nutzlosigkeit gefunden.";  // Futility
+    24: text := "Jedermann zeigt auf "+corpsename+" und lacht.";
+    25: text := corpsename+" kann nichts richtig machen.";
+    EndCase
+
+    PrintTextAbovePergon(ghost, corpse, text);
+EndFunction
+
+//  var killer := 0;
+//  If (GetObjProperty(ghost, "guardkill")<>1)
+//    killer := IsNewbieKiller(corpse, ghost);
+//  EndIf
+//  If (killer)
+//    killer.setmurderer();
+//
+//    PlayObjectCenteredEffect(ghost, 0x11, 7, 0x10);
+//    PlaySoundEffect(ghost, 0x215);
+//    ResurrectPergon(ghost);
+//    ResPenalties(ghost);
+//
+//    ForEach item in EnumerateItemsInContainer(corpse)
+//      MoveItemToContainer(item, ghost.backpack);
+//    EndForEach
+//
+//    DestroyItem(corpse);
+//
+//    Start_ScriptPergon("::misc/newbiekiller", killer);
+////////////////////////////////////////////////
+// IsNewbieKiller - Wurde ein Newbie getoetet?
+////////////////////////////////////////////////
+//
+//Function IsNewbieKiller(corpse, ghost)
+//  var result := 0;
+//
+//  If ((ghost.acct).getprop("lifetime")<86400)
+//    var killerdata := ghost.reportables[1];
+//    var killer := killerdata.killer;
+//    If ((killer) And (killer.cmdlevel < CMDLEVEL_SEER) And (ReadGameClock()-killerdata[3]<5))
+//      SysLog("IsNewbieKiller = "+ReadGameClock()+" "+killerdata[3]);
+//      Start_ScriptPergon("newbiekiller", killer);
+//
+//      result := killer;
+//    EndIf
+//  EndIf
+//
+//  return result;
+//EndFunction

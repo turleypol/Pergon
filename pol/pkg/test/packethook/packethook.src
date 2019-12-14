@@ -1,0 +1,675 @@
+///////////////////////////////////////////////////////////////////////////
+// PacketHook - Veraendert ein- und ausgehende Pakete
+//
+// Author: Shinigami
+
+use attributes;
+use os;
+use polsys;
+use uo;
+use util;
+include ":newspells:resistance";
+include "common";
+include "include/logutil";
+include "include/modifyskill";
+include "include/objtype";
+include "include/onlinesearch";
+include "include/packets";
+include "include/pergoninfos";
+
+// Welcher NPC-Name soll fuer bestimmte NPCs erscheinen?
+Const NPCNAME_AERGERN  := "Tarek";
+// Welcher NPC-Name soll zufaellig mal reingestreut werden?
+Const NPCNAME_GAG      := "Nemo";
+// NPC-Templates fuer die ein anderer Name gesetzt werden soll
+// var   NPCNAME_TEMPLATE := {"pig", "pig_w", "hildisvini"};
+Const NPCNAME_TEMPLATE := "troll";
+
+Const CORE_IGNORE := 1;
+Const CORE_OK     := 0;
+
+Program PacketHook()
+  syslog("PacketHook aktiviert ...");
+  return 1;
+EndProgram
+
+//////////////////////
+//   DAU-Abwehr {{{ //
+//////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+// CreateCharacter
+// Blockiert das Anlegen eines Chars ohne Freischaltung via WebFormular
+///////////////////////////////////////////////////////////////////////////
+Exported Function CreateCharacter(info, ByRef packet)
+  // Beim Anlegen eingegebenen Namen am Account sichern
+  var name := packet.getString(10, 30);
+  var acct := FindAccount(info.acctname);
+  acct.setProp(ACCT_NEWCHAR_NAME, name);
+  
+  // Namen je nach Geschlecht auf Neue/r Bewohner/in setzen
+  var gender := packet.getInt8(70)%2;  
+  If (gender)
+    packet.setString(10, "Neue Bewohnerin", 1);
+  Else
+    packet.setString(10, "Neuer Bewohner", 1);
+  EndIf
+  
+  // fuer den Fall, dass der Hook Probleme macht
+  If (GetGlobalProperty(CREATE_ALLOW_FREE))
+      If (GetGlobalProperty(GPROP_DEBUG_ACCOUNT))
+        syslog("DEBUG: Account: Packethook erlaubt freies Anlegen");
+      EndIf
+    return CORE_OK;
+  EndIf
+
+  If (TypeOfInt(info.acctname) != OT_STRING)
+    // Paket kaputt?
+    If (GetGlobalProperty(GPROP_DEBUG_ACCOUNT))
+      syslog("DEBUG: Account: Packethook ignoriert Paket");
+    EndIf
+    return CORE_IGNORE;
+  EndIf
+  
+  If (GetGlobalProperty(CREATE_ALLOW_SELF) || acct.getProp(ACCT_NEWCHAR_CMDLVL) != error)
+    return CORE_OK;
+  EndIf
+
+  syslog("HINWEIS: CharCreate unterdrueckt Acc: "+info.acctname);
+  return CORE_IGNORE;
+EndFunction
+
+/////////////////////////////////////////////////
+// TargetHooks damit die Noobscripter die Logfiles
+// nicht mit "out-of-sequence target cursor"
+// Meldungen zuballern
+/////////////////////////////////////////////////
+Const GPROP_COUNTER19 := "#HookCounter_SendTarg";
+Exported Function SendTarg(who, byref packet)
+
+  If (DEBUG_COUNTER)
+    var counter := GetGlobalProperty(GPROP_COUNTER19);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER19, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER19, 1);
+    EndIf
+  EndIf
+
+  who.setprop("#TargetCursor", 1);
+  return (0);
+  // Compilerwarnung unterdruecken
+  packet := packet;
+EndFunction
+
+Const GPROP_COUNTER13 := "#HookCounter_RecvTarg";
+Exported Function RecvTarg(who, byref packet)
+  If (DEBUG_COUNTER)
+    var counter := GetGlobalProperty(GPROP_COUNTER13);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER13, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER13, 1);
+    EndIf
+  EndIf
+
+  If (!who.getprop("#TargetCursor"))  // ClientSpam
+    var timeout := who.getprop("#TargetCursorTimeout");
+    If (timeout)
+      If (timeout[1]>ReadGameClock())  // noch im 10s Fenster?
+        timeout[2] += 1;
+        who.setprop("#TargetCursorTimeout",timeout);
+        If (timeout[2]>15) // mehr als 15mal in 10s
+          PrintTextAbovePergon(who, who,
+            "Ich bin ein potentieller Powergamer. "+
+            "Daher werde ich nun gegangen werden!",
+            "I am a potential power gamer. "+
+            "Therefore I will be gone now.",
+            _DEFAULT_TEXT_FONT, 0x10
+          );
+          who.eraseprop("#TargetCursorTimeout");
+          syslog("AntiSpam-Kick: Char "+CharInfoStr(who));
+          DisconnectClient(who); // Und Tschüß
+        EndIf
+      Else
+        timeout := {ReadGameClock()+10,1};
+        who.setprop("#TargetCursorTimeout",timeout);
+      EndIf
+    Else
+      timeout := {ReadGameClock()+10,1};
+      who.setprop("#TargetCursorTimeout",timeout);
+    EndIf
+    return (1);  // CoreIgno
+  EndIf
+  who.eraseprop("#TargetCursor");
+  //who.eraseprop("#TargetCursorTimeout");
+  return (0);
+  // Compilerwarnung unterdruecken
+  packet := packet;
+EndFunction
+
+/////////////////////////////////////////////////
+// DropRequestHook damit die Scripter endlich mal lernen
+// zu Scripten ohne das Log mit ungültigen Droprequests
+// vollzumüllen
+/////////////////////////////////////////////////
+Exported Function CheckDrop(char, ByRef packet)
+  // BYTE[1] 0x08
+  // BYTE[4] Item Serial
+  var serial := packet.getint32(1);
+  var inhand := char.getgottenitem();
+  If (serial and inhand and inhand.serial == serial)
+    // Passt alles also an Core weiterleiten
+    return CORE_OK;
+  EndIf
+
+  IncrementScriptErrorCounter(char);
+
+  return CORE_IGNORE;
+EndFunction
+Exported Function CheckDrop6017(char, ByRef packet)
+  var serial := packet.getint32(1);
+  var inhand := char.getgottenitem();
+  If (serial and inhand and inhand.serial == serial)
+    // Passt alles also an Core weiterleiten
+    return CORE_OK;
+  EndIf
+
+  IncrementScriptErrorCounter(char);
+
+  return CORE_IGNORE;
+EndFunction
+
+// Naher verwandter von CheckDrop - Drop auf Paperdoll
+Exported Function CheckEquip(char, ByRef packet)
+  // BYTE cmd
+  // BYTE[4] itemid
+
+  // kompatibel zu CheckDrop, daher:
+  return CheckDrop(char, packet);
+EndFunction
+
+Function IncrementScriptErrorCounter(char)
+  var errcount := GetObjProperty(char, PROP_SCRIPTERRCOUNT);
+  If (!errcount)
+    errcount := {0, ReadGameClock()};
+  EndIf
+  // wenn es 20 Minuten zuruecklag kann es auch durchaus ein
+  // Client-/Uebertragungsfehler sein und kein Script
+  If (ReadGameClock()>(errcount[2]+1200))
+    errcount[1] := 0;
+  EndIf
+  errcount[1] += 1;
+  errcount[2] := ReadGameClock();
+  If (errcount[1] > 20)
+    // Reconnect löscht automatisch CProp
+    syslog("Kick wegen kaputter (Client-)Scripte: "+CharInfoStr(char));
+    PrintTextAbovePrivatePergon(char,
+      "Euer Client produzierte zuviele Fehler. Vermutlich verwendet Ihr "+
+      "ein fehlerhaftes Script. Die Verbindung wird zu Eurem Komfort "+
+      "getrennt, damit Ihr den Fehler in Ruhe beheben koennt.",
+      "Your client produced too many errors. You may be using a "+
+      "faulty script. Your connection will be dropped for your "+
+      "convenience, giving you the time you need to fix the problem.",
+      char, _DEFAULT_TEXT_FONT, 0x10
+    );
+    DisconnectClient(char);
+  EndIf
+
+  SetObjProperty(char, PROP_SCRIPTERRCOUNT, errcount);
+EndFunction
+// }}}
+
+/////////////////////////////////////////////////
+// Packethook fuer das Einsammeln von Items
+// bei Charactern in Multis loggen, damit man
+// Diebstahl auf die Spur kommt
+/////////////////////////////////////////////////
+Exported Function PickupInMulti(who, byref packet) // {{{
+  var item := SystemFindObjectBySerial(packet.GetInt32(1));
+  If (item == error)
+    // syslog(
+    //   "FEHLER: "+CharInfoStr(who, COORDS_REALM)+
+    //   " hat nichtexistentes Item "+LHex(packet.GetInt32(1))+" eingesammelt"
+    // );
+    IncrementScriptErrorCounter(who);
+    return CORE_IGNORE;
+  EndIf
+
+  // Ruetteln an festgemachten Sachen ignorieren
+  If (!item.movable)
+    return CORE_OK;
+  EndIf
+
+  // falls es verpackt ist, hat es kein Multi-Member
+  var topcont := item;
+  While (topcont.container)
+    topcont := topcont.container;
+  EndWhile
+
+  // fummelt sich im Backpack rum oder an der Schneiderpuppe rum?
+  If (topcont == who.backpack or topcont == who)
+    return CORE_OK;
+  EndIf
+
+  // Taschendiebstahl (anderweitig geloggt) und Entnahme von
+  // Items aus (eigenem) Packtier?
+  If (topcont.isa(POLCLASS_MOBILE))
+    return CORE_OK;
+  EndIf
+
+  // uns interessieren nur Haeuser
+  If (!topcont.multi or !topcont.multi.isa(POLCLASS_HOUSE))
+    return CORE_OK;
+  EndIf
+
+  // falls Item gestapelt wird, wuerde ItemRef ungueltig -- daher
+  // Postion und Teile der Logmeldung schon hier zusammenbauen
+  var pos := struct{
+    x     := topcont.x,
+    y     := topcont.y,
+    z     := topcont.z,
+    realm := topcont.realm
+  };
+  var param := struct{
+    // wichtig fuer Checks
+    who  := who,
+    // wuerde ungueltig
+    pos  := pos,
+    mul  := topcont.multi,
+    info := ItemInfoStr(item, COORDS_REALM),
+    // weggenommene Menge
+    amt  := packet.GetInt16(5)
+  };
+
+  // Material sichern, falls vorhanden
+  var toolinfo := item.getprop(TOOLINFO);
+  If (toolinfo)
+    var material := toolinfo["material"];
+    If (material)
+      param["mat"] := material;
+    EndIf
+  EndIf
+
+  // Auswertung ist komplizierter, daher abgekoppelt
+  Start_Script(":packethook:housepickup", param);
+
+  // der Core soll sich um das Paket kuemmern
+  return CORE_OK;
+EndFunction
+// }}}
+
+/////////////
+// Unicode //
+/////////////
+
+///////////////////////////////////////////////////////////////////////////////
+// SendUniCodeSpeechMessage - Verschickt eine UniCode Nachricht an ein Objekt
+///////////////////////////////////////////////////////////////////////////////
+Function SendUniCodeSpeechMessage(character, text, name, serial := 0xffffffff, objtype := 0xffff, color := _DEFAULT_TEXT_COLOR, font := _DEFAULT_TEXT_FONT, type := 6) // {{{
+  var outpacket := CreatePacket(0xae, MSGLEN_VARIABLE);
+
+  outpacket.setint32(3, serial);
+  outpacket.setint16(7, objtype);
+  outpacket.setint8(9, type);
+  outpacket.setint16(10, color);
+  outpacket.setint16(12, font);
+  outpacket.setstring(14, "DEU", 1);
+  outpacket.setstring(18, name[1, 29], 1);
+  outpacket.setunicodestring(48, CAscZ(text), 1);
+  outpacket.setint16(1, outpacket.GetSize());
+
+  return (outpacket.sendpacket(character));
+EndFunction // }}}
+
+////////////////////////////////////////////////
+// SingleClick - Ein Objekt wurde angeklickert
+////////////////////////////////////////////////
+Const DEBUG_COUNTER := 1;
+Const GPROP_COUNTER1 := "#HookCounter_SingleClick_0x09";
+Exported Function SingleClick_0x09(character, ByRef packet)
+
+  If (DEBUG_COUNTER)
+    var counter := GetGlobalProperty(GPROP_COUNTER1);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER1, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER1, 1);
+    EndIf
+  EndIf
+
+  If (GetObjProperty(character, NPCNAME_AERGERN))
+    var serial := packet.getint32(1);
+
+    var object := SystemFindObjectBySerial(serial);
+    If (object.isa(POLCLASS_NPC))
+     // If (Lower(object.npctemplate) in NPCNAME_TEMPLATE)
+      If (Lower(object.npctemplate)[NPCNAME_TEMPLATE])
+        SendUniCodeSpeechMessage(character, NPCNAME_AERGERN, NPCNAME_AERGERN, serial);
+
+        return (1); // Das Packet wurde verarbeitet
+      EndIf
+    ElseIf (object.isa(POLCLASS_CORPSE))
+     // If (Lower(GetObjProperty(object, "npctemplate")) in NPCNAME_TEMPLATE)
+      If (Lower(GetObjProperty(object, "npctemplate"))[NPCNAME_TEMPLATE])
+        SendUniCodeSpeechMessage(character, "Leiche von "+NPCNAME_AERGERN, "Leiche von "+NPCNAME_AERGERN, serial, object.objtype);
+
+        return (1); // Das Packet wurde verarbeitet
+      EndIf
+    EndIf
+ // Else
+ //   If (RandomInt(5000) == 1) // 0,05% Wahrscheinlichkeit
+ //     var serial := packet.getint32(1);
+ //
+ //     var object := SystemFindObjectBySerial(serial);
+ //     If (object.isa(POLCLASS_NPC))
+ //       SendUniCodeSpeechMessage(character, NPCNAME_GAG, NPCNAME_GAG, serial);
+ //
+ //       return (1); // Das Packet wurde verarbeitet
+ //     EndIf
+ //   EndIf
+  EndIf
+
+  return (0); // Pol soll das unveraenderte Paket entgegennehmen
+EndFunction
+
+// Objekt wurde zwecks Angriff angeklickt
+Const ARC_JUST_NO_ATTACK  := 1;
+Const ARC_DISABLE_WARMODE := 2;
+Const ARC_HIDE_DEFENDER   := 3;
+Const ARC_KICK_ATTACKER   := 4;
+// Const ARC_AUTOJAIL        := 5;
+// Const ARC_CALL_GUARDS     := 6;
+exported Function AttackRequestCheck(who, byref packet)
+  var defender := SystemFindObjectBySerial(packet.getInt32(1));
+  If (!defender)
+    // Verklickt? Soll sich der Core kümmern
+    return CORE_OK;
+  EndIf
+
+  // Check ob laufend Gegner gewechselt wird
+  If (who.opponent) // lebt noch
+    If (GetGlobalProperty("HookChangeOppActive"))
+      If (Distance(who,who.opponent)<10) //auch noch im Bereich?
+        Var timeout:= who.getprop("#ChangeOppTimeout");
+        Var CHANGE_OPP_TIME:=CInt(GetGlobalProperty("HookChangeOppTime"));
+        If (timeout)
+          If (timeout[1]>ReadGameClock()) // noch im Zeitfenster
+            Var CHANGE_OPP_CNT:=CInt(GetGlobalProperty("HookChangeOppCnt"));
+            timeout[2] += 1;
+            who.setprop("#ChangeOppTimeout",timeout);
+            If (timeout[2]>CHANGE_OPP_CNT)
+              PrintTextAbovePergon(who, who,
+              "Ich bin ein potentieller Powergamer. "+
+              "Daher werde ich nun gegangen werden!",
+              "I am a potential power gamer. "+
+              "Therefore I will be gone now.",
+              _DEFAULT_TEXT_FONT, 0x10
+              );
+              who.eraseprop("#ChangeOppTimeout");
+              syslog("AntiChangeOpp-Kick: Char "+CharInfoStr(who));
+              DisconnectClient(who); // Und Tschüß
+              return CORE_IGNORE;
+            EndIf
+          Else
+            timeout := {ReadGameClock()+CHANGE_OPP_TIME,1};
+            who.setprop("#ChangeOppTimeout",timeout);
+          EndIf
+        Else
+          timeout := {ReadGameClock()+CHANGE_OPP_TIME,1};
+          who.setprop("#ChangeOppTimeout",timeout);
+        EndIf
+      EndIf
+    EndIf
+  EndIf
+
+  var bepeaceful := defender.getprop(PROP_NOATTACK);
+  If (!bepeaceful)
+    // Character hat keine Sonderregeln definiert
+    return CORE_OK;
+  EndIf
+
+  Case (bepeaceful)
+  ARC_JUST_NO_ATTACK:
+  default:
+    return CORE_IGNORE;
+
+  ARC_DISABLE_WARMODE:
+    who.setwarmode(0);
+
+  ARC_HIDE_DEFENDER:
+    defender.hidden := 1;
+
+  ARC_KICK_ATTACKER:
+    PrintTextAbovePrivatePergon(defender, "*tret*", "*kick*", who);
+    DisconnectClient(who);
+  EndCase
+
+  return CORE_IGNORE;
+EndFunction
+
+////////////////////////////////////////////////////////////////
+// StatusBarInfo - Liefert Informationen ueber einen Character
+////////////////////////////////////////////////////////////////
+Const GPROP_COUNTER17 := "#HookCounter_StatusBarInfo_0x11";
+Exported Function StatusBarInfo_0x11(character, ByRef packet)
+
+  If (DEBUG_COUNTER)
+    var counter := GetGlobalProperty(GPROP_COUNTER17);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER17, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER17, 1);
+    EndIf
+  EndIf
+
+  // Nicht eigener Status? Dann wech damit
+  If (packet.GetInt32(3)!=character.serial)
+    return(0);
+  EndIf
+
+  var version := packet.GetInt8(42);
+  var shift;
+  If (version == 4)
+    shift := 0;
+  ElseIf (version == 5)
+    shift := 3; // 5.x ML Client hat noch 3 Bytes mittendrin :(
+  Else // version 1 (uralt client)
+    Return(0);
+  EndIf
+
+  packet.SetInt16(66+shift, 300); // Statcap
+  packet.SetInt8(68+shift, character.followers);    // Pets
+  packet.SetInt8(69+shift, character.followers_max);// Max Pets
+
+  // Resis
+  // Negative Werte sind 0x10000 + (- resi)
+  var resi;
+  resi := CInt(character.getprop("resist_poison")); // Poison (Armor)
+  If (resi>=0)
+    packet.SetInt16(62, resi);
+  Else
+    packet.SetInt16(62, 0x10000 + resi);
+  EndIf
+  resi := CInt(character.getprop("resist_fire"));   // Fire
+  If (resi>=0)
+    packet.SetInt16(70+shift, resi);
+  Else
+    packet.SetInt16(70+shift, 0x10000 + resi);
+  EndIf
+  resi := CInt(character.getprop("resist_water"));  // Water (Cold)
+  If (resi>=0)
+    packet.SetInt16(72+shift, resi);
+  Else
+    packet.SetInt16(72+shift, 0x10000 + resi);
+  EndIf
+  resi := CInt(character.getprop("resist_earth"));  // Earth (Poison)
+  If (resi>=0)
+    packet.SetInt16(74+shift, resi);
+  Else
+    packet.SetInt16(74+shift, 0x10000 + resi);
+  EndIf
+  resi := CInt(character.getprop("resist_air"));    // Air (Energy)
+  If (resi>=0)
+    packet.SetInt16(76+shift, resi);
+  Else
+    packet.SetInt16(76+shift, 0x10000 + resi);
+  EndIf
+
+  packet.SetInt16(78+shift, character.ar);            // Armor (Luck)
+
+  var weapon := character.weapon;
+  var descriptor := GetItemDescriptor(weapon.objtype);
+  If (descriptor)
+    // Altes Hitscript
+    var damage_multi := (GetAttribute(character, SKILLID_TAKTIK)+50+(packet.GetInt16(44)*0.2))*0.01;
+    packet.SetInt16(80+shift, CInt(damage_multi*CInt(descriptor.mindamage*(weapon.hp/CDbl(descriptor.maxhp+weapon.maxhp_mod))+weapon.dmg_mod))); // Min Weapondamage
+    packet.SetInt16(82+shift, CInt(damage_multi*CInt(descriptor.maxdamage*(weapon.hp/CDbl(descriptor.maxhp+weapon.maxhp_mod))+weapon.dmg_mod))); // Max Weapondamage
+    // Neues Hitscript
+    //var strenghtpart := packet.GetInt16(44)*3.0/20;
+    //var damagepart := (1+weapon.dmg_mod/100.0)*(LogE(100*weapon.hp/weapon.maxhp)/LogE(100));
+    //packet.SetInt16(80+shift, CInt((descriptor.mindamage*damagepart)+strenghtpart));  // Min Weapondamage
+    //packet.SetInt16(82+shift, CInt((descriptor.maxdamage*damagepart)+strenghtpart));  // Max Weapondamage
+  Else
+    packet.SetInt16(80+shift, 0); // Min Weapondamage
+    packet.SetInt16(82+shift, 0); // Max Weapondamage
+  EndIf
+
+  Return(0); //Verändertes Paket schicken
+EndFunction
+
+
+//////////////////
+// OpenDoorMacro
+//////////////////
+Const GPROP_COUNTER2 := "#HookCounter_OpenDoorMacro_0x12";
+Exported Function OpenDoorMacro_0x12(character, byref packet)
+  If (DEBUG_COUNTER)
+    var counter := GetGlobalProperty(GPROP_COUNTER2);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER2, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER2, 1);
+    EndIf
+  EndIf
+
+  Start_ScriptPergon("opendoor",{character,packet});
+  return (1);  //CoreIgnoReturn
+EndFunction
+
+/////////////////////////////////////////////////
+// SpeechRequest 0xAE - Alliance/Guild-Chat Hook->.gc
+/////////////////////////////////////////////////
+Const GPROP_COUNTER7 := "#HookCounter_SpeechRequest";
+Exported Function SpeechRequest(who,byref packet)
+
+  If (DEBUG_COUNTER)
+    var counter := GetGlobalProperty(GPROP_COUNTER7);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER7, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER7, 1);
+    EndIf
+  EndIf
+
+  var text := packet.GetUnicodeString(12,((packet.getsize()-14)/2));
+  var lang := packet.GetString(8,3);
+  If ((who) && (text) && (lang))
+    Start_ScriptPergon("../../../scripts/textcmd/0_player/gc",{who,text,lang,"Hook"});
+  EndIf
+  return(1);
+EndFunction
+
+
+/////////////////////////////////////////////////
+// Nachrichtenbrett-Pakete {{{
+/////////////////////////////////////////////////
+Const GPROP_COUNTER8 := "#HookCounter_RequestMessage";
+Exported Function RequestMessage(who,byref packet)
+
+  If (DEBUG_COUNTER)
+    var counter := GetGlobalProperty(GPROP_COUNTER8);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER8, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER8, 1);
+    EndIf
+  EndIf
+
+  run_Script_to_completion("bboard",{3,who,packet});
+  return (1);
+EndFunction
+
+Const GPROP_COUNTER9 := "#HookCounter_RequestMessageSummary";
+Exported Function RequestMessageSummary(who, byref packet)
+
+  If (DEBUG_COUNTER)
+    var counter := GetGlobalProperty(GPROP_COUNTER9);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER9, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER9, 1);
+    EndIf
+  EndIf
+
+  run_Script_to_completion("bboard",{4,who,packet});
+  return (1);
+EndFunction
+
+Const GPROP_COUNTER10 := "#HookCounter_PostMessage";
+Exported Function PostMessage(who, byref packet)
+
+  If (DEBUG_COUNTER)
+    var counter := GetGlobalProperty(GPROP_COUNTER10);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER10, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER10, 1);
+    EndIf
+  EndIf
+
+  run_Script_to_completion("bboard",{5,who,packet});
+  return (1);
+EndFunction
+
+Const GPROP_COUNTER11 := "#HookCounter_RemoveMessage";
+Exported Function RemoveMessage(who, byref packet)
+
+  If (DEBUG_COUNTER)
+    var counter := GetGlobalProperty(GPROP_COUNTER11);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER11, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER11, 1);
+    EndIf
+  EndIf
+
+  run_Script_to_completion("bboard",{6,who,packet});
+  return (1);
+EndFunction
+// }}}
+
+/////////////////////////////////////////////////
+// BandageSelf/Target Macro (0xBF - Sub 0x2C)
+/////////////////////////////////////////////////
+Const GPROP_COUNTER12 := "#HookCounter_BandageMacro";
+Exported Function BandageMacro(who, byref packet)
+
+  If (DEBUG_COUNTER)
+    var counter := GetGlobalProperty(GPROP_COUNTER12);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER12, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER12, 1);
+    EndIf
+  EndIf
+
+  var bandage := SystemFindObjectBySerial(packet.getInt32(5));
+  var tar := SystemFindObjectBySerial(packet.getInt32(9));
+  If ((bandage) && (tar) && (bandage.objtype == UOBJ_BANDAGE))
+    Start_ScriptPergon(":healing:healing",{who,bandage,tar});
+  EndIf
+  return (1);
+EndFunction
+
+// vim: sw=2 sts=2

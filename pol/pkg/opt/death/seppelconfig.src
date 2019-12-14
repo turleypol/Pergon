@@ -1,0 +1,197 @@
+/////////////////////////////////////////////////////////////////////////////
+// Seppelgate -- Einstellen der Preisfaktoren
+
+include "include/logutil";
+include "include/modifyskill";
+include "include/properties";
+include "seppel";
+
+var lok := array{
+        // lokale Preise
+        "lokaler Faktor Leben",
+        "lokaler Faktor Heilung",
+        "lokaler Faktor Zeit"
+};
+var glob := array{
+        // globale Preise
+        "globaler Faktor Leben",
+        "globaler Faktor Heilung",
+        "globaler Faktor Zeit"
+};
+var choices := {SG_FACT_RES, SG_FACT_PLUS, SG_FACT_WAIT};
+
+Program Seppelconfig(who, gate) // {{{
+    // Konfiguration erst ab Seer moeglich
+    If (who.cmdlevel < CMDLEVEL_SEER)
+        return;
+    EndIf
+
+    // Gump bauen {{{
+    var cfg_layout := array{
+        "page 0",
+        "nodispose",
+        "resizepic     0  0 2620 310 280",  // Rahmen
+        "checkertrans  5  7 300 266",       // transparent
+        "text         70 15 40 0",          // Ueberschrift
+        "text         30 45 40 1",          // Einstellungen
+        "text        225 45 40 2",          // akt. Wert
+
+        "page 1",
+        "button  20  70 2152 2154 1 0 1", // Kosten Leben
+        "text    60  75 40 6",
+        "text   250  75 40 13",
+        "button  20 110 2152 2154 1 0 2", // Kosten Heilung
+        "text    60 115 40 7",
+        "text   250 115 40 14",
+        "button  20 150 2152 2154 1 0 3", // Zeit Hoelle
+        "text    60 155 40 8",
+        "text   250 155 40 15",
+        "button  20 190 2152 2154 1 0 7", // Newbies?
+        "text    60 195 40 5",
+        "text   250 195 40 12",
+
+        ""
+    };
+    var gm_layout := array{};
+    If (who.cmdlevel >= CMDLEVEL_HIGHGM)
+        gm_layout := {
+            // Umschaltung global/lokal
+            "button  30 245 30008 30009 0 2 0",
+            "text    60 240 40 4",
+
+            "page 2",
+            "button  20  70 2152 2154 1 0 4", // Kosten Leben
+            "text    60  75 40 9",
+            "text   250  75 40 16",
+            "button  20 110 2152 2154 1 0 5", // Kosten Heilung
+            "text    60 115 40 10",
+            "text   250 115 40 17",
+            "button  20 150 2152 2154 1 0 6", // Zeit Hoelle
+            "text    60 155 40 11",
+            "text   250 155 40 18",
+
+            // Umschaltung global/lokal
+            "button  30 245 30008 30009 0 1 0",
+            "text    60 240 40 3",
+            ""
+        };
+    EndIf
+    cfg_layout += gm_layout;
+
+    var cfg_text := array{
+        "Seppelgate - Konfiguration",
+        "Einstellung",
+        "akt. Wert",
+        "zu den lokalen Einstellungen",
+        "zu den globalen Einstellungen",
+        "akzeptiert Newbies"
+    };
+    cfg_text += lok+glob;
+    If (GetObjProperty(gate, ALLOW_NEWBIE))
+        cfg_text += "ja";
+    Else
+        cfg_text += "nein";
+    EndIf
+    // aktuelle Werte eintragen
+    cfg_text += array{
+        GetObjPropOrDefault(gate, SG_FACT_RES,  1.0),
+        GetObjPropOrDefault(gate, SG_FACT_PLUS, 1.0),
+        GetObjPropOrDefault(gate, SG_FACT_WAIT, 1.0),
+        GetGlobalPropOrDefault(SG_FACT_RES,  1.0),
+        GetGlobalPropOrDefault(SG_FACT_PLUS, 1.0),
+        GetGlobalPropOrDefault(SG_FACT_WAIT, 1.0)
+    };
+    // Gump bauen }}}
+
+    var choice := SendDialogGump(who, cfg_layout, cfg_text);
+    If (!choice)
+        return;
+    EndIf
+
+    If (choice[0] >= 8)
+        // ausserhalb des zulaessigen Bereichs
+        return;
+    EndIf
+
+    If (who.cmdlevel < CMDLEVEL_HIGHGM and choice[0] >= 4 and choice[0]<7)
+        // keine Berechtigung
+        return;
+    EndIf
+
+    Case (choice[0])
+    1: 2: 3:
+        ChangeProp(who, gate, choice[0]);
+    7:
+        ToggleNewbie(who, gate);
+    default:
+        ChangeGlobal(who, choice[0] - 3);
+    EndCase
+EndProgram // }}}
+
+Function ToggleNewbie(who, gate) // {{{
+    var newstatus;
+    var allowed := GetObjProperty(gate, ALLOW_NEWBIE);
+    If (allowed)
+        allowed := 0;
+        newstatus := "gesperrt";
+    Else
+        allowed := 1;
+        newstatus := "freigeschaltet";
+    EndIf
+
+    SetObjProperty(gate, ALLOW_NEWBIE, allowed);
+    SendSysMessagePergon(who, "Das Tor wurde für Newbies "+newstatus);
+    syslog(
+        CharInfoStr(who)+" hat "+ItemInfoStr(gate, COORDS_REALM)+
+        " für Newbies "+newstatus
+    );
+EndFunction // }}}
+
+Function ChangeProp(who, gate, propnr) // {{{
+    var val := GetObjPropOrDefault(gate, choices[propnr], 1);
+    var res := SendTextEntryGump(
+        who, "Einstellung: "+lok[propnr],
+        TE_CANCEL_ENABLE, TE_STYLE_NORMAL,
+        20, "aktueller Wert: "+val
+    );
+    res[","] := "."; // deutsche Kommaschreibung erlauben
+    var num := CDbl(res);
+    If (num and num >= 0)
+        SetObjProperty(gate, choices[propnr], num);
+        SendSysMessagePergon(
+            who, "Wert '"+lok[propnr]+"' auf "+num+" gesetzt."
+        );
+        syslog(
+            CharInfoStr(who)+" hat "+lok[propnr]+" bei "+
+            ItemInfoStr(gate, COORDS_REALM)+" auf "+num+ " gesetzt."
+        );
+    ElseIf (res)
+        SendSysMessagePergon(who, "Ungültiger Wert.", "Invalid value.");
+    Else
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+EndFunction // }}}
+
+Function ChangeGlobal(who, propnr) // {{{
+    var val := GetGlobalPropOrDefault(choices[propnr], 1);
+    var res := SendTextEntryGump(
+        who, "Einstellung: "+glob[propnr],
+        TE_CANCEL_ENABLE, TE_STYLE_NORMAL,
+        20, "aktueller Wert: "+val
+    );
+    res[","] := "."; // deutsche Kommaschreibung erlauben
+    var num := CDbl(res);
+    If (num and num >= 0)
+        SetGlobalProperty(choices[propnr], num);
+        SendSysMessagePergon(
+            who, "Wert '"+glob[propnr]+"' auf "+num+" gesetzt."
+        );
+        syslog(
+            CharInfoStr(who)+" hat "+glob[propnr]+" auf "+num+" gesetzt."
+        );
+    ElseIf (res)
+        SendSysMessagePergon(who, "Ungültiger Wert.", "Invalid value.");
+    Else
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+EndFunction // }}}

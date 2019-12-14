@@ -1,0 +1,24 @@
+///////////////////////////////////////////////////////////////////////////
+// noinsert -- verbietet optional das Einwerfen von Gegenstaenden
+
+use uo;
+include "include/msgs";
+
+Program NoInsert(who, container)
+    If (who.cmdlevel >= CMDLEVEL_SEER)
+        // Goetter duerfen immer
+        return 1;
+    EndIf
+
+    If (container.getprop("noinsert"))
+        // darf nicht befuellt werden
+        SendSysMessagePergon(who,
+            "Die Götter verbieten Euch, etwas hier hineinzulegen.",
+            "The gods disapprove your attempt to insert something."
+        );
+        return 0;
+    EndIf
+
+    // immer erlauben, wenn bis hierher gekommen
+    return 1;
+EndProgram

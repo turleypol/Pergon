@@ -1,0 +1,7 @@
+
+ Datastore
+
+  datastore files are stored in
+     /pol/data/store/fname.txt
+     /pol/data/store/pkg/fname.txt
+

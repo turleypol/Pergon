@@ -1,0 +1,33 @@
+//////////////////////////////////////
+//
+//   ServPerf - Start
+//
+//     based on ServPerf
+//       Author: louds
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2002/01/09 Shinigami: ReWrite
+//
+//////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonutil";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program ServPerf_Start()
+  Start_ScriptPergon("servperf");
+EndProgram

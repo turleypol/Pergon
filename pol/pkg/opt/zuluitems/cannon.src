@@ -1,0 +1,109 @@
+// Fuer GLs kein Ladevorgang notwendig
+
+use os;
+use uo;
+use util;
+use vitals;
+include "include/client";
+include "include/modifyskill";
+include "include/msgs";
+include "include/packets";
+
+Program ShotCannon(who, item)
+  If (GetObjProperty(item, "#inuse") == 1)
+    SendSysMessagePergon(who, "Die Kanone wird bereits benutzt!");
+    Return;
+  EndIf
+
+  SetObjProperty(item, "#inuse", 1);
+
+  If (who.cmdlevel < CMDLEVEL_GL)
+    If (GetObjProperty(item, "#powder") != 1)
+      SendSysMessagePergon(who, "Wählt ein Pulverfass aus!");
+
+      Var powder := Target(who, TGTOPT_NOCHECK_LOS);
+      If (powder.objtype != 0xe7f)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        EraseObjProperty(item, "#inuse");
+        Return;
+      EndIf
+
+      DestroyItem(powder);
+
+      SetObjProperty(item, "#powder", 1);
+      PrintTextAbovePergon(who, item, "* Pulver wurde eingefüllt *");
+    EndIf
+
+    If (GetObjProperty(item, "#cannonball") != 1)
+      SendSysMessagePergon(who, "Wählt eine Kanonenkugel aus!");
+
+      Var cannonball := Target(who, TGTOPT_NOCHECK_LOS);
+      If (cannonball.objtype != 0xe73)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        EraseObjProperty(item, "#inuse");
+        Return;
+      EndIf
+
+      DestroyItem(cannonball);
+
+      SetObjProperty(item, "#cannonball", 1);
+      PrintTextAbovePergon(who, item, "* Kanonenkugel geladen *");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Die Kanone steht Euch als Gott sofort zur Verfügung!");
+  EndIf
+
+  SendSysMessagePergon(who, "Wählt das Ziel!", "Choose the target!");
+
+  Var location:=TargetCoordinates(who);
+
+  If (!location)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    EraseObjProperty(item, "#inuse");
+    Return;
+  EndIf
+
+  FireWorks(item, location, 5);
+
+  EraseObjProperty(item, "#powder");
+  EraseObjProperty(item, "#cannonball");
+  EraseObjProperty(item, "#inuse");
+EndProgram
+
+Function FireWorks(cannon, location, range)
+  Var locationx := location.x;
+  If (location.x > (cannon.x + 10))
+    locationx := cannon.x + 10;
+  EndIf
+
+  Var locationy := location.y;
+  If (location.y > (cannon.y + 10))
+    locationy := cannon.y + 10;
+  EndIf
+
+  // Kanonenrauch
+  Var coolflame:=CreateItemAtLocationPergon(cannon.x, cannon.y, cannon.z, FX_SMOKE, 1,cannon.realm);
+  PlaySoundEffect(cannon, SFX_11C);
+
+  // Kugel
+  PlayMovingEffectXYZ(cannon.x, cannon.y, cannon.z + 5, location.x, location.y, location.z + 10, 0xE73, 18, 0, 0,cannon.realm);
+  SleepMs(Distance(cannon, location) * 65);
+
+  // Explosion
+  Var explode1 := CreateItemAtLocationPergon(locationx, locationy, location.z, FX_EXPLODE_3, 1,cannon.realm);
+  Var explode2 := CreateItemAtLocationPergon(locationx, locationy, location.z, FX_EXPLODE_2, 1,cannon.realm);
+  PlaySoundEffect(location, SFX_220);
+
+  ApplyRangeDamagePergon(explode1, 40+RandomInt(80), range);
+
+  // ForEach mobile in ListMobilesNearLocation(locationx, locationy, location.z, range,cannon.realm)
+  //   PlayObjectCenteredEffect(mobile, FX_EXPLODE_3, 7, 7);
+  //   ApplyRawDamagePergon(mobile, RandomInt(80) + 40);
+  // EndForEach
+
+  Sleep(2);
+
+  DestroyItem(coolflame);
+  DestroyItem(explode1);
+  DestroyItem(explode2);
+EndFunction

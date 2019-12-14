@@ -1,0 +1,93 @@
+///////////////////////////////////////////////////////////////////////////
+// follow -- ein ausgewaehltes Mobile verfolgen
+
+use uo;
+include "include/msgs";
+include "include/server";
+include "include/varutil";
+include "include/onlinesearch";
+
+Program Follow(who, params)
+  // einfach prüfen, ob die Eingabe einen Char bezeichnet.
+  var tofollow; 
+  If (params)
+    tofollow := SearchForOnlineCharacter(who, params);
+    If (tofollow)
+      // Der Parameter hat einen Char bezeichnet => keine Parameter wie im Original gedacht.
+      params := "";
+    EndIf
+  Endif
+
+  params := SplitWords(params);
+
+  // Array konvertieren,
+  // ggf. mit Standardwerten auf Mindestlaenge bringen
+  If (params.size() < 1)
+    params.append(5);
+  Else
+    params[1] := CInt(params[1]);
+  EndIf
+  If (params.size() < 2)
+    params.append(2);
+  Else
+    params[2] := CInt(params[2]);
+  EndIf
+
+  // Parameter pruefen
+  If ((params[1] < 0) or (params[2] <= 0))
+    syslog(params);
+    SendSysMessagePergon(who,
+      "Parameter: Maximaldistanz (= 5) [Wartezeit (= 2)]",
+      "Parameters: maximum distance (= 5) [wait time (= 2)]"
+    );
+    return;
+  EndIf
+    
+  // Der Name könnte auch als dritter Parameter oder garnicht übergeben worden sein.
+  If (!tofollow)
+    If (params[3])
+      tofollow := SearchForOnlineCharacter(who, params[3]);
+    Else 
+      SendSysMessagePergon(who,
+        "Wen verfolgen? (Abbruch: Verfolgung beenden)",
+        "Follow who? (Cancel: End follow mode)"
+      );
+      tofollow := Target(who);
+    EndIf
+  EndIf
+  If (!tofollow)
+    SendSysMessagePergon(who,
+      "Verfolgung beendet",
+      "Follow mode left"
+    );
+    who.eraseprop(PROP_FOLLOWMODE);
+    return;
+  EndIf
+
+  If (!tofollow.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(who,
+      "Kein Mobile. Abbruch",
+      "Not a mobile. Cancelled"
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Verfolge "+tofollow.name,
+    "Following "+tofollow.name
+  );
+  // Daten sichern, ggf. Folgescript starten
+  var settings := struct{
+    serial := tofollow.serial,
+    dist   := params[1],
+    wait   := params[2]
+  };
+  If (who.getprop(PROP_FOLLOWMODE))
+    // verfolgt schon wen, einfach neue Daten schreiben
+    who.setprop(PROP_FOLLOWMODE, settings);
+  Else
+    // bisher keine Verfolgung, schreiben und Script starten
+    who.setprop(PROP_FOLLOWMODE, settings);
+    Start_ScriptPergon("control/followmode", who);
+  EndIf
+EndProgram

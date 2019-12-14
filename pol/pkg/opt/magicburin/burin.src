@@ -1,0 +1,73 @@
+//
+// Magic Burin - Unsichtbare Inschriften auf Items aufbringen
+//
+
+use attributes;
+use uo;
+
+include "include/client";
+include "include/modifyskill";
+
+Program use_burin(who)
+
+	SendSysMessagePergon(who, "Wählt ein Item.", "Choose an item.");
+	Var TargetObj := target(who);
+
+	If (!TargetObj)
+		SendSysMessagePergon(who, "Abbruch", "Abort");
+		Return;
+	EndIf
+
+	// Sigilviewer und Burin selbst nicht beschreibbar machen
+	If ( (TargetObj.objtype == 0xC003) or (TargetObj.objtype == 0xC004) )
+		SendSysMessagePergon(who, "Darauf könnt Ihr nicht schreiben!", "You can't affix a inscription.");
+		Return;
+	EndIf
+
+	// Logischerweise nur Items beschreibbar machen
+	If (TargetObj.isa(POLCLASS_ITEM))
+
+		// Nur Items im eigenen Backpack besiegeln können
+		If ((TargetObj.container != who.backpack) || (!TargetObj.container))
+			SendSysMessagePergon(who, "Ihr könnt nur Gegenstände im eigenen Rucksack mit einer Inschrift versehen.",
+			                          "You can only affix inscriptions on items lying in your backpack.");
+			Return;
+		EndIf
+
+		// Nur 1x Beschreiben zulassen. Sobald ein Siegel gesetzt wurde, war's das.
+		Var Siegel := GetObjProperty( TargetObj, "burin" );
+		If ((!Siegel) or (Siegel == ""))
+		    SendSysMessagePergon(who, "Es ist noch keine Inschrift aufgebracht worden.",
+		                              "There's no inscription affixed yet.");
+		Else
+		    SendSysMessagePergon(who, "Das Objekt wurde bereits mit einem Siegel versehen!",
+		                              "This object is already provided with an inscription!");
+		    Return;
+		EndIf
+
+		Var desc := RequestInputPergon(who, TargetObj, "Was möchtet Ihr schreiben?", "What do you want to write?");
+
+        if (desc)
+            desc := CChrZ(desc.uc_text);
+        endif
+
+		If ( (!desc) or (desc == "") )
+			SendSysMessagePergon(who, "Abbruch", "Abort");
+			Return;
+		EndIf
+
+		PlaySoundEffect(who, 0x247);
+
+		If ( CheckSkillPergon(who, SKILLID_MAGISCHEGEGENST, 50, 1) )
+			SetObjProperty(TargetObj, "burin", CStr(desc) );
+			SendSysMessagePergon(who, "Erfolgreich setzt Ihr die Inschrift.", "Successfully you affix the inscription.");
+		Else
+			SendSysMessagePergon(who, "Ihr seid nicht gelehrt genug, um eine Inschrift zu setzen.",
+			                          "You're not learned enough to affix an inscription.");
+		EndIf
+	Else
+		SendSysMessagePergon(who, "Darauf könnt Ihr nicht schreiben!",
+		                          "You can't affix an inscription on that!");
+		Return;
+	EndIf
+EndProgram

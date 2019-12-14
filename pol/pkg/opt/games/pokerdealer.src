@@ -1,0 +1,1120 @@
+/////////////////////////////////////////////////////////
+//
+//   pokerdealer - TexasHoldem Pokerspiel
+//                 die NPC-KI
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     09.10.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Use cfgfile;
+Use math;
+Use npc;
+Use os;
+Use uo;
+Use util;
+
+Include "include/eventid";
+Include "include/itemnpc";
+Include "include/msgs";
+Include "include/names";
+Include "include/packets";
+Include "include/pergonutil";
+Include "include/sysevent";
+Include "include/vetement";
+Include "poker";
+
+
+
+Var me:=Self();
+
+Program PokerDealer()
+  Var event;
+  If (!me.getprop("restart_ai"))
+    Habille(me, GetObjProperty(me, "Equipt")); //austatten nach "Equipt"
+    me.setprop("restart_ai",1);
+  EndIf
+  If (Me.name["<random>"])
+    SetName(Me, RandomName(Me));
+  EndIf
+
+  RegisterForSpeechEvents(me,2);           //  Sprache aktivieren
+  EnableEvents(SYSEVENT_DOUBLECLICKED,2);  //+ Doppelklick
+  While (1)
+    event:=Wait_For_Event(999);
+    If (event)
+      If (event.type==SYSEVENT_DOUBLECLICKED)
+        If (Distance(me,event.source)<=2)
+          StartPoker(event.source);
+        EndIf
+      ElseIf (event.type==SYSEVENT_SPEECH)
+        If ((lower(" "+event.text+" ")==" poker "))
+          StartPoker(event.source);
+        EndIf
+      EndIf
+    EndIf
+    SleepMS(2);
+  EndWhile
+EndProgram
+
+Function StartPoker(who)
+  Var i, player;
+  FreshCardsSet();
+  ActiveCardSet:=CardSet;
+
+  Game.Players:={};
+  Game.Spectators:={};
+  SayUC(CAscz("Gruesse! Wie soll gespielt werden?"),SAY_TEXTTYPE_DEFAULT,"DEU");
+  i:=SetGame(who);
+  If (!i)
+    SayUC(CAscz("Wie ihr wollt."),SAY_TEXTTYPE_DEFAULT,"DEU");
+    Return;
+  ElseIf (i==2)  // Will selber nur zuschauen
+    Var spec:=Spectator;
+    spec.mob:=who;
+    spec.GumpPID:=0;
+    Game.Spectators.append(spec);
+  Else
+    player:=PokerPlayer;
+    player.Player:=who;
+    player.Chips:=Game.ChipsPerPlayer;
+    Game.Players:={player};
+  EndIf
+  SayUC(CAscz("Wer soll teilnehmen?"),SAY_TEXTTYPE_DEFAULT,"DEU");
+  Var tar:=Target(who);
+  While (tar)
+    If ((tar.isA(POLCLASS_MOBILE)) && (!tar.isA(POLCLASS_NPC)))
+      i:=0;
+      ForEach player in (Game.Players)
+        If (player.Player.serial==tar.serial)
+          i:=1;
+          Break;
+        EndIf
+        SleepMS(2);
+      EndForEach
+      If (i);
+        SayUC(CAscz(tar.name+" nimmt bereits teil."),SAY_TEXTTYPE_DEFAULT,"DEU");
+      ElseIf (YesNo(tar));
+        player:=PokerPlayer;
+        player.Player:=tar;
+        player.Chips:=Game.ChipsPerPlayer;
+        Game.Players.append(player);
+        SayUC(CAscz(tar.name+" nimmt teil."),SAY_TEXTTYPE_DEFAULT,"DEU");
+        If (Game.Players.size()==8)  // 8 Max
+          Break;
+        EndIf
+      Else
+        SayUC(CAscz(tar.name+" lehnt ab."),SAY_TEXTTYPE_DEFAULT,"DEU");
+      EndIf
+    EndIf
+    tar:=Target(who);
+  EndWhile
+
+  // schleife bis alle out
+  Game.DealerButton:=RandomInt(Game.Players.size())+1;
+  If (Game.Players.size()==2) // Headsup sonderregel
+    Game.SmallBlindPlayer:=Game.DealerButton;
+  Else
+    Game.SmallBlindPlayer:=GetNextPlayer(Game.DealerButton);
+  EndIf
+  Game.BigBlindPlayer:=GetNextPlayer(Game.SmallBlindPlayer);
+  Game.CurrentPlayer:=GetNextPlayer(Game.BigBlindPlayer);
+  Game.FoldingPlayers:=0;
+  //Game.Blinds:=;
+  Game.Pot:=0;
+  Game.CurrentStakes:=0;
+  Game.Flop:={Card,Card,Card};
+  Game.Turn:={Card};
+  Game.River:={Card};
+  Var round_num:=1;
+  While (StartMatch())
+    Sleep(1);
+    round_num+=1;  // Alles zurücksetzen für nächste Runde
+    ActiveCardSet:=CardSet;
+    If (round_num%Game.BlindsRaiseTime==0)
+      Game.Blinds+=Game.BlindsRaise;
+    EndIf
+    Game.Pot:=0;
+    Game.CurrentStakes:=0;
+    Game.Flop:={Card,Card,Card};
+    Game.Turn:={Card};
+    Game.River:={Card};
+    For (i:=1;i<=Game.Players.size();i+=1)
+      If (Game.Players[i].Leaved)
+        Game.Players.erase(i);
+        i-=1;
+      ElseIf (!Game.Players[i].Player.connected)
+        If (GetProcess(Game.Players[i].GumpPid))  // zur Sicherheit mal schauen ob noch da
+          GetProcess(Game.Players[i].GumpPid).kill();
+        EndIf
+        Game.Players.erase(i);
+        i-=1;
+      EndIf
+      SleepMS(2);
+    EndFor
+    ForEach player in (Game.Players)
+      player.CanBet:=1;
+      If (player.Chips>0)
+        player.IsOut:=0;
+      Else
+        player.IsOut:=1;
+      EndIf
+      player.Leaved:=0;
+      player.LastAction:="";
+      player.Hand:={Card,Card};
+      player.BetToPot:=0;
+      player.FinalHand:={Card,Card,Card,Card,Card};
+      player.FinalHandType:=Unset;
+      If (GetProcess(player.GumpPid))
+        CloseGumpPergon(player.Player, player.GumpPid, 99);
+        GetProcess(player.GumpPid).kill();
+      EndIf
+      player.GumpPID:=0;
+      SleepMS(2);
+    EndForEach
+    Game.DealerButton:=GetNextPlayer(Game.DealerButton);
+    Var count:=CheckEnd(1);
+    If (count<=1)
+      Break;
+    ElseIf (count==2)  // Headsup sonderregel
+      Game.SmallBlindPlayer:=Game.DealerButton;
+    Else
+      Game.SmallBlindPlayer:=GetNextPlayer(Game.DealerButton);
+    EndIf
+    Game.BigBlindPlayer:=GetNextPlayer(Game.SmallBlindPlayer);
+    Game.CurrentPlayer:=GetNextPlayer(Game.BigBlindPlayer);
+  EndWhile
+  SayUC(CAscz("Spiel beendet"),SAY_TEXTTYPE_DEFAULT,"DEU");
+  ForEach player in (Game.Players)
+    If (player.GumpPid)
+      If (GetProcess(player.GumpPid))
+        CloseGumpPergon(player.Player, player.GumpPid, 99);
+        SleepMS(500);
+        If (GetProcess(player.GumpPid))
+          GetProcess(player.GumpPid).kill();
+        EndIf
+      EndIf
+    EndIf
+    player.GumpPID:=0;
+    SleepMS(2);
+  EndForEach
+  ForEach player in (Game.Spectators)
+    If (player.GumpPid)
+      If (GetProcess(player.GumpPid))
+        CloseGumpPergon(player.mob,player.GumpPid, 99);
+        SleepMS(500);
+        If (GetProcess(player.GumpPid))
+          GetProcess(player.GumpPid).kill();
+        EndIf
+      EndIf
+    EndIf
+    SleepMS(2);
+  EndForEach
+EndFunction
+
+// Schleife für eine Runde
+Function StartMatch()
+  If (!PayBlinds())
+    Return(0);
+  EndIf
+
+  GiveTwoCards();
+  ShowGumps();
+
+  Var ev;
+  While (1)
+    ev:=Wait_For_Event(30);
+    If (ev)
+      If (ev.type==SYSEVENT_DOUBLECLICKED)
+        SpectatorAppend(ev.source);
+      ElseIf ((ev.source.serial==Game.Players[Game.CurrentPlayer].Player.serial)
+        || (ev.type==EVID_POKER_LEAVE))
+        Case (ev.type)
+          EVID_POKER_FOLD:
+            Game.Players[Game.CurrentPlayer].IsOut:=1;
+            Game.Players[Game.CurrentPlayer].LastAction:="Fold";
+            Say("Spieler "+ev.source.name+": Fold");
+            If (CheckEnd())  // nurnoch einer?
+              Return(ShowDown(FOLD));
+            Else
+              Game.CurrentPlayer:=GetNextPlayer(Game.CurrentPlayer);
+              If (!Game.Players[Game.CurrentPlayer].CanBet) // nächste kann nichtbieten
+                If (CheckEnd(1)==2) // Headsup
+                  If (Game.Players[Game.CurrentPlayer].Chips==0) // allin vom nächsten
+                    Return(ShowDown(SHOWALL));
+                  ElseIf (Game.Players[GetNextPlayer(Game.CurrentPlayer)].Chips==0)
+                    Return(ShowDown(SHOWALL)); // oder allin vom anderen
+                  EndIf
+                EndIf
+                If (NextRound())  // nächste Runde
+                  Return(ShowDown(SHOWHANDS)); // war das ende
+                ElseIf (!Game.Players[Game.CurrentPlayer].CanBet) // können in nächster auch nicht bieten
+                  Return(ShowDown(SHOWALL)); // komplettes ende
+                EndIf
+              EndIf
+              ShowGumps();
+            EndIf
+
+          EVID_POKER_CALL:
+            Game.Players[Game.CurrentPlayer].LastAction:="Call";
+            Var ChipsToPay:=Game.Currentstakes-Game.Players[Game.CurrentPlayer].BetToPot;
+            If (ChipsToPay>0) // muß was bezahlen
+              If (CanPay(Game.CurrentPlayer,ChipsToPay))  // kanns auch bezahlen
+                Say("Spieler "+ev.source.name+": Call");
+                Game.Players[Game.CurrentPlayer].Chips -= ChipsToPay;
+                Game.Players[Game.CurrentPlayer].BetToPot +=ChipsToPay;
+                Game.Pot+=ChipsToPay;
+              Else // kanns nicht bezahlen
+                If (Game.Players[Game.CurrentPlayer].Chips==0)
+                  Say("Spieler "+ev.source.name+": Check");  // ist schon allin
+                  Game.Players[Game.CurrentPlayer].LastAction:="Check";
+                Else // kann bissle was bezahlen
+                  Game.Players[Game.CurrentPlayer].BetToPot +=Game.Players[Game.CurrentPlayer].Chips;
+                  Game.Pot+=Game.Players[Game.CurrentPlayer].Chips;
+                  Say("Spieler "+ev.source.name+": All in um "+Game.Players[Game.CurrentPlayer].Chips);
+                  Game.Players[Game.CurrentPlayer].Chips:=0;
+                EndIf
+              EndIf
+            Else // brauch nix zu bezahlen
+              Say("Spieler "+ev.source.name+": Check");
+              Game.Players[Game.CurrentPlayer].LastAction:="Check";
+            EndIf
+            Game.Players[Game.CurrentPlayer].CanBet:=0;  // darf nix mehr machen
+            Game.CurrentPlayer:=GetNextPlayer(Game.CurrentPlayer);
+            If (!Game.Players[Game.CurrentPlayer].CanBet)  // darf der nächste noch?
+              If (CheckEnd(1)==2) // Headsup
+                If (Game.Players[Game.CurrentPlayer].Chips==0) // allin vom nächsten
+                  Return(ShowDown(SHOWALL));
+                ElseIf (Game.Players[GetNextPlayer(Game.CurrentPlayer)].Chips==0)
+                  Return(ShowDown(SHOWALL)); // oder allin vom anderen
+                EndIf
+              EndIf
+              If (NextRound()) // nächste Runde
+                Return(ShowDown(SHOWHANDS)); // war ende
+              ElseIf (!Game.Players[Game.CurrentPlayer].CanBet) // kann da aber nicht bieten
+                Return(ShowDown(SHOWALL));  // also showdown
+              EndIf
+            EndIf
+            ShowGumps();
+
+          EVID_POKER_RAISE:
+            Game.Players[Game.CurrentPlayer].LastAction:="Raise";
+            If (Game.Players[Game.CurrentPlayer].Chips==0) // hat keine Chips mehr
+              Say("Spieler "+ev.source.name+": Check");
+              Game.Players[Game.CurrentPlayer].LastAction:="Check";
+            Else
+              Var ChipsToPay:=Game.Currentstakes-Game.Players[Game.CurrentPlayer].BetToPot;
+              If (Game.Players[Game.CurrentPlayer].Chips<=(ev.raise+ChipsToPay)) // allin
+                //Game.Currentstakes+=Abs(ChipsToPay-Game.Players[Game.CurrentPlayer].Chips); //mmmh Fehler?XXX
+                Game.Currentstakes:=
+                  Max(Game.Currentstakes,
+                      Game.Players[Game.CurrentPlayer].Chips
+                      +Game.Players[Game.CurrentPlayer].BetToPot);
+                ChipsToPay:=Game.Players[Game.CurrentPlayer].Chips;
+                Say("Spieler "+ev.source.name+": All in um "+Game.Players[Game.CurrentPlayer].Chips);
+              Else
+                If (ChipsToPay==0)  // war der erste Raise
+                  Say("Spieler "+ev.source.name+": Bet "+ev.raise);
+                Else
+                  Say("Spieler "+ev.source.name+": Raise um "+ev.raise);
+                EndIf
+                ChipsToPay+=ev.raise;
+                Game.Currentstakes+=ev.raise;
+              EndIf
+              Game.Players[Game.CurrentPlayer].Chips -= ChipsToPay;
+              Game.Players[Game.CurrentPlayer].BetToPot +=ChipsToPay;
+
+              Game.Pot+=ChipsToPay;
+              ForEach player in (Game.Players)  // jeder kann wieder was machen
+                If ((player.Chips==0) || (player.IsOut))
+                  player.CanBet:=0;
+                Else
+                  player.CanBet:=1;
+                EndIf
+                SleepMS(2);
+              EndForEach
+              Game.Players[Game.CurrentPlayer].CanBet:=0; // nur der der geraised hat nicht
+              If (!Game.Players[GetNextPlayer(Game.CurrentPlayer)].CanBet) // darf nix dann showdown
+                Return(ShowDown(SHOWALL));
+              EndIf
+            EndIf
+            Game.Players[Game.CurrentPlayer].CanBet:=0; // nur der der geraised hat nicht
+            Game.CurrentPlayer:=GetNextPlayer(Game.CurrentPlayer);
+            ShowGumps();
+
+          EVID_POKER_LEAVE:  // winke
+            If (LeaveGame(ev.nr,ev.source.serial))
+              Return(0);
+            EndIf
+          default:
+        EndCase
+      Else
+        If (CheckConnected()<=1)
+          Say("Huch wo seid ihr denn?");
+          Break;
+        EndIf
+      EndIf
+    Else
+      If (CheckConnected()<=1)
+        Say("Huch wo seid ihr denn?");
+        Break;
+      EndIf
+    EndIf
+  EndWhile
+EndFunction
+
+// [Zeigt alle restlichen Karten]
+// holt Gewinner
+// zeigt Gumps
+// und wartet bis alle Ok drücken (timeout)
+Function ShowDown(ende)
+  If (ende==SHOWALL) // SHOWALL wird nicht im Gump verwendet
+    ende:=SHOWHANDS; // nur hier für Schleife
+    Say("ShowDown");
+    While (!NextRound())
+      ShowGumps(ende);
+      If (CheckConnected()<=1)
+        Say("Huch wo seid ihr alle?");
+        Return(0);
+      EndIf
+      Sleep(2);
+    EndWhile
+  EndIf
+  GetWinner();
+  ShowGumps(ende);
+
+  Var ev;
+  Var timeout:=ReadGameClock()+30;
+  Var i:=0;
+  While (1)
+    ev:=Wait_For_Event(5);
+    If (ev.type==EVID_POKER_OK)
+      i+=1;
+      If (i>=Game.Players.size())
+        Break;
+      EndIf
+    EndIf
+    If (CheckConnected()<=1)
+      Say("Huch wo seid ihr alle?");
+      Return(0);
+    EndIf
+    If (ReadGameClock()>timeout)
+      Break;
+    EndIf
+  EndWhile
+  Return(1);
+EndFunction
+
+// da will wer zuschauen
+Function SpectatorAppend(who)
+  Var i;
+  For (i:=1;i<=Game.Spectators.size();i+=1)
+    If (Game.Spectators[i].mob.serial==who.serial)
+      Return;
+    EndIf
+    SleepMS(2);
+  EndFor
+  Var spec:=Spectator;
+  spec.mob:=who;
+  spec.GumpPID:=Start_ScriptPergon(":games:pokergump",{Game,who,0,me,0}).pid;
+  Game.Spectators.append(spec);
+EndFunction
+
+// verlässt das spiel
+Function LeaveGame(nr,serial)
+  If (nr==0)  // Spectator
+    Var i;
+    For (i:=1;i<=Game.Spectators.size();i+=1)
+      If (!Game.Spectators[i].mob.connected)
+        Game.Spectators.erase(i);
+        i-=1;
+      ElseIf (Game.Spectators[i].mob.serial==serial)
+        Game.Spectators.erase(i);
+        i-=1;
+      EndIf
+      SleepMS(2);
+    EndFor
+    Return;
+  EndIf
+  If (Game.Players[nr].Player.serial<>serial) // irgendwas falsch
+    Game.Players[nr].GumpPid:=Start_ScriptPergon(":games:pokergump",{Game,Game.Players[nr].Player,nr,me,0}).pid;
+    Return(0);
+  EndIf
+  If (Game.CurrentPlayer==nr)  // aktueller darf nicht
+    Game.Players[nr].GumpPid:=Start_ScriptPergon(":games:pokergump",{Game,Game.Players[nr].Player,nr,me,0}).pid;
+    Return(0);
+  EndIf
+  Game.Players[nr].IsOut:=1;
+  Game.Players[nr].Leaved:=1;
+  If (CheckEnd(1)==1)  // bleibt nurnoch einer über also ende
+    Return(1);
+  EndIf
+  Return(0);
+EndFunction
+
+// sucht small/bigblind und lässt sie blechen
+Function PayBlinds()
+  While (1)
+    If (CheckConnected()<=1)
+      Say("Huch wo seid ihr alle?");
+      Return(0);
+    EndIf
+    If (!CanPay(Game.SmallBlindPlayer,CInt(Game.Blinds/2)))
+      Game.Players[Game.SmallBlindPlayer].IsOut:=1;
+      If (CheckEnd())
+        Return(0);
+      EndIf
+      Game.SmallBlindPlayer:=GetNextPlayer(Game.SmallBlindPlayer);
+      Game.BigBlindPlayer:=GetNextPlayer(Game.SmallBlindPlayer);
+      Game.CurrentPlayer:=Game.SmallBlindPlayer;
+    Else
+      Break;
+    EndIf
+    SleepMS(2);
+  EndWhile
+
+  Game.Players[Game.SmallBlindPlayer].Chips -= CInt(Game.Blinds/2);
+  Game.Players[Game.SmallBlindPlayer].BetToPot += CInt(Game.Blinds/2);
+  Game.Pot+=CInt(Game.Blinds/2);
+
+  While (1)
+    If (CheckConnected()<=1)
+      Say("Huch wo seid ihr alle?");
+      Return(0);
+    EndIf
+    If (!CanPay(Game.BigBlindPlayer,Game.Blinds))
+      Game.Players[Game.BigBlindPlayer].IsOut:=1;
+      If (CheckEnd())
+        Return(0);
+      EndIf
+      Game.BigBlindPlayer:=GetNextPlayer(Game.BigBlindPlayer);
+    Else
+      Break;
+    EndIf
+    SleepMS(2);
+  EndWhile
+  Game.Players[Game.BigBlindPlayer].Chips -= Game.Blinds;
+  Game.Players[Game.BigBlindPlayer].BetToPot += Game.Blinds;
+  Game.Pot+=Game.Blinds;
+  Game.CurrentStakes:=Game.Blinds;
+  Return(1);
+EndFunction
+
+// kann er bezahlen
+Function CanPay(player,ChipsToPay)
+  If (Game.Players[player].Chips>ChipsToPay)
+    Return(1);
+  EndIf
+  Return(0);
+EndFunction
+
+// gibt jedem 2 karten
+Function GiveTwoCards()
+  ForEach player in (Game.Players)
+    If (!player.IsOut)
+      GetCard(player.Hand[1]);
+      GetCard(player.Hand[2]);
+    EndIf
+    SleepMS(2);
+  EndForEach
+EndFunction
+
+// zeigt Gumps und beendet alte
+Function ShowGumps(end:=SHOWNORMAL)
+  Var script;
+  ForEach mobile in (Game.Players)
+    If (!mobile.Leaved)
+      script:=Start_ScriptPergon(":games:pokergump",{Game,mobile.Player,_mobile_iter,me,end});
+      If (mobile.GumpPid)
+        If (GetProcess(mobile.GumpPid))
+          CloseGumpPergon(mobile.Player, mobile.GumpPid, 99);
+          SleepMS(500);
+          If (GetProcess(mobile.GumpPid))
+            GetProcess(mobile.GumpPid).kill();
+          EndIf
+        EndIf
+      EndIf
+      mobile.GumpPid:=script.pid;
+    EndIf
+    SleepMS(2);
+  EndForEach
+  Var i;
+  For (i:=1;i<=Game.Spectators.size();i+=1)
+    If (Game.Spectators[i].mob.connected)
+      script:=Start_ScriptPergon(":games:pokergump",{Game,Game.Spectators[i].mob,0,me,end});
+      If (Game.Spectators[i].GumpPID)
+        If (GetProcess(Game.Spectators[i].GumpPid))
+          CloseGumpPergon(Game.Spectators[i].mob, Game.Spectators[i].GumpPID, 99);
+          SleepMS(500);
+          If (GetProcess(Game.Spectators[i].GumpPID))
+            GetProcess(Game.Spectators[i].GumpPID).kill();
+          EndIf
+        EndIf
+      EndIf
+      Game.Spectators[i].GumpPID:=script.pid;
+    Else
+      If (Game.Spectators[i].GumpPID)
+        If (GetProcess(Game.Spectators[i].GumpPid))
+          GetProcess(Game.Spectators[i].GumpPID).kill();
+        EndIf
+      EndIf
+      Game.Spectators.erase(i);
+      i-=1;
+    EndIf
+    SleepMS(2);
+  EndFor
+EndFunction
+
+
+// nächste Playerpos
+Function GetNextPlayer(startPos)
+  Var ok:=0;
+  Var nextPos:=startPos+1;
+  Var i:=Game.Players.size()*2;  // einfach mal max 2mal durchlaufen lassen
+  If (i==0)
+    Return(1);
+  EndIf
+  Repeat
+    i-=1;
+    If (nextPos>Game.Players.size())
+      nextPos:=1;
+    EndIf
+    If (Game.Players[nextPos].isOut)
+      nextPos+=1;
+    ElseIf (!Game.Players[nextPos].Player.connected)
+      Game.Players[nextPos].IsOut:=1;
+      nextPos+=1;
+    Else
+      ok:=1;
+    EndIf
+    SleepMS(2);
+  Until ((ok) || (!i));
+  Return(nextPos);
+EndFunction
+
+// wieviel können mitspielen
+// [reines zählen] oder true wenn nur einer da ist
+Function CheckEnd(count:=0)
+  Var outCount:=0;
+  ForEach player in (Game.Players)
+    If (player.IsOut)
+      outCount+=1;
+    ElseIf (!player.Player.connected)
+      player.IsOut:=1;
+      outCount+=1;
+    ElseIf (player.Player.dead)
+      player.IsOut:=1;
+      outCount+=1;
+    EndIf
+    SleepMS(2);
+  EndForEach
+  If (count)
+    Return(Game.Players.size()-outCount);
+  EndIf
+  If (outCount+1>=Game.Players.size())  // Nurnoch einer übrig
+    Return(1);
+  EndIf
+  Return(0);
+EndFunction
+
+// alle da? bei Tod automatisches Fold
+Function CheckConnected()
+  Var outCount:=0;
+  ForEach player in (Game.Players)
+    If (!player.Player.connected) // Fold wird über gump gemacht
+      outCount+=1;
+    ElseIf (player.Player.dead)
+      If (_player_iter==Game.CurrentPlayer)
+        If (player.GumpPid)
+          If (GetProcess(player.GumpPid))
+            CloseGumpPergon(player.Player, player.GumpPid, 99);
+            SleepMS(500);
+            If (GetProcess(player.GumpPid))
+              GetProcess(player.GumpPid).kill();
+            EndIf
+         EndIf
+        EndIf
+        Var ev:=struct{source,type,nr};
+        ev.type:=EVID_POKER_FOLD;
+        ev.nr:=_player_iter;
+        ev.source:=player.Player;
+        SendEvent(Me,ev);
+      EndIf
+      outCount+=1;
+    EndIf
+    SleepMS(2);
+  EndForEach
+  Return(Game.Players.size()-outCount);
+EndFunction
+
+
+// Zieht Tablecards und setzt Player zurück
+Function NextRound()
+  Var burncard;
+  If (Game.Flop[1].value==NoCard)
+    GetCard(burncard);
+    GetCard(Game.Flop[1]);
+    GetCard(Game.Flop[2]);
+    GetCard(Game.Flop[3]);
+  ElseIf (Game.Turn[1].value==NoCard)
+    GetCard(burncard);
+    GetCard(Game.Turn[1]);
+  ElseIf (Game.River[1].value==NoCard)
+    GetCard(burncard);
+    GetCard(Game.River[1]);
+  Else
+    Return(1);
+    // EndMatch
+  EndIf
+  ForEach player in (Game.Players)
+    If ((player.Chips==0) || (player.IsOut))
+      player.CanBet:=0;
+    Else
+      player.CanBet:=1;
+      player.LastAction:="";
+    EndIf
+    SleepMS(2);
+  EndForEach
+  Game.CurrentPlayer:=GetNextPlayer(Game.Dealerbutton);
+  Return(0);
+EndFunction
+
+// zieht ne Karte
+Function GetCard(byref c)
+  Var i:=RandomInt(ActiveCardSet.size())+1;
+  c:=ActiveCardSet[i];
+  ActiveCardSet.erase(i);
+EndFunction
+
+
+// Wer hat gewonnen?
+Function GetWinner()
+  Var playersIn:={};
+  ForEach mobile in (Game.Players) // wer ist noch dabei?
+    If (!mobile.IsOut)
+      playersIn.append(_mobile_iter);
+    EndIf
+    SleepMS(2);
+  EndForEach
+  If (playersIn.size())
+    If (playersIn.size()==1)  // Nur einer noch übrig
+      Game.Players[playersIn[1]].Chips+=Game.Pot;
+      Say("Gewonnen hat: "+Game.Players[playersIn[1]].Player.name);
+      Say("Pot: "+Game.Pot);
+      ForEach player in (Game.Players)
+        player.BetToPot:=0;
+        SleepMS(2);
+      EndForEach
+    Else  // sind mehrere
+      ForEach player in playersIn // erstmal für jeden Kartentyp bestimmen
+        SortCardsByValue(Game.Players[player]);  // erstmal nach größe sortieren
+        Var isStraight:=CheckStraight(Game.Players[player].FinalHand); // um nicht 2mal testen zu müssen
+        If (CheckFlush(Game.Players[player].FinalHand))
+          If (isStraight)
+            Game.Players[player].FinalHandType:=StraightFlush;
+          Else
+            Game.Players[player].FinalHandType:=Flush;
+          EndIf
+        ElseIf (isStraight)
+          Game.Players[player].FinalHandType:=Straight;
+        Else
+          Game.Players[player].FinalHandType:=CheckMultiCards(Game.Players[player].FinalHand);
+        EndIf
+        SleepMS(2);
+      EndForEach
+
+      Var highest:=0;
+      Var winners:={};
+      Var i,dummy;
+      Var lowestbet:=-1;
+      // nur dummy schleife um definitiv jeden Fall von verschiedenen Bets mitzubekommen
+      For (dummy:=1;dummy<=playersIn.size();dummy+=1)
+        lowestbet:=-1;
+        ForEach p in playersIn  // kleinsten Bet holen
+          If (Game.Players[p].BetToPot>0)
+            If ((!Game.Players[p].IsOut) && ((lowestbet==-1) || (lowestbet>Game.Players[p].BetToPot)))
+              lowestbet:=Game.Players[p].BetToPot;
+            EndIf
+          EndIf
+          SleepMS(2);
+        EndForEach
+
+        If (lowestbet>-1)
+          highest:=0;
+          winners:={};
+          ForEach p in playersIn
+            If (Game.Players[p].BetToPot==0)
+              Continue;
+            EndIf
+            // Wer hat gewonnen
+            If (Game.Players[p].FinalHandType>highest) //Höherer Handtyp
+              winners:={};
+              winners.append(p);
+              highest:=Game.Players[p].FinalHandType;
+            ElseIf (Game.Players[p].FinalHandType==highest) // Gleicher Typ
+              For (i:=1;i<=5;i+=1) // 5 besten Karten durchgehen
+                If (Game.Players[p].FinalHand[i].value > Game.Players[winners[1]].FinalHand[i].value)
+                  // Höhere Karte
+                  winners:={};
+                  winners.append(p);
+                  highest:=Game.Players[p].FinalHandType;
+                  Break;
+                ElseIf (Game.Players[p].FinalHand[i].value < Game.Players[winners[1]].FinalHand[i].value)
+                  // Schlechter
+                  Break;
+                ElseIf (i==5) // Gleich
+                  winners.append(p);
+                EndIf
+                SleepMS(2);
+              EndFor
+            EndIf
+            SleepMS(2);
+          EndForEach
+          Var collect:=0;
+          ForEach p in (Game.Players) // was ist zu holen
+            SleepMS(2);
+            If (p.BetToPot==0)
+              Continue;
+            EndIf
+            collect+=Min(lowestbet,p.BetToPot);
+            p.BetToPot-=Min(lowestbet,p.BetToPot);
+          EndForEach
+          Game.Pot-=collect;
+          If (winners.size()==1)
+            Say("Gewinner ist "+Game.Players[winners[1]].Player.name);
+            Say("Mit "+HandTypeToString(Game.Players[winners[1]].FinalHandType));
+            ForEach c in (Game.Players[winners[1]].FinalHand)
+              Say(CardToString(c.value));
+              SleepMS(2);
+            EndForEach
+            Game.Players[winners[1]].Chips+=collect;
+            Say("Gewinnt "+collect);
+          Else
+            Say("Splitpot mit "+HandTypeToString(Game.Players[winners[1]].FinalHandType));
+            ForEach winner in winners
+              Game.Players[winner].Chips+=CInt(collect/winners.size());
+            EndForEach
+            Say("Gewinnen "+CInt(collect/winners.size()));
+          EndIf
+        Else // kein lowestbet mehr vorhanden
+          Break;
+        EndIf
+      EndFor
+    EndIf
+  EndIf
+  Game.Pot:=0;
+  Game.CurrentStakes:=0;
+EndFunction
+
+// sortiert nach Größe
+Function SortCardsByValue(byref player)
+  Var i,j,temp;
+  Var allcards:=Game.Flop+Game.Turn+Game.River+player.Hand;
+  For (i:=1;i<=allcards.size();i+=1)
+    For (j:=1;j<=allcards.size();j+=1)
+      If (allcards[j].Value<allcards[i].Value)
+        temp:=allcards[i];
+        allcards[i]:=allcards[j];
+        allcards[j]:=temp;
+      EndIf
+      SleepMS(2);
+    EndFor
+  EndFor
+  player.FinalHand:=allcards; // packt die 7 karten in die Hand
+EndFunction
+
+// isses nen Flush
+Function CheckFlush(byref hand)
+  Var AnzKreuz:=0,AnzPik:=0,AnzHerz:=0,AnzKaro:=0;
+  ForEach Finalcard in hand  // Farben zählen
+    If (Finalcard.color==Kreuz)
+      AnzKreuz+=1;
+    ElseIf (Finalcard.color==Pik)
+      AnzPik+=1;
+    ElseIf (Finalcard.color==Herz)
+      AnzHerz+=1;
+    Else
+      AnzKaro+=1;
+    EndIf
+    SleepMS(2);
+  EndForEach
+  If ((AnzKreuz==7) || (AnzPik==7) || (AnzHerz==7) || (AnzKaro==7))
+    Return(1); // alle selbe Farbe
+  ElseIf ((AnzKreuz<5) && (AnzPik<5) && (AnzHerz<5) && (AnzKaro<5))
+    Return(0); // weniger als 5
+  EndIf
+
+  // weniger als 7 also andere Farben entfernen
+  If (AnzKreuz>=5)
+    RemoveCardsNotOfColor(hand,Kreuz);
+  ElseIf (AnzPik>=5)
+    RemoveCardsNotOfColor(hand,Pik);
+  ElseIf (AnzHerz>=5)
+    RemoveCardsNotOfColor(hand,Herz);
+  Else
+    RemoveCardsNotOfColor(hand,Karo);
+  EndIf
+  Return(1);
+EndFunction
+
+
+// isses Straight
+Function CheckStraight(byref hand)
+  Var i,valuedict:=dictionary;
+  Var newhand:={};
+  ForEach finalcard in hand // zur leichteren Analyse in dict packen
+    If (valuedict.exists(finalcard.value))
+      valuedict[finalcard.value].append(finalcard);
+    Else
+      valuedict[finalcard.value]:={finalcard};
+    EndIf
+    SleepMS(2);
+  EndForEach
+
+  For (i:=10;i>=2;i-=1) // von 10 bis 2 Durchgehen (10,J,D,K,As ist höchstes)
+    If (valuedict.exists(i))
+      If (valuedict.exists(i+1))
+        If (valuedict.exists(i+2))
+          If (valuedict.exists(i+3))
+            If (valuedict.exists(i+4))
+              newhand:={};
+              newhand.append(valuedict[i+4][1]);  // +4 ist die höhere Karte
+              newhand.append(valuedict[i+3][1]);
+              newhand.append(valuedict[i+2][1]);
+              newhand.append(valuedict[i+1][1]);
+              newhand.append(valuedict[i][1]);
+              hand:=newhand; // Finalhand mit den 5 füllen
+              Return(1);
+            EndIf
+          EndIf
+        EndIf
+      EndIf
+    EndIf
+    SleepMS(2);
+  EndFor
+  If (valuedict.exists(Ace)) // As zählt auch als Low
+    If (valuedict.exists(Two))
+      If (valuedict.exists(Three))
+        If (valuedict.exists(Four))
+          If (valuedict.exists(Five))
+            newhand:={};
+            newhand.append(valuedict[Five][1]);
+            newhand.append(valuedict[Four][1]);
+            newhand.append(valuedict[Three][1]);
+            newhand.append(valuedict[Two][1]);
+            newhand.append(valuedict[Ace][1]);
+            hand:=newhand;  // Finalhand mit den 5 füllen
+            Return(1);
+          EndIf
+        EndIf
+      EndIf
+    EndIf
+  EndIf
+
+  Return(0);
+EndFunction
+
+// Ungleiche Farbe entfernen
+Function RemoveCardsNotOfColor(byref hand,color)
+  Var i;
+  For (i:=1;i<=hand.size();i+=1)
+    If (hand[i].color<>color)
+      hand.erase(i);
+      i-=1;
+    EndIf
+    SleepMS(2);
+  EndFor
+EndFunction
+
+// Pärchen,Three/FourOfAKind/Fullhouse
+Function CheckMultiCards(byref hand)
+  Var twostart1:=0,twostart2:=0,twostart3:=0;
+  Var threestart1:=0,threestart2:=0;
+  Var i;
+  For (i:=1;i<hand.size();i+=1) // alle Karten durchgehen
+    If (i<=4) // die ersten 4 können nen Vierling starten
+      If ((hand[i].value==hand[i+1].value)
+        &&(hand[i].value==hand[i+2].value)
+        &&(hand[i].value==hand[i+3].value))
+        OnFour(hand,i);
+        Return(FourOfAKind);
+      EndIf
+    EndIf
+    If (i<=5) // die ersten 5 nen drilling
+      If ((hand[i].value==hand[i+1].value)
+        &&(hand[i].value==hand[i+2].value))
+        If (!threestart1) // gibts schon einen?
+          threestart1:=i;
+          Continue;
+        Else
+          threestart2:=i;
+          Break;
+        EndIf
+      EndIf
+    EndIf
+    If (i<=6) // die ersten 6 nen pärchen
+      If (hand[i].value==hand[i+1].value)
+        If (threestart1)
+          If (threestart1==i-1) //ist rest vom threekind
+            Continue;
+          EndIf
+        EndIf
+        If (!twostart1)  // gibts nr1 ?
+          twostart1:=i;
+        ElseIf (!twostart2) // gibts nr2 ?
+          twostart2:=i;
+        Else
+          twostart3:=i;
+          Break;
+        EndIf
+      EndIf
+    EndIf
+    SleepMS(2);
+  EndFor
+  If (threestart1)  // gibts nen drillinge
+    If (threestart2) // noch einen
+      If (hand[threestart1].value>hand[threestart2].value) // nach größe sortieren
+        OnFullHouse(hand,threestart1,threestart2);
+      Else
+        OnFullHouse(hand,threestart2,threestart1);
+      EndIf
+      Return(FullHouse);
+    ElseIf (twostart1) // drilling + mindestens 1 pärchen
+      If ((twostart2) && (hand[twostart2].value>hand[twostart1].value)) //drilling + 2pärchen
+        OnFullHouse(hand,threestart1,twostart2);
+      Else
+        OnFullHouse(hand,threestart1,twostart1);
+      EndIf
+      Return(FullHouse);
+    Else  // nur ein drilling
+      If (threestart1==1)  // wie muß die Hand gefüllt werden?
+        hand:={hand[1],hand[2],hand[3],hand[4],hand[5]};
+      ElseIf (threestart1==2)
+        hand:={hand[2],hand[3],hand[4],hand[1],hand[5]};
+      Else
+        hand:={hand[threestart1],hand[threestart1+1],hand[threestart1+2],hand[1],hand[2]};
+      EndIf
+      Return(ThreeOfAKind);
+    EndIf
+  ElseIf (twostart1)  // ein pärchen
+    If (twostart2)    // noch eins
+      If ((twostart3) && (!(hand[twostart1].value>hand[twostart3].value && hand[twostart2].value>hand[twostart3].value)))
+        Syslog("FEHLER 3 Pairs mit falscher Reihenfolge!");  // ohje
+      Else  // es interessieren nur die ersten 2 pärchen (da bei sortieren karten gesucht wurde)
+        Var high:=1; // wo isn die highcard
+        If ((twostart1==1)||(twostart2==1))
+          If ((twostart1==3)||(twostart2==3))
+            high:=5;
+          Else
+            high:=3;
+          EndIf
+        EndIf
+        If (hand[twostart1].value>hand[twostart2].value)  // sortieren
+          hand:={hand[twostart1],hand[twostart1+1],hand[twostart2],hand[twostart2+1],hand[high]};
+        Else
+          hand:={hand[twostart2],hand[twostart2+1],hand[twostart1],hand[twostart1+1],hand[high]};
+        EndIf
+        Return(TwoPairs);
+      EndIf
+    ElseIf (twostart1==1)  // nur ein pärchen
+      hand:={hand[1],hand[2],hand[3],hand[4],hand[5]};
+    ElseIf (twostart1==2)
+      hand:={hand[2],hand[3],hand[1],hand[4],hand[5]};
+    ElseIf (twostart1==3)
+      hand:={hand[3],hand[4],hand[1],hand[2],hand[5]};
+    Else
+      hand:={hand[twostart1],hand[twostart1+1],hand[1],hand[2],hand[3]};
+    EndIf
+    Return(Pair);
+  Else  // nix getroffen
+    hand:={hand[1],hand[2],hand[3],hand[4],hand[5]};
+    Return(HighCard);
+  EndIf
+EndFunction
+
+// Wie muß bei Fullhouse die Hand gefüllt werden
+Function OnFullHouse(byref hand,startthree,starttwo)
+  hand:={hand[startthree],hand[startthree+1],hand[startthree+2],hand[starttwo],hand[starttwo+1]};
+EndFunction
+
+
+// und bei nem Vierling?
+Function OnFour(byref hand,start)
+  If (start==1)
+    hand:={hand[1],hand[2],hand[3],hand[4],hand[5]};
+  Else
+    hand:={hand[start],hand[start+1],hand[start+2],hand[start+3],hand[1]};
+  EndIf
+EndFunction
+
+
+// Einstellungen OK?
+Function YesNo(who)
+  Var layoutyn := {"nodispose",
+                   "page 0",
+                   "gumppic 0 0 1140",
+                   "button 115 200 2130 2129 1 0 1",
+                   "button 205 200 2119 2120 1 0 0",
+                   "htmlgump 57 40 278 135 0 0 0"
+                  };
+
+  Var datayn := {"<center>Wollt Ihr teilnehmen?</center>"
+                 +"<br> Chips: "+Game.ChipsPerPlayer
+                 +"<br> Blinds: "+Game.Blinds
+                 +"<br> Blinds Erhoehung: "+Game.BlindsRaise
+                 +"<br> alle "+Game.BlindsRaiseTime+" Runden"};
+  Var res := SendDialogGump( who, layoutyn, datayn,100,100 );
+
+  If (res)
+    Return(1);
+  Else
+    Return(0);
+  EndIf
+EndFunction
+
+// Spiel Einstellen
+Function SetGame(who)
+  Var res:=SendTextEntryGump( who, "Wieviel Chips pro Spieler?",
+                                   TE_CANCEL_DISABLE, TE_STYLE_NUMERICAL, 100000);
+  Game.ChipsPerPlayer:=CInt(res);
+  res:=SendTextEntryGump( who, "Blinds?",
+                               TE_CANCEL_DISABLE, TE_STYLE_NUMERICAL, 100000);
+  Game.Blinds:=CInt(res);
+  res:=SendTextEntryGump( who, "Nach wieviel Runden erhoehen sich die Blinds?",
+                               TE_CANCEL_DISABLE, TE_STYLE_NUMERICAL, 100000);
+  Game.BlindsRaiseTime:=CInt(res);
+  res:=SendTextEntryGump( who, "Um wieviel erhoehen sich die Blinds?",
+                               TE_CANCEL_DISABLE, TE_STYLE_NUMERICAL, 100000);
+  Game.BlindsRaise:=CInt(res);
+
+  Var layoutyn := {"nodispose",
+                   "page 0",
+                   "gumppic 0 0 1140",
+                   "button 115 200 2130 2129 1 0 1",
+                   "button 205 200 2119 2120 1 0 0",
+                   "htmlgump 57 40 278 115 0 0 0",
+                   "button 57 155 2117 2117 1 0 2",
+                   "text 80 152 0 1"
+                  };
+
+  Var datayn := {"<center>Alles korrekt?</center>"
+                 +"<br> Chips: "+Game.ChipsPerPlayer
+                 +"<br> Blinds: "+Game.Blinds
+                 +"<br> Blinds Erhoehung: "+Game.BlindsRaise
+                 +"<br> alle "+Game.BlindsRaiseTime+" Runden",
+                 "Nur zuschauen"};
+  res := SendDialogGump( who, layoutyn, datayn,100,100 );
+
+  If (res[2])
+    Return(2);
+  ElseIf (res[1])
+    Return(1);
+  Else
+    Return(0);
+  EndIf
+EndFunction

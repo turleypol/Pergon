@@ -1,0 +1,18 @@
+//
+//  05.03.2000 - Fraggulus - Trennung der Elemente (Feuer, Gift)
+//	04.01.2002 - Fraggulus - Tote ausschliessen
+//
+
+use util;
+
+Include "include/poison";
+Include "traps";
+
+Program Walk_on_Poison_Trap(mobile, trap)
+
+	If (!mobile.dead && (mobile.cmdlevel < CMDLEVEL_SEER))
+		Var dieroll := PlayTrapEffect(trap);
+
+		AddPoisonLevel(mobile, RandomDiceRoll(dieroll)); // Vergiftung durchfuehren
+	Endif
+EndProgram

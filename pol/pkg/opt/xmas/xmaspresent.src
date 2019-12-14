@@ -1,0 +1,79 @@
+/////////////////////////////////////////////////////////////////////////////
+// - xmas present
+// updated November 19, 2000
+
+use uo;
+use util;
+include "common";
+include "include/itemnpc";
+include "include/msgs";
+include "include/objtype";
+
+Program XMasPresent(who, gift)
+    If (!ReserveItem(gift))
+        return;
+    EndIf
+    var event := gift.getprop(PROP_XMAS_EVENT);
+    DestroyItem(gift);
+
+    var murders := CInt(who.getprop("longmurders"));
+    If (murders < 2)
+        var coins;
+        If (murders <= 0)
+            coins := RandomIntMinMax(300, 1000);
+        Else
+            coins := RandomIntMinMax(200, 600);
+        EndIf
+        CreateItemInBackpackPergon(who, UOBJ_GOLD_COIN, coins);
+        SendSysMessagePergon(who,
+            "Ihr öffnet Euer Geschenk und findet "+coins+" Gold sowie ...",
+            "You open your present and find "+coins+" gold coins and ...",
+            3, 70
+        );
+    ElseIf (event == EVENT_XMAS)
+        SendSysMessagePergon(who,
+            "Ihr öffnet Euer Geschenk und findet ein Stück Kohle sowie ...",
+            "You open your present and find a piece of coal and ...", 3, 34
+        );
+        var desc := GetItemDescriptor(UOBJ_BIMSSTEIN);
+        desc.color  := 0x454;
+        desc.script := ":xmas:xmascoal";
+        // CProp verhindert Stacking mit echtem Bimsstein
+        desc["CProps"] := dictionary{};
+        desc.CProps.insert("coal", 1);
+        var item  := CreateItemInBackpackPergon(who, desc);
+            item.name := "Weihnachtskohle";
+    Else
+        SendSysMessagePergon(who,
+            "Ihr öffnet Euer Geschenk und findet nichts außer ...",
+            "You open your present and find nothing but ...", 3, 34
+        );
+    Endif
+
+    Case (event)
+    EVENT_XMAS:
+        CreateItemInBackpackPergon(who, 0x669d, RandomIntMinMax(10, 20));
+        SendSysMessagePergon(who,
+            "... einige Schneebälle.",
+            "... some snowballs.", 3, 70
+        );
+        break;
+    EVENT_EASTER:
+        CreateItemInBackpackPergon(who, 0xff87, RandomIntMinMax(2, 5));
+        SendSysMessagePergon(who,
+            "... Osterblumensamen.",
+            "... easter flower seeds.", 3, 70
+        );
+        break;
+    Default:
+        // Elfenbeinbaumsamen
+        CreateItemInBackpackPergon(who, 0xeff0, RandomIntMinMax(5, 10));
+        // Mondstein
+        CreateItemInBackpackPergon(who, 0x685a, RandomIntMinMax(3, 5));
+        SendSysMessagePergon(who,
+            "... einige Mondsteine und Samen.",
+            "... some moon stones and seeds.", 3, 70
+        );
+        break;
+    EndCase
+EndProgram

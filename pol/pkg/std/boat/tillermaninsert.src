@@ -1,0 +1,59 @@
+///////////////////////////////////////////////////////////////////////////
+// Tillerman InsertScript
+// Damit kann eine Karte übergeben werden die abgefahren wird
+// ["navigieren starten"] ["weiter navigieren"]
+//
+// Author: Turley
+
+///////////////////////////////////////////////////////////////////////////
+// Modification
+// $Log: not supported by cvs2svn $
+// 18.07.07 Turley - Init
+
+use os;
+use uo;
+include "include/eventid";
+
+Program canInsert(mobile, tillerman, move_type, inserttype, adding_item)
+  var boat := SystemFindObjectBySerial(
+    GetObjProperty(tillerman, "shipserial")
+  );
+  var boat_pid := GetObjProperty(boat, "#pid");
+  If (!boat_pid)
+    // immer 0 damit Karte wieder zum Spieler kommt
+    return 0;
+  EndIf
+
+  var process := GetProcess(boat_pid);
+  If (!process)
+    return 0;
+  EndIf
+
+  If (GetObjProperty(boat,"ist_faehre"))
+    return 0;
+  EndIf
+
+  If (GetObjProperty(tillerman,"owner") != mobile.serial)
+    return 0;
+  EndIf
+
+  If (adding_item.IsA(POLCLASS_MAP))
+    var map     := struct;
+    map.+pin    := 1;
+    map.+coords := adding_item.GetPins();
+    map.+single := 0;
+    map.+active := 0;
+    If (map.coords.size())
+      process.sendevent(struct{
+        type   := EVID_BOAT_COURSE,
+        source := mobile,
+        map    := map
+      });
+    EndIf
+  EndIf
+
+  return 0;
+  // Compilerwarnungen vermeiden
+  inserttype := inserttype;
+  move_type  := move_type;
+EndProgram

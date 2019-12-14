@@ -1,0 +1,109 @@
+//**************************************************************************************************
+// Script file melt.src
+//
+//    implements spell 220 <Melt> - "Schmelzen"
+//
+//	counters statue effect (total paralyzation) by necromancers spell 'statue'
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 03.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use util;
+
+Include "../magicpergon";
+Include "include/spellcheck";
+
+program cast_melt (params)
+
+   Var caster;
+   Var caston;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_MELT);
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+
+   PlayObjectCenteredEffect(caston, FX_BLESS_EFFECT, 10, 10);
+
+   if (GetObjProperty(caston, "spell_statue"))						// Check if spelltarget is a statue
+
+      Var tag:= GetObjProperty(caston, "spell_statue");			// get spelltag
+      Var name:= caston.name;												// get spelltargets name
+
+      name[1, 16]:= "";														// remove 'eine Statue de(s/r)'
+
+      if (power - tag[2] + 25 >= RandomInt(51))						// check if caster breaks curse
+         tag[1]:= ReadGameClock();   									// update spelltag for spellchecker
+         tag[5]+=1;
+         SetObjProperty(caston, "spell_statue", tag);
+         SendSpellWaiter(caston, "spell_statue", 1, tag[5], caston);
+         foreach equip in (ListEquippedItems(caston))
+         	 tag:=GetObjProperty(equip, "spell_statue");
+         	 If (tag)
+         	   tag[1]:= ReadGameClock();
+         	   tag[5]+=1;
+         	   SetObjProperty(equip, "spell_statue", tag);
+             SendSpellWaiter(equip, "spell_statue", 1, tag[5], caston);
+         	 EndIf
+         endforeach
+
+         if (caston.gender)
+            SendSysMessagePergon(caster, "Ihr erlöst " + name + " von ihrem Fluch",
+            			         			  "You break " + name + "'s curse");
+         else
+            SendSysMessagePergon(caster, "Ihr erlöst " + name + " von seinem Fluch",
+               			         		  "You break " + name + "'s curse");
+         endif
+      else
+      	 SendSysMessagePergon(caster, "Ihr schafft es nicht, den Fluch auf " + name + " zu brechen",
+      	 			      					"You do not succeed in breaking " + name + "'s curse");
+      endif
+   elseif (GetObjProperty(caston, "spell_paralyze"))
+   	  Var tag:= GetObjProperty(caston, "spell_paralyze");			// get spelltag
+      Var name:= caston.name;												// get spelltargets name
+
+      if (power - tag[2] + 25>= RandomInt(51))						// check if caster breaks curse
+         tag[1]:= ReadGameClock();   									// update spelltag for spellchecker
+         tag[5]+=1;
+         SetObjProperty(caston, "spell_paralyze", tag);
+         SendSpellWaiter(caston, "spell_paralyze", 1, tag[5], caston);
+
+         if (caston.gender)
+            SendSysMessagePergon(caster, "Ihr erlöst " + name + " von ihrer Paralyse",
+            			         			  "You break " + name + "'s paralyse");
+         else
+            SendSysMessagePergon(caster, "Ihr erlöst " + name + " von seiner Paralyse",
+               			         		  "You break " + name + "'s paralyse");
+         endif
+      else
+      	 SendSysMessagePergon(caster, "Ihr schafft es nicht, die Paralyse von " + name + " zu brechen",
+      	 			      					"You do not succeed in breaking " + name + "'s paralyse");
+      endif
+   else
+      SendSysMessagePergon(caster, "Euer Ziel ist weder versteinert noch paralysiert", "Your target is no statue or paralysed");
+   endif
+
+endprogram

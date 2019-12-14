@@ -1,0 +1,106 @@
+//////////////////////////////////////////////////
+// 2004-02-27 Zork: 	alle aktiven Fallen aufzaehlen
+//                  	Fallen sind als Prop an dem PC gespeichert!
+//2004-03-01 pJOTTR:   	Html-Gump Aufgebohrt und angepasst (da Cprops dem Fallentyp entsprechen)
+/////////////////////////////////////////////////
+
+use os;
+use uo;
+use cfgfile;
+
+Include "include/itemnpc";
+Include "include/pergonutil";
+Include "include/poison";
+Include "include/client";
+Include "traps";
+Include "include/npc";
+
+PROGRAM TrapMap(character)
+
+	//CProp aktualisieren
+	character.setprop("Traps_Skill",CheckTraps(character,character.getprop("Traps_Skill")));
+
+	var layout := {
+  		"page 0",
+  		"nodispose",
+		"resizepic 30 30 5100 730 550",
+		"text 200 45 5 0",                	// 1.Ueberschrift
+		"text 80 70 0 1",                       // Landfallen
+		"text 145 70 32 2",                      // aktuelle Landfallen
+		"text 160 70 897 3",                      // maximale Landfallen
+		"text 210 70 0 4",                      // Seefallen
+		"text 275 70 32 5",                      // aktuelle Seefallen
+		"text 290 70 897 6",                      // maximale Seefallen
+		"text 330 70 0 7",                      // Kistenfallen
+		"text 405 70 32 8",                      // aktuelle Kistenfallen
+		"text 420 70 897 9",                      // maximale Kistenfallen
+		"text 470 70 0 10",                     // Lochfallen
+		"text 535 70 32 11",                     // aktuelle Lochfallen
+		"text 550 70 897 12",                     // maximale Lochfallen
+		"text 600 70 0 13",                     // Gruben
+		"text 663 70 32 14",                     // aktuelle Gruben
+		"text 680 70 897 15",                     // maximale Gruben
+		"text 250 105 5 16",                     //
+		"HtmlGump 50 130 690 430 17 1152 1"
+		};
+
+	var data := {
+		"Wieviele Fallen des jeweiligen Types sind schon aufgebaut?",		// 1.Ueberschrift
+		"Landfallen:",                                                          // Landfallen
+		"0",                                                                    // aktuelle Landfallen
+		CStr("/" + MAX_TRAPS_LANDFALLEN),						// maximale Landfallen
+		"Seefallen:",                                                           // Seefallen
+		"0",                                                                    // akt. Seefellen
+		CStr("/" + MAX_TRAPS_SEEFALLEN),                                           	// max. Seefallen
+		"Kistenfallen:",                                                        // Kistenfallen
+		"0",                                                                    // akt. Kistenfallen
+		CStr("/" + MAX_TRAPS_KISTENFALLEN), 						// max. Kistenfallen
+		"Lochfallen:",                                                          // Lochfallen
+		"0",                                                                    // akt. Lochfallen
+		CStr("/" + MAX_TRAPS_LOCHFALLEN),                                            // max. Lochfallen
+		"Gruben:",                                                              // Gruben
+		"0",                                                                    // akt. Gruben
+		CStr("/" + MAX_TRAPS_GRUBEN),						// max. Gruben
+		"Wo stehen die schon aufgestellten Fallen?",
+		""
+		};
+		
+		Var trapcprop:=character.getprop("Traps_Skill").ActivTraps;
+		If (trapcprop)
+		  If (trapcprop[TRAP_TYPE_LANDFALLEN])
+		    data[3]:=trapcprop[TRAP_TYPE_LANDFALLEN].size();
+		  EndIf
+		  If (trapcprop[TRAP_TYPE_SEEFALLEN])
+		    data[6]:=trapcprop[TRAP_TYPE_SEEFALLEN].size();
+		  EndIf
+		  If (trapcprop[TRAP_TYPE_KISTENFALLEN])
+		    data[9]:=trapcprop[TRAP_TYPE_KISTENFALLEN].size();
+		  EndIf
+		  If (trapcprop[TRAP_TYPE_LOCHFALLEN])
+		    data[12]:=trapcprop[TRAP_TYPE_LOCHFALLEN].size();
+		  EndIf
+		  If (trapcprop[TRAP_TYPE_GRUBEN])
+		    data[15]:=trapcprop[TRAP_TYPE_GRUBEN].size();
+		  EndIf
+		EndIf
+		Var cfg:=ReadConfigFile("traps");
+
+	//Aufbau des Html-Gumps zur Auflistung aller bestehenden Fallen
+
+	ForEach TrapArray in (character.getprop("Traps_Skill").ActivTraps)
+		IF(TrapArray!={})
+			FOREACH Trap IN TrapArray
+				Var TrapItem:=SystemFindObjectBySerial(Trap);
+				IF (TrapItem)
+					Var TrapCfg:=FindConfigElem( cfg, CInt(GetObjProperty( TrapItem, "trap" )));
+					Var timetoexpire:=CInt((CInt(TrapItem.decayat) - ReadGameclock())/60);
+					sleepms(10);
+					data[18]:=data[18]+"<br>"+"Ein/e " + TrapCfg.Desc + " steht in '" + PlaceName(TrapItem)
+					 + "' an Position: " + CStr(TrapItem.x) + " " + CStr(TrapItem.y) +" noch ca. " + CStr(timetoexpire) + "min.";
+				ENDIF
+			ENDFOREACH
+		ENDIF
+	EndForEach
+
+	SendDialogGump(character, layout, data );
+ENDPROGRAM

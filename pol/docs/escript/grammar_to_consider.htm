@@ -1,0 +1,71 @@
+<html>
+
+<head>
+<title>Grammar to consider</title>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+</head>
+
+<body>
+
+<p>Grammar to consider: </p>
+
+<p>Fully-bracketed syntax.</p>
+
+<p>For example:</p>
+
+<p>if (expr)<br>
+&nbsp;&nbsp;&nbsp; statements;<br>
+&nbsp;&nbsp;&nbsp; statements;<br>
+endif</p>
+
+<p>if (expr)<br>
+&nbsp;&nbsp;&nbsp; statements;<br>
+else<br>
+&nbsp;&nbsp;&nbsp; statements;<br>
+endif</p>
+
+<p>if (expr)<br>
+&nbsp;&nbsp;&nbsp; statements;<br>
+elseif (expr)<br>
+&nbsp;&nbsp;&nbsp; statements;<br>
+else<br>
+&nbsp;&nbsp;&nbsp; statements;<br>
+endif</p>
+
+<table border="1" width="100%">
+  <tr>
+    <td width="100%">Or:<p>if (expr)</p>
+    <p>&nbsp;&nbsp;&nbsp; statements;</p>
+    <p>else </p>
+    <p>&nbsp;&nbsp;&nbsp; if (expr)</p>
+    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; statements;</p>
+    <p>&nbsp;&nbsp;&nbsp; end if</p>
+    <p>end if</p>
+    <p>&nbsp;</td>
+    <td width="100%">if (expr)<p>&nbsp;&nbsp;&nbsp; statements;</p>
+    <p>else if (expr)</p>
+    <p>&nbsp;&nbsp;&nbsp; statements;</p>
+    <p>end if</td>
+  </tr>
+</table>
+
+<p>while (expr)<br>
+&nbsp;&nbsp;&nbsp; statement;<br>
+&nbsp;&nbsp;&nbsp; statement;<br>
+endwhile</p>
+
+<p>do<br>
+&nbsp;&nbsp;&nbsp; statements;<br>
+while (expr); &lt;-- ambiguus with while .. endwhile</p>
+
+<p>&nbsp;</p>
+
+<p>&nbsp;</p>
+
+<p>for()</p>
+
+<p>endfor</p>
+
+<p>&nbsp;</p>
+</body>
+</html>

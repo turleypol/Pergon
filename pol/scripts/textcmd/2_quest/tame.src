@@ -1,0 +1,42 @@
+////////////////////////////////////////////////////////////////////
+// TextCMD Tame - Zaehmt einen gewaehlten NPC und richtet ihn ab
+//
+// Author: Shinigami
+
+use file;
+use uo;
+include "include/animal";
+include "include/msgs";
+include "include/quests";
+
+Program TextCMD_Tame(who)
+  SendSysMessagePergon(who,
+    "Was wollt Ihr zähmen?", "What do you want to tame?"
+  );
+
+  var npc := Target(who, TGTOPT_NOCHECK_LOS);
+  If (!npc.isa(POLCLASS_NPC))
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (who.cmdlevel == CMDLEVEL_QUESTCHAR)
+    // Questchar darf nur Quest-NPCs benutzen
+    If (!GetObjProperty(npc, TYPQUESTCHAR))
+      SendSysMessagePergon(who,
+        "Dies ist kein QuestNPC!", "This is not a QuestNPC!"
+      );
+      return;
+    EndIf
+  EndIf
+
+  Tame(who, npc);
+
+  SendSysMessagePergon(who,
+    npc.name+" gehört nun Euch.", npc.name+" is your animal now."
+  );
+  QuestCharLog(who,
+    "TextCMD Tame: '"+npc.name+"' ["+npc.npctemplate+"] ["+
+    npc.x+", "+npc.y+", "+npc.z+"]"
+  );
+EndProgram

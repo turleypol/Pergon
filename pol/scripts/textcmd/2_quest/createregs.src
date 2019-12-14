@@ -1,0 +1,75 @@
+///////////////////////////////////////////////////////////////
+// TextCMD CreateRegs - Erzeugt alle Reagenzien im Rucksack
+//
+// Author: Shinigami
+
+use file;
+use uo;
+include "include/msgs";
+include "include/objtype";
+include "include/quests";
+
+Program TextCMD_CreateRegs(who, amount)
+  // If (who.cmdlevel < CMDLEVEL_QUESTCHAR))
+  //   // Nur QuestChars, oder ab GM
+  // Wegen Missbrauch, erstmal nur ab GM
+  If (who.cmdlevel < CMDLEVEL_HIGHGM)
+    SendSysMessagePergon(who,
+      "Ihr seid nicht befugt, diesen Befehl zu benutzen!",
+      "You are not authorized to use this command!"
+    );
+    return;
+  EndIf
+
+  amount := CInt(amount);
+  If (!amount)
+    amount := 20;
+  ElseIf (amount > 500)
+    amount := 500;
+    SendSysMessagePergon(who,
+      "Mehr als 500 Items können nicht gleichzeitig erzeugt werden!",
+      "You cannot create more than 500 items at once!"
+    );
+  EndIf
+
+  var backpack := CreateItemInBackpackPergon(who, "backpack", 1);
+  If (!backpack)
+    SendSysMessagePergon(who,
+      "Konnte keinen Beutel im Backpack erzeugen!",
+      "Was impossible to create a bag in backpack!"
+    );
+    return;
+  EndIf
+
+  backpack.color := 0x3;
+  If (who.cmdlevel == CMDLEVEL_QUESTCHAR)
+    // Item gesondert markieren
+    SetObjProperty(backpack, TYPQUESTCHAR, who.serial);
+  EndIf
+
+  var reagenzien := {
+    UOBJ_ALRAUNE, UOBJ_BIMSSTEIN, UOBJ_BLACKROCK, UOBJ_BLUTEGEL,
+    UOBJ_BLUTFLAKON, UOBJ_BLUTMOOS, UOBJ_DAEMONENKNOCHEN, UOBJ_DRACHENBLUT,
+    UOBJ_FEUERSTEIN, UOBJ_FLEDERMAUSFLUEGEL, UOBJ_GINSENG, UOBJ_HUMUS,
+    UOBJ_KNOBLAUCH, UOBJ_KNOCHEN, UOBJ_MOLCHAUGE, UOBJ_MORCHEL,
+    UOBJ_OBSIDIAN, UOBJ_ROHEISEN, UOBJ_SCHLANGENSCHUPPE,
+    UOBJ_SCHWARZE_PERLE, UOBJ_SCHWEFELASCHE, UOBJ_SPINNENSEIDE,
+    UOBJ_TOLLKIRSCHE, UOBJ_TORF, UOBJ_VULKANASCHE, UOBJ_WURZEL,
+    UOBJ_WYRMHERZ
+  };
+  ForEach reagenzie in reagenzien
+    var reag := CreateItemInContainerPergon(backpack, reagenzie, amount);
+    If (reag)
+      If (who.cmdlevel == CMDLEVEL_QUESTCHAR)
+        // Item gesondert markieren
+        SetObjProperty(reag, TYPQUESTCHAR, who.serial);
+      EndIf
+    EndIf
+  EndForEach
+
+  SendSysMessagePergon(who,
+    "Im Backpack wurden Reagenzien erzeugt.",
+    "Reagents were created in your backpack."
+  );
+  QuestCharLog(who, "TextCMD CreateRegs ("+amount+" Stueck jeder Sorte)");
+EndProgram

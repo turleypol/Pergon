@@ -1,0 +1,405 @@
+///////////////////////////////////////////////////////////////////////////
+// Skill-Script Poisoning -- Vergiftet Nahrung oder Waffen
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use attributes;
+use cfgfile;
+use uo;
+include "include/client";
+include "include/modifyskill";
+include "include/objtype";
+include "include/poison";
+
+Const POISON_WEAPON := 1;
+Const POISON_FOOD   := 2;
+// Zeit, die zwischen zwei Anwendungen des Skills vergehen muss
+Const SKILL_DELAY   := 3;
+// Mindestschnueffelskill, bevor man die Auswahl zwischen
+// Person oder Nahrung bekommt
+Const SKILL_SNOOP   := 5;
+
+// maximale Entfernung zum Vergiften
+Const MAXDISTANCE   := 2;
+
+Program Skill_Poisoning(who)
+  // altbeliebte Powergifting-Verhinderung
+  If (CInt(who.getprop(PROP_NEXTSKILLUSE)) > ReadGameClock())
+    SendSysMessagePergon(who,
+      "Ihr müsst noch warten, bevor Ihr wieder etwas vergiften könnt."
+    );
+    return;
+  EndIf
+
+  // Gift auswaehlen und pruefen {{{
+  SendSysMessagePergon(who, "Wählt ein Gift!");
+  var poison := Target(who);
+  If (!poison)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (!AccessiblePergon(who, poison))
+    SendSysMessagePergon(who, "Ihr kommt da nicht ran!");
+    return;
+  EndIf
+
+  // Giftwirkung ermitteln
+  var strength := 0;
+  // entsteht eine leere Flasche?
+  var flask    := 1;
+  If (poison.objtype == UOBJ_ALCHYPOTION)
+    // neue Alchemie
+    var prop := poison.getprop("potion");
+    ForEach wirk in (prop.posWirk)
+      SleepMs(2);
+      If (wirk[1] == "vergiftend")
+        strength := Max(strength, wirk[2]);
+        break;
+      EndIf
+    EndForEach
+    ForEach wirk in (prop.negWirk)
+      SleepMs(2);
+      If (wirk[1] == "vergiftend")
+        strength := Max(strength, wirk[2]);
+        break;
+      EndIf
+    EndForEach
+
+  ElseIf (poison.graphic ==  UOBJ_POISON_POTION)
+    // alte Traenke
+    var itemdesc := ReadConfigFile(":advalchemy:itemdesc");
+    strength := Max(1, CInt(itemdesc[poison.objtype].strength));
+
+  ElseIf (poison.getprop(PROP_IS_POISON))
+    // giftige Pilze
+    strength := poison.getprop(PROP_POIS_LVL);
+    flask    := 0;
+  EndIf
+
+  // kein Gift?
+  If (!strength)
+    SendSysMessagePergon(who, "Ihr müsst ein Gift auswählen!");
+    return;
+  EndIf
+  // }}}
+
+  // Ziel ermitteln und vergiften
+  SendSysMessagePergon(who,
+    "Wählt eine Person oder Nahrung zum Vergiften aus!"
+  );
+  var tgt := Target(who);
+  If (!tgt)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  // Nahrung vergiften?
+  If (tgt.isa(POLCLASS_ITEM))
+    If (IsFood(tgt))
+      // Delay bis zum nächsten Versuch initialisieren
+      who.setprop(PROP_NEXTSKILLUSE, ReadGameClock() + SKILL_DELAY);
+      PoisonFood(who, poison, strength, flask, tgt);
+    Else
+      SendSysMessagePergon(who,
+        "Das ist weder Nahrung noch eine Person. Abbruch"
+      );
+    EndIf
+    return;
+  EndIf
+
+  // keine Nahrung, also Waffen einer Person vergiften
+  If (!tgt.isa(POLCLASS_MOBILE))
+    syslog("FEHLER: Das haette nicht passieren duerfen "+TypeOf(tgt));
+    return;
+  EndIf
+
+  // Waffen menschlicher Character/NPCs
+  // FIXME: Packtieren könnte man zumindest Essen in den Taschen vergiften
+  If (!(tgt.objtype in array{
+          CID_HUMAN_MALE, CID_HUMAN_FEMALE,
+          CID_ELF_MALE, CID_ELF_FEMALE
+  }))
+    SendSysMessagePergon(who, "Ihr könnt nur Personen vergiften!");
+    return;
+  EndIf
+
+  If (Distance(who, tgt) > MAXDISTANCE)
+    SendSysMessagePergon(who, "Das ist zu weit weg!");
+    return;
+  EndIf
+
+  var choice := 0;
+  // ab etwas Schnueffeln kann man auch Personen vergiften
+  If (GetSkillPergon(who, SKILLID_SCHNUEFFELN) < SKILL_SNOOP)
+    // zu wenig Skill, nur Waffen moeglich
+    choice := POISON_WEAPON;
+  EndIf
+
+  // Waffen oder Nahrungsvorraete vergiften?
+  If (!choice)
+    choice := SelectWeaponOrNourishment(who);
+  EndIf
+
+  If (!choice)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  // Delay bis zum nächsten Versuch initialisieren
+  who.setprop(PROP_NEXTSKILLUSE, ReadGameClock() + SKILL_DELAY);
+  If (choice == POISON_WEAPON)
+    PoisonWeapon(who, poison, strength, flask, tgt);
+  Else
+    PoisonFoodAuto(who, poison, strength, flask, tgt);
+  EndIf
+EndProgram
+
+// Waffe vergiften
+Function PoisonWeapon(who, poison, strength, flask, tgt) // {{{
+  If (!tgt.weapon)
+    SendSysMessagePergon(who, "Diese Person trägt keine Waffe.");
+    Return;
+  EndIf
+  var diff := -1;
+
+  // Mindestpunkte, damit es auch bei schlechtem Gift halbwegs geht
+  // (sind immerhin nicht ganz billig)
+  var points := Max(3*strength, 20);
+
+  If (who.cmdlevel >= CMDLEVEL_SCRIPTER)
+    SendSysMessagePergon(who, "Skillcheck: "+diff+" "+points+" "+tgt.name);
+  EndIf
+  If (CheckSkillPergon(who, SKILLID_VERGIFTEN, diff, points))
+    var poisonlvl := GetPoisonLevel(tgt.weapon);
+    // wenn noch was vorhanden, dann auffüllen bis strength
+    poisonlvl := Max(poisonlvl, strength);
+    SetPoisonLevel(tgt.weapon, poisonlvl);
+    // fuer Tooltip
+    IncRevision(tgt.weapon);
+    SubtractAmount(poison, 1);
+    CreateItemInBackpackPergon(who, UOBJ_EMPTY_BOTTLE, 1);
+    SendSysMessagePergon(who,
+      "Ihr habt die Waffe von "+tgt.name+" erfolgreich vergiftet."
+    );
+  Else
+    PoisonFail(who, poison, strength, flask, tgt);
+  EndIf
+EndFunction // }}}
+
+// ein Nahrungsmittel vergiften
+Function PoisonFood(who, poison, strength, flask, food) // {{{
+  // Giftstaerke ggf. anpassen
+  var poisonlvl := GetPoisonLevel(food);
+  If (poisonlvl)
+    // schon vergiftet, man kann es nun weitervergiften,
+    // aber maximaler Giftlevel wird durch Skill beschraenkt
+    poisonlvl :=
+      Min(poisonlvl+strength, GetSkillPergon(who, SKILLID_VERGIFTEN));
+  Else
+    // Erstvergiftung mit normaler Giftstaerke
+    poisonlvl := strength;
+  EndIf
+
+  // Schwierigkeit ist abhaengig von Giftstaerke und Menge
+  var diff := strength + (food.amount - 1);
+  // Skillzuwachs limitieren
+  var points := Min(80, 3*diff);
+
+  If (who.cmdlevel >= CMDLEVEL_SCRIPTER)
+    SendSysMessagePergon(who, "Skillcheck: "+diff+" "+points+" "+food.desc);
+  EndIf
+  If (CheckSkillPergon(who, SKILLID_VERGIFTEN, diff, points))
+    // Gegenstand vergiften
+    SetPoisonLevel(food, poisonlvl);
+    // fuer Beweise
+    var evidence := struct{
+      serial := who.serial,
+      name   := who.name
+    };
+    food.setprop(EV_POISONER, evidence);
+    IncRevision(food);
+    SubtractAmount(poison, 1);
+    CreateItemInBackpackPergon(who, UOBJ_EMPTY_BOTTLE, 1);
+    SendSysMessagePergon(who,
+      "Erfolgreich vergiftet Ihr "+food.desc+"."
+    );
+  Else
+    PoisonFail(who, poison, flask, strength);
+  EndIf
+EndFunction // }}}
+
+// Nahrung in Backpack eines Opfers vergiften (so vorhanden)
+Function PoisonFoodAuto(who, poison, strength, flask, opfer) // {{{
+  // Schwierigkeit abhaengig von Gift, aber maximal 30%
+  var diff := Min(strength, 30);
+  // dazu kommt, wie beim Stehlen, noch ein Geschicklichkeitswert
+  diff += CInt((GetDexPergon(opfer) - GetDexPergon(who)) / 5.0);
+  // aber es sollte nicht negativ werden
+  diff := Max(0, diff);
+
+  // Punkte abhaengig von Gift, aber mindestens 20 vergeben
+  // (Gift ist schliesslich teuer)
+  var points := Max(strength, 20);
+
+  // erwischt mich mein Opfer beim Wuehlen in seinen Sachen?
+  If (!CheckSkillPergon(who, SKILLID_SCHNUEFFELN, diff, points))
+    SendSysMessagePergon(who,
+      "Uff, das war aber nichts. Beinahe hätte man Euch erwischt."
+    );
+    return;
+  EndIf
+
+  // soweit, so gut -- nun muss man noch Nahrung finden und vergiften
+
+  SendSysMessagePergon(who,
+    "Ihr beginnt die Suche nach geeigneter Nahrung bei Eurem Opfer."
+  );
+
+  // gefundene Nahrung (nur Dummy)
+  var foundfood := struct{amount := 60001};
+  // eigener Vergiften-Skill wird fuer Vergleiche mehrfach gebraucht
+  var giftskill := GetSkillPergon(who, SKILLID_VERGIFTEN);
+
+  // alles im Opfer-Rucksack durchgucken
+  ForEach item in (EnumerateItemsInContainer(opfer.backpack))
+    SleepMs(100);
+    // ein paar Sachen direkt ausschliessen (Optimierung)
+    If (
+      // Essen ist normalerweise nicht verschliessbar (Tuer, Container)
+      item.isa(POLCLASS_LOCKABLE) or
+      // Ausruestung kann man auch nicht essen
+      item.isa(POLCLASS_EQUIPMENT) or
+      // Karten sind nicht aus Oblaten gemacht, oder?
+      item.isa(POLCLASS_MAP)
+    )
+      continue;
+    EndIf
+    // kompliziertere Funktion fuer Essen starten
+    If (!IsFood(item))
+      continue;
+    EndIf
+
+    // wir haben also Essen gefunden, aber ist es schon sehr giftig?
+    var level := GetPoisonLevel(item);
+    If (level and (1+level+strength >= giftskill))
+      continue;
+    EndIf
+    // alle Checks ueberstanden
+
+    // Essen mit geringster Menge merken
+    If (foundfood.amount > item.amount)
+      foundfood := item;
+    EndIf
+  EndForEach
+
+  // mal gucken, was wir gefunden haben
+  If (foundfood.amount > 60000)
+    SendSysMessagePergon(who,
+      "Euer Opfer hat leider keine geeignete Nahrung dabei."
+    );
+    return;
+  EndIf
+
+  // mal gucken, ob das Opfer noch in der Naehe ist
+  If (Distance(who, opfer) > MAXDISTANCE)
+    SendSysMessagePergon(who,
+      "Euer Opfer ist inzwischen leider zu weit weg."
+    );
+    return;
+  EndIf
+
+  // nun kann es ans Vergiften gehen
+  PoisonFood(who, poison, strength, flask, foundfood);
+EndFunction // }}}
+
+// wenn das Vergiften schiefgeht
+Function PoisonFail(who, poison, strength, flask, tgt := 0) // {{{
+  // Aufdecken als kleiner Extra-Malus
+  If (who.hidden)
+    who.hidden := 0;
+  EndIf
+
+  SubtractAmount(poison, 1);
+  If (RandomInt(2))
+    SendSysMessagePergon(who, "Ungeschickt verkleckert Ihr das Gift.");
+    If (flask)
+      CreateItemInBackpackPergon(who, UOBJ_EMPTY_BOTTLE, 1);
+    EndIf
+  Else
+    If (flask)
+      SendSysMessagePergon(who, "Euch zerbricht die Giftflasche.");
+    Else
+      SendSysMessagePergon(who, "Euch zerbröselt der Giftpilz.");
+    EndIf
+  EndIf
+
+  // in seltenen Faellen vergiftet man sich selbst
+  If (RandomInt(100) < 3)
+    SendSysMessagePergon(who,
+      "Ups. Jetzt habt Ihr Euch glatt selbst vergiftet."
+    );
+    // Giftlevel auf 1 .. 10 limitieren
+    var level := Max(1, Min(10, RandomInt(strength)));
+    SetPoisonLevel(who, level);
+  EndIf
+  If (tgt)
+    If (tgt.serial != who.serial)
+      var poisonlvl := GetPoisonLevel(tgt.weapon);
+      If (RandomInt(100) < (3+poisonlvl*2))
+        SendSysMessagePergon(who,
+          "Hoppla! Jetzt habt Ihr aber nicht die Waffe erwischt."
+        );
+        SendSysMessagePergon(tgt,
+          "Der inkompenente Spinner hat soeben Euch statt "+
+          "Eurer Waffe vergiftet."
+        );
+        var level := Max(1, Min(10, RandomInt(strength)));
+        SetPoisonLevel(tgt, level, who);
+      EndIf
+    EndIf
+  EndIf
+EndFunction // }}}
+
+// einfaches Gump zur Auswahl anzeigen
+// 0 - Abbruch, 1 - Waffen, 2 - Nahrung
+Function SelectWeaponOrNourishment(who) // {{{
+    var layout := {
+        "nodispose",
+        "page 0",
+        "gumppic 0 0 1140",
+        "htmlgump 65 55 260 30 0 1 0",
+        "button 100 100 7005 7005 1 0 "+POISON_WEAPON,
+        "button 220 100 7001 7001 1 0 "+POISON_FOOD
+    };
+    var data := {
+        "<basefont color=black><center>Waffen oder Nahrung "+
+        "vergiften?</center>"
+    };
+
+    var result := SendDialogGump(who, layout, data, 100, 100);
+    If (result)
+        return result[0];
+    EndIf
+    return 0;
+EndFunction // }}}
+
+// findet heraus, ob Item ess-/trinkbar ist
+Function IsFood(item) // {{{
+  var itemdesc := ReadConfigFile("::itemdesc");
+  var script   := itemdesc[item.objtype].script;
+
+  // FIXME: Wassergefaesse geben Giftlevel nicht weiter
+  // ForEach scriptname in {"eat", "drink", "pot"}
+  ForEach scriptname in {"eat", "drink"}
+    SleepMs(2);
+    If (script[":"+scriptname] or (script == scriptname))
+      return 1;
+    EndIf
+  EndForEach
+
+  return 0;
+EndFunction // }}}
+
+// vim: sw=2 sts=2

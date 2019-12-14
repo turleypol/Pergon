@@ -1,0 +1,34 @@
+/////////////////
+//
+//   LogOffTest
+//
+/////////////////
+
+use uo;
+use util;
+
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program LogOffTest(who)
+  If (who.cmdlevel >= CMDLEVEL_SEER)
+    Return (0);
+  Else
+    If (!who.hidden)  // versteckte bleiben versteckt
+      case (RandomInt(4))
+        0: PrintTextAbovePergon(who, who, "ZzZzZzZzZzZzZ");
+        1: PrintTextAbovePergon(who, who, "ZZZZzzzZZZZ");
+        2: PrintTextAbovePergon(who, who, "ZZzzZZzzZZzzZZ");
+        3: PrintTextAbovePergon(who, who, "zzzzZZZzzzz");
+      endcase
+      Case (who.gender) // Sound macht auch Spaﬂ
+        0: PlaySoundEffect(who, 0x446);
+        1: PlaySoundEffect(who, 0x334);
+      EndCase
+    EndIf
+    Return (15);
+  EndIf
+EndProgram

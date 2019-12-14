@@ -1,0 +1,19 @@
+/////////////////////////////////////////////////////////
+// tooltip_song - Für Tooltips
+//
+// Author: Mehdorn
+
+include ":tooltips:method_include";
+
+Program Install()
+  return 1;
+EndProgram
+
+Exported Function HasTooltip(object, who)
+  return hasTooltipSong(object);
+  who := who;
+EndFunction
+
+Exported Function setTooltip(object,byref packet)
+  setTooltipSong(object,packet);
+EndFunction

@@ -1,0 +1,48 @@
+///////////////////////////////////////////////////////////////////////////
+// touchplate
+//
+// loest Hidewalls aus, wenn man drauftritt
+
+use uo;
+include "hidecommon";
+include "include/msgs";
+Const PROP_TP_LASTACTION := "lastaction";
+
+Program TouchplateWalked(who, plate);
+    If (who.concealed >= CMDLEVEL_QUESTCHAR or who.dead or who.isa(POLCLASS_NPC))
+        // nichts machen, wenn getarnter Staff drauf herumtrampelt
+        return;
+    EndIf
+
+    var config := plate.getprop(PROP_TP_CONFIG);
+    // config-struct:
+    // action1 - ACTION_*-Konstante
+    // action2 - ACTION_*-Konstante
+    // value1  - Farb-/Grafikwert (je nach Action fuer action1)
+    // value2  - Farb-/Grafikwert (je nach Action fuer action2)
+    // toggle  - 0 - nur action1 ausfuehren,
+    //           1 - zwischen 1 und 2 wechseln
+    // walls   - Array der Serials der anzusteuernden Wände
+    If (!config or !config.action1 or (config.toggle and !config.action2))
+        // unkonfiguriert macht es ebenfalls nichts
+        return;
+    EndIf
+
+    // temporäre Property für WallSignal füllen
+    plate.setprop(PREFERRED_WALLS, config.walls);
+
+    If (!config.toggle)
+        WallSignal(plate, config.action1);
+        return;
+    EndIf
+
+    // wurde zuletzt Aktion 1 oder Aktion 2 ausgefuehrt?
+    var last := plate.getprop(PROP_TP_LASTACTION);
+    If (last == 2)
+        WallSignal(plate, config.action1, config.value1);
+        plate.setprop(PROP_TP_LASTACTION, 1);
+    Else // kein last-Wert oder 1
+        WallSignal(plate, config.action2, config.value2);
+        plate.setprop(PROP_TP_LASTACTION, 2);
+    EndIf
+EndProgram

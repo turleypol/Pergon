@@ -1,0 +1,95 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  paralyzefield.src - Walkover Script for ParalyzeFields
+//
+//  Modifications:
+//
+//  21.01.2002 - Bihinos   - Rewrite for new Magic
+//  17.03.2003 - Fraggulus - zusaetzlich zum Paralyze wird noch gefrozen
+//  06.10.2003 - Bihinos - ueberarbeitet / an spellchecker angepasst
+//  09.02.2004 - Bihinos - removed creator as scriptcontroller (misused by players)
+//                         minor changes
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use os;
+use math;
+use cfgfile;
+use uo;
+
+Include "include/client";
+Include "include/objtype";
+Include "include/spellcheck";
+
+Program ParalyzeField (mobile, tile)
+  Var dmg, res;
+  //wenn statue  dann keine para drauf
+  if (GetObjProperty(mobile,"spell_statue"))
+    return;
+  endif
+  If (mobile.getprop("ignorefields"))  // DynDungeon Vieh ignoriert alle Felder
+    Return;
+  EndIf
+  If (mobile.cmdlevel>=CMDLEVEL_SEER)
+    Return;
+  EndIf
+
+  if (!mobile.dead)           // no damage or effect to ghosts
+    dmg:=tile.getprop("dmg");
+    res:=tile.getprop("res");
+    If (!dmg) // wurde dmg schon gesetzt?
+      Var fields:= ReadConfigFile("magicfields");   // read Config-File for magic fields
+
+      if (fields)
+
+        // Shinigami: ist kein sinnvoller Angriffszauber gegen Spieler (kann ja rumrennen), wird aber oft gegen die Magier ausgenutzt (krimell markieren)
+        // Var boss:= SystemFindObjectBySerial(CInt(GetObjProperty(tile, "creater"))); // get creator of field
+        // if (boss) // make creator attacker
+        //   SetScriptController(boss);
+        // endif
+
+        Var fielddata:= FindConfigElem(fields, "paralyze");           // get field data from Config
+        dmg:= CInt(GetObjProperty(tile, "f") * fielddata.dmg / 100);  // read and calc fields base damage
+        res:= CInt(fielddata.resist);                       // read resistance amount
+        tile.setprop("dmg",dmg);
+        tile.setprop("res",res);
+      EndIf
+    EndIf
+
+    If (dmg)
+      Var dur;
+      Var tag:= array;
+
+      Set_Priority(1);
+
+      if (res)        // get duration of paralyze according to mobiles magic resistance (if res is enabled)
+        dur:= CInt(MagicResistance(mobile, 90, res, dmg, 1)); // skill is 90 here - same as skill for spell!
+      else
+        dur:= dmg;
+      endif
+
+      mobile.paralyzed:= 1;         // paralyze mobile
+      mobile.frozen   := 1;         // freeze mobile
+      IncRevision(mobile);
+
+      tag[1]:= ReadGameClock() + dur;
+      tag[2]:= dmg;
+      tag[3]:= res;
+      tag[5]:= ReadMilliSecondClock();
+
+      SetObjProperty(mobile, "spell_paralyze", tag);    // tag spelltarget for spellchecker
+      SendSpellWaiter(mobile, "spell_paralyze", dur, tag[5], mobile);
+
+
+      PlayObjectCenteredEffect(mobile, FX_CURSE_EFFECT, 10, 5);
+      PrintTextAbovePrivatePergon(mobile, "Ihr wurdet paralysiert", "You have been paralysed", mobile);
+
+      DestroyItem(tile);        // Wandteil zerstören
+
+    else
+      SysLog("FEHLER: MagicFields-ConfigFile nicht gefunden!");
+    endif
+
+  endif
+
+EndProgram

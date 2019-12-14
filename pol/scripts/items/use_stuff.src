@@ -1,0 +1,197 @@
+//
+//  23.09.2003 Fraggulus: Bei Basteln keine Skillpunkte vergeben
+//  29.09.2003 Fraggulus: Create-prozedur korrigiert. War insb. bei nicht-stackbaren Itemmengen > 1 unbrauchbar
+//  24.12.2005 Fraggulus: Items sind nach dem Erzeugen bewegbar
+//
+
+Use uo;
+use os;
+use attributes;
+use cfgfile;
+use uo;
+
+Include "include/modifyskill";
+
+//fixme: take the fire out of his damned pack!
+//return control to the player once the fire is started
+//make the fire a light source
+
+program UseStuff(character, stuff)
+    Var config;
+    Var elem;
+
+    Var skill;
+    Var skill_needed;
+    Var points;
+    Var targetitem;
+    Var target_quantity;
+    Var desc;
+    Var destroy_failure ;
+    Var quantity1, quantity2;
+    Var use_on;
+    Var destroy_target_success, destroy_target_failure;
+    Var leftover, leftover_amount;
+    Var success_sound, failure_sound;
+    Var targetted;
+    Var key_id ;
+    Var tgtitem := 1;
+    Var i;
+
+
+    if (!AccessiblePergon( character, stuff))
+        SendSysMessagePergon(character, "Ihr kommt da nicht ran!");
+        return;
+    endif
+
+
+    SendSysMessagePergon (character, "Wählt ein Item, um das zusammen zu benutzen.");
+    targetted := TargetCoordinates(character);
+
+    if (targetted.item.objtype)
+        use_on := targetted.item;
+    elseif (targetted.mobile.objtype)
+        use_on := targetted.mobile;
+    else
+        use_on := targetted;
+    endif
+
+
+    if (!AccessiblePergon(character, use_on))
+        SendSysMessagePergon(character, "Ihr kommt da nicht ran!");
+        return;
+    endif
+
+
+    config := ReadConfigFile("use_stuff");
+
+
+    key_id := cstr(stuff.objtype) + "+" + cstr(use_on.objtype);
+
+    elem := FindConfigElem(config, key_id);
+
+    if (!elem)
+        SendSysMessagePergon(character, "Ihr habt keine Ahnung, wie man das zusammen benutzt!");
+        return;
+    endif
+
+
+    skill           := Cint(GetElemProperty(elem, "skill"));
+    targetitem      := Cint(GetElemProperty(elem, "product"));
+    skill_needed    := Cint(GetElemProperty(elem, "skill_needed"));
+    points          := Cint(GetElemProperty(elem, "points"));
+    If (!skill)
+      skill := SKILLID_BASTELN;
+      skill_needed := 5;
+      points := 0;
+    ElseIf (skill == SKILLID_BASTELN)
+      points := 0;
+    EndIf
+
+    target_quantity := Cint(GetElemProperty(elem, "target_quantity"));
+    quantity1       := Cint(GetElemProperty(elem, "quantity1"));
+    quantity2       := Cint(GetElemProperty(elem, "quantity2"));
+    destroy_target_success := Cint(GetElemProperty(elem, "destroy_target_on_success"));
+    destroy_target_failure := Cint(GetElemProperty(elem, "destroy_target_on_failure"));
+    destroy_failure := Cint(GetElemProperty(elem, "destroy_material_on_failure"));
+    leftover        := Cint(GetElemProperty(elem, "leftover"));
+    leftover_amount := Cint(GetElemProperty(elem, "leftover_amount"));
+    success_sound   := Cint(GetElemProperty(elem, "success_sound"));
+    failure_sound   := Cint(GetElemProperty(elem, "failure_sound"));
+
+
+    if (stuff.amount < quantity1)
+        SendSysMessagePergon(character, "Ihr habt nicht genug, um daraus irgendetwas herstellen zu können.");
+        return;
+    endif
+
+    if (target_quantity == 0)
+        target_quantity := 1;
+    endif
+
+
+
+    if (!use_on)
+        SendSysMessagePergon(character, "Zielen abgebrochen");
+        return;
+    endif
+
+    if (!AccessiblePergon(character, use_on))
+        SendSysMessagePergon(character, "Ihr kommt da nicht ran!");
+        return;
+    endif
+
+    if (use_on.amount < quantity2)
+        SendSysMessagePergon(character, "Ihr habt nicht genug, um daraus irgendetwas herstellen zu können.");
+        return;
+    endif
+
+    if (skill > "")
+        if (CheckSkillPergon(character, skill, skill_needed, points))
+            SubtractAmount(stuff, quantity1);  //use material
+            i := 1;
+            While ((i <= target_quantity) && tgtitem)
+              tgtitem := CreateItemInBackpackPergon (character, targetitem, 1);
+              tgtitem.movable := 1;
+              i += 1;
+              SleepMs(200);
+            EndWhile
+
+            If (tgtitem)
+              if (target_quantity > 1)
+                  desc := target_quantity + "Gegenstaende";
+              else
+                  desc := "einen Gegenstand";
+              endif
+
+              if (destroy_target_success)
+                  SubtractAmount(use_on, 1);
+              endif
+              PlaySoundEffect(character, success_sound);
+              SendSysMessagePergon(character, "Ihr legt " + tgtitem.desc  + " in Euren Rucksack.");
+
+              if (leftover && leftover_amount)
+                i := 1;
+                While (i <= leftover_amount)
+                  tgtitem := CreateItemInBackpackPergon(character, leftover, 1);
+                  tgtitem.movable := 1;
+                  i += 1;
+                  SleepMs(100);
+                EndWhile
+              endif
+            Else
+              SendSysMessagePergon(character, "Der Gegenstand konnte nicht hergestellt werden. Da lief etwas schief.");
+            EndIf
+        else
+            PlaySoundEffect(character, failure_sound);
+            if (destroy_failure)
+                SendSysMessagePergon(character, "Ihr scheitert und zerstört etwas Material.");
+                SubtractAmount(stuff, 1);
+            else
+                SendSysMessagePergon(character, "Ihr scheitert.");
+            endif
+
+            if (destroy_target_failure)
+                SubtractAmount(use_on, 1);
+            endif
+        endif
+
+    else
+        //don't need a skill check
+        SubtractAmount(stuff, quantity1);
+
+
+        tgtitem  := CreateItemInBackpackPergon(character, targetitem, target_quantity);
+        tgtitem.movable := 1;
+        if (target_quantity > 1)
+            desc := "items";
+        else
+            desc := "item";
+        endif
+
+        if (destroy_target_success)
+            SubtractAmount(use_on, 1);
+        endif
+
+   endif
+
+endprogram

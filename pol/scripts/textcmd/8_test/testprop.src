@@ -1,0 +1,1425 @@
+Use uo;
+Use os;
+
+Include "include/itemnpc";
+
+Program TextCMD_TestProp(who)
+  SysLog("TestProp-Session beginnt...");
+
+  //NPC-Object
+  //  Var object:=CreateNPCFromTemplate("weapon2w", who.x, who.y, who.z);
+  //  Test_NPC(who, object);
+  //  RevokePrivilege(object, "invul");
+  //  SetObjProperty(object, "guardkill", 1);
+  //  KillMobile(object, "TextCMD TestProp");
+  //
+  //PC-Object
+  //  Test_PC(who, who);
+  //
+  //Item-Object
+  //  Var object:=CreateItemAtLocationPergon(who.x, who.y, who.z, "goldcoin", 6);
+  //  Var object:=CreateItemAtLocationPergon(who.x, who.y, who.z, 0xff21, 1);
+  //  Var object:=CreateItemInBackpackPergon(who, "goldcoin", 6);
+  //  Var object:=CreateItemAtLocationPergon(who.x, who.y, who.z, 0x0f64, 1);
+  //  Test_Item(who, object);
+  //  DestroyItem(object);
+  //
+  //Container-Object
+  //  Var object:=CreateItemAtLocationPergon(who.x, who.y, who.z, "backpack", 1);
+  //  Var object:=CreateItemAtLocationPergon(who.x, who.y, who.z, 0xff21, 1);
+  //  Var object:=CreateItemInBackpackPergon(who, "backpack", 1);
+  //  Test_Container(who, object);
+  //  DestroyItem(object);
+
+  //Weapon-Object
+    Var object:=CreateItemAtLocationPergon(who.x, who.y, who.z, "longsword", 1);
+  //  Var object:=CreateItemAtLocationPergon(who.x, who.y, who.z, "waraxe", 1);
+  //  Var object:=CreateItemInBackpackPergon(who, "waraxe", 1);
+  //  Var object:=CreateItemAtLocationPergon(who.x, who.y, who.z, 0xff21, 1);
+  //  Var object:=CreateItemInBackpackPergon(who, "backpack", 1);
+    Test_Weapon(who, object);
+    DestroyItem(object);
+
+  SysLog("...beendet");
+EndProgram
+
+Function Test_Weapon(who, weapon)
+  //* weapon.amount             ro Integer (1..60000) / Menge / Hmm, glaube aber kaum, dass es stackbare Weapons gibt
+   // Syslog("L: weapon.amount = "+weapon.amount);
+   // weapon.amount:=0;Syslog("S: weapon.amount = "+weapon.amount);
+   // weapon.amount:=2;Syslog("S: weapon.amount = "+weapon.amount);
+   //
+  //* weapon.color              rw Integer (0..65535) / Farbe
+   // Syslog("L: weapon.color = "+weapon.color);
+   // weapon.color:=0;Syslog("S: weapon.color = "+weapon.color);
+   // weapon.color:=7.5;Syslog("S: weapon.color = "+weapon.color);
+   // weapon.color:=-1;Syslog("S: weapon.color = "+weapon.color);
+   // weapon.color:=65535;Syslog("S: weapon.color = "+weapon.color);
+   // weapon.color:=65536;Syslog("S: weapon.color = "+weapon.color);
+   //
+  //* weapon.container          ro <appobj> / Behaeltnis, in dem sich die Weapon unmittelbar befindet
+   // Syslog("S: weapon.container = "+weapon.container+" ("+(weapon.container).serial+")");
+   // weapon.container:=0;Syslog("S: weapon.container = "+weapon.container+" ("+(weapon.container).serial+")");
+   // weapon.container:=CreateItemAtLocationPergon(who.x, who.y, who.z, "backpack", 1);
+   // Syslog("S: weapon.container = "+weapon.container+" ("+(weapon.container).serial+")");
+   //
+  //* weapon.decayat            rw Integer (-2147483647..2147483647) / GarbageCollection / Verschwindet zum Zeitpunkt (Sekundengenau)
+   //   (i.d.R. setzt man es auf ReadGameClock()+Sekunden / oder auf 0, dann bleibt es dauerhaft)
+   // Syslog("L: weapon.decayat = "+weapon.decayat);
+   // weapon.decayat:=ReadGameClock()+1;Syslog("S: weapon.decayat = "+weapon.decayat);
+   // weapon.decayat:=-2147483647;Syslog("S: weapon.decayat = "+weapon.decayat);
+   // weapon.decayat:=2147483647;Syslog("S: weapon.decayat = "+weapon.decayat);
+   //
+  //* weapon.desc               ro String / Beschreibung / Setzen -> weapon.name
+   // Syslog("L: weapon.desc = "+weapon.desc);
+   // weapon.desc:="hallo";Syslog("S: weapon.desc = "+weapon.desc);
+   // Syslog("L: weapon.name = "+weapon.name);
+   // weapon.name:="hallo";Syslog("S: weapon.desc = "+weapon.desc);
+   // Syslog("L: weapon.name = "+weapon.name);
+   //
+  //* weapon.dmg_mod            rw Integer (-32768..32767) / Schaden-Modifikator (relativ, siehe ItemDesc.damage)
+   // Syslog("L: weapon.dmg_mod = "+weapon.dmg_mod);
+   // weapon.dmg_mod:=2;Syslog("S: weapon.dmg_mod = "+weapon.dmg_mod);
+   // weapon.dmg_mod:=-32768;Syslog("S: weapon.dmg_mod = "+weapon.dmg_mod);
+   // weapon.dmg_mod:=32767;Syslog("S: weapon.dmg_mod = "+weapon.dmg_mod);
+   //
+  //* weapon.equipscript        rw String / EquipScript / Wird beim Aufnehmen aufgerufen
+   //   (Das neue Script ist nach dem schreiben sofort einsetzbar, Pkg-Pfade sind moeglich, sonst relativ)
+   // Syslog("L: weapon.equipscript = "+weapon.equipscript);
+   // weapon.equipscript:=weapon.unequipscript;Syslog("S: weapon.equipscript = "+weapon.equipscript);
+   //
+  //* weapon.facing             rw Integer (0..31) / Beleuchtung (haengt vom Item selber ab, ob ueberhaupt)
+   // Syslog("L: weapon.facing = "+weapon.facing);
+   // weapon.facing:=0;Syslog("S: weapon.facing = "+weapon.facing);
+   // weapon.facing:=1;Syslog("S: weapon.facing = "+weapon.facing);
+   // weapon.facing:=-1;Syslog("S: weapon.facing = "+weapon.facing);
+   // weapon.facing:=31;Syslog("S: weapon.facing = "+weapon.facing);
+   // weapon.facing:=32;Syslog("S: weapon.facing = "+weapon.facing);
+   //
+  //* weapon.graphic            rw Integer (0..16383) / Grafik (siehe weapon.objtype)
+   // Syslog("L: weapon.graphic = "+weapon.graphic);
+   // weapon.graphic:=0;Syslog("S: weapon.graphic = "+weapon.graphic);
+   // weapon.graphic:=1;Syslog("S: weapon.graphic = "+weapon.graphic);
+   // weapon.graphic:=560;Syslog("S: weapon.graphic = "+weapon.graphic);
+   // weapon.graphic:=16383;Syslog("S: weapon.graphic = "+weapon.graphic);
+   // weapon.graphic:=-70;Syslog("S: weapon.graphic = "+weapon.graphic);
+   //
+  //* weapon.height             ro Integer (0..257) / Hoehe
+   // Syslog("L: weapon.height = "+weapon.height);
+   // weapon.height:=0;Syslog("S: weapon.height = "+weapon.height);
+   // weapon.height:=2;Syslog("S: weapon.height = "+weapon.height);
+
+  //  weapon.hitscript    #rw (String)
+
+  //* npc._hp                 rw Integer (0..65535) / HitPoints
+  //  weapon._hp           #rw
+   // Syslog("L: weapon._hp = "+weapon._hp);
+   // weapon._hp:=10;Syslog("S: weapon._hp = "+weapon._hp);
+
+  //* weapon.invisible          rw Integer (0..1) / Unsichtbar
+   // Syslog("L: weapon.invisible = "+weapon.invisible);
+   // weapon.invisible:=1;Syslog("S: weapon.invisible = "+weapon.invisible);
+   // weapon.invisible:=0;Syslog("S: weapon.invisible = "+weapon.invisible);
+   //
+  //* weapon.layer              ro Integer (0..30) / Layer / Der Layer wird erst dann gesetzt, wenn man das Teil anhat
+   // Syslog("L: weapon.layer = "+weapon.layer);
+   // weapon.layer:=1;Syslog("S: weapon.layer = "+weapon.layer);
+
+
+  //* pc._maxhp              ro Integer (1..32977) / max. HitPoints (schnippelt beim HitPoints-Setzen) / Setzen -> pc._setstr()+pc._strength_mod
+  //  weapon._maxhp        #ro -> weapon.maxhp_mod
+    Syslog("L: weapon.maxhp = "+weapon.maxhp);
+    weapon.maxhp:=10;Syslog("S: weapon.maxhp = "+weapon.maxhp);
+
+  //  weapon.maxhp_mod    #rw
+    Syslog("L: weapon.maxhp_mod = "+weapon.maxhp_mod);
+    weapon.maxhp_mod:=10;Syslog("S: weapon.maxhp_mod = "+weapon.maxhp_mod);
+    weapon.maxhp_mod:=-32768;Syslog("S: weapon.maxhp_mod = "+weapon.maxhp_mod);
+    weapon.maxhp_mod:=32767;Syslog("S: weapon.maxhp_mod = "+weapon.maxhp_mod);
+    Syslog("L: weapon.maxhp = "+weapon.maxhp);
+
+  //* weapon.movable            rw Integer (0..1) / Beweglich
+   // Syslog("L: weapon.movable = "+weapon.movable);
+   // weapon.movable:=1;Syslog("S: weapon.movable = "+weapon.movable);
+   // weapon.movable:=0;Syslog("S: weapon.movable = "+weapon.movable);
+   // weapon.movable:=2;Syslog("S: weapon.movable = "+weapon.movable);
+   //
+  //* weapon.multi              ro Integer (0 oder <appobj>) / Befindet sich das Item in 'nem Multi ?
+   // Syslog("L: weapon.multi = "+weapon.multi);
+   // weapon.multi:=0;Syslog("S: weapon.multi = "+weapon.multi);
+   // weapon.multi:=10;Syslog("S: weapon.multi = "+weapon.multi);
+   //
+  //* weapon.name               rw String / Name / Ist anfaenglich leer, da nimmt er dann weapon.desc
+   //   (nach dem erstmaligen Schreiben sind weapon.name & weapon.desc identisch)
+   // Syslog("L: weapon.name = "+weapon.name);
+   // weapon.name:=0;Syslog("S: weapon.name = "+weapon.name);
+   // weapon.name:="blubb";Syslog("S: weapon.name = "+weapon.name);
+   //
+  //* weapon.newbie             rw Integer (0..1) / Gehoert das Item bei der CharErschaffung/Reinkarnation dazu ?
+   //   (Lassen sich net stacken, die Teile)
+   // Syslog("L: weapon.newbie = "+weapon.newbie);
+   // weapon.newbie:=0;Syslog("S: weapon.newbie = "+weapon.newbie);
+   // weapon.newbie:=1;Syslog("S: weapon.newbie = "+weapon.newbie);
+   // weapon.newbie:=10;Syslog("S: weapon.newbie = "+weapon.newbie);
+   //
+  //* weapon.objtype            ro Integer (0..16383) / Template fuer Original-Grafik (siehe weapon.graphic)
+   // Syslog("L: weapon.objtype = "+weapon.objtype);
+   // weapon.objtype:=0;Syslog("S: weapon.objtype = "+weapon.objtype);
+   // weapon.objtype:=1;Syslog("S: weapon.objtype = "+weapon.objtype);
+   // weapon.objtype:=-70;Syslog("S: weapon.objtype = "+weapon.objtype);
+   //
+  //* weapon.quality            ro Integer (1..1) / Qualitaet / Scheint ein BUG zu sein, liefert immer 1
+   // Syslog("L: weapon.quality = "+weapon.quality);
+   // weapon.quality:=0;Syslog("S: weapon.quality = "+weapon.quality);
+   // weapon.quality:=1;Syslog("S: weapon.quality = "+weapon.quality);
+   // weapon.quality:=2;Syslog("S: weapon.quality = "+weapon.quality);
+   //
+  //* weapon.sellprice          rw Integer (-2147483647..2147483647) / Verkaufspreis / Unbenutzt (VendorBuysFor hat damit nuescht zu tun?!?)
+   //   (funzt net, auch wenn die core-changes was anderes behauptet:
+   //     added weapon.sellprice; used instead of 'vendorsellsfor' if nonzero. sellprice on a stack is the price for one unit)
+   // Syslog("L: weapon.sellprice = "+weapon.sellprice);
+   // weapon.sellprice:=-2147483647;Syslog("S: weapon.sellprice = "+weapon.sellprice);
+   // weapon.sellprice:=2147483647;Syslog("S: weapon.sellprice = "+weapon.sellprice);
+   // weapon.sellprice:=-10;Syslog("S: weapon.sellprice = "+weapon.sellprice);
+   // weapon.sellprice:=10;Syslog("S: weapon.sellprice = "+weapon.sellprice);
+   //
+  //* weapon.serial             ro Integer (0..unlimmeted) / Seriennummer
+   // Syslog("L: weapon.serial = "+weapon.serial);
+   // weapon.serial:=1234;Syslog("S: weapon.serial = "+weapon.serial);
+   //
+  //* weapon.setlightlevel      Methode(Integer (0..30), Integer (-unlimmeted..unlimmeted)) / Unbenutzt
+   // weapon.setlightlevel(30, 10);
+   //
+  //* weapon.attribute          ro Integer (0..48) / Attribute / Skill, gegen den die Waffe wirkt
+   // Syslog("L: weapon.attribute = "+weapon.attribute);
+   // weapon.attribute:=2;Syslog("S: weapon.attribute = "+weapon.attribute);
+   //
+  //* weapon.unequipscript      rw String / UnEquipScript / Wird beim Ablegen aufgerufen
+   //   (Das neue Script ist nach dem schreiben sofort einsetzbar, Pkg-Pfade sind moeglich, sonst relativ)
+   // Syslog("L: weapon.unequipscript = "+weapon.unequipscript);
+   // weapon.unequipscript:=weapon.equipscript;Syslog("S: weapon.unequipscript = "+weapon.unequipscript);
+   //
+  //* weapon.usescript          rw String / Script / Wird beim Doppelklick ausgeloest
+   //   (Das neue Script ist nach dem schreiben sofort einsetzbar, Pkg-Pfade sind noetig, total absolut)
+   //   (Ist incompatibel zu den Equip-Dingern und liefert auch erstmal nuescht zurueck)
+   // Syslog("L: weapon.usescript = "+weapon.usescript);
+   // weapon.usescript:=weapon.usescript;Syslog("S: weapon.usescript = ["+weapon.usescript+"]");
+   //
+  //* weapon.weight             ro Integer (0..65536) / Gewicht
+   //   (BUG -> Ueberlauf auf 0...)
+   // Syslog("S: weapon.weight = "+weapon.weight);
+   // weapon.weight:=3;Syslog("S: weapon.weight = "+weapon.weight);
+   //
+  //* weapon.x                  ro Integer (0..6143) / X-Koordinate / Setzen -> MoveObjectToLocation
+   // Syslog("S: weapon.x = "+weapon.x);
+   // weapon.x:=1;Syslog("S: weapon.x = "+weapon.x);
+   //
+  //* weapon.y                  ro Integer (0..4095) / Y-Koordinate / Setzen -> MoveObjectToLocation
+   // Syslog("S: weapon.y = "+weapon.y);
+   // weapon.y:=1;Syslog("S: weapon.y = "+weapon.y);
+   //
+  //* weapon.z                  ro Integer (-128..127) / Z-Koordinate / Setzen -> MoveObjectToLocation
+   // Syslog("S: weapon.z = "+weapon.z);
+   // weapon.z:=1;Syslog("S: weapon.z = "+weapon.z);
+   who := who;
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+
+Function Test_Container(who, container)
+  //* container.amount             ro Integer (1..60000) / Menge / Hmm, glaube aber kaum, dass es stackbare Container gibt
+   // Syslog("L: container.amount = "+container.amount);
+   // container.amount:=0;Syslog("S: container.amount = "+container.amount);
+   // container.amount:=2;Syslog("S: container.amount = "+container.amount);
+   //
+  //* container.color              rw Integer (0..65535) / Farbe
+   // Syslog("L: container.color = "+container.color);
+   // container.color:=0;Syslog("S: container.color = "+container.color);
+   // container.color:=7.5;Syslog("S: container.color = "+container.color);
+   // container.color:=-1;Syslog("S: container.color = "+container.color);
+   // container.color:=65535;Syslog("S: container.color = "+container.color);
+   // container.color:=65536;Syslog("S: container.color = "+container.color);
+   //
+  //* container.container          ro <appobj> / Behaeltnis, in dem sich der Container unmittelbar befindet
+   // Syslog("S: container.container = "+container.container+" ("+(container.container).serial+")");
+   // container.container:=0;Syslog("S: container.container = "+container.container+" ("+(container.container).serial+")");
+   // container.container:=CreateItemAtLocationPergon(who.x, who.y, who.z, "backpack", 1);
+   // Syslog("S: container.container = "+container.container+" ("+(container.container).serial+")");
+   //
+  //* container.decayat            rw Integer (-2147483647..2147483647) / GarbageCollection / Verschwindet zum Zeitpunkt (Sekundengenau)
+   //   (i.d.R. setzt man es auf ReadGameClock()+Sekunden / oder auf 0, dann bleibt es dauerhaft)
+   // Syslog("L: container.decayat = "+container.decayat);
+   // container.decayat:=ReadGameClock()+1;Syslog("S: container.decayat = "+container.decayat);
+   // container.decayat:=-2147483647;Syslog("S: container.decayat = "+container.decayat);
+   // container.decayat:=2147483647;Syslog("S: container.decayat = "+container.decayat);
+   //
+  //* container.desc               ro String / Beschreibung / Setzen -> container.name
+   // Syslog("L: container.desc = "+container.desc);
+   // container.desc:="hallo";Syslog("S: container.desc = "+container.desc);
+   // Syslog("L: container.name = "+container.name);
+   // container.name:="hallo";Syslog("S: container.desc = "+container.desc);
+   // Syslog("L: container.name = "+container.name);
+   //
+  //* container.equipscript        rw String / EquipScript / Wird beim Anziehen aufgerufen, hmm, glaube aber kaum, dass es anziehbare Container gibt
+   //   (Das neue Script ist nach dem schreiben sofort einsetzbar, Pkg-Pfade sind moeglich, sonst relativ)
+   // Syslog("L: container.equipscript = "+container.equipscript);
+   // container.equipscript:=container.unequipscript;Syslog("S: container.equipscript = "+container.equipscript);
+   //
+  //* container.facing             rw Integer (0..31) / Beleuchtung (haengt vom Item selber ab, ob ueberhaupt)
+   // Syslog("L: container.facing = "+container.facing);
+   // container.facing:=0;Syslog("S: container.facing = "+container.facing);
+   // container.facing:=1;Syslog("S: container.facing = "+container.facing);
+   // container.facing:=-1;Syslog("S: container.facing = "+container.facing);
+   // container.facing:=31;Syslog("S: container.facing = "+container.facing);
+   // container.facing:=32;Syslog("S: container.facing = "+container.facing);
+   //
+  //* container.graphic            rw Integer (0..16383) / Grafik (siehe container.objtype)
+   // Syslog("L: container.graphic = "+container.graphic);
+   // container.graphic:=0;Syslog("S: container.graphic = "+container.graphic);
+   // container.graphic:=1;Syslog("S: container.graphic = "+container.graphic);
+   // container.graphic:=560;Syslog("S: container.graphic = "+container.graphic);
+   // container.graphic:=16383;Syslog("S: container.graphic = "+container.graphic);
+   // container.graphic:=-70;Syslog("S: container.graphic = "+container.graphic);
+   //
+  //* container.height             ro Integer (0..257) / Hoehe
+   // Syslog("L: container.height = "+container.height);
+   // container.height:=0;Syslog("S: container.height = "+container.height);
+   // container.height:=2;Syslog("S: container.height = "+container.height);
+   //
+  //* container.invisible          rw Integer (0..1) / Unsichtbar
+   // Syslog("L: container.invisible = "+container.invisible);
+   // container.invisible:=1;Syslog("S: container.invisible = "+container.invisible);
+   // container.invisible:=0;Syslog("S: container.invisible = "+container.invisible);
+   //
+  //* container.layer              ro Integer (0..30) / Layer / Der Layer wird erst dann gesetzt, wenn man das Teil anhat
+   // Syslog("L: container.layer = "+container.layer);
+   // container.layer:=1;Syslog("S: container.layer = "+container.layer);
+   //
+  //* container.locked             rw Integer (0..1) / Verschlossen
+   // Syslog("L: container.locked = "+container.locked);
+   // container.locked:=1;Syslog("S: container.locked = "+container.locked);
+   // container.locked:=0;Syslog("S: container.locked = "+container.locked);
+   //
+  //* container.movable            rw Integer (0..1) / Beweglich
+   // Syslog("L: container.movable = "+container.movable);
+   // container.movable:=1;Syslog("S: container.movable = "+container.movable);
+   // container.movable:=0;Syslog("S: container.movable = "+container.movable);
+   // container.movable:=2;Syslog("S: container.movable = "+container.movable);
+   //
+  //* container.multi              ro Integer (0 oder <appobj>) / Befindet sich das Item in 'nem Multi ?
+   // Syslog("L: container.multi = "+container.multi);
+   // container.multi:=0;Syslog("S: container.multi = "+container.multi);
+   // container.multi:=10;Syslog("S: container.multi = "+container.multi);
+   //
+  //* container.name               rw String / Name / Ist anfaenglich leer, da nimmt er dann container.desc
+   //   (nach dem erstmaligen Schreiben sind container.name & container.desc identisch)
+   // Syslog("L: container.name = "+container.name);
+   // container.name:=0;Syslog("S: container.name = "+container.name);
+   // container.name:="blubb";Syslog("S: container.name = "+container.name);
+   //
+  //* container.newbie             rw Integer (0..1) / Gehoert das Item bei der CharErschaffung/Reinkarnation dazu ?
+   //   (Lassen sich net stacken, die Teile)
+   // Syslog("L: container.newbie = "+container.newbie);
+   // container.newbie:=0;Syslog("S: container.newbie = "+container.newbie);
+   // container.newbie:=1;Syslog("S: container.newbie = "+container.newbie);
+   // container.newbie:=10;Syslog("S: container.newbie = "+container.newbie);
+   //
+  //* container.objtype            ro Integer (0..16383) / Template fuer Original-Grafik (siehe container.graphic)
+   // Syslog("L: container.objtype = "+container.objtype);
+   // container.objtype:=0;Syslog("S: container.objtype = "+container.objtype);
+   // container.objtype:=1;Syslog("S: container.objtype = "+container.objtype);
+   // container.objtype:=-70;Syslog("S: container.objtype = "+container.objtype);
+   //
+  //* container.sellprice          rw Integer (-2147483647..2147483647) / Verkaufspreis / Unbenutzt (VendorBuysFor hat damit nuescht zu tun?!?)
+   //   (funzt net, auch wenn die core-changes was anderes behauptet:
+   //     added container.sellprice; used instead of 'vendorsellsfor' if nonzero. sellprice on a stack is the price for one unit)
+   // Syslog("L: container.sellprice = "+container.sellprice);
+   // container.sellprice:=-2147483647;Syslog("S: container.sellprice = "+container.sellprice);
+   // container.sellprice:=2147483647;Syslog("S: container.sellprice = "+container.sellprice);
+   // container.sellprice:=-10;Syslog("S: container.sellprice = "+container.sellprice);
+   // container.sellprice:=10;Syslog("S: container.sellprice = "+container.sellprice);
+   //
+  //* container.serial             ro Integer (0..unlimmeted) / Seriennummer
+   // Syslog("L: container.serial = "+container.serial);
+   // container.serial:=1234;Syslog("S: container.serial = "+container.serial);
+   //
+  //* container.setlightlevel      Methode(Integer (0..30), Integer (-unlimmeted..unlimmeted)) / Unbenutzt
+   // container.setlightlevel(30, 10);
+   //
+  //* container.unequipscript      rw String / UnEquipScript / Wird beim Ausziehen aufgerufen, hmm, glaube aber kaum, dass es anziehbare Container gibt
+   //   (Das neue Script ist nach dem schreiben sofort einsetzbar, Pkg-Pfade sind moeglich, sonst relativ)
+   // Syslog("L: container.unequipscript = "+container.unequipscript);
+   // container.unequipscript:=container.equipscript;Syslog("S: container.unequipscript = "+container.unequipscript);
+   //
+  //* container.usescript          rw String / Script / Wird beim Doppelklick ausgeloest
+   //   (Das neue Script ist nach dem schreiben sofort einsetzbar, Pkg-Pfade sind noetig, total absolut)
+   //   (Ist incompatibel zu den Equip-Dingern und liefert auch erstmal nuescht zurueck)
+   // Syslog("L: container.usescript = "+container.usescript);
+   // container.usescript:=container.usescript;Syslog("S: container.usescript = ["+container.usescript+"]");
+   //
+  //* container.weight             ro Integer (0..65536) / Gewicht
+   //   (BUG -> Ueberlauf auf 0...)
+   // Syslog("S: container.weight = "+container.weight);
+   // container.weight:=3;Syslog("S: container.weight = "+container.weight);
+   //
+  //* container.x                  ro Integer (0..6143) / X-Koordinate / Setzen -> MoveObjectToLocation
+   // Syslog("S: container.x = "+container.x);
+   // container.x:=1;Syslog("S: container.x = "+container.x);
+   //
+  //* container.y                  ro Integer (0..4095) / Y-Koordinate / Setzen -> MoveObjectToLocation
+   // Syslog("S: container.y = "+container.y);
+   // container.y:=1;Syslog("S: container.y = "+container.y);
+   //
+  //* container.z                  ro Integer (-128..127) / Z-Koordinate / Setzen -> MoveObjectToLocation
+   // Syslog("S: container.z = "+container.z);
+   // container.z:=1;Syslog("S: container.z = "+container.z);
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+
+Function Test_Item(who, item)
+  //* item.amount             ro Integer (1..60000) / Menge
+   // Syslog("L: item.amount = "+item.amount);
+   // item.amount:=0;Syslog("S: item.amount = "+item.amount);
+   // item.amount:=2;Syslog("S: item.amount = "+item.amount);
+   //
+  //* item.color              rw Integer (0..65535) / Farbe
+   // Syslog("L: item.color = "+item.color);
+   // item.color:=0;Syslog("S: item.color = "+item.color);
+   // item.color:=7.5;Syslog("S: item.color = "+item.color);
+   // item.color:=-1;Syslog("S: item.color = "+item.color);
+   // item.color:=65535;Syslog("S: item.color = "+item.color);
+   // item.color:=65536;Syslog("S: item.color = "+item.color);
+   //
+  //* item.container          ro <appobj> / Behaeltnis, in dem sich das Item unmittelbar befindet
+   // Syslog("S: item.container = "+item.container+" ("+(item.container).serial+")");
+   // item.container:=0;Syslog("S: item.container = "+item.container+" ("+(item.container).serial+")");
+   // item.container:=CreateItemAtLocationPergon(who.x, who.y, who.z, "backpack", 1);
+   // Syslog("S: item.container = "+item.container+" ("+(item.container).serial+")");
+   //
+  //* item.decayat            rw Integer (-2147483647..2147483647) / GarbageCollection / Verschwindet zum Zeitpunkt (Sekundengenau)
+   //   (i.d.R. setzt man es auf ReadGameClock()+Sekunden / oder auf 0, dann bleibt es dauerhaft)
+   // Syslog("L: item.decayat = "+item.decayat);
+   // item.decayat:=ReadGameClock()+1;Syslog("S: item.decayat = "+item.decayat);
+   // item.decayat:=-2147483647;Syslog("S: item.decayat = "+item.decayat);
+   // item.decayat:=2147483647;Syslog("S: item.decayat = "+item.decayat);
+   //
+  //* item.desc               ro String / Beschreibung / Setzen -> item.name
+   // Syslog("L: item.desc = "+item.desc);
+   // item.desc:="hallo";Syslog("S: item.desc = "+item.desc);
+   // Syslog("L: item.name = "+item.name);
+   // item.name:="hallo";Syslog("S: item.desc = "+item.desc);
+   // Syslog("L: item.name = "+item.name);
+   //
+  //* item.equipscript        rw String / EquipScript / Wird beim Anziehen aufgerufen
+   //   (Das neue Script ist nach dem schreiben sofort einsetzbar, Pkg-Pfade sind moeglich, sonst relativ)
+   // Syslog("L: item.equipscript = "+item.equipscript);
+   // item.equipscript:=item.unequipscript;Syslog("S: item.equipscript = "+item.equipscript);
+   //
+  //* item.facing             rw Integer (0..31) / Beleuchtung (haengt vom Item selber ab, ob ueberhaupt)
+   // Syslog("L: item.facing = "+item.facing);
+   // item.facing:=0;Syslog("S: item.facing = "+item.facing);
+   // item.facing:=1;Syslog("S: item.facing = "+item.facing);
+   // item.facing:=-1;Syslog("S: item.facing = "+item.facing);
+   // item.facing:=31;Syslog("S: item.facing = "+item.facing);
+   // item.facing:=32;Syslog("S: item.facing = "+item.facing);
+   //
+  //* item.graphic            rw Integer (0..16383) / Grafik (siehe item.objtype)
+   // Syslog("L: item.graphic = "+item.graphic);
+   // item.graphic:=0;Syslog("S: item.graphic = "+item.graphic);
+   // item.graphic:=1;Syslog("S: item.graphic = "+item.graphic);
+   // item.graphic:=560;Syslog("S: item.graphic = "+item.graphic);
+   // item.graphic:=16383;Syslog("S: item.graphic = "+item.graphic);
+   // item.graphic:=-70;Syslog("S: item.graphic = "+item.graphic);
+   //
+  //* item.height             ro Integer (0..257) / Hoehe
+   // Syslog("L: item.height = "+item.height);
+   // item.height:=0;Syslog("S: item.height = "+item.height);
+   // item.height:=2;Syslog("S: item.height = "+item.height);
+   //
+  //* item.invisible          rw Integer (0..1) / Unsichtbar
+   // Syslog("L: item.invisible = "+item.invisible);
+   // item.invisible:=1;Syslog("S: item.invisible = "+item.invisible);
+   // item.invisible:=0;Syslog("S: item.invisible = "+item.invisible);
+   //
+  //* item.layer              ro Integer (0..30) / Layer / Der Layer wird erst dann gesetzt, wenn man das Teil anhat
+   // Syslog("L: item.layer = "+item.layer);
+   // item.layer:=1;Syslog("S: item.layer = "+item.layer);
+   //
+  //* item.movable            rw Integer (0..1) / Beweglich
+   // Syslog("L: item.movable = "+item.movable);
+   // item.movable:=1;Syslog("S: item.movable = "+item.movable);
+   // item.movable:=0;Syslog("S: item.movable = "+item.movable);
+   //
+  //* item.multi              ro Integer (0 oder <appobj>) / Befindet sich das Item in 'nem Multi ?
+   // Syslog("L: item.multi = "+item.multi);
+   // item.multi:=0;Syslog("S: item.multi = "+item.multi);
+   // item.multi:=10;Syslog("S: item.multi = "+item.multi);
+   //
+  //* item.name               rw String / Name / Ist anfaenglich leer, da nimmt er dann item.desc
+   //   (nach dem erstmaligen Schreiben sind item.name & item.desc identisch)
+   // Syslog("L: item.name = "+item.name);
+   // item.name:=0;Syslog("S: item.name = "+item.name);
+   // item.name:="blubb";Syslog("S: item.name = "+item.name);
+   //
+  //* item.newbie             rw Integer (0..1) / Gehoert das Item bei der CharErschaffung/Reinkarnation dazu ?
+   //   (Lassen sich net stacken, die Teile)
+   // Syslog("L: item.newbie = "+item.newbie);
+   // item.newbie:=0;Syslog("S: item.newbie = "+item.newbie);
+   // item.newbie:=1;Syslog("S: item.newbie = "+item.newbie);
+   // item.newbie:=10;Syslog("S: item.newbie = "+item.newbie);
+   //
+  //* item.objtype            ro Integer (0..16383) / Template fuer Original-Grafik (siehe item.graphic)
+   // Syslog("L: item.objtype = "+item.objtype);
+   // item.objtype:=0;Syslog("S: item.objtype = "+item.objtype);
+   // item.objtype:=1;Syslog("S: item.objtype = "+item.objtype);
+   // item.objtype:=-70;Syslog("S: item.objtype = "+item.objtype);
+   //
+  //* item.sellprice          rw Integer (-2147483647..2147483647) / Verkaufspreis / Unbenutzt (VendorBuysFor hat damit nuescht zu tun?!?)
+   //   (funzt net, auch wenn die core-changes was anderes behauptet:
+   //     added item.sellprice; used instead of 'vendorsellsfor' if nonzero. sellprice on a stack is the price for one unit)
+   // Syslog("L: item.sellprice = "+item.sellprice);
+   // item.sellprice:=-2147483647;Syslog("S: item.sellprice = "+item.sellprice);
+   // item.sellprice:=2147483647;Syslog("S: item.sellprice = "+item.sellprice);
+   // item.sellprice:=-10;Syslog("S: item.sellprice = "+item.sellprice);
+   // item.sellprice:=10;Syslog("S: item.sellprice = "+item.sellprice);
+   //
+  //* item.serial             ro Integer (0..unlimmeted) / Seriennummer
+   // Syslog("L: item.serial = "+item.serial);
+   // item.serial:=1234;Syslog("S: item.serial = "+item.serial);
+   //
+  //* item.setlightlevel      Methode(Integer (0..30), Integer (-unlimmeted..unlimmeted)) / Unbenutzt
+   // item.setlightlevel(30, 10);
+   //
+  //* item.unequipscript      rw String / UnEquipScript / Wird beim Ausziehen aufgerufen
+   //   (Das neue Script ist nach dem schreiben sofort einsetzbar, Pkg-Pfade sind moeglich, sonst relativ)
+   // Syslog("L: item.unequipscript = "+item.unequipscript);
+   // item.unequipscript:=item.equipscript;Syslog("S: item.unequipscript = "+item.unequipscript);
+   //
+  //* item.usescript          rw String / Script / Wird beim Doppelklick ausgeloest
+   //   (Das neue Script ist nach dem schreiben sofort einsetzbar, Pkg-Pfade sind noetig, total absolut)
+   //   (Ist incompatibel zu den Equip-Dingern und liefert auch erstmal nuescht zurueck)
+   // Syslog("L: item.usescript = "+item.usescript);
+   // item.usescript:=item.usescript;Syslog("S: item.usescript = ["+item.usescript+"]");
+   //
+  //* item.weight             ro Integer (0..65536) / Gewicht
+   //   (BUG -> Ueberlauf auf 0...)
+   // Syslog("S: item.weight = "+item.weight);
+   // item.weight:=2;Syslog("S: item.weight = "+item.weight);
+   //
+  //* item.x                  ro Integer (0..6143) / X-Koordinate / Setzen -> MoveObjectToLocation
+   // Syslog("S: item.x = "+item.x);
+   // item.x:=1;Syslog("S: item.x = "+item.x);
+   //
+  //* item.y                  ro Integer (0..4095) / Y-Koordinate / Setzen -> MoveObjectToLocation
+   // Syslog("S: item.y = "+item.y);
+   // item.y:=1;Syslog("S: item.y = "+item.y);
+   //
+  //* item.z                  ro Integer (-128..127) / Z-Koordinate / Setzen -> MoveObjectToLocation
+   // Syslog("S: item.z = "+item.z);
+   // item.z:=1;Syslog("S: item.z = "+item.z);
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+
+Function Test_PC(who, pc)
+  //* pc.acct               ro <acctobj> / Account
+   // Syslog("L: pc.acct = "+pc.acct+" (SubProp = "+pc.acct.name+")");
+   // pc.acct:=who.acct;Syslog("S: pc.acct = "+pc.acct+" (SubProp = "+pc.acct.name+")");
+   //
+  //* pc.acctname           ro String / Accountname
+   // Syslog("L: pc.acctname = "+pc.acctname);
+   // pc.acctname:=who.acctname;Syslog("S: pc.acctname = "+pc.acctname);
+   //
+  //* pc.ar                 ro Integer (0..32767) / Ruestungsstaerke / Abhaengig von der Ruestung, veraenderbar mit pc.ar_mod
+   // Syslog("L: pc.ar = "+pc.ar);
+   // pc.ar:="42";Syslog("S: pc.ar = "+pc.ar);
+   // pc.ar:=37;Syslog("S: pc.ar = "+pc.ar);
+   //
+  //* pc.ar_mod             rw Integer (-32767..32767) / Ruestungsstaerken-Modifikator (relativ, siehe pc.ar)
+   // Syslog("L: pc.ar_mod = "+pc.ar_mod);
+   // pc.ar_mod:="42";Syslog("S: pc.ar_mod = "+pc.ar_mod+" ("+pc.ar+")");
+   // pc.ar_mod:=37;Syslog("S: pc.ar_mod = "+pc.ar_mod+" ("+pc.ar+")");
+   // pc.ar_mod:=34.6;Syslog("S: pc.ar_mod = "+pc.ar_mod+" ("+pc.ar+")");
+   // pc.ar_mod:=-1;Syslog("S: pc.ar_mod = "+pc.ar_mod+" ("+pc.ar+")");
+   // pc.ar_mod:=32767;Syslog("S: pc.ar_mod = "+pc.ar_mod+" ("+pc.ar+")");
+   //
+  //* pc.backpack           ro <appobj> / Umgeschnalltes Backpack
+   // Syslog("L: pc.backpack = "+pc.backpack+" ("+(pc.backpack).serial+")");
+   //
+  //* pc.cmdlevel           rw Integer (0..5) / KommandoLevel
+   //   BUG -> negative Werte werden zu 5 (macht der eigentlich immer, is hier aber durchaus "kritisch")
+   // Syslog("L: pc.cmdlevel = "+pc.cmdlevel);
+   // pc.cmdlevel:=3;Syslog("S: pc.cmdlevel = "+pc.cmdlevel);
+   // pc.cmdlevel:=-1;Syslog("S: pc.cmdlevel = "+pc.cmdlevel);
+   // pc.cmdlevel:=2.4;Syslog("S: pc.cmdlevel = "+pc.cmdlevel);
+   //
+  //* pc.cmdlevelstr        ro String / KommandoLevelBezeichner / Setzen -> pc.cmdlevel & pc.setcmdlevel
+   // Syslog("L: pc.cmdlevelstr = "+pc.cmdlevelstr);
+   // pc.cmdlevelstr:=who.cmdlevelstr;Syslog("S: pc.cmdlevelstr = "+pc.cmdlevelstr);
+   // pc.cmdlevelstr:=21;Syslog("S: pc.cmdlevelstr = "+pc.cmdlevelstr);
+   // pc.cmdlevelstr:="hallo";Syslog("S: pc.cmdlevelstr = "+pc.cmdlevelstr);
+   //
+  //* pc.color              rw Integer (0..65535) / Farbe
+   // Syslog("L: pc.color = "+pc.color);
+   // pc.color:=0;Syslog("S: pc.color = "+pc.color);
+   // pc.color:=7.5;Syslog("S: pc.color = "+pc.color);
+   // pc.color:=-1;Syslog("S: pc.color = "+pc.color);
+   // pc.color:=65535;Syslog("S: pc.color = "+pc.color);
+   // pc.color:=65536;Syslog("S: pc.color = "+pc.color);
+   //
+  //* pc.concealed          rw Integer (0..5) / Unsichtbar / Der moegliche Maxwert ist an das eigene CMDLevel gekoppelt
+   //   (also Player mit CMDLevel=0 können sich somit auch nich concealen), d.h. man sieht nur die Concealten, die dort
+   //   einen <= Wert haben, als das eigene CMDLevel (geht auch mit NPCs, d.h. ich kann NPCs auf GM setzen und concealed=3
+   //   und Seer können sie nicht sehen, GMs hingegen schon... :)
+   // Syslog("L: pc.concealed = "+pc.concealed);
+   // pc.concealed:=0;Syslog("S: pc.concealed = "+pc.concealed);
+   // pc.concealed:=1;Syslog("S: pc.concealed = "+pc.concealed);
+   // pc.concealed:=2;Syslog("S: pc.concealed = "+pc.concealed);
+   // pc.concealed:=-1;Syslog("S: pc.concealed = "+pc.concealed);
+   // pc.concealed:=7;Syslog("S: pc.concealed = "+pc.concealed);
+   // pc.concealed:="a";Syslog("S: pc.concealed = "+pc.concealed);
+   //
+  //* pc.criminal           ro Integer (0..1) / Kriminell / Setzen -> pc.setcriminal
+   // Syslog("L: pc.criminal = "+pc.criminal);
+   // pc.criminal:=0;Syslog("S: pc.criminal = "+pc.criminal);
+   // pc.criminal:=1;Syslog("S: pc.criminal = "+pc.criminal);
+   // pc.criminal:=-1;Syslog("S: pc.criminal = "+pc.criminal);
+   // pc.criminal:=7;Syslog("S: pc.criminal = "+pc.criminal);
+   // pc.criminal:="a";Syslog("S: pc.criminal = "+pc.criminal);
+   //
+  //* pc.dead               ro Integer (0..1) / Tot
+   // Syslog("L: pc.dead = "+pc.dead);
+   // pc.dead:=0;Syslog("S: pc.dead = "+pc.dead);
+   // pc.dead:=1;Syslog("S: pc.dead = "+pc.dead);
+   // pc.dead:=-1;Syslog("S: pc.dead = "+pc.dead);
+   // pc.dead:=7;Syslog("S: pc.dead = "+pc.dead);
+   // pc.dead:="a";Syslog("S: pc.dead = "+pc.dead);
+   //
+  //* pc._dexterity         ro Integer (1..32977) / Ausdauer / Setzen -> pc._setdex()+pc._dexterity_mod
+   //   (die Werte werden vorzeichenbehaftet addiert und notfalls auf 1 hochgesetzt)
+   // Syslog("L: pc._dexterity = "+pc._dexterity);
+   // pc._dexterity:=0;Syslog("S: pc._dexterity = "+pc._dexterity);
+   // pc._dexterity:=1;Syslog("S: pc._dexterity = "+pc._dexterity);
+   //
+  //* pc._dexterity_mod     rw Integer (-209..32767) / Ausdauer-Modifikator (relativ, siehe pc._dexterity)
+   // Syslog("S: pc._dexterity = "+pc._dexterity);
+   // pc._dexterity_mod:=80;Syslog("S: pc._dexterity_mod = "+pc._dexterity_mod);
+   // Syslog("S: pc._dexterity = "+pc._dexterity);
+   // pc._dexterity_mod:=-80;Syslog("S: pc._dexterity_mod = "+pc._dexterity_mod);
+   // Syslog("S: pc._dexterity = "+pc._dexterity);
+   // pc._dexterity_mod:=32767;Syslog("S: pc._dexterity_mod = "+pc._dexterity_mod);
+   //
+  //* pc.disable            Methode(String) / EIN Privileg deaktivieren
+   // Syslog(pc.enable("invul"));
+   // Syslog(pc.enabled("invul"));
+   // Syslog(pc.disable("invul"));
+   // Syslog(pc.enabled("invul"));
+   //
+  //* pc.enable             Methode(String) / EIN Privileg aktivieren
+   // Syslog(pc.enable("invul"));
+   // Syslog(pc.enabled("invul"));
+   //
+  //* pc.enabled            Methode(String):Integer (0..1) / Ist EIN Privileg aktiviert? (Im Zweifelsfall -> 0)
+   // Syslog(pc.enabled("all"));
+   // Syslog(pc.enabled("all invul"));
+   // Syslog(pc.enabled("inll"));
+   //
+  //* pc.facing             rw Integer (0..7) / Richtung (0=N / 1=NE / 2=E ... 7=NW) (der dreht auch PCs)
+   // Syslog("L: pc.facing = "+pc.facing);
+   // pc.facing:=0;Syslog("S: pc.facing = "+pc.facing);
+   // pc.facing:=1;Syslog("S: pc.facing = "+pc.facing);
+   // pc.facing:=-1;Syslog("S: pc.facing = "+pc.facing);
+   // pc.facing:=7;Syslog("S: pc.facing = "+pc.facing);
+   // pc.facing:=8;Syslog("S: pc.facing = "+pc.facing);
+   //
+  //* pc.frozen             rw Integer (0..1) / Eingefroren
+   // Syslog("L: pc.frozen = "+pc.frozen);
+   // pc.frozen:=0;Syslog("S: pc.frozen = "+pc.frozen);
+   // pc.frozen:=1;Syslog("S: pc.frozen = "+pc.frozen);
+   // pc.frozen:=-1;Syslog("S: pc.frozen = "+pc.frozen);
+   // pc.frozen:=10;Syslog("S: pc.frozen = "+pc.frozen);
+   //
+  //* pc.gender             rw Integer (0..1) / Geschlecht (0=maennlich), pc.graphic muss noch angepasst werden
+   // Syslog("L: pc.gender = "+pc.gender);
+   // pc.gender:=0;Syslog("S: pc.gender = "+pc.gender);
+   // pc.gender:=1;Syslog("S: pc.gender = "+pc.gender);
+   // pc.gender:=-1;Syslog("S: pc.gender = "+pc.gender);
+   // pc.gender:=10;Syslog("S: pc.gender = "+pc.gender);
+   //
+  //* pc.gold               ro Integer (0..2147483648) / Gold-Besitz
+   // Syslog("L: pc.gold = "+pc.gold);
+   // pc.gold:=0;Syslog("S: pc.gold = "+pc.gold);
+   // pc.gold:=200;Syslog("S: pc.gold = "+pc.gold);
+   // pc.gold:=-10;Syslog("S: pc.gold = "+pc.gold);
+   //
+  //* pc.graphic            rw Integer (1..1023) / Grafik (siehe pc.objtype)
+   // Syslog("L: pc.graphic = "+pc.graphic);
+   // pc.graphic:=0;Syslog("S: pc.graphic = "+pc.graphic);
+   // pc.graphic:=1;Syslog("S: pc.graphic = "+pc.graphic);
+   // pc.graphic:=560;Syslog("S: pc.graphic = "+pc.graphic);
+   // pc.graphic:=1023;Syslog("S: pc.graphic = "+pc.graphic);
+   // pc.graphic:=-70;Syslog("S: pc.graphic = "+pc.graphic);
+   //
+  //* pc.guildid            rw Integer (-2147483647..2147483647) / GildenNummer
+   //   (aendert auch was an den farben, sobald gesetzt (z.b. tamed -> gruen))
+   // Syslog("L: pc.guildid = "+pc.guildid);
+   // pc.guildid:=0;Syslog("S: pc.guildid = "+pc.guildid);
+   // pc.guildid:=-2147483647;Syslog("S: pc.guildid = "+pc.guildid);
+   // pc.guildid:=1;Syslog("S: pc.guildid = "+pc.guildid);
+   // pc.guildid:=2147483647;Syslog("S: pc.guildid = "+pc.guildid);
+   //
+  //* pc.height             ro Integer (0..257) / Hoehe
+   // Syslog("L: pc.height = "+pc.height);
+   // pc.height:=0;Syslog("S: pc.height = "+pc.height);
+   // pc.height:=1;Syslog("S: pc.height = "+pc.height);
+   //
+  //* pc.hidden             rw Integer (0..1) / Versteckt
+   // Syslog("L: pc.hidden = "+pc.hidden);
+   // pc.hidden:=0;Syslog("S: pc.hidden = "+pc.hidden);
+   // pc.hidden:=1;Syslog("S: pc.hidden = "+pc.hidden);
+   // pc.hidden:=2;Syslog("S: pc.hidden = "+pc.hidden);
+   // pc.hidden:=-1;Syslog("S: pc.hidden = "+pc.hidden);
+   //
+  //* pc._hp                 rw Integer (0..65535) / HitPoints
+   // Syslog("L: pc._hp = "+pc._hp);
+   // pc._hp:=0;Syslog("S: pc._hp = "+pc._hp);
+   // pc._hp:=10;Syslog("S: pc._hp = "+pc._hp);
+   // pc._hp:=65535;Syslog("S: pc._hp = "+pc._hp);
+   // pc._hp:=65536;Syslog("S: pc._hp = "+pc._hp);
+   //
+  //* pc._hp_regen_rate      rw Integer (-32768..32767) / HitPoint-Regeneration
+   //   (addiert Wert*0.002 Punkte in der Sekunde)
+   // Syslog("L: pc._hp_regen_rate = "+pc._hp_regen_rate);
+   // pc._hp_regen_rate:=1.5;Syslog("S: pc._hp_regen_rate = "+pc._hp_regen_rate);
+   // pc._hp_regen_rate:=32767;Syslog("S: pc._hp_regen_rate = "+pc._hp_regen_rate);
+   // pc._hp_regen_rate:=-32768;Syslog("S: pc._hp_regen_rate = "+pc._hp_regen_rate);
+   // pc._hp_regen_rate:=10;Syslog("S: pc._hp_regen_rate = "+pc._hp_regen_rate);
+   //
+  //* pc._intelligence       ro Integer (1..32977) / Intelligenz / Setzen -> pc._setint()+pc._intelligence_mod
+   //   (die Werte werden vorzeichenbehaftet addiert und notfalls auf 1 hochgesetzt)
+   // Syslog("L: pc._intelligence = "+pc._intelligence);
+   // pc._intelligence:=0;Syslog("S: pc._intelligence = "+pc._intelligence);
+   // pc._intelligence:=1;Syslog("S: pc._intelligence = "+pc._intelligence);
+   //
+  //* pc._intelligence_mod   rw Integer (-209..32767) / Intelligenz-Modifikator (relativ, siehe pc._intelligence)
+   // Syslog("S: pc._intelligence = "+pc._intelligence);
+   // pc._intelligence_mod:=80;Syslog("S: pc._intelligence_mod = "+pc._intelligence_mod);
+   // Syslog("S: pc._intelligence = "+pc._intelligence);
+   // pc._intelligence_mod:=-80;Syslog("S: pc._intelligence_mod = "+pc._intelligence_mod);
+   // Syslog("S: pc._intelligence = "+pc._intelligence);
+   // pc._intelligence_mod:=32767;Syslog("S: pc._intelligence_mod = "+pc._intelligence_mod);
+   //
+  //* pc.ip                 ro String / IP
+   // Syslog("L: pc.ip = "+pc.ip);
+   // pc.ip:="dd";Syslog("S: pc.ip = "+pc.ip);
+   // pc.ip:="141.24.48.206";Syslog("S: pc.ip = "+pc.ip);
+   //
+  //* pc._mana               rw Integer (0..65535) / Mana
+   // Syslog("L: pc._mana = "+pc._mana);
+   // pc._mana:=0;Syslog("S: pc._mana = "+pc._mana);
+   // pc._mana:=10;Syslog("S: pc._mana = "+pc._mana);
+   // pc._mana:=65535;Syslog("S: pc._mana = "+pc._mana);
+   // pc._mana:=65536;Syslog("S: pc._mana = "+pc._mana);
+   //
+  //* pc._mana_regen_rate    rw Integer (-32768..32767) / Mana-Regeneration
+   //   (addiert Wert*0.002 Punkte in der Sekunde)
+   // Syslog("L: pc._mana_regen_rate = "+pc._mana_regen_rate);
+   // pc._mana_regen_rate:=1.5;Syslog("S: pc._mana_regen_rate = "+pc._mana_regen_rate);
+   // pc._mana_regen_rate:=32767;Syslog("S: pc._mana_regen_rate = "+pc._mana_regen_rate);
+   // pc._mana_regen_rate:=-32768;Syslog("S: pc._mana_regen_rate = "+pc._mana_regen_rate);
+   // pc._mana_regen_rate:=10;Syslog("S: pc._mana_regen_rate = "+pc._mana_regen_rate);
+   //
+  //* pc._maxhp              ro Integer (1..32977) / max. HitPoints (schnippelt beim HitPoints-Setzen) / Setzen -> pc._setstr()+pc._strength_mod
+   // Syslog("L: pc._maxhp = "+pc._maxhp);
+   // pc._maxhp:=0;Syslog("S: pc._maxhp = "+pc._maxhp);
+   // pc._maxhp:=10;Syslog("S: pc._maxhp = "+pc._maxhp);
+   // pc._maxhp:=-10;Syslog("S: pc._maxhp = "+pc._maxhp);
+   // pc._maxhp:="7";Syslog("S: pc._maxhp = "+pc._maxhp);
+   //
+  //* pc._maxmana            ro Integer (1..32977) / max. Mana (schnippelt beim Mana-Setzen) / Setzen -> pc._setint()+pc._intelligence_mod
+   // Syslog("L: pc._maxmana = "+pc._maxmana);
+   // pc._maxmana:=0;Syslog("S: pc._maxmana = "+pc._maxmana);
+   // pc._maxmana:=10;Syslog("S: pc._maxmana = "+pc._maxmana);
+   // pc._maxmana:=-10;Syslog("S: pc._maxmana = "+pc._maxmana);
+   // pc._maxmana:="7";Syslog("S: pc._maxmana = "+pc._maxmana);
+   //
+  //* pc._maxstamina         ro Integer (1..32977) / max. Stamina (schnippelt beim Stamina-Setzen) / Setzen -> pc._setdex()+pc._dexterity_mod
+   // Syslog("L: pc._maxstamina = "+pc._maxstamina);
+   // pc._maxstamina:=0;Syslog("S: pc._maxstamina = "+pc._maxstamina);
+   // pc._maxstamina:=10;Syslog("S: pc._maxstamina = "+pc._maxstamina);
+   // pc._maxstamina:=-10;Syslog("S: pc._maxstamina = "+pc._maxstamina);
+   // pc._maxstamina:="7";Syslog("S: pc._maxstamina = "+pc._maxstamina);
+   // pc._setdex(150);
+   // pc._maxstamina:=10;Syslog("S: pc._maxstamina = "+pc._maxstamina);
+   //
+  //* pc.multi              ro Integer (0 oder <appobj>) / Befindet sich der PC in 'nem Multi ?
+   // Syslog("L: pc.multi = "+pc.multi);
+   // pc.multi:=0;Syslog("S: pc.multi = "+pc.multi);
+   // pc.multi:=10;Syslog("S: pc.multi = "+pc.multi);
+   //
+  //* pc.murderer           rw Integer (0..1) / Moerder (siehe pc.setmurderer)
+   // Syslog("L: pc.murderer = "+pc.murderer);
+   // pc.murderer:=0;Syslog("S: pc.murderer = "+pc.murderer);
+   // pc.murderer:=10;Syslog("S: pc.murderer = "+pc.murderer);
+   // pc.murderer:=-10;Syslog("S: pc.murderer = "+pc.murderer);
+   // pc.murderer:="7";Syslog("S: pc.murderer = "+pc.murderer);
+   //
+  //* pc.name               rw String / PC-Name
+   // Syslog("L: pc.name = "+pc.name);
+   // pc.name:=0;Syslog("S: pc.name = "+pc.name);
+   // pc.name:="hallo";Syslog("S: pc.name = "+pc.name);
+   //
+  //* pc.objtype            ro Integer (1..1023) / Template fuer Original-Grafik (siehe pc.graphic)
+   // Syslog("L: pc.objtype = "+pc.objtype);
+   // pc.objtype:=0;Syslog("S: pc.objtype = "+pc.objtype);
+   // pc.objtype:=1;Syslog("S: pc.objtype = "+pc.objtype);
+   // pc.objtype:=-70;Syslog("S: pc.objtype = "+pc.objtype);
+   //
+  //* pc.paralyzed          rw Integer (0..1) / Paralysiert (siehe pc.setparalyzed)
+   // Syslog("L: pc.paralyzed = "+pc.paralyzed);
+   // pc.paralyzed:=0;Syslog("S: pc.paralyzed = "+pc.paralyzed);
+   // pc.paralyzed:=10;Syslog("S: pc.paralyzed = "+pc.paralyzed);
+   // pc.paralyzed:=-10;Syslog("S: pc.paralyzed = "+pc.paralyzed);
+   //
+  //* pc.poisoned           rw Integer (0..1) / Vergiftet (siehe pc.setpoisoned)
+   // Syslog("L: pc.poisoned = "+pc.poisoned);
+   // pc.poisoned:=0;Syslog("S: pc.poisoned = "+pc.poisoned);
+   // pc.poisoned:=10;Syslog("S: pc.poisoned = "+pc.poisoned);
+   // pc.poisoned:=-10;Syslog("S: pc.poisoned = "+pc.poisoned);
+
+  //  pc.removereportable   Methode
+   // pc.removereportable(1);
+   // Syslog("L: pc.reportables = "+pc.reportables);
+   //
+  //  pc.reportables        ro (Array)
+   // Syslog("L: pc.reportables = "+pc.reportables);
+   // pc.reportables:=1234;Syslog("S: pc.reportables = "+pc.reportables);
+
+  //* pc.serial             ro Integer (0..unlimmeted) / Seriennummer
+   // Syslog("L: pc.serial = "+pc.serial);
+   // pc.serial:=1234;Syslog("S: pc.serial = "+pc.serial);
+   //
+  //* pc.setcmdlevel        Methode(Integer (0..5)) / Setze KommandoLevel / Unbenutzt, aendert nuescht
+   // Syslog("L: pc.cmdlevel = "+pc.cmdlevel);
+   // pc.setcmdlevel(0);Syslog("S: pc.cmdlevel = "+pc.cmdlevel);
+   // pc.setcmdlevel(1);Syslog("S: pc.cmdlevel = "+pc.cmdlevel);
+   //
+  //* pc.setcriminal        Methode(Integer:=1 (1..1)) / Setze Kriminell / Loeschen geht nicht !
+   // SysLog(pc.setcriminal(1));Syslog("S: pc.criminal = "+pc.criminal);
+   // SysLog(pc.setcriminal(0));Syslog("S: pc.criminal = "+pc.criminal);
+   // SysLog(pc.setcriminal(2));Syslog("S: pc.criminal = "+pc.criminal);
+   // SysLog(pc.setcriminal());Syslog("S: pc.criminal = "+pc.criminal);
+   // SysLog(pc.setcriminal(0.5));Syslog("S: pc.criminal = "+pc.criminal);
+   //
+  //* pc._setdex             Methode(Integer (1..210)) / Setze [Basis]Ausdauer (siehe pc._dexterity)
+   // pc._setdex(1);Syslog("S: pc._dexterity = "+pc._dexterity);
+   // pc._setdex(0);Syslog("S: pc._dexterity = "+pc._dexterity);
+   // pc._setdex(1.5);Syslog("S: pc._dexterity = "+pc._dexterity);
+   // pc._setdex(300);Syslog("S: pc._dexterity = "+pc._dexterity);
+   // pc._dexterity_mod:=32767;Syslog("S: pc._dexterity = "+pc._dexterity);
+   //
+  //* pc._setint             Methode(Integer (1..210)) / Setze [Basis]Intelligenz (siehe pc._intelligence)
+   // pc._setint(1);Syslog("S: pc._intelligence = "+pc._intelligence);
+   // pc._setint(0);Syslog("S: pc._intelligence = "+pc._intelligence);
+   // pc._setint(1.5);Syslog("S: pc._intelligence = "+pc._intelligence);
+   // pc._setint(300);Syslog("S: pc._intelligence = "+pc._intelligence);
+   // pc._intelligence_mod:=32767;Syslog("S: pc._intelligence = "+pc._intelligence);
+   //
+  //* pc.setlightlevel      Methode(Integer (0..30), Integer (-unlimmeted..unlimmeted)) / Setzt Lichtlevel fuer bestimmt Zeit
+   //   (Zeit sollen Sekunden sein, aber irgendwie haut das net hin, jedenfalls nicht bei negativen Werten)
+   // pc.setlightlevel(30, 10);
+   //
+  //* pc.setmurderer        Methode(Integer (0..1)) / Setze Moerder (siehe pc.murderer)
+   // Syslog("L: pc.setmurderer = "+pc.murderer);
+   // pc.setmurderer(1);Syslog("S: pc.setmurderer = "+pc.murderer);
+   // pc.setmurderer(0);Syslog("S: pc.setmurderer = "+pc.murderer);
+   //
+  //* pc.setparalyzed       Methode(Integer (0..1)) / Setze Paralysiert (siehe pc.paralyzed)
+   // Syslog("L: pc.setparalyzed = "+pc.paralyzed);
+   // pc.setparalyzed(1);Syslog("S: pc.setparalyzed = "+pc.paralyzed);
+   // pc.setparalyzed(0);Syslog("S: pc.setparalyzed = "+pc.paralyzed);
+   //
+  //* pc.setpoisoned        Methode(Integer (0..1)) / Setze Vergiftet (siehe pc.poisoned)
+   // Syslog("L: pc.setpoisoned = "+pc.poisoned);
+   // pc.setpoisoned(1);Syslog("S: pc.setpoisoned = "+pc.poisoned);
+   // pc.setpoisoned(0);Syslog("S: pc.setpoisoned = "+pc.poisoned);
+   //
+  //* pc._setstr             Methode(Integer (1..210)) / Setze [Basis]Staerke (siehe pc._strength)
+   // pc._setstr(1);Syslog("S: pc._strength = "+pc._strength);
+   // pc._setstr(0);Syslog("S: pc._strength = "+pc._strength);
+   // pc._setstr(1.5);Syslog("S: pc._strength = "+pc._strength);
+   // pc._setstr(300);Syslog("S: pc._strength = "+pc._strength);
+   // pc._strength_mod:=32767;Syslog("S: pc._strength = "+pc._strength);
+   //
+  //* pc.spendgold          Methode(Integer (0..2147483648)) / Spendet Gold, wenn nich genuch da, dann spendet er nich
+   // Syslog("L: pc.gold = "+pc.gold);
+   // pc.spendgold(100000);Syslog("S: pc.gold = "+pc.gold);
+   // pc.spendgold(10);Syslog("S: pc.gold = "+pc.gold);
+   //
+  //* pc.squelch            Methode(Integer (0..unlimmeted)) / Stumm / Blockiert alle Textausgaben *g*
+   //   -1 = dauerhaft / 0 = deaktivieren / pos. Zahl = Anzahl Sekunden
+   // Syslog("L: pc.squelched = "+pc.squelched);
+   // pc.squelch(-1);Syslog("S: pc.squelched = "+pc.squelched);
+   // pc.squelch(0);Syslog("S: pc.squelched = "+pc.squelched);
+   // pc.squelch(30);Syslog("S: pc.squelched = "+pc.squelched);
+   //
+  //* pc.squelched          ro Integer (0..1) / Stumm / Setzen -> pc.squelch
+   // Syslog("L: pc.squelched = "+pc.squelched);
+   // pc.squelched:=6;Syslog("S: pc.squelched = "+pc.squelched);
+   //
+  //* pc._stamina            rw Integer (0..65535) / Stamina
+   // Syslog("L: pc._stamina = "+pc._stamina);
+   // pc._stamina:=0;Syslog("S: pc._stamina = "+pc._stamina);
+   // pc._stamina:=10;Syslog("S: pc._stamina = "+pc._stamina);
+   // pc._stamina:=65535;Syslog("S: pc._stamina = "+pc._stamina);
+   // pc._stamina:=65536;Syslog("S: pc._stamina = "+pc._stamina);
+   //
+  //* pc._stamina_regen_rate rw Integer (-32768..32767) / Stamina-Regeneration
+   //   (addiert Wert*0.002 Punkte in der Sekunde)
+   // Syslog("L: pc._stamina_regen_rate = "+pc._stamina_regen_rate);
+   // pc._stamina_regen_rate:=1.5;Syslog("S: pc._stamina_regen_rate = "+pc._stamina_regen_rate);
+   // pc._stamina_regen_rate:=32767;Syslog("S: pc._stamina_regen_rate = "+pc._stamina_regen_rate);
+   // pc._stamina_regen_rate:=-32768;Syslog("S: pc._stamina_regen_rate = "+pc._stamina_regen_rate);
+   // pc._stamina_regen_rate:=10;Syslog("S: pc._stamina_regen_rate = "+pc._stamina_regen_rate);
+   //
+  //* pc.stealthsteps       rw Integer (0..65535) / (hmm, hab rumprobiert, hat aber nuescht geaendert)
+   //  (evtl. je groesser der wert, desto schneller schlaegt tarnen fehl ?!?)
+   // Syslog("L: pc.stealthsteps = "+pc.stealthsteps);
+   // pc.stealthsteps:=1;Syslog("S: pc.stealthsteps = "+pc.stealthsteps);
+   // pc.stealthsteps:=65535;Syslog("S: pc.stealthsteps = "+pc.stealthsteps);
+   //
+  //* pc._strength           ro Integer (1..32977) / Staerke / Setzen -> pc._setstr()+pc._strength_mod
+   //   (die Werte werden vorzeichenbehaftet addiert und notfalls auf 1 hochgesetzt)
+   // Syslog("L: pc._strength = "+pc._strength);
+   // pc._strength:=0;Syslog("S: pc._strength = "+pc._strength);
+   // pc._strength:=1;Syslog("S: pc._strength = "+pc._strength);
+   //
+  //* pc._strength_mod       rw Integer (-209..32767) / Staerke-Modifikator (relativ, siehe pc._strength)
+   // Syslog("S: pc._strength = "+pc._strength);
+   // pc._strength_mod:=80;Syslog("S: pc._strength_mod = "+pc._strength_mod);
+   // Syslog("S: pc._strength = "+pc._strength);
+   // pc._strength_mod:=-80;Syslog("S: pc._strength_mod = "+pc._strength_mod);
+   // Syslog("S: pc._strength = "+pc._strength);
+   // pc._strength_mod:=32767;Syslog("S: pc._strength_mod = "+pc._strength_mod);
+   //
+  //* pc.title_guild        rw String / Gildenanhaengsel zum PC-Namen / Unbenutzt
+   // Syslog("S: pc.title_guild = "+pc.title_guild);
+   // pc.title_guild:="AuA";Syslog("S: pc.title_guild = "+pc.title_guild);
+   //
+  //* pc.title_prefix       rw String / Prefix (davor) des PC-Namen (ggf. Space einbauen)
+   // Syslog("S: pc.title_prefix = "+pc.title_prefix);
+   // pc.title_prefix:="BuB";Syslog("S: pc.title_prefix = "+pc.title_prefix);
+   //
+  //* pc.title_race         rw String / Rassenanhaengsel zum PC-Namen / Unbenutzt
+   // Syslog("S: pc.title_race = "+pc.title_race);
+   // pc.title_race:="CuC";Syslog("S: pc.title_race = "+pc.title_race);
+   //
+  //* pc.title_suffix       rw String / Suffix (danach) des PC-Namen (ggf. Space einbauen)
+   // Syslog("S: pc.title_suffix = "+pc.title_suffix);
+   // pc.title_suffix:="DuD";Syslog("S: pc.title_suffix = "+pc.title_suffix);
+   //
+  //* pc.truecolor          ro Integer (0..65535) / Farbe / Originalwert (hmm, tja, wofuer nochmal ?!?)
+   // Syslog("S: pc.truecolor = "+pc.truecolor);
+   // pc.truecolor:=4;Syslog("S: pc.truecolor = "+pc.truecolor);
+   //
+  //* pc.trueobjtype        ro Integer (1..1023) / Template fuer Grafik / Originalwert (hmm, tja, wofuer nochmal ?!?)
+   // Syslog("S: pc.trueobjtype = "+pc.trueobjtype);
+   // pc.trueobjtype:=4;Syslog("S: pc.trueobjtype = "+pc.trueobjtype);
+   //
+  //* pc.warmode            ro Integer (0..1) / Kriegsmodus
+   // Syslog("S: pc.warmode = "+pc.warmode);
+   // pc.warmode:=1;Syslog("S: pc.warmode = "+pc.warmode);
+   //
+  //* pc.weapon             ro <appobj> / Angelegte Waffe / Hmm, wenn man keine Waffe hat, dann is da trotzdem was (heisst "nodraw")
+   // Syslog("S: pc.weapon = "+pc.weapon+" ("+(pc.weapon).desc+")");
+   //
+  //* pc.weight             ro Integer (0..65536) / Gewicht
+   //   (BUG -> Ueberlauf auf 0...)
+   // Syslog("S: pc.weight = "+pc.weight);
+   // pc.weight:=1;Syslog("S: pc.weight = "+pc.weight);
+   //
+  //* pc.x                  ro Integer (0..6143) / X-Koordinate / Setzen -> MoveCharToLocation
+   // Syslog("S: pc.x = "+pc.x);
+   // pc.x:=1;Syslog("S: pc.x = "+pc.x);
+   //
+  //* pc.y                  ro Integer (0..4095) / Y-Koordinate / Setzen -> MoveCharToLocation
+   // Syslog("S: pc.y = "+pc.y);
+   // pc.y:=1;Syslog("S: pc.y = "+pc.y);
+   //
+  //* pc.z                  ro Integer (-128..127) / Z-Koordinate / Setzen -> MoveCharToLocation
+   // Syslog("S: pc.z = "+pc.z);
+   // pc.z:=1;Syslog("S: pc.z = "+pc.z);
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////
+
+Function Test_NPC(who, npc)
+  // Allgemeiner BUG -> Aufruf mit weniger Parametern -> Crash/Exception
+
+  //* npc.acct               ro <acctobj> / Account / Unbenutzt -> "Not attached to an account"
+   // Syslog("L: npc.acct = "+npc.acct+" (SubProp = "+npc.acct.name+")");
+   // npc.acct:=who.acct;Syslog("S: npc.acct = "+npc.acct+" (SubProp = "+npc.acct.name+")");
+   //
+  //* npc.acctname           ro String / Accountname / Unbenutzt -> "Not attached to an account"
+   // Syslog("L: npc.acctname = "+npc.acctname);
+   // npc.acctname:=who.acctname;Syslog("S: npc.acctname = "+npc.acctname);
+   //
+  //* npc.ar                 ro Integer (0..32767) / Ruestungsstaerke / Abhaengig von der Ruestung, veraenderbar mit npc.ar_mod
+   // Syslog("L: npc.ar = "+npc.ar);
+   // npc.ar:="42";Syslog("S: npc.ar = "+npc.ar);
+   // npc.ar:=37;Syslog("S: npc.ar = "+npc.ar);
+   //
+  //* npc.ar_mod             rw Integer (-32767..32767) / Ruestungsstaerken-Modifikator (relativ, siehe npc.ar)
+   // Syslog("L: npc.ar_mod = "+npc.ar_mod);
+   // npc.ar_mod:="42";Syslog("S: npc.ar_mod = "+npc.ar_mod+" ("+npc.ar+")");
+   // npc.ar_mod:=37;Syslog("S: npc.ar_mod = "+npc.ar_mod+" ("+npc.ar+")");
+   // npc.ar_mod:=34.6;Syslog("S: npc.ar_mod = "+npc.ar_mod+" ("+npc.ar+")");
+   // npc.ar_mod:=-1;Syslog("S: npc.ar_mod = "+npc.ar_mod+" ("+npc.ar+")");
+   // npc.ar_mod:=32767;Syslog("S: npc.ar_mod = "+npc.ar_mod+" ("+npc.ar+")");
+   //
+  //* npc.backpack           ro <appobj> / Umgeschnalltes Backpack
+   // Syslog("L: npc.backpack = "+npc.backpack+" ("+(npc.backpack).serial+")");
+   //
+  //* npc.cmdlevel           rw Integer (0..5) / KommandoLevel / (*g* funzt auch bei NPCs, aber nich npc.setcmdlevel)
+   //   BUG -> negative Werte werden zu 5 (macht der eigentlich immer, is hier aber durchaus "kritisch")
+   // Syslog("L: npc.cmdlevel = "+npc.cmdlevel);
+   // npc.cmdlevel:=who.cmdlevel;Syslog("S: npc.cmdlevel = "+npc.cmdlevel);
+   // npc.cmdlevel:=3;Syslog("S: npc.cmdlevel = "+npc.cmdlevel);
+   // npc.cmdlevel:=-1;Syslog("S: npc.cmdlevel = "+npc.cmdlevel);
+   // npc.cmdlevel:=2.4;Syslog("S: npc.cmdlevel = "+npc.cmdlevel);
+   //
+  //* npc.cmdlevelstr        ro String / KommandoLevelBezeichner / Setzen -> npc.cmdlevel & npc.setcmdlevel
+   // Syslog("L: npc.cmdlevelstr = "+npc.cmdlevelstr);
+   // npc.cmdlevelstr:=who.cmdlevelstr;Syslog("S: npc.cmdlevelstr = "+npc.cmdlevelstr);
+   // npc.cmdlevelstr:=21;Syslog("S: npc.cmdlevelstr = "+npc.cmdlevelstr);
+   // npc.cmdlevelstr:="hallo";Syslog("S: npc.cmdlevelstr = "+npc.cmdlevelstr);
+   //
+  //* npc.color              rw Integer (0..65535) / Farbe
+   // Syslog("L: npc.color = "+npc.color);
+   // npc.color:=0;Syslog("S: npc.color = "+npc.color);
+   // npc.color:=7.5;Syslog("S: npc.color = "+npc.color);
+   // npc.color:=-1;Syslog("S: npc.color = "+npc.color);
+   // npc.color:=65535;Syslog("S: npc.color = "+npc.color);
+   // npc.color:=65536;Syslog("S: npc.color = "+npc.color);
+   //
+  //* npc.concealed          rw Integer (0..5) / Unsichtbar / Der moegliche Maxwert ist an das eigene CMDLevel gekoppelt
+   //   (also Player mit CMDLevel=0 können sich somit auch nich concealen), d.h. man sieht nur die Concealten, die dort
+   //   einen <= Wert haben, als das eigene CMDLevel (geht auch mit NPCs, d.h. ich kann NPCs auf GM setzen und concealed=3
+   //   und Seer können sie nicht sehen, GMs hingegen schon... :)
+   // Syslog("L: npc.concealed = "+npc.concealed);
+   // npc.concealed:=0;Syslog("S: npc.concealed = "+npc.concealed);
+   // npc.concealed:=1;Syslog("S: npc.concealed = "+npc.concealed);
+   // npc.concealed:=2;Syslog("S: npc.concealed = "+npc.concealed);
+   // npc.concealed:=-1;Syslog("S: npc.concealed = "+npc.concealed);
+   // npc.concealed:=7;Syslog("S: npc.concealed = "+npc.concealed);
+   // npc.concealed:="a";Syslog("S: npc.concealed = "+npc.concealed);
+   //
+  //* npc.criminal           ro Integer (0..1) / Kriminell / Setzen -> npc.setcriminal
+   // Syslog("L: npc.criminal = "+npc.criminal);
+   // npc.criminal:=0;Syslog("S: npc.criminal = "+npc.criminal);
+   // npc.criminal:=1;Syslog("S: npc.criminal = "+npc.criminal);
+   // npc.criminal:=-1;Syslog("S: npc.criminal = "+npc.criminal);
+   // npc.criminal:=7;Syslog("S: npc.criminal = "+npc.criminal);
+   // npc.criminal:="a";Syslog("S: npc.criminal = "+npc.criminal);
+   //
+  //* npc.dead               ro Integer (0..1) / Tot
+   // Syslog("L: npc.dead = "+npc.dead);
+   // npc.dead:=0;Syslog("S: npc.dead = "+npc.dead);
+   // npc.dead:=1;Syslog("S: npc.dead = "+npc.dead);
+   // npc.dead:=-1;Syslog("S: npc.dead = "+npc.dead);
+   // npc.dead:=7;Syslog("S: npc.dead = "+npc.dead);
+   // npc.dead:="a";Syslog("S: npc.dead = "+npc.dead);
+   //
+  //* npc._dexterity          ro Integer (1..32977) / Ausdauer / Setzen -> npc._setdex()+npc._dexterity_mod
+   //   (die Werte werden vorzeichenbehaftet addiert und notfalls auf 1 hochgesetzt)
+   // Syslog("L: npc._dexterity = "+npc._dexterity);
+   // npc._dexterity:=0;Syslog("S: npc._dexterity = "+npc._dexterity);
+   // npc._dexterity:=1;Syslog("S: npc._dexterity = "+npc._dexterity);
+   //
+  //* npc._dexterity_mod      rw Integer (-209..32767) / Ausdauer-Modifikator (relativ, siehe npc._dexterity)
+   // Syslog("S: npc._dexterity = "+npc._dexterity);
+   // npc._dexterity_mod:=80;Syslog("S: npc._dexterity_mod = "+npc._dexterity_mod);
+   // Syslog("S: npc._dexterity = "+npc._dexterity);
+   // npc._dexterity_mod:=-80;Syslog("S: npc._dexterity_mod = "+npc._dexterity_mod);
+   // Syslog("S: npc._dexterity = "+npc._dexterity);
+   // npc._dexterity_mod:=32767;Syslog("S: npc._dexterity_mod = "+npc._dexterity_mod);
+   //
+  //* npc.disable            Methode(String) / EIN Privileg deaktivieren
+   // Syslog(npc.enable("invul"));
+   // Syslog(npc.enabled("invul"));
+   // Syslog(npc.disable("invul"));
+   // Syslog(npc.enabled("invul"));
+   //
+  //* npc.enable             Methode(String) / EIN Privileg aktivieren
+   // Syslog(npc.enable("invul"));
+   // Syslog(npc.enabled("invul"));
+   //
+  //* npc.enabled            Methode(String):Integer (0..1) / Ist EIN Privileg aktiviert? (Im Zweifelsfall -> 0)
+   // Syslog(npc.enabled("all"));
+   // Syslog(npc.enabled("all invul"));
+   // Syslog(npc.enabled("inll"));
+   //
+  //* npc.facing             rw Integer (0..7) / Richtung (0=N / 1=NE / 2=E ... 7=NW)
+   // Syslog("L: npc.facing = "+npc.facing);
+   // npc.facing:=0;Syslog("S: npc.facing = "+npc.facing);
+   // npc.facing:=1;Syslog("S: npc.facing = "+npc.facing);
+   // npc.facing:=-1;Syslog("S: npc.facing = "+npc.facing);
+   // npc.facing:=7;Syslog("S: npc.facing = "+npc.facing);
+   // npc.facing:=8;Syslog("S: npc.facing = "+npc.facing);
+   //
+  //* npc.frozen             rw Integer (0..1) / Eingefroren
+   // Syslog("L: npc.frozen = "+npc.frozen);
+   // npc.frozen:=0;Syslog("S: npc.frozen = "+npc.frozen);
+   // npc.frozen:=1;Syslog("S: npc.frozen = "+npc.frozen);
+   // npc.frozen:=-1;Syslog("S: npc.frozen = "+npc.frozen);
+   // npc.frozen:=10;Syslog("S: npc.frozen = "+npc.frozen);
+   //
+  //* npc.gender             rw Integer (0..1) / Geschlecht (0=maennlich), npc.graphic muss noch angepasst werden
+   // Syslog("L: npc.gender = "+npc.gender);
+   // npc.gender:=0;Syslog("S: npc.gender = "+npc.gender);
+   // npc.gender:=1;Syslog("S: npc.gender = "+npc.gender);
+   // npc.gender:=-1;Syslog("S: npc.gender = "+npc.gender);
+   // npc.gender:=10;Syslog("S: npc.gender = "+npc.gender);
+   //
+  //* npc.gold               ro Integer (0..2147483648) / Gold-Besitz
+   // Syslog("L: npc.gold = "+npc.gold);
+   // npc.gold:=0;Syslog("S: npc.gold = "+npc.gold);
+   // npc.gold:=200;Syslog("S: npc.gold = "+npc.gold);
+   // npc.gold:=-10;Syslog("S: npc.gold = "+npc.gold);
+   //
+  //* npc.graphic            rw Integer (1..1023) / Grafik (siehe npc.objtype)
+   // Syslog("L: npc.graphic = "+npc.graphic);
+   // npc.graphic:=0;Syslog("S: npc.graphic = "+npc.graphic);
+   // npc.graphic:=1;Syslog("S: npc.graphic = "+npc.graphic);
+   // npc.graphic:=560;Syslog("S: npc.graphic = "+npc.graphic);
+   // npc.graphic:=1023;Syslog("S: npc.graphic = "+npc.graphic);
+   // npc.graphic:=-70;Syslog("S: npc.graphic = "+npc.graphic);
+   //
+  //* npc.guildid            rw Integer (-2147483647..2147483647) / GildenNummer
+   //   (aendert auch was an den farben, sobald gesetzt (z.b. tamed -> gruen))
+   // Syslog("L: npc.guildid = "+npc.guildid);
+   // npc.guildid:=0;Syslog("S: npc.guildid = "+npc.guildid);
+   // npc.guildid:=-2147483647;Syslog("S: npc.guildid = "+npc.guildid);
+   // npc.guildid:=1;Syslog("S: npc.guildid = "+npc.guildid);
+   // npc.guildid:=2147483647;Syslog("S: npc.guildid = "+npc.guildid);
+   //
+  //* npc.height             ro Integer (0..257) / Hoehe
+   // Syslog("L: npc.height = "+npc.height);
+   // npc.height:=0;Syslog("S: npc.height = "+npc.height);
+   // npc.height:=1;Syslog("S: npc.height = "+npc.height);
+   //
+  //* npc.hidden             rw Integer (0..1) / Versteckt
+   // Syslog("L: npc.hidden = "+npc.hidden);
+   // npc.hidden:=0;Syslog("S: npc.hidden = "+npc.hidden);
+   // npc.hidden:=1;Syslog("S: npc.hidden = "+npc.hidden);
+   // npc.hidden:=2;Syslog("S: npc.hidden = "+npc.hidden);
+   // npc.hidden:=-1;Syslog("S: npc.hidden = "+npc.hidden);
+   //
+  //* npc._hp                 rw Integer (0..65535) / HitPoints
+   // Syslog("L: npc._hp = "+npc._hp);
+   // npc._hp:=0;Syslog("S: npc._hp = "+npc._hp);
+   // npc._hp:=10;Syslog("S: npc._hp = "+npc._hp);
+   // npc._hp:=65535;Syslog("S: npc._hp = "+npc._hp);
+   // npc._hp:=65536;Syslog("S: npc._hp = "+npc._hp);
+   //
+  //* npc._hp_regen_rate      rw Integer (-32768..32767) / HitPoint-Regeneration
+   //   (addiert Wert*0.002 Punkte in der Sekunde)
+   // Syslog("L: npc._hp_regen_rate = "+npc._hp_regen_rate);
+   // npc._hp_regen_rate:=1.5;Syslog("S: npc._hp_regen_rate = "+npc._hp_regen_rate);
+   // npc._hp_regen_rate:=32767;Syslog("S: npc._hp_regen_rate = "+npc._hp_regen_rate);
+   // npc._hp_regen_rate:=-32768;Syslog("S: npc._hp_regen_rate = "+npc._hp_regen_rate);
+   // npc._hp_regen_rate:=10;Syslog("S: npc._hp_regen_rate = "+npc._hp_regen_rate);
+   //
+  //* npc._intelligence       ro Integer (1..32977) / Intelligenz / Setzen -> npc._setint()+npc._intelligence_mod
+   //   (die Werte werden vorzeichenbehaftet addiert und notfalls auf 1 hochgesetzt)
+   // Syslog("L: npc._intelligence = "+npc._intelligence);
+   // npc._intelligence:=0;Syslog("S: npc._intelligence = "+npc._intelligence);
+   // npc._intelligence:=1;Syslog("S: npc._intelligence = "+npc._intelligence);
+   //
+  //* npc._intelligence_mod   rw Integer (-209..32767) / Intelligenz-Modifikator (relativ, siehe npc._intelligence)
+   // Syslog("S: npc._intelligence = "+npc._intelligence);
+   // npc._intelligence_mod:=80;Syslog("S: npc._intelligence_mod = "+npc._intelligence_mod);
+   // Syslog("S: npc._intelligence = "+npc._intelligence);
+   // npc._intelligence_mod:=-80;Syslog("S: npc._intelligence_mod = "+npc._intelligence_mod);
+   // Syslog("S: npc._intelligence = "+npc._intelligence);
+   // npc._intelligence_mod:=32767;Syslog("S: npc._intelligence_mod = "+npc._intelligence_mod);
+   //
+  //* npc.ip                 ro String / IP / Unbenutzt
+   // Syslog("L: npc.ip = "+npc.ip);
+   // npc.ip:="dd";Syslog("S: npc.ip = "+npc.ip);
+   // npc.ip:="141.24.48.205";Syslog("S: npc.ip = "+npc.ip);
+   //
+  //* npc._mana               rw Integer (0..65535) / Mana
+   // Syslog("L: npc._mana = "+npc._mana);
+   // npc._mana:=0;Syslog("S: npc._mana = "+npc._mana);
+   // npc._mana:=10;Syslog("S: npc._mana = "+npc._mana);
+   // npc._mana:=65535;Syslog("S: npc._mana = "+npc._mana);
+   // npc._mana:=65536;Syslog("S: npc._mana = "+npc._mana);
+   //
+  //* npc._mana_regen_rate    rw Integer (-32768..32767) / Mana-Regeneration
+   //   (addiert Wert*0.002 Punkte in der Sekunde)
+   // Syslog("L: npc._mana_regen_rate = "+npc._mana_regen_rate);
+   // npc._mana_regen_rate:=1.5;Syslog("S: npc._mana_regen_rate = "+npc._mana_regen_rate);
+   // npc._mana_regen_rate:=32767;Syslog("S: npc._mana_regen_rate = "+npc._mana_regen_rate);
+   // npc._mana_regen_rate:=-32768;Syslog("S: npc._mana_regen_rate = "+npc._mana_regen_rate);
+   // npc._mana_regen_rate:=10;Syslog("S: npc._mana_regen_rate = "+npc._mana_regen_rate);
+   //
+  //* npc.master             ro <appobj_PC> / Master / Setzen -> npc.setmaster
+   // Syslog("L: npc.master = "+npc.master.name);
+   // npc.master:=who;Syslog("S: npc.master = "+npc.master.name);
+   // npc.setmaster(who);Syslog("S: npc.master = "+npc.master.name);
+   //
+  //* npc._maxhp              ro Integer (1..32977) / max. HitPoints (schnippelt beim HitPoints-Setzen) / Setzen -> pc._setstr()+pc._strength_mod
+   // Syslog("L: npc._maxhp = "+npc._maxhp);
+   // npc._maxhp:=0;Syslog("S: npc._maxhp = "+npc._maxhp);
+   // npc._maxhp:=10;Syslog("S: npc._maxhp = "+npc._maxhp);
+   // npc._maxhp:=-10;Syslog("S: npc._maxhp = "+npc._maxhp);
+   // npc._maxhp:="7";Syslog("S: npc._maxhp = "+npc._maxhp);
+   //
+  //* npc._maxmana            ro Integer (1..32977) / max. Mana (schnippelt beim Mana-Setzen) / Setzen -> pc._setint()+pc._intelligence_mod
+   // Syslog("L: npc._maxmana = "+npc._maxmana);
+   // npc._maxmana:=0;Syslog("S: npc._maxmana = "+npc._maxmana);
+   // npc._maxmana:=10;Syslog("S: npc._maxmana = "+npc._maxmana);
+   // npc._maxmana:=-10;Syslog("S: npc._maxmana = "+npc._maxmana);
+   // npc._maxmana:="7";Syslog("S: npc._maxmana = "+npc._maxmana);
+   //
+  //* npc._maxstamina         ro Integer (1..32977) / max. Stamina (schnippelt beim Stamina-Setzen) / Setzen -> pc._setdex()+pc._dexterity_mod
+   // Syslog("L: npc._maxstamina = "+npc._maxstamina);
+   // npc._maxstamina:=0;Syslog("S: npc._maxstamina = "+npc._maxstamina);
+   // npc._maxstamina:=10;Syslog("S: npc._maxstamina = "+npc._maxstamina);
+   // npc._maxstamina:=-10;Syslog("S: npc._maxstamina = "+npc._maxstamina);
+   // npc._maxstamina:="7";Syslog("S: npc._maxstamina = "+npc._maxstamina);
+   // npc._setdex(150);
+   // npc._maxstamina:=10;Syslog("S: npc._maxstamina = "+npc._maxstamina);
+   //
+  //* npc.multi              ro Integer (0 oder <appobj>) / Befindet sich der NPC in 'nem Multi ?
+   // Syslog("L: npc.multi = "+npc.multi);
+   // npc.multi:=0;Syslog("S: npc.multi = "+npc.multi);
+   // npc.multi:=10;Syslog("S: npc.multi = "+npc.multi);
+   //
+  //* npc.murderer           rw Integer (0..1) / Moerder (siehe npc.setmurderer)
+   // Syslog("L: npc.murderer = "+npc.murderer);
+   // npc.murderer:=0;Syslog("S: npc.murderer = "+npc.murderer);
+   // npc.murderer:=10;Syslog("S: npc.murderer = "+npc.murderer);
+   // npc.murderer:=-10;Syslog("S: npc.murderer = "+npc.murderer);
+   // npc.murderer:="7";Syslog("S: npc.murderer = "+npc.murderer);
+   //
+  //* npc.name               rw String / NPC-Name
+   // Syslog("L: npc.name = "+npc.name);
+   // npc.name:=0;Syslog("S: npc.name = "+npc.name);
+   // npc.name:="hallo";Syslog("S: npc.name = "+npc.name);
+   //
+  //* npc.npctemplate        ro String / Template-Name (siehe NPCDesc.cfg)
+   // Syslog("L: npc.npctemplate = "+npc.npctemplate);
+   // npc.npctemplate:=0;Syslog("S: npc.npctemplate = "+npc.npctemplate);
+   // npc.npctemplate:="hallo";Syslog("S: npc.npctemplate = "+npc.npctemplate);
+   //
+  //* npc.objtype            ro Integer (1..1023) / Template fuer Original-Grafik (siehe npc.graphic, npc.npctemplate)
+   // Syslog("L: npc.objtype = "+npc.objtype);
+   // npc.objtype:=0;Syslog("S: npc.objtype = "+npc.objtype);
+   // npc.objtype:=1;Syslog("S: npc.objtype = "+npc.objtype);
+   // npc.objtype:=-70;Syslog("S: npc.objtype = "+npc.objtype);
+   //
+  //* npc.paralyzed          rw Integer (0..1) / Paralysiert (siehe npc.setparalyzed)
+   // Syslog("L: npc.paralyzed = "+npc.paralyzed);
+   // npc.paralyzed:=0;Syslog("S: npc.paralyzed = "+npc.paralyzed);
+   // npc.paralyzed:=10;Syslog("S: npc.paralyzed = "+npc.paralyzed);
+   // npc.paralyzed:=-10;Syslog("S: npc.paralyzed = "+npc.paralyzed);
+   //
+  //* npc.poisoned           rw Integer (0..1) / Vergiftet (siehe npc.setpoisoned)
+   // Syslog("L: npc.poisoned = "+npc.poisoned);
+   // npc.poisoned:=0;Syslog("S: npc.poisoned = "+npc.poisoned);
+   // npc.poisoned:=10;Syslog("S: npc.poisoned = "+npc.poisoned);
+   // npc.poisoned:=-10;Syslog("S: npc.poisoned = "+npc.poisoned);
+   //
+  //* npc.process            ro <appobj> / Scripting-Object des AI-Scripts
+   // Syslog("L: npc.process = "+(npc.process).name);
+   // npc.process:=0;Syslog("S: npc.process = "+(npc.process).name);
+
+  //  npc.removereportable   Methode
+   //   (Prinzipiell geht es, allerdings ist ein NPC nicht zur Reinkarnation faehig, also, es wird nie was eingetragen)
+   // SysLog(npc.removereportable(1));
+   // Syslog("L: npc.reportables = "+npc.reportables);
+   //
+  //  npc.reportables        ro (Array)
+   //   (Prinzipiell geht es, allerdings ist ein NPC nicht zur Reinkarnation faehig, also, es wird nie was eingetragen)
+   // Syslog("L: npc.reportables = "+npc.reportables);
+
+  //* npc.script             rw String / AI-Script / Nach schreiben, muss NPC restartet werden (siehe RestartScript(npc))
+   // Syslog("L: npc.script = "+npc.script);
+   // npc.script:="testprop";Syslog("S: npc.script = "+npc.script);
+   // RestartScript(npc);
+   //
+  //* npc.serial             ro Integer (0..unlimmeted) / Seriennummer
+   // Syslog("L: npc.serial = "+npc.serial);
+   // npc.serial:=1234;Syslog("S: npc.serial = "+npc.serial);
+   //
+  //* npc.setcmdlevel        Methode(Integer (0..5)) / Setze KommandoLevel / Unbenutzt, aendert nuescht
+   // Syslog("L: npc.cmdlevel = "+npc.cmdlevel);
+   // npc.setcmdlevel(0);Syslog("S: npc.cmdlevel = "+npc.cmdlevel);
+   // npc.setcmdlevel(1);Syslog("S: npc.cmdlevel = "+npc.cmdlevel);
+   //
+  //* npc.setcriminal        Methode(Integer:=1 (1..1)) / Setze Kriminell / Loeschen geht nicht !
+   // SysLog(npc.setcriminal(1));Syslog("S: npc.criminal = "+npc.criminal);
+   // SysLog(npc.setcriminal(0));Syslog("S: npc.criminal = "+npc.criminal);
+   // SysLog(npc.setcriminal(2));Syslog("S: npc.criminal = "+npc.criminal);
+   // SysLog(npc.setcriminal());Syslog("S: npc.criminal = "+npc.criminal);
+   // SysLog(npc.setcriminal(0.5));Syslog("S: npc.criminal = "+npc.criminal);
+   //
+  //* npc._setdex             Methode(Integer (1..210)) / Setze [Basis]Ausdauer (siehe npc._dexterity)
+   // npc._setdex(1);Syslog("S: npc._dexterity = "+npc._dexterity);
+   // npc._setdex(0);Syslog("S: npc._dexterity = "+npc._dexterity);
+   // npc._setdex(1.5);Syslog("S: npc._dexterity = "+npc._dexterity);
+   // npc._setdex(300);Syslog("S: npc._dexterity = "+npc._dexterity);
+   // npc._dexterity_mod:=32767;Syslog("S: npc._dexterity = "+npc._dexterity);
+   //
+  //* npc._setint             Methode(Integer (1..210)) / Setze [Basis]Intelligenz (siehe npc._intelligence)
+   // npc._setint(1);Syslog("S: npc._intelligence = "+npc._intelligence);
+   // npc._setint(0);Syslog("S: npc._intelligence = "+npc._intelligence);
+   // npc._setint(1.5);Syslog("S: npc._intelligence = "+npc._intelligence);
+   // npc._setint(300);Syslog("S: npc._intelligence = "+npc._intelligence);
+   // npc._intelligence_mod:=32767;Syslog("S: npc._intelligence = "+npc._intelligence);
+   //
+  //* npc.setlightlevel      Methode(Integer (0..30), Integer (-unlimmeted..unlimmeted)) / Unbenutzt
+   // npc.setlightlevel(30, 10);
+   //
+  //* npc.setmaster          Methode(<appobj_Mobile>) / Setze Master (siehe npc.master)
+   //   (sowohl PC, also auch NPC. funzt auch rekursiv, also er kann sich selber zum Master von sich machen)
+   // Syslog("L: npc.master = "+npc.master.name);
+   // npc.master:=who;Syslog("S: npc.master = "+npc.master.name);
+   // npc.setmaster(who);Syslog("S: npc.master = "+npc.master.name);
+   // npc.setmaster(npc);Syslog("S: npc.master = "+npc.master.name);
+   //
+  //* npc.setmurderer        Methode(Integer (0..1)) / Setze Moerder (siehe npc.murderer)
+   // Syslog("L: npc.setmurderer = "+npc.murderer);
+   // npc.setmurderer(1);Syslog("S: npc.setmurderer = "+npc.murderer);
+   // npc.setmurderer(0);Syslog("S: npc.setmurderer = "+npc.murderer);
+   //
+  //* npc.setparalyzed       Methode(Integer (0..1)) / Setze Paralysiert (siehe npc.paralyzed)
+   // Syslog("L: npc.setparalyzed = "+npc.paralyzed);
+   // npc.setparalyzed(1);Syslog("S: npc.setparalyzed = "+npc.paralyzed);
+   // npc.setparalyzed(0);Syslog("S: npc.setparalyzed = "+npc.paralyzed);
+   //
+  //* npc.setpoisoned        Methode(Integer (0..1)) / Setze Vergiftet (siehe npc.poisoned)
+   // Syslog("L: npc.setpoisoned = "+npc.poisoned);
+   // npc.setpoisoned(1);Syslog("S: npc.setpoisoned = "+npc.poisoned);
+   // npc.setpoisoned(0);Syslog("S: npc.setpoisoned = "+npc.poisoned);
+   //
+  //* npc._setstr             Methode(Integer (1..210)) / Setze [Basis]Staerke (siehe npc._strength)
+   // npc._setstr(1);Syslog("S: npc._strength = "+npc._strength);
+   // npc._setstr(0);Syslog("S: npc._strength = "+npc._strength);
+   // npc._setstr(1.5);Syslog("S: npc._strength = "+npc._strength);
+   // npc._setstr(300);Syslog("S: npc._strength = "+npc._strength);
+   // npc._strength_mod:=32767;Syslog("S: npc._strength = "+npc._strength);
+   //
+  //* npc.spendgold          Methode(Integer (0..2147483648)) / Spendet Gold, wenn nich genuch da, dann spendet er nich
+   // Syslog("L: npc.gold = "+npc.gold);
+   // npc.spendgold(100000);Syslog("S: npc.gold = "+npc.gold);
+   // npc.spendgold(10);Syslog("S: npc.gold = "+npc.gold);
+   //
+  //* npc.squelch            Methode(Integer (0..unlimmeted)) / Stumm / Blockiert alle Say(), sonst
+   //   nuescht nichmal PrintTextAbove... / -1 = dauerhaft / 0 = deaktivieren / pos. Zahl = Anzahl Sekunden
+   // Syslog("L: npc.squelched = "+npc.squelched);
+   // npc.squelch(-1);Syslog("S: npc.squelched = "+npc.squelched);
+   // npc.squelch(0);Syslog("S: npc.squelched = "+npc.squelched);
+   // npc.squelch(30);Syslog("S: npc.squelched = "+npc.squelched);
+   //
+  //* npc.squelched          ro Integer (0..1) / Stumm / Setzen -> npc.squelch
+   // Syslog("L: npc.squelched = "+npc.squelched);
+   // npc.squelched:=6;Syslog("S: npc.squelched = "+npc.squelched);
+   //
+  //* npc._stamina            rw Integer (0..65535) / Stamina
+   // Syslog("L: npc._stamina = "+npc._stamina);
+   // npc._stamina:=0;Syslog("S: npc._stamina = "+npc._stamina);
+   // npc._stamina:=10;Syslog("S: npc._stamina = "+npc._stamina);
+   // npc._stamina:=65535;Syslog("S: npc._stamina = "+npc._stamina);
+   // npc._stamina:=65536;Syslog("S: npc._stamina = "+npc._stamina);
+   //
+  //* npc._stamina_regen_rate rw Integer (-32768..32767) / Stamina-Regeneration
+   //   (addiert Wert*0.002 Punkte in der Sekunde)
+   // Syslog("L: npc._stamina_regen_rate = "+npc._stamina_regen_rate);
+   // npc._stamina_regen_rate:=1.5;Syslog("S: npc._stamina_regen_rate = "+npc._stamina_regen_rate);
+   // npc._stamina_regen_rate:=32767;Syslog("S: npc._stamina_regen_rate = "+npc._stamina_regen_rate);
+   // npc._stamina_regen_rate:=-32768;Syslog("S: npc._stamina_regen_rate = "+npc._stamina_regen_rate);
+   // npc._stamina_regen_rate:=10;Syslog("S: npc._stamina_regen_rate = "+npc._stamina_regen_rate);
+   //
+  //* npc.stealthsteps       rw Integer (0..65535) / (hmm, hab rumprobiert, hat aber nuescht geaendert)
+   //  (evtl. je groesser der wert, desto schneller schlaegt tarnen fehl ?!?)
+   // Syslog("L: npc.stealthsteps = "+npc.stealthsteps);
+   // npc.stealthsteps:=1;Syslog("S: npc.stealthsteps = "+npc.stealthsteps);
+   // npc.stealthsteps:=65535;Syslog("S: npc.stealthsteps = "+npc.stealthsteps);
+   //
+  //* npc._strength           ro Integer (1..32977) / Staerke / Setzen -> npc._setstr()+npc._strength_mod
+   //   (die Werte werden vorzeichenbehaftet addiert und notfalls auf 1 hochgesetzt)
+   // Syslog("L: npc._strength = "+npc._strength);
+   // npc._strength:=0;Syslog("S: npc._strength = "+npc._strength);
+   // npc._strength:=1;Syslog("S: npc._strength = "+npc._strength);
+   //
+  //* npc._strength_mod       rw Integer (-209..32767) / Staerke-Modifikator (relativ, siehe npc._strength)
+   // Syslog("S: npc._strength = "+npc._strength);
+   // npc._strength_mod:=80;Syslog("S: npc._strength_mod = "+npc._strength_mod);
+   // Syslog("S: npc._strength = "+npc._strength);
+   // npc._strength_mod:=-80;Syslog("S: npc._strength_mod = "+npc._strength_mod);
+   // Syslog("S: npc._strength = "+npc._strength);
+   // npc._strength_mod:=32767;Syslog("S: npc._strength_mod = "+npc._strength_mod);
+   //
+  //* npc.title_guild        rw String / Gildenanhaengsel zum NPC-Namen / Unbenutzt
+   // Syslog("S: npc.title_guild = "+npc.title_guild);
+   // npc.title_guild:="AuA";Syslog("S: npc.title_guild = "+npc.title_guild);
+   //
+  //* npc.title_prefix       rw String / Prefix (davor) des NPC-Namen (ggf. Space einbauen)
+   // Syslog("S: npc.title_prefix = "+npc.title_prefix);
+   // npc.title_prefix:="BuB";Syslog("S: npc.title_prefix = "+npc.title_prefix);
+   //
+  //* npc.title_race         rw String / Rassenanhaengsel zum NPC-Namen / Unbenutzt
+   // Syslog("S: npc.title_race = "+npc.title_race);
+   // npc.title_race:="CuC";Syslog("S: npc.title_race = "+npc.title_race);
+   //
+  //* npc.title_suffix       rw String / Suffix (danach) des NPC-Namen (ggf. Space einbauen)
+   // Syslog("S: npc.title_suffix = "+npc.title_suffix);
+   // npc.title_suffix:="DuD";Syslog("S: npc.title_suffix = "+npc.title_suffix);
+   //
+  //* npc.truecolor          ro Integer (0..65535) / Farbe / Originalwert aus der NPCDesc (hmm, tja, wofuer nochmal ?!?)
+   // Syslog("S: npc.truecolor = "+npc.truecolor);
+   // npc.truecolor:=4;Syslog("S: npc.truecolor = "+npc.truecolor);
+   //
+  //* npc.trueobjtype        ro Integer (1..1023) / Template fuer Grafik / Originalwert aus der NPCDesc (hmm, tja, wofuer nochmal ?!?)
+   // Syslog("S: npc.trueobjtype = "+npc.trueobjtype);
+   // npc.trueobjtype:=4;Syslog("S: npc.trueobjtype = "+npc.trueobjtype);
+   //
+  //* npc.warmode            ro Integer (0..1) / Kriegsmodus
+   // Syslog("S: npc.warmode = "+npc.warmode);
+   // npc.warmode:=1;Syslog("S: npc.warmode = "+npc.warmode);
+   //
+  //* npc.weapon             ro <appobj> / Angelegte Waffe / Hmm, wenn man keine Waffe hat, dann is da trotzdem was (heisst "nodraw")
+   // Syslog("S: npc.weapon = "+npc.weapon+" ("+(npc.weapon).desc+")");
+   //
+  //* npc.weight             ro Integer (0..65536) / Gewicht
+   //   (BUG -> Ueberlauf auf 0...)
+   // Syslog("S: npc.weight = "+npc.weight);
+   // npc.weight:=1;Syslog("S: npc.weight = "+npc.weight);
+   //
+  //* npc.x                  ro Integer (0..6143) / X-Koordinate / Setzen -> MoveCharToLocation
+   // Syslog("S: npc.x = "+npc.x);
+   // npc.x:=1;Syslog("S: npc.x = "+npc.x);
+   //
+  //* npc.y                  ro Integer (0..4095) / Y-Koordinate / Setzen -> MoveCharToLocation
+   // Syslog("S: npc.y = "+npc.y);
+   // npc.y:=1;Syslog("S: npc.y = "+npc.y);
+   //
+  //* npc.z                  ro Integer (-128..127) / Z-Koordinate / Setzen -> MoveCharToLocation
+   // Syslog("S: npc.z = "+npc.z);
+   // npc.z:=1;Syslog("S: npc.z = "+npc.z);
+EndFunction
+
+// Welche Teile noch wegens der Properties durchchecken
+// (also, welches Object steckt wirklich dahinter ?)

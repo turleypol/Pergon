@@ -1,0 +1,113 @@
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//	Das Ultimative 'Fussball'-Spiel
+//
+//	Mobiles können einen Ball in einem definierten Bereich spielen, Standard ist 200x200
+//	Um selber eine Range zu setzen, kann man die Propertys 'RangeX' oder 'RangeY' setzen, wobei diese den Bereich in nur eine Richtung abstecken.
+//		dh. bei einer Range von 5 kann man den Ball 5 Felder nach (z.B.) Norden kicken und auch 5 Felder in Richtung Sueden
+//
+//	Damit man auch 'Tore' schiessen kann, testet das Script nach jedem Move, ob ein Item an gleicher Stelle liegt,
+//		das das Wort 'Spielzone' beinhaltet. Daher kann man das beliebig benennen (zB 'Spielzone Blau' oder 'Spielzone PKs')
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// Fraggulus' Edition
+//
+// 03.11.2001 - Fraggulus: Erstausgabe
+// 06.11.2001 - Fraggulus: Spielzone eingebaut
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+
+Include "include/client";
+Include "include/msgs";
+
+program Ball_Start(who, item)
+
+	Var DeltaX, DeltaY;
+	Var NewX, NewY;
+
+	if (!GetObjProperty(item, "X") || !GetObjProperty(item, "Y"))		// Create-Koordinaten merken
+		SetObjProperty(item, "X", item.x);
+		SetObjProperty(item, "Y", item.y);
+	endif
+
+
+	Var AnkerX := GetObjProperty(item, "X");	// Ankerpunkt holen
+	Var AnkerY := GetObjProperty(item, "Y");
+
+	if ((AnkerX == 0) || (AnkerY == 0))
+		AnkerX := item.x;
+		AnkerY := item.y;
+	EndIf
+
+	Var RangeX := GetObjProperty(item, "RangeX");	// optional gesetzte Range holen // kann erzwingen, dass der Ball innerhalb eines festgelegten Feldes bleibt
+	Var RangeY := GetObjProperty(item, "RangeY");
+
+	Var MaxX, MaxY, MinX, MinY;				// Ausdehnung des erlaubten Spielfeldes, maximal jedoch 200
+	if (RangeX)									// erlaubt ist getrennte Begrenzung von X und Y
+		MinX := AnkerX - RangeX;
+		MaxX := AnkerX + RangeX;
+	else
+		MinX := AnkerX - 199;
+		MaxX := AnkerX + 199;
+	endif
+
+	if (RangeY)
+		MinY := AnkerY - RangeY;
+		MaxY := AnkerY + RangeY;
+	else
+		MinY := AnkerY - 199;
+		MaxY := AnkerY + 199;
+	endif
+
+
+
+	Var PlayMode;
+	Var face := who.facing;
+	// Hauptprogramm
+	if ((MinX+1 <= item.x) && (MaxX-1 >= item.x) && (MinY+1 <= item.y) && (MaxY-1 >= item.y))	// muss innerhalb des Spielfeldes bleiben
+		PlayMode := 1;
+	else
+		PlayMode := -1;
+	endif
+
+
+	DeltaX := 0; DeltaY := 0;		// Abstand, um den der Ball bewegt wird
+
+	Case (face)
+		0: DeltaY := -1;
+		1: DeltaY := -1; DeltaX := 1;
+		2: DeltaX := 1;
+		3: DeltaX := 1; DeltaY := 1;
+		4: DeltaY := 1;
+		5: DeltaY := 1; DeltaX := -1;
+		6: DeltaX := -1;
+		7: DeltaX := -1; DeltaY := -1;
+	EndCase
+
+	//(Anti-PackMan-Methode)
+	if (((MinX >= item.x) && (face == 1 || face == 2 || face == 3)) ||		// komplizierte Abfrage zur sicherstellung, dass der Ball im Feld bleibt und auch dorthin zurueck gebracht werden kann
+		((MaxX <= item.x) && (face == 5 || face == 6 || face == 7)) ||
+	 	((MinY >= item.y) && (face == 3 || face == 4 || face == 5)) ||
+	 	((MaxY <= item.y) && (face == 7 || face == 0 || face == 1)))
+		PlayMode := 1;
+	endif
+
+
+	NewX := item.x + PlayMode * DeltaX;
+	NewY := item.y + PlayMode * DeltaY;
+
+	MoveObjectToLocation(item, newX, newY, GetWorldHeight(newX, newY,item.realm), item.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+	PlaySoundEffect(who, SFX_126);
+	SleepMs(100);
+
+	ForEach LookAtItem in ListItemsNearLocation(item.x, item.y, item.z, 0,item.realm)
+		if (LookAtItem.desc["Spielzone"])
+			PrintTextAbovePergon(who, item, "Ball in " + LookAtItem.desc);
+		endif
+	EndForEach
+
+endprogram

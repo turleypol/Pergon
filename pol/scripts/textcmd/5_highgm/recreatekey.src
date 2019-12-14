@@ -1,0 +1,31 @@
+///////////////////////////////////////////////////////////////////////////
+// recreatekey -- fuer Tuer/Kiste weiteren Schluessel erzeugen
+
+use uo;
+include ":doorsnew:common";
+include "include/itemnpc";
+include "include/msgs";
+
+Program MakeKey(who)
+    SendSysMessagePergon(who,
+        "Wählt eine Tür oder Kiste, für die ein Nachschlüssel erzeugt "+
+        "werden soll."
+    );
+    var lockeditem := Target(who);
+    If (!lockeditem)
+       SendSysMessagePergon(who, "Abbruch", "Abort");
+       return;
+    EndIf
+
+    var lockid := GetObjProperty(LockedItem, "lockid");
+    If (!lockid)
+        SendSysMessagePergon(who, "Daran befindet sich kein Schloss.");
+        return;
+    EndIf
+
+    // "Schluesselnummer" auf neuen Schluessel uebertragen
+    var key := CreateItemInBackpackPergon(who, 0x100f, 1);
+    SetObjProperty(key, "lockid", lockid);
+
+    SendSysMessagePergon(who, "Der Schlüssel wurde im Rucksack abgelegt.");
+EndProgram

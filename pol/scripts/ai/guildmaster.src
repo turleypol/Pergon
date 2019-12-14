@@ -1,0 +1,438 @@
+////////////////////////////////////////////////////////////////////////
+// GuildMaster Script - Control script for Guild master
+//
+// Author: Jason
+
+use cfgfile;
+use npc;
+use os;
+use storage;
+use uo;
+include "include/berufe";
+include "include/classskills";
+include "include/gumputil";
+include "include/modifyskill";
+include "include/nonmerchant";
+
+////////////////////////
+// Klassendefinitionen
+////////////////////////
+
+// Var window:=struct;                 // Anzeigefenster
+//        window.+gumpbase:=0;         //   Nummer des ersten Gumps
+//        window.+gump_width:=0;       //   Gump -> Breite
+//        window.+gump_height:=0;      //   Gump -> Hoehe
+//        window.+header_y:=0;         //   Header   -> Y-Koordinate
+//        window.+headercolor:=0;      //   Textfarbe des Headers
+//        window.+choose_gump:=0;      //   Choose-Button -> Nummer des Gumps
+//        window.+choose_width:=0;     //   Choose-Button -> Breite
+//        window.+lines_x:=0;          //   Zeilen -> Basis X-Koordinate
+//        window.+lines_y:=0;          //   Zeilen -> Basis Y-Koordinate
+//        window.+lines_y_diff:=0;     //   Zeilen -> Y-Koordinaten-Differenz
+//        window.+textcolor:=0;        //   Textfarbe
+//        window.+scrollbar_x_diff:=0; //   Scrollbalken -> X-Koordinaten-Differenz
+//        window.+cancle_y_diff:=0;    //   Cancel-Button -> Y-Koordinate-Differenz
+//
+// Var content:=struct;         // Fensterinhalt
+//        content.+header:="";  //   Header
+//        content.+berufe:={ }; //   Inhalt
+//
+// ///////////////////////
+// // Objektdefinitionen
+// ///////////////////////
+//
+// Var grey_window:=window;          // Graues, steinernes Anzeigefenster
+// grey_window.gumpbase:=2600;       //   Nummer des ersten Gumps
+// grey_window.gump_width:=300;      //   Gump -> Breite
+// grey_window.gump_height:=300;     //   Gump -> Hoehe
+// grey_window.header_y:=25;         //   Header   -> Y-Koordinate
+// grey_window.headercolor:=50;      //   Textfarbe des Headers
+// grey_window.choose_gump:=208;     //   Choose-Button -> Nummer des Gumps
+// grey_window.choose_width:=30;     //   Choose-Button -> Breite
+// grey_window.lines_x:=50;          //   Zeilen -> Basis X-Koordinate
+// grey_window.lines_y:=60;          //   Zeilen -> Basis Y-Koordinate
+// grey_window.lines_y_diff:=45;     //   Zeilen -> Y-Koordinaten-Differenz
+// grey_window.scrollbar_x_diff:=65; //   Scrollbalken -> X-Koordinaten-Differenz
+// grey_window.cancle_y_diff:=45;    //   Cancel-Button -> Y-Koordinate-Differenz
+//
+// Const bttn_cancle:=1; // Button um das Fenster zu verlassen
+// Const bttn_berufe:=2; // BASIS-Button fuer die Berufe
+//
+// Var empty:=content;
+
+Function SetNonMerchantType(meprototype)
+  meprototype.nonmerchanttype := "GuildMaster";
+  meprototype.left_area       := 1;
+  // meprototype.speech_name     := 1;
+  meprototype.speech_default  := 1;
+
+  return meprototype;
+EndFunction
+
+Function Hook_Move_Action(me, medata, ev)
+  return;
+  // Compiler-Warnung vermeiden
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Entered_Area(me, medata, ev)
+  return;
+  // Compiler-Warnung vermeiden
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Left_Area(me, medata, ev)
+  return;
+  // Compiler-Warnung vermeiden
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Speech_Open(me, medata, ev)
+  return;
+  // Compiler-Warnung vermeiden
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Speech_Sleeping(me, medata, ev)
+  return;
+  // Compiler-Warnung vermeiden
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Speech_Name(me, medata, ev)
+ // NPCSayTextTraditional(me, "Wenn es um Berufe geht, dann seid Ihr bei "+medata.minename+" genau richtig.", "", ev.source);
+  return;
+  // Compiler-Warnung vermeiden
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Speech_Default(me, medata, ev, said)
+  Var proceeded := 1;
+
+  Case (lower(said))
+  "beruf":
+  "mad":
+  "skill":
+  "skills":
+  "skillaenderung":
+  "skilltausch":
+    If (GetGlobalProperty("ChangeskillsActive") or ev.source.cmdlevel == CMDLEVEL_QUESTCHAR)
+      NPCSayTextTraditional(me, "Ich werde mich Eurer annehmen", "");
+      var param := struct;
+      param.+who    := ev.source;
+      param.+said   := said;
+      param.+master := me;
+      Start_ScriptPergon("textcmd/3_seer/changeskills", param);
+    Else
+      NPCSayTextTraditional(me, "Die Götter verbieten zur Zeit meine Hilfe!", "");
+      break;
+    EndIf
+  "festland":
+  "flucht":
+  "fluchtfaehre":
+    // ist er ueberhaupt Newbie?
+    If (!GetObjProperty(ev.source, TYPNEWBIE))
+      NPCSayTextTraditional(me, "Wollt Ihr mich veralbern?", "Do you want to fool me?");
+      break;
+    EndIf
+
+    If (ev.source.name["Bewohner"])
+      NPCSayTextTraditional(me, 
+        "Ihr habt noch keinen gueltigen Namen. Die Flucht wird euch deshalb verwehrt.",
+        "You doesn't have a valid name yet. Therefore, you cannot escape now."
+      );
+      break;
+    EndIf
+
+    var class := GetObjProperty(ev.source, SKKLASSE);
+    If (!class)
+      // keine Klasse -- das ist seltsam
+      syslog("HINWEIS: "+CharInfoStr(ev.source)+" hat keine Klasse");
+      proceeded := 0;
+      break;
+    EndIf
+
+    If (class == KLASSE_KRIEGER)
+      NPCSayTextTraditional(me,
+        "Als Krieger müsst Ihr Euch schon durch den Wald "+
+        "zum Fluchttor durchschlagen!",
+        "You are a warrior. Fight your way trough the forest "+
+        "toward the flight portal."
+      );
+      // sicherheitshalber loeschen (Skilltausch etc.)
+      EraseObjProperty(ev.source, TYPFLIGHT);
+      break;
+    EndIf
+
+    // Pruefung, ob Character halbwegs faehig ist
+    If (GetGlobalProperty(PROP_DISABLE_SKILLCHECK) == error)
+      If (
+        // weniger als 40% in den Berufskill (Mittelwert)
+        (GetSkillAverage(ev.source) < 40) and
+        // Ausnahme-CProp auch nicht gesetzt
+        (GetObjProperty(ev.source, PROP_DISABLE_SKILLCHECK) == error)
+      )
+        NPCSayTextTraditional(me,
+          "Ihr beherrscht Euren Beruf nicht ausreichend. "+
+          "Ich erteile Euch keine Fahrerlaubnis.",
+          "You do not have enough experience in your profession. "+
+          "I will not allow your boat journey."
+        );
+        // sicherheitshalber loeschen (Skillkuerzung etc.)
+        EraseObjProperty(ev.source, TYPFLIGHT);
+        break;
+      EndIf
+
+      var flucht := SetObjProperty(ev.source, TYPFLIGHT, 1);
+      If (flucht)
+        NPCSayTextTraditional(me,
+          "Ihr beherrscht Euren Beruf gut genug. "+
+          "Ihr dürft am Hafen mit der Fähre zum Festland reisen.",
+          "You are good enough in your profession. "+
+          "Pray go to the harbour and take the boat to the continent."
+        );
+        Sleep(2);
+        NPCSayTextTraditional(me,
+          "Vergesst den Fahrpreis nicht! Gute Reise!",
+          "Remember the ferry price! Farewell!"
+        );
+      Else
+        syslog(
+          "FEHLER: Konnte Fluchterlaubnis bei "+CharInfoStr(ev.source)+
+          "nicht setzen: "+flucht.errortext
+        );
+        NPCSayTextTraditional(me,
+          "Etwas ging schief. Bitte fragt einen GM.",
+          "Something went wrong. Call for a GM."
+        );
+      EndIf
+      break;
+    EndIf
+
+    // falls deaktiviert
+    proceeded := 0;
+
+   // veraltet? {{{
+   // "beruf":
+   //   Var beruf:=Lower(GetObjProperty(ev.source, SKBERUF));
+   //   If (beruf==KLASSE_BERUF_NIX)
+   //     Beruf_eintreten(me, medata, ev);
+   //   Else
+   //     NPCSayTextTraditional(me, "Euer Beruf ist '"+beruf+"'. Wollt ihr austreten, in einen anderen Beruf eintreten oder nur Informationen ueber Berufe?", "", ev.source);
+   //   EndIf
+   // "beruf eintreten"    : Beruf_eintreten(me, medata, ev);
+   // "eintreten"          : Beruf_eintreten(me, medata, ev);
+   // "beruf austreten"    : Beruf_austreten(me, medata, ev, 0);
+   // "austreten"          : Beruf_austreten(me, medata, ev, 0);
+   // "information"        : Berufe_beschreiben(me, medata, ev);
+   // "informationen"      : Berufe_beschreiben(me, medata, ev);
+   // "infos"              : Berufe_beschreiben(me, medata, ev);
+   // "beruf information"  : Berufe_beschreiben(me, medata, ev);
+   // "beruf informationen": Berufe_beschreiben(me, medata, ev);
+   // "beruf infos"        : Berufe_beschreiben(me, medata, ev);
+   // }}}
+
+  default:
+    proceeded := 0;
+  EndCase
+
+  Return (proceeded);
+  // Compiler-Warnung vermeiden
+  medata := 1;
+EndFunction
+
+// Alter Kram
+
+///////////////////////////////////////////////
+// Beruf_eintreten - In einen Beruf eintreten
+///////////////////////////////////////////////
+
+Function Beruf_eintreten(me, medata, ev)
+  Var altberuf:=Lower(GetObjProperty(ev.source, SKBERUF));
+  If ((altberuf) And (altberuf<>KLASSE_BERUF_NIX))
+    NPCSayTextTraditional(me, "Ihr wollt Euren Beruf '"+altberuf+"' wechseln? Nun gut, Euer Wille geschehe.", "");
+  EndIf
+
+  Var cont:=empty;
+  cont.header:="In einen Beruf eintreten";
+  cont.berufe:=Berufstypen_einlesen();
+
+  Var beruf:=Show_Berufe(ev.source, grey_window, cont, 10, 10);
+  If (beruf<>KLASSE_BERUF_NIX)
+   // SetClass(ev.source, beruf);
+    NPCSayTextTraditional(me, "Euer Beruf ist jetzt '"+beruf+"'. Ich wünsche Euch dabei viel Erfolg.", "");
+  Else
+    If ((altberuf) And (altberuf<>KLASSE_BERUF_NIX))
+      NPCSayTextTraditional(me, "Jetzt wollt Ihr doch nicht? Euer Beruf ist weiterhin '"+altberuf+"'.", "");
+    EndIf
+  EndIf
+EndFunction
+
+
+
+////////////////////////////////////////////////
+// Beruf_austreten - Aus einem Beruf austreten
+////////////////////////////////////////////////
+
+Function Beruf_austreten(me, medata, ev, mute)
+  Var ausgetreten:=0;
+
+  If (Lower(GetObjProperty(ev.source, SKBERUF))<>KLASSE_BERUF_NIX)
+   // SetClass(ev.source, KLASSE_BERUF_NIX);
+    If (!mute)
+      NPCSayTextTraditional(me, "Ab jetzt bekleidet Ihr keinen Beruf mehr. Ich hoffe, es war eine gut überlegte Entscheidung.", "");
+    EndIf
+    ausgetreten:=1;
+  Else
+    NPCSayTextTraditional(me, "Ihr könnt garnicht austreten, da Ihr noch kein Beruf habt!", "");
+  EndIf
+
+  Return (ausgetreten);
+EndFunction
+
+//////////////////////////////////////////////////////////
+// Berufe_beschreiben - Zeigt Texte mit Informationen an
+//////////////////////////////////////////////////////////
+
+Function Berufe_beschreiben(me, medata, ev)
+  Var classfilepath:="classes";
+  Var cont:=empty;
+  cont.header:="Informationen ueber Berufe";
+  cont.berufe:=Berufstypen_einlesen();
+
+  Var beruf:=Show_Berufe(ev.source, grey_window, cont, 50, 30);
+  If (beruf<>KLASSE_BERUF_NIX)
+    Var classfile:=ReadConfigFile(classfilepath);
+    If (classfile)
+      If (classfile[beruf])
+        Var Desc;
+        ForEach Desc in GetConfigStringArray(classfile[beruf], "Desc")
+          NPCSayTextTraditional(me, Desc, "");
+          Sleep(5);
+        EndForeach
+      EndIf
+    EndIf
+    UnloadConfigFile(classfilepath);
+  EndIf
+EndFunction
+
+////////////////////////////////////////////////////////////////
+// Berufstypen_einlesen - Liest die Typen aus der Config-Datei
+////////////////////////////////////////////////////////////////
+
+Function Berufstypen_einlesen()
+  Var classfilepath:="classes";
+  Var berufe:={ };
+
+  Var classfile:=ReadConfigFile(classfilepath);
+  If (classfile)
+    Var classes:=FindConfigElem(classfile, "Classes");
+    If (classes)
+      berufe:=GetConfigStringArray(classes, "Beruf");
+    EndIf
+  EndIf
+  UnloadConfigFile(classfilepath);
+
+  Return (berufe);
+EndFunction
+
+/////////////////////////
+// Berufsliste anzeigen
+/////////////////////////
+
+Function Show_Berufe(who, window, content, x, y)
+  Var data:=Create_BerufeContent(window, content);
+  Var layout:=Create_BerufeLayout(window, data, x, y);
+
+  Var res:=CInt(SendDialogGump(who, layout, data)[0])-bttn_berufe+1;
+  If (res>0)
+    Return (content.berufe[res]);
+  Else
+    Return (KLASSE_BERUF_NIX);
+  EndIf
+EndFunction
+
+///////////////////////////////////////////
+// Inhalt der Berufsliste zusammenbasteln
+///////////////////////////////////////////
+
+Function Create_BerufeContent(window, content)
+  Var data:={"", content.header};
+
+  Var beruf;
+  ForEach beruf in (content.berufe)
+    data.append(beruf);
+  EndForEach
+
+  Return (data);
+EndFunction
+
+///////////////////////////////////////////
+// Layout der Berufsliste zusammenbasteln
+///////////////////////////////////////////
+
+Function Create_BerufeLayout(window, data, x, y)
+  Var layout:={"page 0", "nodispose"};
+  layout.append("resizepic "+CStr(x)+" "+CStr(y)+" "+CStr(window.gumpbase)+
+    " "+CStr(window.gump_width)+" "+CStr(window.gump_height));
+
+  Var lines:=CInt((window.gump_height-window.lines_y-window.lines_y_diff)/20);
+  Var pages:=CInt((Len(data)-2)/lines);
+  If (pages*lines<Len(data)-2)
+    pages:=pages+1;
+  EndIf
+  If (pages==0)
+    pages:=1;
+  EndIf
+
+  Var i;
+  For (i:=1; i<=pages; i+=1)
+    layout:=Create_Layout_Page(window, data, x, y, pages, i, lines, layout);
+  EndFor
+
+  Return (layout);
+EndFunction
+
+Function Create_Layout_Page(window, data, x, y, pages, page, lines, layout)
+  layout.append("page "+CStr(page));
+  layout.append("text "+CStr(GumpTextMid(data[2], x, window.gump_width))+" "+
+    CStr(y+window.header_y)+" "+CStr(window.headercolor)+" 1");
+
+  Var choose_gump:=CStr(window.choose_gump)+" "+CStr(window.choose_gump+1)+" ";
+  Var lines_x:=x+window.lines_x;
+  Var index:=(page-1)*lines;
+
+  Var i;
+  For (i:=0; (i<lines) And (index+i<Len(data)-2); i+=1)
+    Var lines_y:=CStr(y+window.lines_y+i*20)+" ";
+
+    layout.append("button "+CStr(lines_x)+" "+lines_y+
+      choose_gump+"1 0 "+CStr(bttn_berufe+index+i));
+    layout.append("text "+CStr(lines_x+window.choose_width)+" "+
+      lines_y+CStr(window.textcolor)+" "+CStr(index+i+2));
+  EndFor
+
+  layout:=Create_ScrollBar(x+window.gump_width-window.scrollbar_x_diff,
+    y+window.lines_y-1, lines*20, pages, page, layout);
+
+  layout.append("button "+CStr(x+CInt((window.gump_width-64)/2))+" "+
+    CStr(y+window.gump_height-window.cancle_y_diff)+
+    " 242 241 1 0 "+CStr(bttn_cancle));
+
+  Return (layout);
+EndFunction
+
+// USA-Country: Jo Dee Messina - Because You Love Me
+// vim: sw=2 sts=2

@@ -1,0 +1,31 @@
+// Autot: 		Peter -pJOTTR- Straube
+// Date: 		01.02.2004
+//
+//
+// Schaut alle "Sleep(60)" sec nach, ob die Falle laut Zeitstempel noch stehen darf
+// ToDo: evtl erschaffene Viechers mit Ablauf der Falle auch killen
+
+use uo;
+use os;
+
+Include "traps";
+include "include/objtype";
+include "include/modifyskill";
+include "include/itemnpc";
+
+
+
+Program control(trap)
+	While (0 < 1)
+		If (!trap.decayat)
+			return;
+		EndIf
+		If (trap.decayat > ReadGameClock())
+			Sleep(60);
+		Else
+			DestroyItem(trap);
+			return;
+		EndIf
+	EndWhile
+EndProgram
+

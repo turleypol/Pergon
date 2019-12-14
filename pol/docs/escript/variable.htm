@@ -1,0 +1,49 @@
+<html>
+
+<head>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+<title>Variables</title>
+</head>
+
+<body>
+
+<h1>Variables</h1>
+
+<p>Variables can be declared globally, with GLOBAL, or locally, with LOCAL.&nbsp; </p>
+
+<p>Constants can be declared with CONST.</p>
+
+<p>An example demonstrating Local and Global variables:</p>
+
+<table border="1" width="100%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td><pre>
+Global var1 := 57;
+Global var2 := 58;
+Const BAR := 102;
+function foo()
+begin
+    Local i;
+
+    for( i := 0; i &lt; 10; i := i + 1 )
+    begin
+        print &quot;i=&quot; + i;
+        Local text := &quot;hello world&quot;;
+        print(text);
+        print(BAR + var2);
+    end
+        // text does not exist here
+end
+
+foo();
+</pre>
+    </td>
+    <td>Variables are destroyed at the end of the block in which they are declared.&nbsp; In
+    the FOR loop above, the variable &quot;text&quot; is created, assigned, and destroyed on
+    every iteration.<p>var1 and var2 are accessible within foo().</td>
+  </tr>
+</table>
+
+<p>CONST values are substituted where used at compile-time.</p>
+</body>
+</html>

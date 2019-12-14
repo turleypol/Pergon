@@ -1,0 +1,5 @@
+Kennst du schon die nuetzliche Tastenkombination "Strg-Umschalt"? Wenn du beide Tasten gleichzeitig gedrueckt haeltst, erscheinen ueber den anwesenden Spielern und NPCs Namensschilder, und auch ueber einigen Gegenstaenden.  Einzelne Schilder kann man mit Rechtsklick ausblenden.
+
+Ansonsten kann man die Schilder wie das Objekt selbst benutzen, also beispielsweise Doppelklicken oder Anklicken und Ziehen. Gerade in unuebersichtlichen Szenen kann das hilfreich sein, um einen bestimmten Gegner anzugreifen oder einen Gegenstand aus einem Haufen herauszupicken.
+
+Achtung: Es werden nur endlich viele Schilder angezeigt. In besonders vollen Umgebungen bekommt nicht unbedingt jedes Objekt ein Schild.

@@ -1,0 +1,159 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Trank des Eisatem
+//
+// Trank erzeugt Kältekegel vor dem Caster
+
+include ":newspells:magicpergon";
+include ":newspells:resistance";
+include "common";
+include "include/msgs";
+include "include/packets";
+include "include/spellcheck";
+use cfgfile;
+use os;
+use uo;
+use util;
+
+Program IceBreath(who, item)
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var delay := artefact.delay;
+  var range := artefact.range;
+  var width := artefact.width;
+  var damage := SplitWords(GetConfigString(artefact, "Damage"));
+  var minDamage := CInt(damage[1]);
+  var maxDamage := CInt(damage[3]);
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", (ReadGameClock() + delay));
+
+  // Trank abziehen
+  SubtractAmount(item, 1);
+
+  PerformAction(who, ANIM_CAST_AREA);
+  SendSysMessagePergon(who, "Ihr trinkt den Trank", "You drink the potion");
+  SleepMS(800);
+  SendSysMessagePergon(who, "Es rumort in eurem Magen", "Your stomach hurts!");
+  Sleep(2);
+  PerformAction(who, ANIM_CAST_DIR);
+
+  Detach();
+
+  // Xleft und Yleft geben Koordinate des linken Punktes des Kegelendes an
+  var Xleft;
+  var Yleft;
+  // Xright und Yright entsprechend den rechten Punkt
+  var Xright;
+  var Yright;
+
+  // FIXME: das geht sicher schoener
+  // je nach Blickrichtung Richtung des Kegels bestimmen
+  Case (who.facing)
+    0: Xleft := who.x - width;
+       Yleft := who.y - range;
+       Xright := who.x + width;
+       Yright := who.y - range;
+    1: Xleft  := who.x + CInt(range*3/4) - CInt(width*3/4);
+       Yleft  := who.y - CInt(range*3/4) - CInt(width*3/4);
+       Xright := who.x + CInt(range*3/4) + CInt(width*3/4);
+       Yright := who.y - CInt(range*3/4) + CInt(width*3/4);
+    2: Xleft  := who.x + range;
+       Yleft  := who.y - width;
+       Xright := who.x + range;
+       Yright := who.y + width;
+    3: Xleft  := who.x + CInt(range*3/4) - CInt(width*3/4);
+       Yleft  := who.y + CInt(range*3/4) + CInt(width*3/4);
+       Xright := who.x + CInt(range*3/4) + CInt(width*3/4);
+       Yright := who.y + CInt(range*3/4) - CInt(width*3/4);
+    4: Xleft  := who.x - width;
+       Yleft  := who.y + range;
+       Xright := who.x + width;
+       Yright := who.y + range;
+    5: Xleft  := who.x - CInt(range*3/4) - CInt(width*3/4);
+       Yleft  := who.y + CInt(range*3/4) - CInt(width*3/4);
+       Xright := who.x - CInt(range*3/4) + CInt(width*3/4);
+       Yright := who.y + CInt(range*3/4) + CInt(width*3/4);
+    6: Xleft  := who.x - range;
+       Yleft  := who.y + width;
+       Xright := who.x - range;
+       Yright := who.y - width;
+    7: Xleft  := who.x - CInt(range*3/4) - CInt(width*3/4);
+       Yleft  := who.y - CInt(range*3/4) + CInt(width*3/4);
+       Xright := who.x - CInt(range*3/4) + CInt(width*3/4);
+       Yright := who.y - CInt(range*3/4) - CInt(width*3/4);
+  EndCase
+
+  var coordsReached := array{};
+  // alle Koordinaten am Kegelende bearbeiten
+  ForEach endcoord in (GetCoordsInLine(Xleft, Yleft, Xright, Yright))
+    SleepMs(2);
+    // für jeden Punkt am Ende des Kegels Koordinaten zwischen einem
+    // Endpunkt und dem Caster ermitteln
+    var radius := GetCoordsInLine(who.x, who.y, endcoord.x, endcoord.y);
+    // Caster auslassen
+    radius.erase(1);
+    ForEach coord in (radius)
+      SleepMs(2);
+      If (coord in coordsReached)
+        continue;
+      EndIf
+      coordsReached.append(coord);
+    EndForEach
+  EndForEach
+
+  var victims := array{};
+  // Mobiles auf den Koordinaten holen
+  ForEach coord in (coordsReached)
+    SleepMs(2);
+    victims += ListMobilesNearLocationEx(
+      coord.x, coord.y, who.z, 0,
+      LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN, who.realm
+    );
+  EndForEach
+
+  ForEach victim in (victims)
+    SleepMs(2);
+    // Schaden verteilen
+    var resistWater := 1 - CDbl(GetResistance(victim, "water"));
+    var rawDamage := (RandomIntMinMax(minDamage, 1+maxDamage) * resistWater);
+    ApplyRawDamagePergon(victim, rawDamage);
+
+    If (RandomInt(2) == 1)
+      // mit 50% Chance freezen
+      victim.paralyzed := 1;
+      victim.frozen := 1;
+      IncRevision(victim);
+
+      // Spellchecker anwerfen
+      var tag := array;
+      tag[1] := ReadGameClock() + 4;
+      tag[2] := 100;
+      tag[5] := ReadMilliSecondClock();
+      SetObjProperty(victim, "spell_paralyze", tag);
+      SendSpellWaiter(victim, "spell_paralyze", 4, tag[5], victim);
+
+      PlaySoundEffect(who, SFX_1D4);
+    EndIf
+  EndForEach
+
+  var i;
+  For (i := 0; i < 10; i += 1)
+    // Effekt in Wellen
+    ForEach coord in (coordsReached)
+      // einmal Rauchwolke
+      PlayMovingEffectXYZ(
+        who.x, who.y, who.z, coord.x, coord.y, who.z,
+        FX_SMOKE, 1, 0, 0, who.realm
+      );
+    EndForEach
+    // zwischen den Wellen kurz warten
+    SleepMS(100);
+    PlaySoundEffect(who, 0x0108);
+  EndFor
+EndProgram
+
+// vim: sw=2 sts=2

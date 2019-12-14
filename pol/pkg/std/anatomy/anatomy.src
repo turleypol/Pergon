@@ -1,0 +1,411 @@
+//
+//	Anatomy
+//
+//
+//	21.12.2001 - Fraggulus - Abbruch, falls kein Zielen erfolgt ist
+//  03.01.2002 - Fraggulus - Abfrage rein, ob das Subject ueberhaupt was Lebendiges oder ne Leiche ist
+//						   - Erweiterung der erhaltenen Informationen abhaengig vom Anatomy-Skill, Grenzen 30% und 50%
+//  26.08.2002 - Fraggulus - Informationen erweitert. je nach Skill gibt es unten aufgefuehrte Informationen ueber
+//                           einen Mobile oder eine Leiche
+//  16.12.2005 - Seppel - ab 58% kann man nur noch durch kämpfen skillen
+//  22.01.2006 - Seppel - Delay eingebaut
+//
+
+//	ab  5% Vergiftet (wie stark)    - potentielle Gesundheit ;))
+//	ab 10% Verhaeltnis hp/maxhp     - Gesundheitszustand
+//	ab 15% Verhaeltnis stam/maxstam - Ausdauer
+//	ab 20% Verhaeltnis mana/maxmana - magische Reserven
+//	ab 30% MaxHP                    - Konstitution
+//	ab 35% MaxStam                  - Kondition
+//	ab 40% MaxMana                  - Magisches Potential
+//	ab 50% Str                      - Kraft/Staerke
+//	ab 55% Dex                      - Geschicklichkeit
+//	ab 60% Int                      - Intelligenz
+
+
+use math;
+use attributes;
+use uo;
+
+Include "include/client";
+Include "include/poison";
+Include "include/modifyskill";
+Include "include/npc";
+Include ":daymoonweather:daymoonweather";
+
+program anatomy(character)
+	
+	If (GetObjProperty(character, "#UsesSkill") > ReadGameClock())
+    SendSysMessagePergon(character, "Ihr müsst noch ein wenig warten bevor ihr wieder jemanden untersuchen könnt");
+    Return(0);
+  EndIf
+
+  SetObjProperty(character, "#UsesSkill", ReadGameClock() + 2);           // Delay bis zur nächsten Nutzung eines Skills 2 Sekunden
+	
+	Var descr;
+	Var var_info;
+	Var thepoints:=GetSkillDefaultPoints(SKILLID_ANATOMIE);
+	
+	If (GetSkillPergon(character, SKILLID_ANATOMIE) >= 58)            // ab 58 % kann man nicht mehr mit angucken der Leute skillen	  
+	  thepoints:= 0;
+	EndIF
+
+	SendSysMessagePergon(character, "Ziel wählen.");
+	Var subject := Target(character, TGTOPT_NOCHECK_LOS);
+	If (!subject)
+		SendSysMessagePergon(character, "Abbruch", "Abort");
+		Return;
+	EndIf
+
+	If (!CheckLosAt(character, subject.x, subject.y, subject.z))
+		SendSysMessagePergon(character, "Das befindet sich nicht in Eurem Sichtfeld!");
+		Return;
+	EndIf
+
+	If ((!subject.isa(POLCLASS_MOBILE)) && (!subject.isa(POLCLASS_CORPSE)))
+		SendSysMessagePergon(character, "Das könnt Ihr anatomisch nicht untersuchen!");
+		Return;
+	EndIf
+
+	If (CheckSkillPergon(character, SKILLID_ANATOMIE, -1, thepoints))
+
+		If (subject.isa(POLCLASS_CORPSE))
+			SendSysMessagePergon(character, "Das Subjekt ist offensichtlich tot.");
+			SendSysMessagePergon(character, "Das Subjekt kann sich nicht mehr bewegen.");
+			SendSysMessagePergon(character, "Das Subjekt kann auch nicht mehr denken.");
+			Return;
+		EndIf
+
+		If (subject.cmdlevel >= CMDLEVEL_SEER)
+			SendSysMessagePergon(character, subject.name + " sieht ziemlich göttlich fuer Eure sterblichen Augen aus!");
+			SendSysMessagePergon(character, "Ihr seid völlig geblendet!");
+			SetLightLevelPergon(character, MAXNIGHTLIGHT, 360);
+			Return;
+		EndIf
+
+
+		// unter 5% Skill gibt es keine Informationen
+		If (GetSkillPergon(character, SKILLID_ANATOMIE) < 5)
+			SendSysMessagePergon(character, "Ihr verfügt noch über zu wenig Erfahrung.");
+			Return;
+		EndIf
+
+
+		// Infos ueber Vergiftung, ab 5% Skill
+		If (GetSkillPergon(character, SKILLID_ANATOMIE) >= 5)
+			If (!subject.isa(POLCLASS_CORPSE))
+				var_info := GetPoisonLevel(subject);
+			Else
+				var_info := 0;
+			EndIf
+
+			If (var_info == 0)
+				descr := "ist nicht vergiftet";
+			ElseIf (var_info <= 2)
+				descr := "wurde leicht vergiftet";
+			ElseIf (var_info <= 5)
+				descr := "wurde vergiftet";
+			ElseIf (var_info <= 10)
+				descr := "wurde stark vergiftet";
+			Else
+				descr := "wurde sehr stark vergiftet";
+			EndIf
+
+			SendSysMessagePergon (character, "Das Subjekt " + descr + ".");
+		EndIf
+
+
+		// Infos ueber allgemeinen Gesundheitszustand, ab 10% Skill
+		If (GetSkillPergon(character, SKILLID_ANATOMIE) >= 10)
+			If (!subject.isa(POLCLASS_CORPSE))
+				var_info := CInt((100*GetHPPergon(subject)/GetMaxHPPergon(subject)));
+			Else
+				var_info := 0;
+			EndIf
+
+			If (var_info == 0)
+				descr := "dem Tod bereits begegnet";
+			ElseIf (var_info <= 10)
+				descr := "dem Tode nah";
+			ElseIf (var_info <= 20)
+				descr := "in übler Verfassung";
+			ElseIf (var_info <= 40 )
+				descr := "in keiner guten Verfassung";
+			ElseIf (var_info <= 60 )
+				descr := "leicht angeschlagen";
+			ElseIf (var_info <= 80 )
+				descr := "in guter Verfassung";
+			Else
+				descr := "kerngesund";
+			EndIf
+
+			SendSysMessagePergon (character, "Das Subjekt ist " + descr + ".");
+		EndIf
+
+
+		// Infos ueber Erschoepfung, ab 15% Skill
+		If (GetSkillPergon(character, SKILLID_ANATOMIE) >= 15)
+			If (!subject.isa(POLCLASS_CORPSE))
+				var_info := CInt((100*GetStaminaPergon(subject)/GetMaxStaminaPergon(subject)));
+			Else
+				var_info := 0;
+			EndIf
+
+			If (var_info == 0)
+				descr := "kann keinen Schritt mehr laufen";
+			ElseIf (var_info <= 10)
+				descr := "ist völlig schlapp";
+			ElseIf (var_info <= 20)
+				descr := "ist erschöpft";
+			ElseIf (var_info <= 40)
+				descr := "ist der Erschöpfung nahe";
+			ElseIf (var_info <= 60)
+				descr := "sieht etwas erschöpft aus";
+			ElseIf (var_info <= 80)
+				descr := "ist etwas außer Atem";
+			ElseIf (var_info <= 90)
+				descr := "ist kaum außer Atem";
+			Else
+				descr := "strotzt nur so vor Energie";
+			EndIf
+
+			SendSysMessagePergon (character, "Das Subjekt " + descr + ".");
+		EndIf
+
+
+		// Infos ueber Manareserven, ab 20% Skill
+		If (GetSkillPergon(character, SKILLID_ANATOMIE) >= 20)
+			If (!subject.isa(POLCLASS_CORPSE))
+				var_info := CInt((100*GetManaPergon(subject)/GetMaxManaPergon(subject)));
+			Else
+				var_info := 0;
+			EndIf
+
+			If (var_info == 0)
+				descr := "hat seine magischen Reserven aufgebraucht";
+			ElseIf (var_info <= 10)
+				descr := "hat seine magischen Reserven fast verbraucht";
+			ElseIf (var_info <= 20)
+				descr := "verfügt noch über geringe magische Reserven";
+			ElseIf (var_info <= 40)
+				descr := "verfügt über magische Reserven";
+			ElseIf (var_info <= 60)
+				descr := "hat seine magischen Reserven angetastet";
+			ElseIf (var_info <= 80)
+				descr := "hat seine magischen Reserven kaum gebraucht";
+			Else
+				descr := "strotzt nur so vor magischen Reserven";
+			EndIf
+
+			SendSysMessagePergon (character, "Das Subjekt " + descr + ".");
+		EndIf
+
+
+		// Infos ueber MaxHP, ab 30% Skill
+		If (GetSkillPergon(character, SKILLID_ANATOMIE) >= 30)
+			If (!subject.isa(POLCLASS_CORPSE))
+				var_info:=GetMaxHPPergon(subject);
+			Else
+				var_info := 0;
+			EndIf
+
+			If (var_info == 0)
+				descr := "hatte sicher einmal eine kräftigere Statur";
+			ElseIf (var_info <= 10)
+				descr := "ist von mickriger Statur";
+			ElseIf (var_info <= 25)
+				descr := "sieht schwächlich aus";
+			ElseIf (var_info <= 50)
+				descr := "hat keine sehr kräftige Statur";
+			ElseIf (var_info <= 80)
+				descr := "hat eine kräftige Statur";
+			ElseIf (var_info <= 110)
+				descr := "verfügt über eine gute Konstitution";
+			ElseIf (var_info <= 180)
+				descr := "verfügt über eine riesige Konstitution";
+			ElseIf (var_info <= 250)
+				descr := "verfügt über eine enorme Konstitution";
+			ElseIf (var_info <= 500)
+				descr := "verfügt über eine unglaubliche Konstitution";
+			Else
+				descr := "verfügt über eine übermenschliche Konstitution";
+			EndIf
+
+			SendSysMessagePergon (character, "Das Subjekt " + descr + ".");
+		EndIf
+
+
+		// Infos ueber MaxStamina, ab 35% Skill
+		If (GetSkillPergon(character, SKILLID_ANATOMIE) >= 35)
+			If (!subject.isa(POLCLASS_CORPSE))
+				var_info:=GetMaxStaminaPergon(subject);
+			Else
+				var_info := 0;
+			EndIf
+
+			If (var_info == 0)
+				descr := "hat die Ausdauer eines Felsbrockens";
+			ElseIf (var_info <= 15)
+				descr := "ist sehr leicht aus der Puste zu bringen";
+			ElseIf (var_info <= 35)
+				descr := "ist nicht sehr ausdauernd";
+			ElseIf (var_info <= 70)
+				descr := "ist ausdauernd";
+			ElseIf (var_info <= 95)
+				descr := "ist konditionell gut veranlagt";
+			ElseIf (var_info <= 130)
+				descr := "verfügt ueber eine gute Kondition";
+			ElseIf (var_info <= 180)
+				descr := "verfügt ueber eine sehr gute Kondition";
+			ElseIf (var_info <= 300)
+				descr := "verfügt ueber eine äußerst gute Kondition";
+			ElseIf (var_info <= 500)
+				descr := "verfügt über eine Spitzenkondition";
+			Else
+				descr := "hat die Ausdauer eines fließenden Flusses";
+			EndIf
+
+			SendSysMessagePergon (character, "Das Subjekt " + descr + ".");
+		EndIf
+
+
+		// Infos ueber MaxMana, ab 40% Skill
+		If (GetSkillPergon(character, SKILLID_ANATOMIE) >= 40)
+			If (!subject.isa(POLCLASS_CORPSE))
+				var_info:=GetMaxManaPergon(subject);
+			Else
+				var_info := 0;
+			EndIf
+
+			If (var_info == 0)
+				descr := "hat seinen letzten Atemzug bereits gemacht";
+			ElseIf (var_info <= 15)
+				descr := "verfügt kaum über magisches Potential";
+			ElseIf (var_info <= 35)
+				descr := "verfügt über etwas magisches Potential";
+			ElseIf (var_info <= 70)
+				descr := "verfügt über magisches Potential";
+			ElseIf (var_info <= 95)
+				descr := "verfügt über hohes magisches Potential";
+			ElseIf (var_info <= 130)
+				descr := "verfügt über sehr hohes magisches Potential";
+			ElseIf (var_info <= 180)
+				descr := "verfügt über unglaublich hohes magisches Potential";
+			ElseIf (var_info <= 300)
+				descr := "verfügt über unfassbar hohes magisches Potential";
+			ElseIf (var_info <= 500)
+				descr := "verfügt über exorbitant hohes magisches Potential";
+			Else
+				descr := "verfügt über schier unendliches magisches Potential";
+			EndIf
+
+			SendSysMessagePergon (character, "Das Subjekt " + descr + ".");
+		EndIf
+
+
+		// Infos ueber Str, ab 50% Skill
+		If (GetSkillPergon(character, SKILLID_ANATOMIE) >= 50)
+			If (!subject.isa(POLCLASS_CORPSE))
+				var_info:=GetStrPergon(subject);
+			Else
+				var_info := 0;
+			EndIf
+
+			If (var_info == 0)
+				descr := "war sicher einmal stärker";
+			ElseIf (var_info <= 10)
+				descr := "ist äußerst schwach";
+			ElseIf (var_info <= 25)
+				descr := "ist schwach";
+			ElseIf (var_info <= 50)
+				descr := "ist nicht sehr stark";
+			ElseIf (var_info <= 80)
+				descr := "ist stark";
+			ElseIf (var_info <= 110)
+				descr := "ist ziemlich stark";
+			ElseIf (var_info <= 180)
+				descr := "ist sehr stark";
+			ElseIf (var_info <= 250)
+				descr := "ist äußerst stark";
+			ElseIf (var_info <= 500)
+				descr := "ist unglaublich stark";
+			Else
+				descr := "ist fast so stark wie ein Gott";
+			EndIf
+
+			SendSysMessagePergon (character, "Das Subjekt " + descr + ".");
+		EndIf
+
+
+		// Infos ueber Dex, ab 55% Skill
+		If (GetSkillPergon(character, SKILLID_ANATOMIE) >= 55)
+			If (!subject.isa(POLCLASS_CORPSE))
+				var_info:=GetDexPergon(subject);
+			Else
+				var_info := 0;
+			EndIf
+
+			If (var_info == 0)
+				descr := "ist überaus ungeschickt";
+			ElseIf (var_info <= 15)
+				descr := "ist nicht sehr behende";
+			ElseIf (var_info <= 35)
+				descr := "ist ziemlich geschickt";
+			ElseIf (var_info <= 70)
+				descr := "ist geschickt";
+			ElseIf (var_info <= 95)
+				descr := "ist überaus geschickt";
+			ElseIf (var_info <= 130)
+				descr := "ist hochgradig geschickt";
+			ElseIf (var_info <= 180)
+				descr := "ist unglaublich gewandt";
+			ElseIf (var_info <= 300)
+				descr := "ist unermesslich gewandt";
+			ElseIf (var_info <= 500)
+				descr := "ist außergewöhnlich gewandt";
+			Else
+				descr := "ist fast so gewandt wie ein Gott";
+			EndIf
+
+			SendSysMessagePergon (character, "Das Subjekt " + descr + ".");
+		EndIf
+
+
+		// Infos ueber Int, ab 60% Skill
+		If (GetSkillPergon(character, SKILLID_ANATOMIE) >= 60)
+			If (!subject.isa(POLCLASS_CORPSE))
+				var_info:=GetIntPergon(subject);
+			Else
+				var_info := 0;
+			EndIf
+
+			If (var_info == 0)
+				descr := "besitzt die Klugheit eines Kopflosen";
+			ElseIf (var_info <= 15)
+				descr := "ist nicht sehr helle";
+			ElseIf (var_info <= 35)
+				descr := "ist schlau";
+			ElseIf (var_info <= 70)
+				descr := "ist recht gewieft";
+			ElseIf (var_info <= 95)
+				descr := "ist überaus intelligent";
+			ElseIf (var_info <= 130)
+				descr := "ist hochgradig intelligent";
+			ElseIf (var_info <= 180)
+				descr := "ist unglaublich klug";
+			ElseIf (var_info <= 300)
+				descr := "ist unermesslich klug";
+			ElseIf (var_info <= 500)
+				descr := "ist außergewöhnlich klug";
+			Else
+				descr := "ist fast so klug wie ein Gott";
+			EndIf
+
+			SendSysMessagePergon (character, "Das Subjekt " + descr + ".");
+		EndIf
+
+
+	Else	// If SkillCheck(-1)
+		SendSysMessagePergon (character, "Ihr seid Euch nicht ganz sicher...");
+	EndIf
+endprogram

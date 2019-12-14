@@ -1,0 +1,110 @@
+//**************************************************************************************************
+// Script file weaken.src
+//
+//    implements spell 5 <Weaken> - "Schwaeche"
+//
+//	decreases strength of spelltarget
+//		 [ Reflected / Resisted (Magic) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 27.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+Include "include/spellcheck";
+Include "../magicpergon";
+Include "../spellattack";
+
+program cast_weaken (params)
+
+   Var caster;
+   Var caston;
+   Var spelltarget;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_COMMON_WEAKEN);
+   Var difficulty:= spell.skill;
+   Var resist:= spell.resist;
+   Var dmg:=    spell.primary;
+   Var mindmg:= spell.primarymin;
+   Var maxdmg:= spell.primarymax;
+   Var dur:=    spell.duration;
+   Var mindur:= spell.durationmin;
+   Var maxdur:= spell.durationmax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+      dur:=spell.npcduration;  // Kleinere Grundduration sonst zu unfair
+      send_attack(caston, caster, 5);
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_COMMON_WEAKEN);
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+																	// get spelltarget -> possible spellreflection
+   spelltarget:= ReflectSpell(caster, caston, dmg, 1, FX_CURSE_EFFECT, 7, 7, 0, SFX_SPELL_WEAKEN);
+
+
+   if (spelltarget)
+      if (GetObjProperty(spelltarget, "spell_weaken"))	// check if spelltarget can be manipulated
+         SendSysMessagePergon(caster, "Die Kraft Eures Ziels wurde bereits magisch geschäecht",
+                                      "Your target's strength is already weakened");
+         return;
+      endif
+				      		// check and alter damage/duration according to spelltargets magic resistance
+      if (resist)			// and casting power
+         dmg:= CInt(MagicResistance(spelltarget, difficulty, resist, power*dmg/100.0, 1));
+         dur:= CInt(MagicResistance(spelltarget, difficulty, resist, power*dur/100.0, 0));
+      else
+         dmg:= CInt(power*dmg/100.0);
+         dur:= CInt(power*dur/100.0);
+      endif
+
+      if (mindmg and mindmg > dmg)
+         dmg:= mindmg;
+      elseif (maxdmg and maxdmg < dmg)
+         dmg:= maxdmg;
+      endif
+
+      if (mindur and mindur > dur)
+         dur:= mindur;
+      elseif (maxdur and maxdur < dur)
+         dur:= maxdur;
+      endif
+
+      var modifystruct:=struct{spelltarget:=0,
+                               str:=0,
+                               cprop:=struct{name:="",value:={}}};
+      modifystruct.spelltarget:=spelltarget;
+      modifystruct.str:=-dmg;
+      modifystruct.cprop.value:={};
+      modifystruct.cprop.value[1]:= ReadGameClock() + dur;
+      modifystruct.cprop.value[2]:= dmg;
+      modifystruct.cprop.value[3]:= ReadMilliSecondClock();
+      modifystruct.cprop.name:="spell_weaken";
+
+      SendSpellWaiter(spelltarget, "spell_weaken", dur, modifystruct.cprop.value[3], spelltarget,modifystruct);
+
+
+   endif
+
+endprogram

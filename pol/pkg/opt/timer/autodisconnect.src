@@ -1,0 +1,51 @@
+///////////////////////////////////////////////////////////////////////////
+// autodisconnect - nach vorgegebener Zeit Client trennen
+
+use os;
+use uo;
+include "common";
+include "include/logutil";
+include "include/msgs";
+
+Program AutoDisconnect(param)
+    var who;
+    var time := 300;
+
+    // Parameter pruefen
+    If (param.isa(POLCLASS_MOBILE)) // {{{
+        If (param.isa(POLCLASS_NPC))
+            syslog(
+                "FEHLER: AutoDisconnect wurde mit NPC "+
+                CharInfoStr(param, COORDS_REALM)+ "aufgerufen"
+            );
+            return;
+        EndIf
+        who := param;
+    ElseIf (param.who)
+        who := param.who;
+    Else
+        syslog(
+            "FEHLER: AutoDisconnect wurde mit falschem Parameter '"+
+            param+"' aufgerufen"
+        );
+        return;
+    EndIf
+    If (CInt(param.time))
+        time := CInt(param.time);
+    EndIf // }}}
+
+    // PID fuer Abbruch notieren
+    who.setprop(PROP_DISCONNECT_PID, GetPid());
+
+    // Warten
+    Sleep(time);
+    If (!who)
+        return;
+    EndIf
+    SendSysMessagePergon(who, "Trenne Verbindung ...", "Disconnecting ...");
+    Sleep(5);
+
+    // Aufraeumen und Trennen
+    who.eraseprop(PROP_DISCONNECT_PID);
+    DisconnectClient(who);
+EndProgram

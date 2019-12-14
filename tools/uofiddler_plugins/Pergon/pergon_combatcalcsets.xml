@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ArmorSets xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Set name="NoArmor">
+    <Body>0</Body>
+    <Arm>0</Arm>
+    <Head>0</Head>
+    <Legs>0</Legs>
+    <Neck>0</Neck>
+    <Hands>0</Hands>
+  </Set>
+  <Set name="TeradiumPlatte">
+    <Body>145</Body>
+    <Arm>145</Arm>
+    <Head>161</Head>
+    <Legs>145</Legs>
+    <Neck>121</Neck>
+    <Hands>121</Hands>
+  </Set>
+  <Set name="EnergiumPlatte">
+    <Body>156</Body>
+    <Arm>156</Arm>
+    <Head>174</Head>
+    <Legs>156</Legs>
+    <Neck>130</Neck>
+    <Hands>130</Hands>
+  </Set>
+  <Set name="TeradiumKette">
+    <Body>109</Body>
+    <Arm>109</Arm>
+    <Head>101</Head>
+    <Legs>109</Legs>
+    <Neck>87</Neck>
+    <Hands>96</Hands>
+  </Set>
+  <Set name="EnergiumKette">
+    <Body>117</Body>
+    <Arm>117</Arm>
+    <Head>108</Head>
+    <Legs>117</Legs>
+    <Neck>87</Neck>
+    <Hands>104</Hands>
+  </Set>
+</ArmorSets>

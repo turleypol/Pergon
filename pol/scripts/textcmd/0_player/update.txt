@@ -1,0 +1,5 @@
+<h3 id="update">update</h3>
+
+<p>Startet einen Browser mit der
+<a data-href="">Spielerseite</a> und gibt kurze
+Instruktionen zur Installation des Updates.</p>

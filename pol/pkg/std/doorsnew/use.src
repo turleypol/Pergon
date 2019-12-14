@@ -1,0 +1,134 @@
+//////////////////////////////////////////////////////
+// DoorsNew - useScript
+//
+// Author: Turley
+
+use os;
+use storage;
+use uo;
+include "common";
+include "include/modifyskill";
+include "include/msgs";
+
+Program UseDoor(who, door)
+    var pid, doubledoor;
+    Set_Critical(1);
+
+    If (door.container)
+        SendSysMessagePergon(who,
+            "Die Tür lässt sich hier nicht öffnen.",
+            "You ain't able to open this door."
+        );
+        Return;
+    ElseIf (
+        // Tür selbst ...
+        (IsLocked(who, door)) ||
+        // ... oder "Türpartner" verschlossen?
+        (IsLocked(who, SystemFindObjectBySerial(CInt(door.getprop("linked")))))
+    )
+        PrintTextAbovePrivatePergon(door,
+            "Das ist verschlossen.", "That's locked.", who
+        );
+        Return;
+    EndIf
+
+    If (door.IsOpen())
+        // altes Script bescheid geben das es aufhören kann
+        pid := CInt(door.getprop("#ClosePid"));
+        If (pid)
+            GetProcess(pid).SendEvent("stop");
+        EndIf
+        pid := SystemFindObjectBySerial(
+            CInt(door.getprop("linked"))
+        ).getprop("#ClosePid");
+        If (pid)
+            GetProcess(pid).SendEvent("stop");
+        EndIf
+    EndIf
+
+    If (door.getprop("doubledoor"))
+        doubledoor :=
+            SystemFindObjectBySerial(CInt(door.getprop("doubledoor")));
+        If (
+            // Tür selbst ...
+            (IsLocked(who, doubledoor)) ||
+            // ... oder "Türpartner" verschlossen?
+            (IsLocked(who, SystemFindObjectBySerial(CInt(doubledoor.getprop("linked")))))
+        )
+            doubledoor:=0;
+        Endif
+        If (doubledoor)
+            If (doubledoor.IsOpen())
+                pid:=doubledoor.getprop("#ClosePID");
+                If (pid)
+                    GetProcess(pid).SendEvent("stop");
+                EndIf
+                pid:=SystemFindObjectBySerial(CInt(doubledoor.getprop("linked"))).getprop("#ClosePid");
+                If (pid)
+                    GetProcess(pid).SendEvent("stop");
+                EndIf
+            EndIf
+        EndIf
+    EndIf
+
+    door.Toggle();
+    If (doubledoor)
+        doubledoor.Toggle();
+    EndIf
+    Set_Critical(0);
+
+    Detach();
+    If (!door.getprop("noautoclose"))
+        // Soll es automatisch schließen?
+        AutoClose(door, doubledoor);
+    EndIf
+
+    Return(1);
+EndProgram
+
+//////////////////////////////////////////////////////////
+// AutoClose - 10s warten dann schließen, falls kein Event ankam
+//////////////////////////////////////////////////////////
+
+Function AutoClose(door, doubledoor)
+    If (door.IsOpen())
+        door.setprop("#ClosePid", GetPid());
+        var event:=Wait_For_Event(10);
+        If (!event)
+            If (door.IsOpen())
+                door.Close();
+            EndIf
+            If (doubledoor)
+                If (doubledoor.IsOpen())
+                    doubledoor.Close();
+                EndIf
+            EndIf
+        EndIf
+        door.eraseprop("#ClosePid");
+    EndIf
+EndFunction
+
+//////////////////////////////////////////////////////////
+// IsLocked - Ist es verschlossen?
+//////////////////////////////////////////////////////////
+
+Function IsLocked(me, door)
+    If (door.locked)
+        Var haskey := HasKeyFor(me, door);
+
+        If (GetObjProperty(door, "#LockPicked"))
+            If (haskey)
+                // Besitzer hat Schluessel und schliesst danach wieder ab
+                EraseObjProperty(door, "#LockPicked");
+            EndIf
+
+            // Tuer wurde aufgebrochen
+            Return (0);
+        Else
+            // Tuer wird kurz aufgeschlossen, sofern Schluessel vorhanden
+            Return (!haskey);
+        EndIf
+    Else
+        Return (0);
+    EndIf
+EndFunction

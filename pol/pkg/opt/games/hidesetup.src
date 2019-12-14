@@ -1,0 +1,55 @@
+//////////////////////////////////////////////////////////////////////////
+// ConcealSetup -- Stein zum Verstecken umliegender Monster einrichten
+
+use os;
+use uo;
+include "common";
+include "include/effects";
+include "include/msgs";
+
+Program ConcealSetup(who, item)
+    If (who.cmdlevel < CMDLEVEL_SEER)
+        return;
+    EndIf
+
+    SendSysMessagePergon(who, "Radius waehlen!", "Select radius!");
+    var tgt := TargetCoordinates(who);
+    If (!tgt)
+        SendSysMessagePergon(who, "Abbruch", "Cancelled");
+        return;
+    EndIf
+    var dist := CoordinateDistance(tgt.x, tgt.y, item.x, item.y);
+
+    var corner1 := struct{
+        x := item.x, y := item.y, z := item.z, realm := item.realm
+    };
+    var corner2 := corner1;
+    corner1.x -= dist;
+    corner1.y -= dist;
+    corner2.x += dist;
+    corner2.y += dist;
+    VisualizeRange(corner1, corner2);
+
+    var config := GetConcealConfig(item);
+    var res := SendTextEntryGump(who,
+        "Versteckzeit (in Minuten; derzeit "+config.interval+"):",
+        TE_CANCEL_ENABLE, TE_STYLE_NUMERICAL, maximum := 30
+    );
+    var time := CInt(res);
+    If (!time or time <= 0)
+        SendSysMessagePergon(who, "Abbruch", "Cancelled");
+        return;
+    EndIf
+
+    var old_time    := config.interval;
+    config.range    := dist;
+    config.interval := time;
+    config.lastuser := who.serial;
+
+    item.setprop(PROP_CONCEAL_CONFIG, config);
+
+    SendSysMessagePergon(who,
+        "Fertig; wirksam in maximal "+old_time+" Minuten.",
+        "Done; active in "+old_time+" minutes."
+    );
+EndProgram

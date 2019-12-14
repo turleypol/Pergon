@@ -1,0 +1,18 @@
+/////////////////////////////////////////////////////////
+// generatordestroy - das Teil komplett abreissen
+//
+// Author: Turley
+
+use uo;
+
+Program GeneratorDestroy(item)
+  var items := item.getprop("items");
+  ForEach slave in items
+    var temp := SystemFindObjectBySerial(slave);
+    If ((temp) && (slave<>item.serial))
+      DestroyItem(temp);
+    EndIf
+  EndForEach
+
+  return(1);
+EndProgram

@@ -1,0 +1,112 @@
+/////////////////////////////////////////////////////////////
+// QuestPalisade - Palisadenstücke können durch Anklicken zerstört werden
+//                 (bzw. umgewandelt)
+//
+// Author: Turley
+
+use os;
+use uo;
+
+include ":dyndungeon:dyndungeon";
+include "include/client";
+include "include/modifyskill";
+include "include/msgs";
+
+Program questpalisade(who, what)
+    var hitpoints := CInt(what.getprop("hitpoints"));
+    If (!hitpoints)
+        hitpoints := 60;
+    EndIf
+
+    // wird Item schon benutzt
+    var used := what.getprop("used");
+    If (used)
+        If (used.time + 2*hitpoints < ReadGameClock())
+            // zu lange in Benutzung, da stimmt was nicht
+            used := 0;
+        EndIf
+
+        If (who.serial <> used.serial)
+            var user := SystemFindObjectBySerial(used.serial);
+            If ((who.cmdlevel >= CMDLEVEL_SEER)&&(user.cmdlevel >= CMDLEVEL_SEER))
+                SendSysMessagePergon(who, "Dieses Item ist gerade in Bearbeitung");
+                return;
+            Else
+                SendSysMessagePergon(who, "Dieser Abschnitt wird bereits abgerissen!");
+                return;
+            EndIf
+        Else
+            SendSysMessagePergon(who, "Ihr versucht es schon zu zerstören");
+            return;
+        EndIf
+    EndIf
+    what.setprop("used", struct{
+        serial := who.serial,
+        time   := ReadGameClock()
+    });
+
+    If (!what.getprop("hitpoints"))
+        If (SetupPalisade(who, what))
+            what.eraseprop("used");
+            return;
+        EndIf
+    EndIf
+
+    // Nu ist es ein Player
+    If (who.warmode)
+        SendSysMessagePergon(who, "Ihr könnt nicht gleichzeitig kämpfen und das Hindernis niederreißen!");
+        what.eraseprop("used");
+        return;
+    EndIf
+
+    SendSysMessagePergon(who, "Ihr beginnt das Hindernis niederzureißen!");
+    var oldx := who.x;
+    var oldy := who.y;
+    var hits := CInt(what.getprop("hits"));
+    For (hits; hits < hitpoints; hits += 1)
+        PlaySoundEffect(who, SFX_PICK);
+        PerformAction(who, ANIM_ATTACK_1HAND_WIDE);
+        Sleep(1);
+        If ((who.x<>oldx) || (who.y<>oldy) || (who.warmode) || (!who.ip) || (who.frozen))
+            what.setprop("hits", hits);
+            what.eraseprop("used");
+            SendSysMessagePergon(who, "Ihr hört mit dem Abreißen auf");
+            return;
+        EndIf
+        If (0 == (hits % 7))
+            PlaySoundEffect(what, SFX_227); // flame03
+            PlayStationaryEffect(
+                what.x, what.y, what.z, 0x3728, 1, 14, 0, what.realm
+            );
+        EndIf
+    EndFor
+    PlaySoundEffect(what, SFX_227); // flame03
+    SendSysMessagePergon(who, "Geschafft!");
+    DestroyItem(what);
+EndProgram
+
+Function SetupPalisade(who, what)
+    // weitermachen mit Zerstoeren oder nicht?
+    var done := 0;
+    var diff := what.getprop(CPITEM_DIFFICULTY);
+    If (diff)
+        what.setprop("hitpoints", diff * 20);
+        return done;
+    EndIf
+
+    // Standardwert, falls der Aufsteller das Setup vergessen hat
+    var hitpoints := 60;
+    If (who.cmdlevel >= CMDLEVEL_SEER)
+        var hitpoints := CInt(SendTextEntryGump(
+            who, "Gebt die Hitpoints ein: ", TE_CANCEL_DISABLE,
+            TE_STYLE_NUMERICAL, 300, "(Standard: 60)"
+        ));
+        If (!hitpoints)
+            hitpoints := 60;
+        EndIf
+        SendSysMessagePergon(who, "Item mit "+hitpoints+" HP initalisiert");
+        done := 1;
+    EndIf
+    what.setprop("hitpoints", hitpoints);
+    return done;
+EndFunction

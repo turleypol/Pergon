@@ -1,0 +1,126 @@
+///////////////////////////////////////////////////////////////////////////
+// RemoteControlled -- "ferngesteuerter" NPC
+
+use npc;
+use uo;
+include "include/msgs";
+include "include/server";
+include "include/sysevent";
+
+Program RemoteControlled()
+    var me := Self();
+
+    // automatische Abschaltbedingungen {{{
+    var ctldata := me.getprop(PROP_CONTROLNPC);
+    If (!ctldata)
+        syslog("FEHLER: "+CharInfoStr(me)+" ist nun hirntot");
+        exit;
+    EndIf
+
+    var master := SystemFindObjectBySerial(ctldata.m);
+    If (PolCore().uptime < 300 or !master)
+        // wurde wohl vor Shutdown nicht freigegeben
+        StopControl(me, ctldata);
+        exit;
+    EndIf
+    // }}}
+
+    If (!me.frozen)
+        me.frozen := 1;
+    EndIf
+
+    // erstmal alles abschalten
+    DisableEvents(
+        SYSEVENT_DAMAGED + SYSEVENT_DISENGAGED + SYSEVENT_ENGAGED +
+        SYSEVENT_ENTEREDAREA + SYSEVENT_GHOST_SPEECH + SYSEVENT_HOSTILE_MOVED +
+        SYSEVENT_ITEM_GIVEN + SYSEVENT_LEFTAREA + SYSEVENT_MERCHANT_BOUGHT +
+        SYSEVENT_MERCHANT_SOLD + SYSEVENT_OPPONENT_MOVED + SYSEVENT_SPEECH
+    );
+    // uns interessieren nur Bewegung, Sprache und Items
+    EnableEvents(SYSEVENT_SPEECH,     3);
+    EnableEvents(SYSEVENT_ITEM_GIVEN, 3);
+    EnableEvents(SYSEVENT_LEFTAREA,   0);
+
+    // in Hauptschleife bleiben, waehrend man selbst und "Master" da sind
+    While (me and master and master.connected)
+        var ev := Wait_for_Event(1);
+
+        // Abbruchkriterien {{{
+        If (!me)
+            exit;
+        EndIf
+        If (!master or !master.connected)
+            break;
+        EndIf
+        // }}}
+
+        // ggf. Blickrichtung anpassen
+        If (master.facing <> me.facing)
+            me.setfacing(master.facing, FACE_FORCE);
+        EndIf
+
+        If (!ev)
+            // fertig, solange nichts weiter anliegt
+            continue;
+        EndIf
+
+        // Fremde ignorieren
+        If (ev.source.serial <> master.serial)
+            continue;
+        EndIf
+
+        Case (ev.type)
+        SYSEVENT_LEFTAREA: // Master hat Schritt gemacht {{{
+            MoveObjectToLocation(
+                me, master.x, master.y, master.z, master.realm,
+                MOVEOBJECT_FORCELOCATION
+            );
+        // }}}
+
+        SYSEVENT_SPEECH: // Sprache wiederholen {{{
+            If (ev.uc_text)
+                PrintTextAboveLocalizedPergon(me,
+                    struct{uc_text := ev.uc_text, lang := "DEU"},
+                    struct{uc_text := ev.uc_text, lang := "ENU"},
+                    _DEFAULT_UCFONT, me.speech_color
+                );
+            Else
+                PrintTextAboveLocalizedPergon(
+                    me, ev.text, ev.text, _DEFAULT_TEXT_FONT, me.speech_color
+                );
+            EndIf
+        // }}}
+
+        SYSEVENT_ITEM_GIVEN: // Items an Master uebergeben {{{
+            var res := MoveItemToContainer(ev.item, master.backpack);
+            If (res)
+                SendSysMessagePergon(master,
+                    ev.source.name+" übergab Euch "+ItemInfoStr(ev.item)
+                );
+            Else
+                MoveObjectToLocation(
+                    ev.item, master.x, master.y, master.z, master.realm,
+                    MOVEOBJECT_FORCELOCATION
+                );
+                SendSysMessagePergon(master,
+                    ev.source.name+" übergab Euch "+ItemInfoStr(ev.item)+
+                    " (wurde auf dem Boden abgelegt)"
+                );
+            EndIf
+        // }}}
+        EndCase
+    EndWhile
+
+    If (me)
+        StopControl(me, ctldata);
+    EndIf
+EndProgram
+
+// Original-Script und alten Cmdlevel wiederherstellen
+Function StopControl(npc, ctldata) // {{{
+    npc.cmdlevel := ctldata.c;
+    npc.frozen   := ctldata.f;
+    npc.script   := ctldata.s;
+    npc.eraseprop(PROP_CONTROLNPC);
+    RestartScript(npc);
+EndFunction // }}}

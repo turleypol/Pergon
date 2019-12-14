@@ -1,0 +1,127 @@
+//**************************************************************************************************
+// Script file vulcano.src
+//
+//    implements spell 129 <Vulcano> - "Vulkan"
+//
+//	caster creates erupting vulcano which deals enormous fire damage
+//		[ Resisted (Elemental - Fire) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 28.07.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use vitals;
+use os;
+
+Include "../magicpergon";
+Include "../resistance";
+Include "../spellattack";
+Include "include/packets";
+
+program cast_vulcano (params)
+
+   Var crater:= { { 0,  0, 0x11C5}, {-1,  1, 0x32A0}, { 0,  1, 0x32AD},
+                  { 1,  1, 0x3560}, { 1,  0, 0x32B1}, { 1, -1, 0x329E},
+                  { 0, -1, 0x32AF}, {-1, -1, 0x3556}, {-1,  0, 0x32AB} };
+
+   Var caster;
+   Var where;
+   Var victims;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_MAGE_VULCANO);
+   Var resist;
+   Var dmg;
+   Var basedmg:=  spell.primary;
+   Var mindmg:=   spell.primarymin;
+   Var maxdmg:=   spell.primarymax;
+   Var range:=    spell.range;
+   Var minrange:= spell.rangemin;
+   Var maxrange:= spell.rangemax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      where:=struct{x,y,z,realm};
+      where.x:=params[4].x;
+      where.y:=params[4].y;
+      where.z:=params[4].z;
+      where.realm:=params[4].realm;
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      where:=  TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_MAGE_VULCANO);
+      where:= TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, where);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   basedmg:= CDbl(power*basedmg/100.0);				// calc spell range and spell damage
+   range:=   CInt(power*range/100.0);					// according to casters intelligence
+   if (minrange and minrange > range)
+      range:= minrange;
+   elseif (maxrange and maxrange < range)
+      range:= maxrange;
+   endif
+																	// get victims in spell range
+   victims:= ListMobilesNearLocationEX(where.x, where.y, where.z, range, LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN,where.realm);
+
+   Var i;
+   Var items:= {};
+
+   for (i:= 1; i <= 9; i+= 1)
+      items[i]:= CreateItemAtLocationPergon(where.x + crater[i][1], where.y + crater[i][2], where.z, crater[i][3], 1,where.realm);
+      items[i].movable:= 0;								// create vulcano (crater)
+   endfor
+
+   PlaySoundEffect(items[1], SFX_208);
+
+   items[10]:= CreateItemAtLocationPergon(where.x, where.y, where.z + 5, 0x3709, 1,where.realm);	// let vulcano errupt
+   items[10].movable:= 0;
+
+   SleepMS(500);
+
+   if (victims.size())
+      foreach victim in victims
+         if ((victim <> caster && !victim.dead))					// preserve caster and exclude ghosts
+            PlaySoundEffect(victim, SFX_11E);
+            PlayStationaryEffect(victim.x, victim.y, victim.z, FX_EXPLODE_3, 10, 10,0,victim.realm);
+            if (victim.isa(POLCLASS_NPC))
+               send_attack(victim, caster, 129);
+            endif
+
+            resist:= 1 - CDbl(GetResistance(victim, "fire"));	// get victims fire resistance
+            dmg:= CInt(basedmg * resist);								// alter spell damage
+            if (mindmg and mindmg > dmg)
+               dmg:= mindmg;
+            elseif (maxdmg and maxdmg < dmg)
+               dmg:= maxdmg;
+            endif
+
+            ApplyRawDamagePergon(victim, dmg);								// apply spell damage to victim
+         endif
+         SleepMS(2);
+      endforeach
+   endif
+
+   SleepMS(1000);
+
+   foreach item in items					// destroy vulcano
+      DestroyItem(item);
+   endforeach
+
+endprogram

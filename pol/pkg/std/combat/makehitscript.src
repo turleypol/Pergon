@@ -1,0 +1,15 @@
+// 2001/10/09 - Der Sinn dieses Programm's ist zweifelhaft und sollte ergruendet werden.
+
+Use uo;
+use uo;
+
+Program MakeHitScript(item)
+  Var memcounter:=GetGlobalProperty("MemoryCombat");
+  If (memcounter)
+    SetGlobalProperty("MemoryCombat", memcounter+1);
+  Else
+    SetGlobalProperty("MemoryCombat", 1);
+  EndIf
+
+  item.hitscript:=":combat:mainhitscript";
+EndProgram

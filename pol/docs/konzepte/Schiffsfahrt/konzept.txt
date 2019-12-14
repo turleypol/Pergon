@@ -1,0 +1,45 @@
+Konzept Bootsbau und Schifffahrt.
+Schifffahrt:
+Bedingungen um eine Schiff steuern zu können:
+kleine Schiffe:         40% Kartographie
+mittlere Schiffe:       60% Kartographie
+große Schiffe:  80% Kartographie
+Schiffsgröße muss noch definiert werden.
+Befehle erteilen können der Besitzer und die Person, die am nächsten zum Bootsmann steht.
+Aufstellen von Schiffen:
+hprichtwert 12k
+- Schiffe können nur von Land aufgestellt werden.
+- Der Besitzer wird nach dem Aufstellen an Bord teleportiert
+Schiffe versenken :)
+- Schiffe erleiden konstant Schaden, sobald sie aufgebaut sind
+- Bei Kollisionen mit Landmasse und anderen Booten erleidet das Schiff ebenfalls  Schaden
+- wenn das Schiff zu 70% beschädigt ist, kann es nur noch langsam fahren und der Bootsmann gibt bei erneutem Schaden eine
+  Meldung aus. Meldung: noch 30%: "Euer Schiff bedarf einer Wartung!" noch 10%: "Euer Schiff bedarf einer
+  Grundüberholung!" noch 5%: "Euer Schiff ist ein Wrack!"
+- Meldung bei 0% (Sinken): "Alle Mann von Bord!"
+Das befahrbare Gebiet wird durch eine nicht sichtbare Barriere begrenzt. An dieser Barriere erhält der Player die Meldung: "Ein starker Wind blaesst euch zurück!"
+Schiffsbewegung:
+3 Stadien: fahrend (auf Befehl), ankernd (nur auf Befehl), driftend
+fahrend: Befehl:        vorraus/forward (vorwärts), zurueck/backward (rückwärts), steuerbord/right (seitwärts rechts), backbord/left (seitwärts links), ruder steuerbord/turn right (Schiff wird 90° rechts gedreht), ruder backboard/turn left (Schiff wird 90° links gedreht), wenden/come by (Wende um 180°), langsam/slow, schnell/full, halt/stop
+ankernd: Befehl:        Anker lichten/  ,Anker werfen/ (geht nur wenn das Schiff                               steht)
+                        (Cprop am Schiff, so das keine Befehle gegeben werden können,                  solange der Anker nicht gelichtet wurde)
+driftend:               Der Zustand "driftend" tritt ein, wenn das Schiff "halt" macht                         und nicht geankert hat.
+                        (alle 10 Sekunden driftet das Schiff zufällig in eine                          Richtung)
+Sterben:
+Variante 1
+Solange sich noch eine lebende Person auf dem Schiff befindet, können beliebig viele Geister (tote Player) auf dem Schiff verweilen. Stirbt der letzte Player, werden alle Geister an den nächsten Strand teleportiert und das Schiff wird in den Driftmodus versetzt.
+Variante 2
+Die Player an Bord eines Schiffs sterben durch das Sinken des Schiffes. Nach der Meldung: "Alle Mann von Bord!" werden die Player zum nächsten Strand teleportiert, abhängig vom Gewicht und der Entfernung zum Strand/Hafen, wird die Wahrscheinlichkeit festgelegt, ob der Player nach dem Sinken an Land "schwimmt" oder "ertrinkt".
+Folge:
+An Land schwimmen: Der Player steht mit allen seinen Sachen lebend am Strand/Hafen. Die Stamina des Chars wird auf Null gesetzt.
+Ertrinken: Der Player verliert sein Hab und Gut und steht als Geist am Strand/Hafen.
+Für die Berechnung:
+Gewicht: Das Gewicht spielt erst ab einer Grenze von 100 Stones in die Formel ein. Ist der Player überladen, ertrinkt er          immer.
+Entfernung: Erst bei einer Entfernung von über 75 Felder geht diese in die Formel ein. Maximal Entfernung 300.
+Bsp.: Bei unter 100 Stones und unter 75 Feldern schwimmt der Char immer an Land.
+Gewicht = (aktuelles Gewicht/ maximal Gewicht (des Chars)) * 100     ... ( 100 > Gewicht > max Gewicht )
+Entfernung = (aktuelle Entfernung/ maximal Entfernung (300)) * 100   ... ( 75 > Entfernung > 300 )
+Wahrscheinlichkeit zu Ertrinken = (Gewicht + Entfernung)/2
+Ideen:
+Aktuellen Zustand erfahren:
+-doppelklick auf tillerman gump (schiff umbenennen, zustand)

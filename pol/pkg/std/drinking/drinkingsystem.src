@@ -1,0 +1,56 @@
+///////////////////////////////////////////////////////////////////////////
+// Drinking - System
+//
+// based on Hungry - System
+// Author: Shinigami
+//
+// Author: Pider
+
+use os;
+use uo;
+include "common";
+include "include/client";
+include "include/modifyskill";
+include "include/msgs";
+include "include/server";
+include "include/vitals";
+
+Program DrinkSystem()
+  BroadcastPergon(
+    "Durst-System wird aktiviert ...", "Thirst system activated ..."
+  );
+  syslog("Durst-System wird aktiviert ...");
+
+  Sleep(250);
+
+  While (1)
+    ForEach chr in EnumerateOnlineCharacters()
+      SleepMS(2);
+      If (chr.dead)
+        continue;
+      EndIf
+
+      If (chr.cmdlevel >= CMDLEVEL_SEER)
+        SetObjProperty(chr, PROP_THIRST, 10.0);
+        continue;
+      EndIf
+
+      var level_drink := CDbl(GetObjProperty(chr, PROP_THIRST));
+      If (level_drink)
+        level_drink := Max(1.0, level_drink - 0.5);
+        SetObjProperty(chr, PROP_THIRST, level_drink);
+
+        level_drink := CInt(level_drink);
+        var drinkmsg := GetDrinkingMsg(level_drink);
+        SendSysMessagePergon(chr,
+          drinkmsg[1], drinkmsg[2], _DEFAULT_TEXT_FONT,
+          CheckDrinkingLevel(chr, level_drink)
+        );
+      Else
+        SetObjProperty(chr, PROP_THIRST, 10.0);
+      EndIf
+    EndForEach
+
+    Sleep(3600);
+  EndWhile
+EndProgram

@@ -1,0 +1,259 @@
+///////////////////////////////////////////////////////////////////////////
+// skinning -- Häuten/Federn
+
+// ToDo:
+//   Corpse-Beschriftung im Client gegenchecken
+
+// 2000-09-09 Fraggulus
+// 2014-08-17 Commander:
+//      - split old bladed script in skinning/butchering with cutting.inc as shared include
+//      - large parts rewritten and simplified
+//      - skinning doesn't work after butchering anymore
+//      - 10 % chance for an extra skin when using exceptional good knives
+
+include "include/animal";
+include "include/spellcheck";
+include "include/cutting";
+
+Program Use_Blade(who, blade)
+    // check some preconditions and get the target (function defined in cutting.inc)
+    var object := CheckPreconditionsAndGetTarget(who);
+
+    If (!object)
+        // no message necessary, CheckPreconditionsAndGetTarget is quite talkative
+        return;
+    EndIf
+
+    If (!ReserveItem(blade))
+        SendSysMessagePergon(who, "Das Messer wird bereits benutzt.", "The knife is already in use.");
+        return;
+    EndIf
+
+    If (object.item.objtype == UOBJ_CORPSE)
+        // Leichen
+        Skin(who, object.item, blade);
+        EraseObjProperty(object.item, CORPSE_IS_BUSY);
+    ElseIf (IsTree(object.objtype))
+        // Statischer Baum
+        CarveTree(who, object);
+    ElseIf (IsTree(object.item.objtype))
+        // Nicht-statischer Baum
+        CarveTree(who, object.item);
+    ElseIf (IsSpiderWeb(object))
+        // Statisches Spinnennetz
+        GetSilk(who, object, blade);
+    Else
+        SendSysMessagePergon(who, "Ihr wisst nicht, wie man das zusammen benutzt.", "You don't know how to use this together.");
+    EndIf
+
+    ReleaseItem(blade);
+EndProgram
+
+Function Skin(who, cadaver, blade)
+    If(IsCorpsePolymorphed(cadaver))
+        SendSysMessagePergon(who, "Polymorphte Leichen lassen sich nicht häuten.", "Polymorphed corpses can't be skinned.");
+        return;
+    EndIf
+
+    // check if someone else is working on this corpse
+    If (GetObjProperty(cadaver, CORPSE_IS_BUSY))
+        SendSysMessagePergon(who, "Diese Leiche wird bereits benutzt.", "This corpse is already in use.");
+        return;
+    EndIf
+
+    var corpseinfo := GetCorpseConfig(cadaver);
+    If (!corpseinfo)
+        syslog("FEHLER: Fuer Kadaver "+Hex(cadaver.corpsetype)+" fehlen noch die Eintraege.");
+        SendSysMessagePergon(who, "Interner Fehler. Staff wurde informiert.", "Internal error, staff has been informed.", _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+        return;
+    EndIf
+
+    // mark this corpse so that no one else may use it
+    SetObjProperty(cadaver, CORPSE_IS_BUSY, 1);
+
+    // if this corpse has already been butchered we don't allow skinning
+    If (GetObjProperty(cadaver, CORPSE_IS_BUTCHERED))
+        SendSysMessagePergon(who, "Diese Leiche wurde bereits geschlachtet und kann nicht mehr gehäutet werden.", "This corpse has already been butchered and can't be skinned anymore.");
+        return;
+    EndIf
+
+    // if this corpse has already been skinned we don't allow skinning
+    If (GetObjProperty(cadaver, CORPSE_IS_SKINNED))
+        SendSysMessagePergon(who, "Diese Leiche wurde bereits gehäutet.", "This corpse has already been skinned.");
+        return;
+    Else
+        // mark this corpse as skinned
+        SetObjProperty(cadaver, CORPSE_IS_SKINNED, 1);
+    EndIf
+
+    // Hat der Char Quests offen?
+    // dann mal lieber schaun ob es die passende Leiche ist
+    If (who.getprop("quest"))
+        If(QuestCarve(who, cadaver))
+            return;
+        EndIf
+    EndIf
+
+    // get the generation ofset of this corpse (function defined in cutting.inc)
+    var generation_offset := GetGenerationOffset(cadaver);
+
+    var color := cadaver.color;
+    var amount;
+    var skinItem;
+
+    ForEach item in (corpseinfo.item)
+        amount := CInt(item[2]+(item[2]/100.0*generation_offset));
+
+        If (who.cmdlevel >= CMDLEVEL_SEER)
+            SendSysMessagePergon(who, "Item: "+item[1]+" / Menge: "+item[2]+" / Menge Offset: "+amount, "");
+        EndIf
+
+        // check for hides, array defined in cutting.inc
+        If (item[1] in UOBJ_HIDES_String)
+            skinItem := item[1];
+
+            // there shouldn't be more than one hide type in the corpse definition
+            break;
+        EndIf
+
+        // check for feathers
+        If (Lower(item[1]) == "feather")
+            Federn(who, blade, item[1], amount);
+            return;
+        EndIf
+    EndForEach
+
+    // no item to skin found, so return
+    If (!skinItem)
+        SendSysMessagePergon(who, "Diese Leiche hat kein häutbares Fell.", "This corpse doesn't have skinnable hides.");
+        return;
+    EndIf
+
+    // zaehlt mit, wieviele Felle es gibt
+    var countsucc := 0;
+    SendSysMessagePergon(who, "Ihr beginnt die Leiche zu häuten.", "You start skinning the corpse." );
+
+    // Werkzeug-Eigenschaften auslesen
+    var tool := GetPropertyItem(blade);
+    var toolQuality := tool.quality;
+
+    var itemdef := GetObjtypeByName(skinItem);
+    var skintype := FindConfigElem(Mat_Cfg, itemdef);
+    var difficulty := skintype.Difficulty;
+
+    var i;
+    If (GetSkillPergon(who, SKILLID_HAEUTEN)+toolQuality>difficulty)
+        // max. 3* Anzahl Leder mit Char.skill>Fell.Difficulty dummy gibt die %-punkte des Haeuten.skill gegenueber der Difficulty des Fells an
+        var dummy := Min(300, (toolQuality+GetSkillPergon(who, SKILLID_HAEUTEN))*100.0/difficulty);
+        i := CInt(amount/100.0*dummy);
+    EndIf
+
+    If (i < amount)
+        i := amount;
+    EndIf
+
+    While (i > 0)
+        // Entfernung checken ...
+        If (Distance(who, cadaver) > 2)
+            SendSysMessagePergon(who, "Ihr kommt dort nicht mehr ran und beendet das Häuten.", "You are too far away and stop skinning.");
+            return;
+        EndIf
+
+        PlaySoundEffect(who, SFX_57);
+        Sleep(1);
+
+        // 10% auch ohne Skill
+        If (CheckSkillPergon(who, SKILLID_HAEUTEN, CInt(difficulty-toolQuality),CInt((difficulty+toolQuality)*6)) or (RandomInt(100) < 10))
+            // let's give sometimes a bonus item to guys who use knives of very high quality
+            var bonusAmount := 0;
+            If (toolQuality > 4)
+                If (RandomInt(100) < 10)
+                    bonusAmount := 1;
+                    SendSysMessagePergon(who, "Durch euer gutes Messer gewinnt ihr ein zusätzliches Fell.", "Your exceptional knife rewards you with an additional hide.");
+                EndIf
+            EndIf
+
+            CreateItemInBackpackPergon(who, skinItem, 1 + bonusAmount, color);
+            countsucc += 1 + bonusAmount;
+
+            // schleichende Werkzeugabnutzung
+            If (RandomInt(100) <= 1)
+                If (SetWerkzeugSchaden(who, blade, "Euer Messer hat gelitten!", "Euer Messer ist stark beschädigt!", "Euer Messer ist zerbrochen!"))
+                    return;
+                EndIf
+            EndIf
+        Else
+            SendSysMessagePergon(who, "Ihr konntet kein Fell gewinnen.", "You failed to skin.");
+            If (SetWerkzeugSchaden(who, blade, "Euer Messer hat gelitten!", "Euer Messer ist stark beschädigt!", "Euer Messer ist zerbrochen!"))
+                return;
+            EndIf
+        EndIf
+
+        i -= 1;
+    EndWhile
+
+    If (countsucc == 0)
+        SendSysMessagePergon(who, "Ihr konntet kein Fell von der Leiche schneiden.", "You couldn't carve a hide from the corpse.");
+    ElseIf (countsucc == 1)
+        SendSysMessagePergon(who, "Ihr konntet ein Fell von der Leiche schneiden.", "You put a hide into your backpack.");
+    ElseIf (countsucc > 1)
+        SendSysMessagePergon(who, "Ihr konntet "+countsucc+" Felle von der Leiche schneiden.", "You put "+countsucc+" hides into your backpack.");
+    EndIf
+EndFunction
+
+// Federn von Vogelartigen rupfen
+Function Federn(character, blade, item, amount)
+    var i;
+    var dummy;
+    var feathercounter := CInt(amount / 2.0);  // zaehlt mit, wieviele Federn es gibt
+    CreateItemInBackpackPergon(character, item, feathercounter); // fuer Jeden auch ohne Skill gibt es Federn/2
+
+    // Werkzeug-Eigenschaften auslesen
+    var werkzeug := GetPropertyItem(blade);
+    var toolQuality := werkzeug.quality;
+
+    If (GetSkillPergon(character, SKILLID_HAEUTEN)+toolQuality>15)
+        // max. 3* Anzahl Federn mit Char.skill>15%
+        dummy := Min(300, (toolQuality+GetSkillPergon(character, SKILLID_HAEUTEN))*100.0/15.0); // dummy gibt die %-punkte des Haeuten.skill gegenueber 15% Ferdern an
+        i := CInt((amount/2.0)/100.0*dummy);
+    EndIf
+    If (i<amount/2.0)
+        i := CInt(amount/2.0);
+    EndIf
+
+    While (i > 0)
+        PlaySoundEffect(character, SFX_57);
+        Sleep(1);
+
+        // FedernProSchnitt beschleunigt das rupfen von Federvieh.
+        // In CheckSkillPergon muss dies natürlich bei der Menge der
+        // Rawpoint berücksichtigt werden.
+        var FedernProSchnitt := 4;
+        If (CheckSkillPergon(character, SKILLID_HAEUTEN, CInt(15-toolQuality), CInt((15+toolQuality)*6)*FedernProSchnitt) or (RandomInt(100) < 10))  // RandomInt 10% auch ohne Skill
+            If (i < FedernProSchnitt)
+                FedernProSchnitt := i;
+            EndIf
+            CreateItemInBackpackPergon(character, item, FedernProSchnitt);
+            feathercounter += FedernProSchnitt;
+
+            // schleichende Werkzeugabnutzung
+            If (RandomInt(100) <= 1)
+                If (SetWerkzeugSchaden(character, blade, "Euer Messer hat gelitten!", "Euer Messer ist stark beschädigt!", "Euer Messer ist zerbrochen!"))
+                    return;
+                EndIf
+            EndIf
+        Else
+            SendSysMessagePergon(character, "Ihr konntet keine Federn gewinnen. Versucht es weiter.", "");
+            If (SetWerkzeugSchaden(character, blade, "Euer Messer hat gelitten!", "Euer Messer ist stark beschädigt!", "Euer Messer ist zerbrochen!"))
+                return;
+            EndIf
+        EndIf
+        i -= FedernProSchnitt;
+    EndWhile
+
+    If (feathercounter == 1)
+        SendSysMessagePergon(character, "Ihr konntet eine Feder von der Leiche schneiden.", "You pluck a feather and put it into your backpack.");
+    ElseIf (feathercounter > 1)
+        SendSysMessagePergon(character, "Ihr konntet etliche Federn von der Leiche schneiden.", "You pluck some feathers and put them into your backpack.");
+    EndIf
+EndFunction

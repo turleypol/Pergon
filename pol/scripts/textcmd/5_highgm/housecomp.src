@@ -1,0 +1,48 @@
+///////////////////////////////////////////////////////////////////////////
+// housecomp -- Macht Objekt zu Hauskomponente oder entfernt es wieder
+
+use uo;
+include "include/msgs";
+
+Program HouseComp(who);
+    SendSysMessagePergon(who, "Wähle ein Objekt aus!", "Select an object.");
+    var obj := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!obj)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    var house := obj.multi;
+    If (!house or !house.isa(POLCLASS_HOUSE))
+        SendSysMessagePergon(who,
+            "Objekt muss in einem Haus sein! Abbruch",
+            "Object has to be in a house! Cancelled"
+        );
+        return;
+    EndIf
+
+    If (obj in house.components)
+        var res := house.erase_component(obj);
+        If (res)
+            SendSysMessagePergon(who,
+                "Objekt aus Haus entfernt.", "Object remove from house."
+            );
+            return;
+        Else
+            SendSysMessagePergon(who, res.errortext);
+        EndIf
+    Else
+        var res := house.add_component(obj);
+        // House components are normally anchored
+        obj.movable := 0;
+        obj.eraseprop(PROP_HS_C_FIXED);
+        If (res)
+            SendSysMessagePergon(who,
+                "Objekt zu Haus hinzugefügt.", "Object added to house."
+            );
+            return;
+        Else
+            SendSysMessagePergon(who, res.errortext);
+        EndIf
+    EndIf
+EndProgram

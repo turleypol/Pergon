@@ -1,0 +1,67 @@
+//////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD ShowPlot - Endloskurs fuer einen Character zu Praesentationszwecken aufzeichnen
+//
+//     Author: Shinigami
+//
+//   Modification:
+//
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_ShowPlot(who, params)
+  If (params)
+    Var oldcmdlevel:=who.cmdlevel;
+    If (oldcmdlevel<CMDLEVEL_HIGHGM)
+      who.cmdlevel:=CMDLEVEL_HIGHGM;
+      who.concealed:=CMDLEVEL_HIGHGM;
+      SendSysMessagePergon(who, "Ihr seid nun auf dem CMDLevel 'GM', um den Kurs aufzuzeichnen!");
+    EndIf
+
+    SendSysMessagePergon(who, "Ihr könnt nun Punkte markieren. Andere TextCMDs können ebenfalls zur Navigation benutzt werden!");
+
+    Var kurs:={};
+
+    While (1)
+      Var where:=TargetCoordinates(who);
+      If (where)
+        Var result:=MoveObjectToLocation(who, where.x, where.y, where.z, who.realm);
+        If (result)
+          kurs.append({where.x, where.y, where.z});
+          SendSysMessagePergon(who, "Kurspunkt aufgenommen.");
+        Else
+          SendSysMessagePergon(who, result.errortext);
+        EndIf
+      Else
+        break;
+      EndIf
+    EndWhile
+
+    SetGlobalProperty("Kurs"+params, kurs);
+    SendSysMessagePergon(who, "Kurs '"+params+"' mit "+kurs.size()+" Punkten gespeichert.");
+
+    If (oldcmdlevel<CMDLEVEL_HIGHGM)
+      who.concealed:=oldcmdlevel;
+      who.cmdlevel:=oldcmdlevel;
+      SendSysMessagePergon(who, "Ihr habt nun euer altes Level wieder.");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr müsst einen Kursnamen angeben!");
+  EndIf
+EndProgram

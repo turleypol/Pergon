@@ -1,0 +1,209 @@
+///////////////////////////////////////////////////////////////////////////
+// toptrashers -- Beste Entsorger anzeigen
+
+use uo;
+include ":items:cleanup";
+include "include/msgs";
+include "include/pergonutil";
+include "include/stringcalc";
+include "include/varutil";
+
+Const TYP_BARREL   := 0x0e77;
+Const TYP_BUCKET   := 0x14e0;
+
+Const HTMLBEGIN      := "<basefont color=#111111><center>";
+Const HTMLEND        := "</center>";
+Const BUTT_OK        := 100;
+Const BUTT_REWARD    := 101;
+// wird die Belohnungsoption angeboten
+Const GPROP_REWARD   := "Pergon_cleanup_reward";
+// wer hat seine Belohnung schon?
+Const GPROP_REWARDED := "Pergon_cleanup_rewarded";
+
+Program TopTrashers(who, trash)
+    If (trash.container)
+        If (trash.graphic == TYP_BUCKET)
+            trash.graphic := TYP_BARREL;
+        Else
+            trash.graphic := TYP_BUCKET;
+        EndIf
+        return;
+    EndIf
+
+    // Listen holen
+    var count := GetGlobalProperty(GPROP_TRASHCOUNT);
+    If (!count)
+        count := dictionary{};
+    EndIf
+    var worth := GetGlobalProperty(GPROP_TRASHWORTH);
+    If (!worth)
+        worth := dictionary{};
+    EndIf
+
+    var layout := array{
+        "nodispose",
+        "page 0",
+        "resizepic       0   0 5054 400 360",
+        "htmlgump        0   5      400  30 0 0 0",
+        // Okay
+        "button         50 315 2076 2075 1 0 "+BUTT_OK
+    };
+    If (GetGlobalProperty(GPROP_REWARD))
+        // Belohnung
+        layout.append(
+            "buttontileart 250 300 51 51 1 0 "+BUTT_REWARD+" 3820 0 6 10"
+        );
+    EndIf
+    layout += array{
+        "page 1",
+        "htmlgump        0  35 400  30 1 0 0",
+        // Seitenwechsel
+        "button        300  35 2652 2711 0 2"
+    };
+    var data := array{
+        HTMLBEGIN+"<h1>Aufraeumeimer</h1>"+HTMLEND,
+        HTMLBEGIN+"<h2>Entsorgte Dinge</h2>"+HTMLEND,
+        HTMLBEGIN+"<h2>Entsorgte Werte</h2>"+HTMLEND
+    };
+    AddTopListToGump(layout, data, count);
+
+    layout += array{
+        "page 2",
+        "htmlgump    0  35      400  30 2 0 0",
+        // Seitenwechsel
+        "button    300  35 2652 2711 0 1"
+    };
+    AddTopListToGump(layout, data, worth);
+
+    var button := CInt(SendDialogGump(who, layout, data, 50, 10)[0]);
+    If (
+        // Gump normal geschlossen
+        button <> BUTT_REWARD or
+        // bzw. Belohnung wurde noch nicht freigeschaltet
+        !GetGlobalProperty(GPROP_REWARD)
+    )
+        return;
+    EndIf
+
+    var yes := SendYesNoGump(who,
+        "Wollt Ihr wirklich Eure Belohnung abholen?<br>"+
+        "(Die Belohnung kann nur einmalig abgeholt werden!)",
+        50, 10, TE_CANCEL_ENABLE, TE_SCROLLBAR_DISABLE
+    );
+    If (!yes)
+        return;
+    EndIf
+
+    // Belohnungsberechtigung ermitteln
+    var crit := Is_Critical();
+    Set_Critical(1);
+    var rewarded := GetGlobalProperty(GPROP_REWARDED);
+    If (!rewarded)
+        rewarded := array{};
+    EndIf
+
+    If (who.serial in (rewarded))
+        SendSysMessagePergon(who,
+            "Du hast deine Belohnung schon!",
+            "You have been rewarded already!"
+        );
+        Set_Critical(crit);
+        return;
+    EndIf
+
+    var amount := Max(
+        Min(
+            // ein Schneeball koste 1000 Gold
+            worth[Lower(Hex(who.serial))] / 1000.0,
+            // mehr als einen Stack gibt es nicht
+            60000
+        ),
+        // damit auch jeder Spass hat
+        10
+    );
+    CreateItemInBackpackPergon(who, 0x669d, CInt(amount));
+
+    SendSysMessagePergon(who,
+        "Freut Euch über "+amount+" Schneebälle!",
+        "Have fun with your "+amount+" snow balls!"
+    );
+
+    // speichern, dass er belohnt wurde
+    rewarded.append(who.serial);
+    SetGlobalProperty(GPROP_REWARDED, rewarded);
+
+    Set_Critical(crit);
+    return;
+EndProgram
+
+Function AddTopListToGump(byref layout, byref data, to_add) // {{{
+    var topcount := GetTopTen(ReorderDictByValue(to_add));
+    var count    := 0;
+    ForEach foo in (topcount)
+        SleepMs(2);
+        var serial := foo.keys()[1];
+        var name := SystemFindObjectBySerial(
+            CInt(serial), SYSFIND_SEARCH_OFFLINE_MOBILES
+        );
+
+        // Name
+        If (name)
+            name := GetRealName(name);
+        Else
+            name := "unbekannt";
+        EndIf
+        layout.append("text 20 "+(80+count*20)+" 5 "+data.size());
+        data.append(name);
+
+        // Punkte
+        var points := foo[serial];
+        layout.append("text 300 "+(80+count*20)+" 5 "+data.size());
+        data.append(StrPrettyPrint(PrettyPrintDouble(points)));
+
+        count += 1;
+    EndForEach
+EndFunction // }}}
+
+Function ReorderDictByValue(byref dict) // {{{
+    var byvalue := dictionary;
+
+    // Dict "umdrehen"
+    ForEach key in (dict.keys())
+        SleepMs(2);
+        If (byvalue.exists(dict[key]))
+            // an Array anhaengen
+            byvalue[dict[key]].append(key);
+        Else
+            // neues Array anlegen
+            byvalue.insert(dict[key], array{key});
+        EndIf
+    EndForEach
+
+    return byvalue;
+EndFunction // }}}
+
+Function GetTopTen(valuedict) // {{{
+    var sorted := valuedict.keys();
+    sorted.sort();
+    sorted.reverse();
+
+    var result := array{};
+    var count  := 0;
+    ForEach key in (sorted)
+        ForEach elem in (valuedict[key])
+            SleepMs(2);
+            count += 1;
+            var entry := dictionary{};
+            entry.insert(elem, key);
+            result.append(entry);
+            If (count >= 10)
+                break;
+            EndIf
+        EndForEach
+        If (count >= 10)
+            break;
+        EndIf
+    EndForEach
+
+    return result;
+EndFunction // }}}

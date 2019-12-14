@@ -1,0 +1,71 @@
+//##############################################
+//
+//	Clonen von Ausrüstung und Shape bezüglich RefenrenzNPC
+//
+//  Autor: Hotny
+//
+//###############################################
+
+use os;
+use uo;
+
+Include "include/client";
+Include "include/objtype";
+Include "include/eventid";
+Include "include/msgs";
+
+Program CloneTxtCmd(character,parameter)
+	Var range:=CInt(parameter);
+	SendSysMessage(character,"Wählt den Referenz-NPC aus");
+	var RefNPC:=Target(character,TGTOPT_NOCHECK_LOS);
+	If ((!RefNPC)||(!RefNPC.isa(POLCLASS_NPC)))
+		//Das ist kein Mobile
+		SendSysMessagePergon(character, "Das ist kein NPC","");
+		Return;
+	EndIf
+	RefNPC.setprop("questequipt",1);
+	//Wenn Parameter angegeben
+	var mobiles:={};
+	If (range>0)
+		SendSysMessage(character,"Wählt das Zentrum des Kreises");
+		var koords:=TargetCoordinates(character);
+		mobiles:=ListMobilesNearLocationEx(koords.x, koords.y, koords.z, range, LISTEX_FLAG_NORMAL, koords.realm);
+	Else
+		SendSysMessagePergon(character,"Wählt den zu clonenden NPC aus");
+		mobiles:=Target(character,TGTOPT_NOCHECK_LOS);
+		If ((!mobiles)||(!mobiles.isa(POLCLASS_NPC)))
+			SendSysMessagePergon(character,"Das ist kein NPC");
+			Return;
+		EndIf
+		mobiles:={mobiles};
+	EndIf
+	
+	ForEach mobile in mobiles
+		If (mobile.isa(POLCLASS_NPC)&&(mobile.serial<>RefNPC.serial))
+			mobile.graphic:=RefNPC.graphic;
+			mobile.name:=RefNPC.name;
+			mobile.color:=RefNPC.color;
+			mobile.truecolor:=RefNPC.truecolor;
+			mobile.trueobjtype:=RefNPC.trueobjtype;
+			mobile.setprop("questequipt",1);
+			//ausziehen
+			Foreach item In ListEquippedItems(mobile)											// for each equipped item on caster
+   	  			SleepMS(1);
+	   	  		If (item.graphic!=0xe75) //Backpacktasche nicht erzeugen, kann eh nicht equipped werden
+			      	DestroyItem(item);
+			  	EndIf
+   			EndForeach
+			//anziehen
+			Foreach item In ListEquippedItems(RefNPC)											// for each equipped item on caster
+   	  			SleepMS(1);
+   	  			If (item.graphic!=0xe75) //Backpacktasche nicht erzeugen, kann eh nicht equipped werden
+			    	var newitem:=CreateItemCopyAtLocation(mobile.x, mobile.y, mobile.z, item, mobile.realm);
+			      	If (EquipItem(mobile, newitem)==0); 
+			      		DestroyItem(newitem); //Sachen die sich dem equippen wiedersetzen, wie Masken wieder löschen (bei der Backpacktasche gings so nicht)
+			      	EndIf
+		  		EndIf
+   		 	EndForeach
+		EndIf
+		SleepMs(1);
+	EndForEach
+EndProgram

@@ -1,0 +1,135 @@
+//**************************************************************************************************
+// Script file archbless.src
+//
+//    implements spell 219 <Arch Bless> - "Erzsegen"
+//
+//	raises all attributes (INT, DEX, STR) of several spelltargets simultaneously
+//		[ Resisted (Magic) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 01.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+Include "include/spellcheck";
+Include "../magicpergon";
+
+program cast_archbless (params)
+
+   Var caster;
+   Var where;
+   Var beneficiaries;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_ARCHBLESS);
+   Var difficulty:= spell.skill;
+   Var resist:=   spell.resist;
+   Var amnt;
+   Var baseamnt:= spell.primary;
+   Var minamnt:=  spell.primarymin;
+   Var maxamnt:=  spell.primarymax;
+   Var range:=    spell.range;
+   Var minrange:= spell.rangemin;
+   Var maxrange:= spell.rangemax;
+   Var dur;
+   Var basedur:=  spell.duration;
+   Var mindur:=   spell.durationmin;
+   Var maxdur:=   spell.durationmax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      where:=struct{x,y,z,realm};
+      where.x:=params[4].x;
+      where.y:=params[4].y;
+      where.z:=params[4].z;
+      where.realm:=params[4].realm;
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      where:=  TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_ARCHBLESS);
+      where:= TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, where);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   range:= CInt(power*range/100.0); 						// calc spell range according to casting power
+   if (minrange and minrange > range)
+      range:= minrange;
+   elseif (maxrange and maxrange < range)
+      range:= maxrange;
+   endif
+
+   beneficiaries:= ListMobilesNearLocation(where.x, where.y, where.z, range,where.realm);		// get spelltargets
+
+   if (beneficiaries)
+
+      Var modifystruct:=struct{spelltarget:=0,
+                               int:=0,
+                               dex:=0,
+                               str:=0,
+                               cprop:=struct{name:="",value:={}},
+                               CastPower:={}};
+
+      foreach beneficiary in beneficiaries						// for each spell target
+ 																				// check if spelltarget can be blessed
+         if (!GetObjProperty(beneficiary, "spell_bless"))	// calc spelleffects according to spelltargets
+            if (resist)													// magic resistance and casting power
+               amnt:= CInt(MagicResistance(beneficiary, difficulty, resist, power*baseamnt/100.0, 1));
+               dur:=  CInt(MagicResistance(beneficiary, difficulty, resist, power*basedur/100.0, 0));
+            else
+               amnt:= CInt(power*baseamnt/100.0);
+               dur:=  CInt(power*basedur/100.0);
+            endif
+
+            if (minamnt and minamnt > amnt)
+               amnt:= minamnt;
+            elseif (maxamnt and maxamnt < amnt)
+               amnt:= maxamnt;
+            endif
+            if (mindur and mindur > dur)
+               dur:= mindur;
+            elseif (maxdur and maxdur < dur)
+               dur:= maxdur;
+            endif
+
+            PlaySoundEffect(beneficiary, SFX_1F8);
+            PlayObjectCenteredEffect(beneficiary, FX_BLESS_EFFECT, 10, 10);
+	      																			// get average attribute change for spelltarget
+            amnt:= CInt((GetIntPergon(beneficiary) + GetDexPergon(beneficiary) + GetStrPergon(beneficiary)) * amnt / 300);
+
+            modifystruct.spelltarget:=beneficiary;
+            modifystruct.int:=amnt;
+            modifystruct.dex:=amnt;
+            modifystruct.str:=amnt;
+            modifystruct.cprop.value:={};
+            modifystruct.cprop.value[1]:= ReadGameClock() + dur;
+            modifystruct.cprop.value[2]:= amnt;
+            modifystruct.cprop.value[3]:= "bless";
+            modifystruct.cprop.value[5]:= ReadMilliSecondClock();
+            modifystruct.cprop.name:="spell_bless";
+            modifystruct.CastPower:={{beneficiary,"Magie",amnt,"Cleric","",0},
+                                     {beneficiary,"Magie",amnt,"",spell.SubClass,0},
+                                     {beneficiary,"Magie",CInt(amnt/5),"","Common",0}}; //20% auf alles
+            SendSpellWaiter(beneficiary, "spell_bless", dur, modifystruct.cprop.value[5], beneficiary,modifystruct);
+
+         endif
+         SleepMS(2);
+      endforeach
+   endif
+
+endprogram

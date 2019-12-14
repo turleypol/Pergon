@@ -1,0 +1,610 @@
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// tournamentstone - Turnierkampf
+//                    - bis zu 30 templates nach Tod das nächste
+//                    - Nahkampfmodus Player und Monster wird gefreezt
+//                    - Fernkampfmodus Monster spawnen zufällig in vorgegebenen Bereich
+//                    - Highscores
+//
+//
+//     Author: Turley
+//
+//   Modifications:
+//     28.01.07 Turley - Erste Version
+//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+
+Include "include/modifyskill";
+Include "include/client";
+Include "include/npc";
+Include "include/eventid";
+
+Enum Gumpreturns
+  OK:=5,
+  KOORDS,
+  STATUS,
+  MODUS,
+  SCORE,
+  RESET,
+  N_TEMPLATES:=100,
+  S_TEMPLATES:=200
+EndEnum
+
+Const STONEPROP:="tournamentstone";
+
+Var prop;
+
+Program tournamentstone(who, stone)
+  prop:=stone.getprop(STONEPROP);
+  If (!prop)
+    prop:=dictionary;
+  EndIf
+
+  If (who.cmdlevel>=CMDLEVEL_SEER)
+    EditTournament(who, stone);
+    ShowHighscore(who, stone);
+  Else
+    ShowHighscore(who, stone);
+  EndIf
+EndProgram
+
+///////////////////////////////////
+// EditTournament - GM Menü zum einstellen
+///////////////////////////////////
+
+Function EditTournament(who, stone)
+  Var ret, templateentrys:={}, tar;
+  Var layout:={"nodispose",
+               "page 0",
+               "resizepic 0 0 3600 615 530",
+               "resizepic 16 16 9200 583 30",
+               "resizepic 16 47 9200 583 468",
+               "htmlgump 16 22 583 20 0 0 0",
+               "button 540 480 2450 2451 1 0 "+OK,
+               "htmlgump 420 60 200 40 3 0 0", // Koords
+               "button 530 63 2104 2103 1 0 "+KOORDS,
+               "htmlgump 430 120 200 20 4 0 0",
+               "button 530 123 2104 2103 1 0 "+STATUS,
+               "htmlgump 430 140 200 20 5 0 0",
+               "button 530 143 2104 2103 1 0 "+MODUS,
+               "htmlgump 430 180 200 20 1 0 0",
+               "button 535 183 2104 2103 1 0 "+SCORE,
+               "htmlgump 430 200 200 20 2 0 0",
+               "button 535 203 2104 2103 1 0 "+RESET
+              };
+  Var data:={"<basefont size=8 color="+HTML_WHITE+"><center>Tournier aendern</center>",
+             "Highscore loeschen",
+             "Abbrechen"
+            };
+
+  If (prop["Koords"])
+    data.append("Spawnbereich:<br>"+prop["Koords"][1]+"/"+prop["Koords"][2]+" "+prop["Koords"][3]+"/"+prop["Koords"][4]);
+  Else
+    data.append("Spawnbereich:<br>-/- -/-");
+  EndIf
+  If (prop["Status"])
+    data.append("Status: <basefont color="+HTML_GREEN+">aktiv");
+  Else
+    data.append("Status: <basefont color="+HTML_RED+">inaktiv");
+  EndIf
+  If (prop["Modus"])
+    data.append("Modus: Fernkampf");
+  Else
+    data.append("Modus: Nahkampf");
+  EndIf
+
+  // Nahkämpfer
+  layout.append("page 1");
+  layout.append("button 575 20 252 253 0 2 1");
+  layout.append("htmlgump 16 22 555 20 "+data.size()+" 0 0");
+  data.append("<basefont size=8 ><p align=right>Nahkampftemplates</p>");
+  For i:=1 to 30
+    If (i<=15) //linke Spalte
+      layout.append("gumppic 30 "+(30+i*30)+" 2446");
+      layout.append("textentry 40 "+(32+i*30)+" 160 20 0 "+(N_TEMPLATES+i)+" "+data.size());
+    Else //rechte Spalte
+      layout.append("gumppic 220 "+(30+(i-15)*30)+" 2446");
+      layout.append("textentry 230 "+(32+(i-15)*30)+" 160 20 0 "+(N_TEMPLATES+i)+" "+data.size());
+    EndIf
+    If (prop["N_Templates"][i])
+      data.append(prop["N_Templates"][i]);
+    Else
+      data.append("");
+    EndIf
+  EndFor
+
+  // Schützen
+  layout.append("page 2");
+  layout.append("button 575 20 250 251 0 1 1");
+  layout.append("htmlgump 16 22 555 20 "+data.size()+" 0 0");
+  data.append("<basefont size=8 ><p align=right>Schuetzentemplates</p>");
+  For i:=1 to 30
+    If (i<=15) //linke Spalte
+      layout.append("gumppic 30 "+(30+i*30)+" 2446");
+      layout.append("textentry 40 "+(32+i*30)+" 160 20 0 "+(S_TEMPLATES+i)+" "+data.size());
+    Else //rechte Spalte
+      layout.append("gumppic 220 "+(30+(i-15)*30)+" 2446");
+      layout.append("textentry 230 "+(32+(i-15)*30)+" 160 20 0 "+(S_TEMPLATES+i)+" "+data.size());
+    EndIf
+    If (prop["S_Templates"][i])
+      data.append(prop["S_Templates"][i]);
+    Else
+      data.append("");
+    EndIf
+  EndFor
+
+  ret:=SendDialogGump(who,layout,data,50,50);
+
+  If (ret[OK]) // Templates speichern
+    For i:=1 to 30
+      If (len(ret[N_TEMPLATES+i])>5)
+        templateentrys.append(ret[N_TEMPLATES+i][6,len(ret[N_TEMPLATES+i])]);
+      EndIf
+    EndFor
+    prop["N_Templates"]:=templateentrys;
+    templateentrys:={};
+    For i:=1 to 30
+      If (len(ret[S_TEMPLATES+i])>5)
+        templateentrys.append(ret[S_TEMPLATES+i][6,len(ret[S_TEMPLATES+i])]);
+      EndIf
+    EndFor
+    prop["S_Templates"]:=templateentrys;
+    stone.setprop(STONEPROP,prop);
+
+  ElseIf (ret[KOORDS])  // Spawnbereich für Fernkampf definieren
+    SendSysMessagePergon(who,"Nordwestliche Ecke des Spawnbereiches anvisieren.");
+    tar:=TargetCoordinates(who);
+    If (tar)
+      If (!prop["Koords"])
+        prop["Koords"]:=array;
+      EndIf
+      prop["Koords"][1]:=tar.x;
+      prop["Koords"][2]:=tar.y;
+      SendSysMessagePergon(who,"Südöstliche Ecke des Spawnbereiches anvisieren.");
+      tar:=TargetCoordinates(who);
+      If (tar)
+        prop["Koords"][3]:=tar.x;
+        prop["Koords"][4]:=tar.y;
+        stone.setprop(STONEPROP,prop);
+        SendSysMessagePergon(who,"Koordinaten gespeichert.");
+      Else
+        SendSysMessagePergon(who,"Abbruch", "Abort");
+      EndIf
+    Else
+      SendSysMessagePergon(who,"Abbruch", "Abort");
+    EndIf
+
+  ElseIf (ret[STATUS]) // Turnier starten/beenden
+    If (prop["Status"])
+      prop["Status"]:=0;
+      PrintTextAbovePergon(who,stone,"Turnier beendet.","Tournament stopped.",FONT_NORMAL,0xEE);
+    Else
+      prop["Status"]:=1;
+      PrintTextAbovePergon(who,stone,"Turnier gestartet.","Tournament begins.",FONT_NORMAL,0x44);
+    EndIf
+    stone.setprop(STONEPROP,prop);
+
+  ElseIf (ret[MODUS])  // Fern/Nahkampf umschalten
+    If (prop["Modus"])
+      prop["Modus"]:=0;
+      PrintTextAbovePergon(who,stone,"Nahkampf","Close Combat",FONT_NORMAL,0x62);
+    Else
+      prop["Modus"]:=1;
+      PrintTextAbovePergon(who,stone,"Fernkampf","Archery",FONT_NORMAL,0xDA);
+    EndIf
+    stone.setprop(STONEPROP,prop);
+
+  ElseIf (ret[SCORE])  // Highscores löschen
+    Case (prop["Modus"])
+      1:       prop["S_Score"]:={};
+               prop["S_Score_D"]:={};
+               SendSysMessagePergon(who,"Fernkampf Highscore gelöscht");
+      default: prop["N_Score"]:={};
+               prop["N_Score_D"]:={};
+               SendSysMessagePergon(who,"Nahkampf Highscore gelöscht");
+    EndCase
+    stone.setprop(STONEPROP,prop);
+
+  ElseIf (ret[RESET])  // Abbruch des laufenden Kampfes
+    GetProcess(CInt(prop["PID"])).sendevent(Struct{source:=who, type:=EVID_TOURNAMENT_RESET});
+  Else
+    SendSysMessagePergon(who,"Abbruch", "Abort");
+  EndIf
+EndFunction
+
+///////////////////////////////////
+// ShowHighscore - Playermenü Highscores und Teilnehmen
+///////////////////////////////////
+
+Function ShowHighscore(who, stone)
+  Var ret;
+  Var layout:={"nodispose",
+               "page 0",
+               "resizepic 0 0 3600 615 540",
+               "resizepic 16 16 9200 583 30",
+               "resizepic 16 47 9200 583 478",
+               "htmlgump 16 22 583 20 0 0 0",
+               "htmlgump 30 90 70 20 1 0 0",
+               "htmlgump 100 90 250 20 2 0 0",
+               "htmlgump 350 90 70 20 3 0 0",
+               "htmlgump 420 90 70 20 4 0 0",
+               "htmlgump 470 60 100 20 5 0 0",
+               "button 485 80 2450 2451 1 0 "+OK
+              };
+  Var data:={"<basefont size=8 color="+HTML_WHITE+"><center>Tournierstein</center>",
+             "Platz","Name","Zeit","Kill","<basefont size=8 color="+HTML_WHITE+">Teilnehmen"
+            };
+  layout.append("htmlgump 16 22 580 20 "+data.size()+" 0 0");
+  If (prop["Modus"])
+    data.append("<basefont size=8 ><p align=right>Fernkampf</p>");
+  Else
+    data.append("<basefont size=8 ><p align=right>Nahkampf</p>");
+  EndIf
+  layout.append("htmlgump 20 22 555 20 "+data.size()+" 0 0");
+  If (prop["Status"])
+    data.append("<basefont size=8 color="+HTML_GREEN+"><p align=left>Aktiv</p>");
+  Else
+    data.append("<basefont size=8 color="+HTML_RED+"><p align=left>Inaktiv</p>");
+  EndIf
+
+  If (!prop["N_Score"])  // Highscore Nahkampf
+    prop["N_Score"]:=array;
+  EndIf
+  layout.append("page 1");
+  layout.append("button 50 60 252 253 0 2 1");
+  layout.append("htmlgump 0 62 615 20 "+data.size()+" 0 0");
+  data.append("<basefont size=8 ><center>Nahkampf Highscore</center>");
+  ForEach entry in (prop["N_Score"])
+    layout.append("htmlgump 30 "+(100+20*_entry_iter)+" 70 20 "+data.size()+" 0 0");
+    data.append(_entry_iter);
+    layout.append("htmlgump 100 "+(100+20*_entry_iter)+" 250 20 "+data.size()+" 0 0");
+    data.append(entry[1]);
+    layout.append("htmlgump 350 "+(100+20*_entry_iter)+" 70 20 "+data.size()+" 0 0");
+    data.append(StrFormatTime("%M:%S",entry[2]));
+    layout.append("htmlgump 420 "+(100+20*_entry_iter)+" 70 20 "+data.size()+" 0 0");
+    data.append(entry[3]);
+  EndForEach
+
+  If (!prop["S_Score"])  // Highscore Fernkampf
+    prop["S_Score"]:=array;
+  EndIf
+  layout.append("page 2");
+  layout.append("button 50 60 250 251 0 3 1");
+  layout.append("htmlgump 0 62 615 20 "+data.size()+" 0 0");
+  data.append("<basefont size=8 ><center>Fernkampf Highscore</center>");
+  ForEach entry in (prop["S_Score"])
+    layout.append("htmlgump 30 "+(100+20*_entry_iter)+" 70 20 "+data.size()+" 0 0");
+    data.append(_entry_iter);
+    layout.append("htmlgump 100 "+(100+20*_entry_iter)+" 250 20 "+data.size()+" 0 0");
+    data.append(entry[1]);
+    layout.append("htmlgump 350 "+(100+20*_entry_iter)+" 70 20 "+data.size()+" 0 0");
+    data.append(StrFormatTime("%M:%S",entry[2]));
+    layout.append("htmlgump 420 "+(100+20*_entry_iter)+" 70 20 "+data.size()+" 0 0");
+    data.append(entry[3]);
+  EndForEach
+
+  If (!prop["N_Score_D"])  // Highscore Nahkampf Tod
+    prop["N_Score_D"]:=array;
+  EndIf
+  layout.append("page 3");
+  layout.append("button 50 60 250 251 0 4 1");
+  layout.append("htmlgump 0 62 615 20 "+data.size()+" 0 0");
+  data.append("<basefont size=8 ><center>Nahkampf Highscore Todesfaelle</center>");
+  ForEach entry in (prop["N_Score_D"])
+    layout.append("htmlgump 30 "+(100+20*_entry_iter)+" 70 20 "+data.size()+" 0 0");
+    data.append(_entry_iter);
+    layout.append("htmlgump 100 "+(100+20*_entry_iter)+" 250 20 "+data.size()+" 0 0");
+    data.append(entry[1]);
+    layout.append("htmlgump 350 "+(100+20*_entry_iter)+" 70 20 "+data.size()+" 0 0");
+    data.append(StrFormatTime("%M:%S",entry[2]));
+    layout.append("htmlgump 420 "+(100+20*_entry_iter)+" 70 20 "+data.size()+" 0 0");
+    data.append(entry[3]);
+  EndForEach
+
+  If (!prop["S_Score_D"])  // Highscore Fernkampf Tod
+    prop["S_Score_D"]:=array;
+  EndIf
+  layout.append("page 4");
+  layout.append("button 50 60 250 251 0 1 1");
+  layout.append("htmlgump 0 62 615 20 "+data.size()+" 0 0");
+  data.append("<basefont size=8 ><center>Fernkampf Highscore Todesfaelle</center>");
+  ForEach entry in (prop["S_Score_D"])
+    layout.append("htmlgump 30 "+(100+20*_entry_iter)+" 70 20 "+data.size()+" 0 0");
+    data.append(_entry_iter);
+    layout.append("htmlgump 100 "+(100+20*_entry_iter)+" 250 20 "+data.size()+" 0 0");
+    data.append(entry[1]);
+    layout.append("htmlgump 350 "+(100+20*_entry_iter)+" 70 20 "+data.size()+" 0 0");
+    data.append(StrFormatTime("%M:%S",entry[2]));
+    layout.append("htmlgump 420 "+(100+20*_entry_iter)+" 70 20 "+data.size()+" 0 0");
+    data.append(entry[3]);
+  EndForEach
+
+
+  ret:=SendDialogGump(who,layout,data,50,50);
+
+  If (ret[OK])
+    If (!prop["Status"])
+      SendSysMessagePergon(who,"Turnier ist nicht gestartet.");
+      Return;
+    EndIf
+    If (prop["Fight"])
+      SendSysMessagePergon(who,"Es wird schon gekämpft.");
+      Return;
+    EndIf
+    Case (prop["Modus"])
+      1:       StartArchery(who,stone);
+      default: StartCloseCombat(who,stone);
+    EndCase
+  EndIf
+EndFunction
+
+///////////////////////////////////
+// StartArchery - Fernkampfmodus
+///////////////////////////////////
+
+Function StartArchery(who,stone)
+  var time, creature, ev:=struct, end:=0, highscore, event, scoreinsert:=0,x,y,z, kills:=0, place;
+  If (!prop["Koords"][1])
+    PrintTextAbovePergon(who,stone,"Keine Koordinaten!","No coords!",FONT_NORMAL,0xEE);
+    Return;
+  EndIf
+  Var xrange:=prop["Koords"][3]-prop["Koords"][1];
+  Var yrange:=prop["Koords"][4]-prop["Koords"][2];
+  Detach();
+  prop["Fight"]:=1;
+  prop["PID"]:=GetPID();
+  stone.setprop(STONEPROP,prop);
+
+  PrintTextAbovePergon(who,stone,who.name+" beginnt",who.name+" starts",FONT_NORMAL,0x44);
+  Sleep(1);
+  PrintTextAbovePergon(who,stone,"Drei","Three",FONT_NORMAL,0x44);
+  Sleep(1);
+  PrintTextAbovePergon(who,stone,"Zwei","Two",FONT_NORMAL,0x44);
+  Sleep(1);
+  PrintTextAbovePergon(who,stone,"Eins","One",FONT_NORMAL,0x44);
+  Sleep(1);
+  PrintTextAbovePergon(who,stone,"Kämpft!","Fight",FONT_NORMAL,0xEE);
+
+  who.setprop("tournamentpid",GetPID());
+  time:=ReadGameClock();
+
+  ev.+type;
+  ev.+source:=who;
+
+  ForEach monster in (prop["S_Templates"])
+    Repeat
+      x:=RandomInt(xrange)+prop["Koords"][1];
+      y:=RandomInt(yrange)+prop["Koords"][2];
+      z:=GetStandingHeight( x, y, 0, stone.realm);
+    Until (z);
+    creature:=CreateNPCfromTemplatePergon(monster,x,y,z.z,0,0,0,who.realm);
+    If (!creature)
+      PrintTextAbovePergon(who,stone,"Fehlerhaftes Template "+monster,"Wrong Template "+monster,FONT_NORMAL,0xEE);
+      who.eraseprop("tournamentpid");
+      prop["Fight"]:=0;
+      stone.setprop(STONEPROP,prop);
+      Return;
+    EndIf
+    creature.setprop("noloot",1);
+    creature.setprop("nocorpse",1);
+    creature.setprop("tournamentpid",GetPID());
+    ev.type:=EVID_PEACEMADE;  // Klappt nicht 100%ig wenn andere Beobachter im Sichtradius sind
+    SendEvent(creature, ev);
+    ev.type:=SYSEVENT_ENGAGED;
+    SendEvent(creature, ev);
+
+    event:=Wait_For_Event(600);  // Warten bis was passiert
+    Case (event.type)
+      EVID_TOURNAMENT_RESET:
+        PrintTextAbovePergon(who,stone,"Abbruch des Kampfes durch "+event.source.name,"",FONT_NORMAL,0xEE);
+        who.eraseprop("tournamentpid");
+        KillMobile(creature, "Tournament");
+        prop["Fight"]:=0;
+        stone.setprop(STONEPROP,prop);
+        Return;
+      EVID_TOURNAMENT_CHAR_DIED:
+        KillMobile(creature, "Tournament");
+        end:=1;
+      EVID_NPC_DIED:
+        kills+=1;
+    EndCase
+
+    If (end==1)
+      Break;
+    EndIf
+  EndForEach
+
+  who.eraseprop("tournamentpid");
+  time:=ReadGameClock()-time;
+  If (end)  // Todeshighscore
+    highscore:=prop["S_Score_D"];
+    If (TypeOfInt(highscore)==OT_ARRAY)
+      ForEach score in highscore
+        If (score[3]<kills)
+          highscore.insert(_score_iter,{who.name,time,kills});
+          scoreinsert:=1;
+          place:=_score_iter;
+          Break;
+        EndIf
+      EndForEach
+      If (!scoreinsert)
+        highscore.append({who.name,time,kills});
+        place:=highscore.size();
+      EndIf
+    Else
+      highscore:=array;
+      highscore.append({who.name,time,kills});
+      place:=highscore.size();
+    EndIf
+    highscore.shrink(20);
+    prop["S_Score_D"]:=highscore;
+    time:=StrFormatTime("%M:%S",time);
+    PrintTextAbovePergon(who,stone,"Kampf verlohren nach "+time+" Minuten! Platz "+place,"Combat lost after "+time+" minutes. Place "+place,FONT_NORMAL,0xEE);
+
+  Else
+    highscore:=prop["S_Score"];
+    If (TypeOfInt(highscore)==OT_ARRAY)
+      ForEach score in highscore
+        If (score[2]>time)
+          highscore.insert(_score_iter,{who.name,time,kills});
+          scoreinsert:=1;
+          place:=_score_iter;
+          Break;
+        EndIf
+      EndForEach
+      If (!scoreinsert)
+        highscore.append({who.name,time,kills});
+        place:=highscore.size();
+      EndIf
+    Else
+      highscore:=array;
+      highscore.append({who.name,time,kills});
+      place:=highscore.size();
+    EndIf
+    highscore.shrink(20);
+    prop["S_Score"]:=highscore;
+    time:=StrFormatTime("%M:%S",time);
+    PrintTextAbovePergon(who,stone,who.name+" benötigte "+time+" Minuten. Platz "+place,who.name+" needs "+time+" Minutes. Place "+place,FONT_NORMAL,0xEE);
+  EndIf
+  prop["Fight"]:=0;
+  stone.setprop(STONEPROP,prop);
+EndFunction
+
+///////////////////////////////////
+// StartCloseCombat - Nahkampfmodus
+///////////////////////////////////
+
+Function StartCloseCombat(who,stone)
+  var time, creature, ev:=struct, end:=0, highscore, event, scoreinsert:=0, kills:=0, place;
+  Detach();
+  prop["Fight"]:=1;
+  prop["PID"]:=GetPID();
+  stone.setprop(STONEPROP,prop);
+
+  PrintTextAbovePergon(who,stone,who.name+" beginnt",who.name+" starts",FONT_NORMAL,0x44);
+  Sleep(1);
+  PrintTextAbovePergon(who,stone,"Drei","Three",FONT_NORMAL,0x44);
+  Sleep(1);
+  PrintTextAbovePergon(who,stone,"Zwei","Two",FONT_NORMAL,0x44);
+  Sleep(1);
+  PrintTextAbovePergon(who,stone,"Eins","One",FONT_NORMAL,0x44);
+  Sleep(1);
+  PrintTextAbovePergon(who,stone,"Kämpft!","Fight",FONT_NORMAL,0xEE);
+
+  who.frozen:=1;
+  who.paralyzed:=1;
+  IncRevision(who);
+  who.setprop("tournamentpid",GetPID());
+  time:=ReadGameClock();
+
+  ev.+type;
+  ev.+source:=who;
+
+  ForEach monster in (prop["N_Templates"])
+    creature:=CreateNPCfromTemplatePergon(monster,who.x,who.y+1,who.z,0,0,0,who.realm);
+    If (!creature)
+      PrintTextAbovePergon(who,stone,"Fehlerhaftes Template "+monster,"Wrong Template "+monster,FONT_NORMAL,0xEE);
+      who.frozen:=0;
+      who.paralyzed:=0;
+      IncRevision(who);
+      who.eraseprop("tournamentpid");
+      prop["Fight"]:=0;
+      stone.setprop(STONEPROP,prop);
+      Return;
+    EndIf
+    creature.frozen:=1;
+    IncRevision(creature);
+    creature.setprop("noloot",1);
+    creature.setprop("nocorpse",1);
+    creature.setprop("tournamentpid",GetPID());
+    ev.type:=EVID_PEACEMADE;  // Klappt nicht 100%ig wenn andere Beobachter im Sichtradius sind
+    sendevent(creature, ev);
+    ev.type:=SYSEVENT_ENGAGED;
+    sendevent(creature, ev);
+
+    event:=Wait_For_Event(600);
+    Case (event.type)
+      EVID_TOURNAMENT_RESET:
+        PrintTextAbovePergon(who,stone,"Abbruch des Kampfes durch "+event.source.name,"",FONT_NORMAL,0xEE);
+        who.frozen:=0;
+        who.paralyzed:=0;
+        IncRevision(who);
+        who.eraseprop("tournamentpid");
+        KillMobile(creature, "Tournament");
+        prop["Fight"]:=0;
+        stone.setprop(STONEPROP,prop);
+        Return;
+      EVID_TOURNAMENT_CHAR_DIED:
+        KillMobile(creature, "Tournament");
+        end:=1;
+      EVID_NPC_DIED:
+        kills+=1;
+    EndCase
+
+    If (end==1)
+      Break;
+    EndIf
+  EndForEach
+
+  who.frozen:=0;
+  who.paralyzed:=0;
+  IncRevision(who);
+  who.eraseprop("tournamentpid");
+  time:=ReadGameClock()-time;
+
+  If (end)  // Todeshighscore
+    highscore:=prop["N_Score_D"];
+    If (TypeOfInt(highscore)==OT_ARRAY)
+      ForEach score in highscore
+        If (score[3]<kills)
+          highscore.insert(_score_iter,{who.name,time,kills});
+          scoreinsert:=1;
+          place:=_score_iter;
+          Break;
+        EndIf
+      EndForEach
+      If (!scoreinsert)
+        highscore.append({who.name,time,kills});
+        place:=highscore.size();
+      EndIf
+    Else
+      highscore:=array;
+      highscore.append({who.name,time,kills});
+      place:=highscore.size();
+    EndIf
+    highscore.shrink(20);
+    prop["N_Score_D"]:=highscore;
+    time:=StrFormatTime("%M:%S",time);
+    PrintTextAbovePergon(who,stone,"Kampf verlohren nach "+time+" Minuten! Platz "+place,"Combat lost after "+time+" minutes! Place "+place,FONT_NORMAL,0xEE);
+
+  Else
+    highscore:=prop["N_Score"];
+    If (TypeOfInt(highscore)==OT_ARRAY)
+      ForEach score in highscore
+        If (score[2]>time)
+          highscore.insert(_score_iter,{who.name,time,kills});
+          scoreinsert:=1;
+          place:=_score_iter;
+          Break;
+        EndIf
+      EndForEach
+      If (!scoreinsert)
+        highscore.append({who.name,time,kills});
+        place:=highscore.size();
+      EndIf
+    Else
+      highscore:=array;
+      highscore.append({who.name,time,kills});
+      place:=highscore.size();
+    EndIf
+    highscore.shrink(20);
+    prop["N_Score"]:=highscore;
+    time:=StrFormatTime("%M:%S",time);
+    PrintTextAbovePergon(who,stone,who.name+" benötigte "+time+" Minuten. Platz "+place,who.name+" needs "+time+" minutes. Place "+place,FONT_NORMAL,0xEE);
+  EndIf
+  prop["Fight"]:=0;
+  stone.setprop(STONEPROP,prop);
+EndFunction

@@ -1,0 +1,344 @@
+///////////////////////////////////////////////////////////////////////////
+// Death Script - Wird nach dem Tod eines NPC aufgerufen
+//
+// Author: Shinigami
+
+use cfgfile;
+use file;
+use os;
+use storage;
+use uo;
+include ":questsystem:questsystem";
+include ":spawnnet_new:spawnnet";
+include "include/bountbox";
+include "include/clock";
+include "include/eventid";
+include "include/experience";
+include "include/objtype";
+include "include/pergonutil";
+include "include/set";
+include "include/starteqp";
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+var TownguardTemplates := {
+  "townguardm", "townguardw", "OrcTownguard", "OrcTownguardArcher"
+};
+Const TownguardBill := 30000;
+Const UOBJ_CITYCASHBOX := 0x669c;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program NPCDeath(corpse)
+  // TodesSound abspielen falls vorhanden
+  var deathsound := CInt(
+    GetNPCConfig(corpse.getprop("npctemplate")).deathsound
+  );
+  If (deathsound)
+    If (deathsound == 0x424)  // Männliche Humanoide Schreie
+      PlaySoundEffect(corpse, deathsound+RandomInt(5));
+    ElseIf (deathsound == 0x315)  // Weibliche Humanoide Schreie
+      PlaySoundEffect(corpse, deathsound+RandomInt(4));
+    Else
+      PlaySoundEffect(corpse, deathsound);
+    EndIf
+  EndIf
+
+  If (GetObjProperty(corpse, "fieldtest"))
+    SysLogFile("FieldDeath: "+ItemInfoStr(corpse, COORDS_REALM));
+  EndIf
+
+  var follow := corpse.getprop("follow");
+  var guard  := corpse.getprop("guard");
+  If (follow)
+    var who := SystemFindObjectBySerial(follow.serial);
+    who.followers -= 1;
+    If (follow.angry)
+      who.followers_max += 1;
+    EndIf
+  ElseIf (guard)
+    var who := SystemFindObjectBySerial(guard.serial);
+    who.followers -= 1;
+    If (guard.angry)
+      who.followers_max += 1;
+    EndIf
+  EndIf
+
+  If (corpse.getprop("tournamentpid")) // TurnierVieh
+    GetProcess(CInt(corpse.getprop("tournamentpid"))).sendevent(Struct{source := corpse.ownerserial, type := EVID_NPC_DIED});
+  EndIf
+  If (corpse.getprop("DungeonControlPID"))  // DynDungeon
+    GetProcess(CInt(corpse.getprop("DungeonControlPID"))).sendevent(Struct{source := corpse.ownerserial, type := EVID_NPC_DIED});
+  EndIf
+  If (corpse.getprop("#championaltar"))  // opt/championspawn/useidol
+    GetProcess(CInt(corpse.getprop("#championaltar"))).sendevent(Struct{source := corpse.ownerserial, type := EVID_NPC_DIED, damage := corpse.getprop(LOG_DAMAGER)});
+  EndIf
+  // Monsternest
+  var removeset := corpse.getprop("removeset");
+  If (removeset)
+    DestroySet(removeset);
+  EndIf
+
+  // ForEach propname in GetObjPropertyNames(corpse)
+  //   SysLogFile("Prop '"+propname+"' = '"+GetObjProperty(corpse, propname)+"'");
+  // EndForEach
+
+  // ggf. einige Informationen zum Hergang des Todes mitloggen
+  var lasthitlog := GetObjProperty(corpse, LOG_LASTHIT);
+  var lastdamagelog := GetObjProperty(corpse, LOG_LASTDAMAGE);
+  If (lasthitlog Or lastdamagelog)
+    var text := "";
+    If (corpse.multi)
+      text := " im Haus bei "+corpse.multi.x+" "+corpse.multi.y+" "+corpse.multi.z;
+    EndIf
+
+    var masterserial := GetObjProperty(corpse, "master");
+    If (masterserial)
+      var master := SystemFindObjectBySerial(masterserial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+      If (master)
+        text += ", war abgerichtet und gehoerte '"+master.name+"' ("+Lower(Hex(master.serial))+" / "+master.acctname+")";
+
+        var cprops := "";
+        ForEach propname in GetObjPropertyNames(corpse)
+          cprops += " / "+propname+"='"+GetObjProperty(corpse, propname)+"'";
+        EndForEach
+        text += " [CProps"+cprops+"]";
+      EndIf
+    EndIf
+
+    If (GetObjProperty(corpse, "#domestiziert"))
+      text += ", war domestiziert";
+    EndIf
+
+    SysLogFile("NPC-TOD: '"+corpse.name+"' ("+GetObjProperty(corpse, "npctemplate")+") ist gestorben bei ["+
+      corpse.x+", "+corpse.y+", "+corpse.z+"] um "+ReadGameClock()+text);
+
+    If (lasthitlog)
+      SysLogFile("  LastHit = "+lasthitlog);
+    EndIf
+    If (lastdamagelog)
+      SysLogFile("  LastDamage = "+lastdamagelog);
+
+      If (lastdamagelog[6] == "scripts/ai/enticedanimal.ecl")
+        var mobiles := "";
+        ForEach mobile in ListMobilesNearLocation(
+          corpse.x, corpse.y, corpse.z, 20, corpse.realm
+        )
+          mobiles += ", "+CharInfoStr(mobile);
+        EndForEach
+        SysLogFile("  Mobiles"+mobiles);
+      EndIf
+    EndIf
+  EndIf
+
+  CheckCreateReportables(corpse, lastdamagelog);
+
+  SpawnNet_Clear(corpse); // Entfernt den NPC aus dem SpawnNet
+
+  // Getoetete NPCs nach Templates auflisten
+  var npctemplate := Lower(GetObjProperty(corpse, "npctemplate"));
+
+  Set_Critical(1);
+
+  var deathnpcs := GetGlobalProperty("deathnpcs");
+  If (deathnpcs[npctemplate])
+    deathnpcs[npctemplate] := deathnpcs[npctemplate]+1;
+  Else
+    deathnpcs[npctemplate] := 1;
+  EndIf
+  SetGlobalProperty("deathnpcs", deathnpcs);
+
+  Set_Critical(0);
+
+  // verteile Erfahrungspunkt von Monster
+  DoExperienceStuff(corpse);
+
+  // ist zwar normalerweise festgemacht, ...
+  corpse.decayat := ReadGameClock()+600; // Decay nach 10 Minuten
+
+  // Neues Townguardkonzept
+  If (lower(GetObjProperty(corpse, "npctemplate")) in TownguardTemplates)
+    var attackerserial := CInt(corpse.getprop("LastDamage")[2][2]);
+    If (attackerserial)
+      var cityname := PlaceName(corpse);
+      CreateBountPaper(attackerserial, cityname);
+      SetCityWanted(attackerserial, cityname);
+      CheckDeathGM(attackerserial, cityname);
+    EndIf
+    DestroyItem(corpse);
+    return;
+  EndIf
+
+  // Soll die NPC-Leiche vernichtet werden?
+  If (corpse.getprop("guardkill") or corpse.getprop(PROP_SUMMONED))
+    DestroyItem(corpse);
+    return;
+  EndIf
+
+  // Dem Corpse bestimmte Dinge (siehe starteqp.cfg) mitgeben
+  If (!GetObjProperty(corpse, "noloot"))
+    MakeLoot(corpse, "");
+  EndIf
+
+  // Wenn Escort-NPC stirbt, Quest abbrechen
+  If (GetNPCConfig(corpse.getprop("npctemplate")).nature == "quest_eskort")
+    If (corpse.getprop("master"))
+      var looser := SystemFindObjectBySerial(corpse.getprop("master"));
+      var quest := corpse.getprop("quest");
+      QuestAbbruch(looser, quest, 1);
+    EndIf
+  EndIf
+
+  // Soll der NPC wiederbelebt und die Leiche vernichtet werden?
+  If (GetObjProperty(corpse, "RiseTimes"))
+    var params := struct{
+      corpse := corpse
+    };
+    Start_ScriptPergon("::misc/rise", params);
+    return;
+
+  // Soll der NPC-Koerper vernichtet werden?
+  ElseIf (GetObjProperty(corpse, "nocorpse"))
+    // Gegenstaende neben den Corpse packen
+    ForEach item in EnumerateItemsInContainer(corpse)
+      // LanternNoLoot davon ausnehmen
+      If (item.objtype != UOBJ_NOLOOTLANTERN)
+        MoveObjectToLocation(item, corpse.x, corpse.y, corpse.z, corpse.realm);
+      EndIf
+    EndForEach
+
+    DestroyItem(corpse); // NPC-Koerper vernichten
+    return;
+  EndIf
+
+  // TODO: "Bezeichnung der NPC-Leiche" nach "GetCorpseConfig" auslagern
+  // Bezeichnung der NPC-Leiche setzen und fuer das Haeuten speichern
+  var myname := corpse.name;
+  myname["A corpse of "] := "";
+
+  SetObjProperty(corpse, "myname", myname);
+  SetName(corpse, "Leiche von "+myname);
+EndProgram
+
+Function SysLogFile(text)
+ // syslog(text);
+  LogToFile("log/death.log", GetDateTimeStr()+text);
+EndFunction
+
+Function CreateBountPaper(attackerserial, cityname)
+  var attacker := SystemFindObjectBySerial(attackerserial);
+  If (attacker.isa(POLCLASS_NPC))
+    return;
+  EndIf
+  If (attacker.cmdlevel < CMDLEVEL_QUESTCHAR)
+    var bountbox := findbountbox(lower(cityname));
+    var paper := CreateItemInContainer(bountbox, BOUNTPAPER, 1);
+    paper.name := "Steckbrief von " + attacker.name;
+    paper.setprop("wanted_Serial", attacker.serial);
+    // 72 RL-Stunden gueltig
+    var timeout_ := ReadGameClock() + 72*60*60;
+    paper.setprop("wanted_timeout", timeout_);
+  EndIf
+EndFunction
+
+Function SetCityWanted(attackerserial, cityname)
+  var attacker := SystemFindObjectBySerial(attackerserial);
+  If (attacker.isa(POLCLASS_NPC))
+    return;
+  EndIf
+  If (attacker.cmdlevel < CMDLEVEL_QUESTCHAR)
+    var wanted := attacker.getprop("city_wanted");
+    If (!wanted)
+      wanted := dictionary;
+    EndIf
+    // Wird er schon gesucht, dann wird es verlaengert (um die Haelfte)
+    If (wanted[lower(CStr(cityname))])
+      If (CInt(wanted[lower(CStr(cityname))]) < ReadGameClock())
+        var newtimeout := CInt(wanted[lower(CStr(cityname))]) + (72*60*60/2);
+        wanted[lower(CStr(cityname))] := newtimeout;
+      Else
+        wanted[lower(CStr(cityname))] := ReadGameClock() + (72*60*60);
+      EndIf
+    Else
+      wanted[lower(CStr(cityname))] := ReadGameClock() + (72*60*60);
+    EndIf
+    attacker.setprop("city_wanted", wanted);
+  EndIf
+EndFunction
+
+Function CheckDeathGM(attackerserial, cityname)
+  var attacker := SystemFindObjectBySerial(attackerserial);
+  If (attacker.cmdlevel >= CMDLEVEL_QUESTCHAR)
+    // Dann sollte man der Stadtkasse mal den Tod spendieren
+    var citycashbox;
+    var stadtkassen := ListItemsNearLocationOfType(2500, 2500, 10, 2500, UOBJ_CITYCASHBOX, REALM_BRITANNIA);
+    ForEach stadtkasse in stadtkassen
+      If (lower(cityname) == lower(PlaceName(stadtkasse)))
+        citycashbox := stadtkasse;
+        break;
+      EndIf
+    EndForEach
+    var gold := citycashbox.getprop("amountgold");
+    gold := StrAddition(gold, TownguardBill);
+    citycashbox.setprop("amountgold", gold);
+  EndIf
+EndFunction
+
+// Domest sind grau deswegen eigentlich keine Reportables,
+// in solchen und ähnlichen Fällen Reportables generieren
+Function CheckCreateReportables(corpse, lastdamagelog)
+  // kuenstliche Reportables erzeugen, falls nicht vorhanden
+  var reportables := GetObjProperty(corpse, "Reportables");
+  If (reportables and !corpse.getprop("#domestiziert"))
+    // Reportables vorhanden und nicht domestiziert
+    return;
+  EndIf
+
+  // Achtung, [2] nicht immer Array, manchmal auch String "Niemand"
+  // siehe scripts/include/vitals.inc
+  var killerserial := CInt(lastdamagelog[2][2]);
+  If (!killerserial)
+    // kein Killer zu finden
+    return;
+  EndIf
+
+  var killer := SystemFindObjectBySerial(
+    killerserial, SYSFIND_SEARCH_OFFLINE_MOBILES
+  );
+  If (!killer.isa(POLCLASS_MOBILE))
+    // interner Kill mit Dummywert?
+    return;
+  EndIf
+
+  If (killer.isa(POLCLASS_NPC))
+    // NPC-Besitzer suchen
+    var master := killer.master;
+    If (!master)
+      var masterserial := killer.getprop("master");
+      If (masterserial)
+        master := SystemFindObjectBySerial(
+          masterserial, SYSFIND_SEARCH_OFFLINE_MOBILES
+        );
+        If (!master.isa(POLCLASS_MOBILE) or master.isa(POLCLASS_NPC))
+          // da hat offenbar inzwischen jemand anders die Serial
+          master := error{errortext := "No mobile"};
+        EndIf
+      EndIf
+    EndIf
+    If (master)
+      // es gibt einen Besitzer
+      reportables := {struct{
+        serial := master.serial
+      }};
+      corpse.setprop("Reportables", reportables);
+    EndIf
+  Else // kein NPC, sondern Spieler
+    reportables := {struct{
+      serial := killerserial
+    }};
+    corpse.setprop("Reportables", reportables);
+  EndIf
+EndFunction

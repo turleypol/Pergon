@@ -1,0 +1,241 @@
+///////////////////////////////////////////////////////////////////////////
+// herd - Bewegt sich in Gruppe kämpft aber nicht sondern flieht nur
+//
+// Author: Turley
+
+include ":main_ai3:include_common/main_ai";
+Const NATURE := NATURE_HERD;
+include ":main_ai3:include_common/main";
+include ":main_ai3:include_common/common";
+include ":main_ai3:include_nature/herd";
+
+// Bis Gruppenverhalten für alle Machbar ist
+include ":main_ai3:include_common/tame";
+include ":main_ai3:include_nature/group"; // Nur hier includen
+
+
+Function OnStart()
+  OnStartGroup();
+EndFunction
+
+Function InitNPC()
+  InitNPC_Common();
+EndFunction
+
+Function InitParamsSpezial(byref mytemplate)
+  // das Leittier schaut weiter voraus
+  params.insert(RANGESENSELEADER, (params[RANGESENSE] + RANGE_LEADER));
+  params.insert(RANGESENSEORIG, params[RANGESENSE]);
+  params.insert(GROUP, mytemplate.group);
+  If (!params[GROUP])
+    params[GROUP] := 0;
+    LogToFile(
+      "::log/ailog.log", "WARNUNG: "+Me.name+" hat keinen group-Eintrag!"
+    );
+  EndIf
+  params.insert(GROUPSIZE, mytemplate.groupsize);
+  If (!params[GROUPSIZE])
+    params[GROUPSIZE] := DEFHERDSIZE;
+    LogToFile(
+      "::log/ailog.log", "WARNUNG: "+Me.name+" hat keinen groupsize-Eintrag!"
+    );
+  EndIf
+  params.insert(GROUPDIST, mytemplate.groupdist);
+  If (!params[GROUPDIST])
+    params[GROUPDIST] := DEFGROUPDIST;
+    LogToFile(
+      "::log/ailog.log", "WARNUNG: "+Me.name+" hat keinen groupdist-Eintrag!"
+    );
+  EndIf
+EndFunction
+
+Function Before_Events()
+  return;
+EndFunction
+
+Function IdleTime()
+  return(IdleTime_Common());
+EndFunction
+
+Function Event_DoubleClicked(byref ev)
+  Event_DoubleClicked_Common(ev);
+EndFunction
+
+Function Event_ItemGiven(byref ev)
+  Event_ItemGiven_Common(ev);
+EndFunction
+
+Function Event_Speech(byref ev)
+  Event_Speech_Common(ev);
+EndFunction
+
+Function Can_Speech_Kill()
+  return (1);
+EndFunction
+
+Function Can_Speech_Guard()
+  return (1);
+EndFunction
+
+Function Event_Engaged(byref ev)
+  If (Event_Engaged_Common(ev))
+    If (!Me.warmode)
+      // nur wenn er nicht schon rennt
+      FleeHerd(ev.source, params[RANGEFOLLOW]);
+    EndIf
+  EndIf
+EndFunction
+
+Function Event_Disengaged(byref ev)
+  Event_Disengaged_Common(ev);
+EndFunction
+
+Function Event_Damaged(byref ev)
+  If (Event_Damaged_Common(ev))
+    If (!Me.warmode)
+      // nur wenn er nicht schon rennt
+      // grazer rennt immer weg
+      FleeHerd(ev.source, params[RANGEFOLLOW]);
+    EndIf
+  EndIf
+EndFunction
+
+Function Event_EnteredArea(byref ev)
+  If (!Event_EnteredArea_Common(ev))
+    return;
+  EndIf
+
+  If (Me.warmode)
+    return;
+  EndIf
+
+  // nur wenn er nicht schon rennt
+  If (ev.source.isa(POLCLASS_NPC))
+    // NPCs ignorieren
+    return;
+  EndIf
+
+  If (GetObjProperty(Me, PROP_FOLLOW))
+    var leadermaster := SystemFindObjectBySerial(
+      GetObjProperty(Me, PROP_FOLLOW)
+    );
+    // vor dem Master des Leader nicht weglaufen
+    If (ev.source.serial != GetObjProperty(leadermaster, PROP_LEADER))
+      // grazer rennt weg
+      FleeHerd(ev.source, params[RANGESENSE]);
+    EndIf
+  ElseIf (Me.getprop(PROP_LEADER))
+    // Tier ist Anfuehrer
+    FleeHerd(ev.source, params[RANGESENSE]);
+  EndIf
+EndFunction
+
+Function Event_LeftArea(byref ev)
+  Event_LeftArea_Common(ev);
+EndFunction
+
+Function Event_StillRun(byref ev)
+  If (Me.warmode)
+    // Herde rennt weg
+    FleeHerd(ev.source, ev.range);
+  Else
+    var ev := struct;
+    ev.+type := EVID_LOOKAROUND;
+    ev.+source := Me;
+    SendEvent(Me, ev);
+  EndIf
+EndFunction
+
+Function Event_LookAround(byref ev)
+  ev.source := Event_LookAround_Common(ev);
+  If (ev.source == -1)
+    MakeMePeaceful(params[RANGESENSE]);
+  ElseIf (ev.source)
+    If ((!ev.source.isa(POLCLASS_NPC)) || (ev.source.warmode))
+      // vor NPCs, die nicht im Warmode sind, wird nicht weggerannt
+      FleeHerd(ev.source, params[RANGESENSE]);
+    EndIf
+  EndIf
+EndFunction
+
+Function Event_Follow(byref ev)
+  Event_Follow_Common(ev);
+EndFunction
+
+Function Event_AskJoin(byref ev)
+  Event_AskJoin_Common(ev);
+EndFunction
+
+Function Event_GrantJoin(byref ev)
+  Event_GrantJoin_Common(ev);
+EndFunction
+
+Function Event_RefuseJoin(byref ev)
+  Event_RefuseJoin_Common(ev);
+EndFunction
+
+Function Event_Walk(byref ev)
+  Event_Walk_Common(ev);
+EndFunction
+
+Function Event_Peacemade(byref ev)
+  Event_Peacemade_Common(ev);
+  MakeMePeaceful(params[RANGESENSE]);
+EndFunction
+
+Function Event_Guards_Help(byref ev)
+  Event_Guards_Help_Common(ev);
+EndFunction
+
+Function Event_Cast_Wait(byref ev)
+  If (!Me.warmode)  // Kämpf ich noch?
+    params[FIRSTCAST] := 1;
+    return;
+  EndIf
+
+  // Hinkt wegen Lookaround immer hinterher
+  If (Me.getprop(PROP_OPPONENT))
+    ev.source := SystemFindObjectBySerial(Me.getprop(PROP_OPPONENT));
+    If (!ev.source)
+      // deswegen Opp aus CProp holen
+      params[FIRSTCAST] := 1;
+      return;
+    EndIf
+    Event_Cast_Wait_Common(ev);
+  Else
+    params[FIRSTCAST] := 1;
+  EndIf
+EndFunction
+
+Function Event_Quest_Waypoint(byref ev)
+  return;
+  ev := ev;
+EndFunction
+
+Function Event_Quest_Speech(byref ev)
+  return;
+  ev := ev;
+EndFunction
+
+Function Event_Self_Kill(byref ev)
+  return;
+  ev := ev;
+EndFunction
+
+Function Event_Quest_Nemesis(byref ev)
+  return;
+  ev := ev;
+EndFunction
+
+Function Event_Reflection(byref ev)
+	Event_Reflection_Common(ev);
+EndFunction
+
+Function OnIdle()
+  OnIdleHerd();
+EndFunction
+
+Function ValidEnemy_Override(byref mob, byref hostile)
+  return (ValidEnemy_Override_Common(mob));
+  hostile := hostile;
+EndFunction

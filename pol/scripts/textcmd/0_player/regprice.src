@@ -1,0 +1,73 @@
+//////////////////////////////////////////////////////////////////////////
+// TextCMD regprice - Listet die Summe alle Reagenzien im Backpack auf
+//
+//     Author: pJOTTR (thx to Shinigami`s reg.scr)
+//     eMail:
+
+//////////////////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+// 2002/01/02 Shinigami: ReWrite
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+include "include/itemnpc";
+include "include/msgs";
+include "include/objtype";
+include "include/server";
+use uo;
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+var REAGENZIEN := {
+    UOBJ_ALRAUNE, UOBJ_BIMSSTEIN, UOBJ_BLACKROCK, UOBJ_BLUTEGEL,
+    UOBJ_BLUTFLAKON, UOBJ_BLUTMOOS, UOBJ_DAEMONENKNOCHEN,
+    UOBJ_DRACHENBLUT, UOBJ_FEUERSTEIN, UOBJ_FLEDERMAUSFLUEGEL,
+    UOBJ_GINSENG, UOBJ_HUMUS, UOBJ_KNOBLAUCH, UOBJ_KNOCHEN,
+    UOBJ_MOLCHAUGE, UOBJ_MORCHEL, UOBJ_OBSIDIAN, UOBJ_ROHEISEN,
+    UOBJ_SCHLANGENSCHUPPE, UOBJ_SCHWARZE_PERLE, UOBJ_SCHWEFELASCHE,
+    UOBJ_SPINNENSEIDE, UOBJ_TOLLKIRSCHE, UOBJ_TORF, UOBJ_VULKANASCHE,
+    UOBJ_WURZEL, UOBJ_WYRMHERZ
+};
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_RegPrice(who)
+  SendSysMessagePergon(who, "Wählt einen Container!");
+
+  var use_on := target(who);
+  If (!use_on)
+    SendSysMessagePergon(who, "Zielen abgebrochen");
+    return;
+  EndIf
+
+  If (!AccessiblePergon(who, use_on))
+    SendSysMessagePergon(who, "Ihr kommt da nicht ran!");
+    return;
+  EndIf
+
+  If (!use_on.isa(POLCLASS_CONTAINER))
+    SendSysMessagePergon(who, "Das ist kein zulässiger Container!");
+    return;
+  EndIf
+
+  var reagsumme := 0;
+
+  ForEach item in EnumerateItemsInContainer(use_on) //Anzahl der Items ermitteln und innerhalb dieses Containers arbeiten
+    If (item.objtype in REAGENZIEN) //vergleich mit inhalt des kontainers
+      reagsumme += (item.sellprice * item.amount);
+    EndIf
+    SleepMS(2);
+  EndForEach
+
+  If (reagsumme)
+    SendSysMessagePergon(who, "Der Wert der Reagenzien in diesem Container beträgt " + reagsumme + " Gold.");
+  Else
+    SendSysMessagePergon(who, "Es sind keine Reagenzien in diesem Container!");
+  EndIf
+EndProgram

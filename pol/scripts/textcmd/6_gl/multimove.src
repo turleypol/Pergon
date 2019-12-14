@@ -1,0 +1,123 @@
+//////////////////////////////////////////////////////////////////////////////
+//
+//   MultiMove - Move all Objects (incl. Multi) from Source to Dest Location
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+//////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/errormsg";
+Include "include/msgs";
+
+///////////////
+// Konstanten
+///////////////
+
+Const ERRORMSGS_GERMAN:=
+  "{}MultiMove: MoveArea aktiviert..."+
+  "{}MultiMove: MoveArea beendet."+
+  "{}X1 muss kleiner-gleich X2 bzw. Y1 muss kleiner-gleich Y2 sein!"+
+  "{}%% darf nur 0 bis 4095 sein!"+
+  "{}%% darf nur 0 bis 6143 sein!"+
+  "{}Sie muessen 5 Paramter angeben: X1 Y1 X2 Y2 MultiSerial"+
+  "{}Die Objekte wurden verschoben.";
+Const ERRORMSGS_ENGLISH:=
+  "{}MultiMove: MoveArea started..."+
+  "{}MultiMove: MoveArea done."+
+  "{}X1 must be lower/equal X2 and Y1 must be lower/equal Y2!"+
+  "{}%% must be between 0 and 4095!"+
+  "{}%% must be between 0 and 6143!"+
+  "{}U've to enter 5 Paramters: X1 Y1 X2 Y2 MultiSerial"+
+  "{}Objects have been moved.";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_MultiMove(who, params)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  params:=SplitWords(params);
+  If (params.size()==4)
+    If ((0<=CInt(params[1])) And (CInt(params[1])<6144))
+      If ((0<=CInt(params[2])) And (CInt(params[2])<4096))
+        If ((0<=CInt(params[3])) And (CInt(params[3])<6144))
+          If ((0<=CInt(params[4])) And (CInt(params[4])<4096))
+            If ((CInt(params[1])<=CInt(params[3])) And (CInt(params[2])<=CInt(params[4])))
+              SendSysMessagePergon(who, "Wählt bitte einen Quell-Bezugspunkt !");
+
+              Var quellbezug:=Target(who);
+              If (quellbezug)
+                quellbezug:={quellbezug.x, quellbezug.y, quellbezug.z};
+
+                SendSysMessagePergon(who, "Wählt bitte einen Ziel-Bezugspunkt !");
+
+                Var zielbezug:=Target(who);
+                If (zielbezug)
+                  zielbezug:={zielbezug.x, zielbezug.y, zielbezug.z};
+
+                  PrintErrorMessage(1);
+                 // MoveArea(who, quellbezug, zielbezug, CInt(params[1]), CInt(params[2]), CInt(params[3]), CInt(params[4]));
+                  PrintErrorMessage(2);
+                Else
+                  SendSysMessagePergon(who, "Abbruch", "Abort");
+                EndIf
+              Else
+                SendSysMessagePergon(who, "Abbruch", "Abort");
+              EndIf
+            Else
+              PrintErrorMessage(3, {}, who);
+            EndIf
+          Else
+            PrintErrorMessage(4, {"Y2"}, who);
+          EndIf
+        Else
+          PrintErrorMessage(5, {"X2"}, who);
+        EndIf
+      Else
+        PrintErrorMessage(4, {"Y1"}, who);
+      EndIf
+    Else
+      PrintErrorMessage(5, {"X1"}, who);
+    EndIf
+  Else
+    PrintErrorMessage(6, {}, who);
+  EndIf
+EndProgram
+
+////////////////////////////////////
+// MoveArea - Verschiebt die Items
+////////////////////////////////////
+
+Function MoveArea(who, quellbezug, zielbezug, x1, y1, x2, y2, multiserial)
+  Var deltax:=zielbezug[1]-quellbezug[1];
+  Var deltay:=zielbezug[2]-quellbezug[2];
+  Var deltaz:=zielbezug[3]-quellbezug[3];
+  Var movable;
+
+  ForEach object in ListObjectsInBox(x1, y1, -128, x2, y2, 127,who.realm)
+    If (object.isa(POLCLASS_ITEM))
+      MoveObjectToLocation(object, object.x+deltax, object.y+deltay, object.z+deltaz, object.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+    ElseIf (object.isa(POLCLASS_MOBILE))
+      movable:=object.frozen;
+      object.frozen:=0;
+      MoveObjectToLocation(object, object.x+deltax, object.y+deltay, object.z+deltaz, object.realm, MOVEOBJECT_FORCELOCATION);
+      object.frozen:=movable;
+    EndIf
+  EndForEach
+
+  PrintErrorMessage(7, {}, who);
+EndFunction

@@ -1,0 +1,73 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Artefakt-Schneeball
+//
+// Eisball wird auf Ziel geworfen und macht leichten Eisschaden
+
+include ":newspells:magicpergon";
+include ":newspells:resistance";
+include "common";
+include "include/msgs";
+include "include/packets";
+use cfgfile;
+use os;
+use uo;
+use util;
+
+Program IceBall(who, item)
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Auf wen wollt ihr den Eisball werfen?",
+    "Where do you want to throw the ice ball?"
+  );
+
+  var victim := Target(who);
+  If (!victim)
+    SendSysMessagePergon(who, "Zielen abgebrochen");
+    return;
+  ElseIf (Distance(who, victim) > 10)
+    SendSysMessagePergon(who, "So weit fliegen Eisbälle nicht!");
+    return;
+  ElseIf (victim.hidden)
+    SendSysMessagePergon(who, "Ihr seht euer Ziel nicht mehr!");
+    return;
+  ElseIf (!CheckLineOfSight(who, victim))
+    SendSysMessagePergon(who, "Ihr könnt Euer Opfer nicht sehen.");
+    return;
+  ElseIf (!victim.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(who,
+      "Ihr müsst den Eisball schon auf etwas Lebendes werfen",
+      "You have to throw the ice ball at someone alive"
+    );
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var delay := artefact.delay;
+  var damage := SplitWords(GetConfigString(artefact, "Damage"));
+  var minDamage := CInt(damage[1]);
+  var maxDamage := CInt(damage[3]);
+
+  var resist := 1 - CDbl(GetResistance(victim, "water"));
+  var rawDamage := RandomIntMinMax(minDamage, 1+maxDamage) * resist;
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", (ReadGameClock() + delay));
+
+  TurnCharTo(who, victim);
+  PerformAction(who, ANIM_ATTACK_1HAND_WIDE);
+  SubtractAmount(item,1);
+  SleepMS(700);
+  PlayMovingEffectXYZ(
+    who.x, who.y, who.z+15,
+    victim.x, victim.y, victim.z,
+    0x36a0, 8, 0, 0, who.realm
+  );
+  PlaySoundEffect(victim, SFX_1D6);
+  ApplyRawDamagePergon(victim, rawDamage);
+EndProgram
+
+// vim: sw=2 sts=2

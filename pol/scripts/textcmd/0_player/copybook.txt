@@ -1,0 +1,7 @@
+<h3 id="copybook">copybook</h3>
+
+<h4>Parameter: <kbd>w</kbd> oder keine</h4>
+
+<p>Wählbares Buch kopieren. Mit Parameter wird das Buch
+veränderbar, ansonsten ist es schreibgeschützt. Als Bibliothekar
+oder Seer (und höher) muß das Buch nicht bezahlt werden.</p>

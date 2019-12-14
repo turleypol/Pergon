@@ -1,0 +1,407 @@
+///////////////////////////////////////////////////////////////////////////
+// LockPicking - Schloesser knacken
+
+use attributes;
+use os;
+use uo;
+use util;
+
+include ":forensicevaluation:forensic";
+include ":housing:house";
+include "include/modifyskill";
+include "include/npc";
+
+Program LockPicking(who, item)
+  If (GetObjProperty(who, "#UsesSkill") > ReadGameClock())
+    SendSysMessagePergon(who,
+      "Ihr müsst noch ein wenig warten, bevor Ihr wieder "+
+      "Schlösser knacken könnt."
+    );
+    return 0;
+  EndIf
+  // Delay bis zur nächsten Nutzung eines Skills, wird relativ hoch
+  // gesetzt aber am Skillende entfernt, soll mehrfaches gleichzeitiges
+  // Schlossknacken verhindern
+  SetObjProperty(who, "#UsesSkill", ReadGameClock() + 30);
+
+  If (
+    // Irgendwas in den Haenden?
+    GetEquipmentByLayer(who, LAYER_HAND1) or
+    GetEquipmentByLayer(who, LAYER_HAND2)
+  )
+    SendSysMessagePergon(who,
+      "Ihr braucht freie Hände dafür!", "You need free hands for it!"
+    );
+    EraseObjProperty(who, "#UsesSkill");
+    return;
+  EndIf
+
+  If (!item) // Aufruf via SkillWin
+    SendSysMessagePergon(who,
+      "Welchen Dietrich wollt Ihr verwenden?",
+      "Which lockpick do you want to use?"
+    );
+
+    item := Target(who);
+    If (!item)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      EraseObjProperty(who, "#UsesSkill");
+      return;
+    EndIf
+
+    If (!item.isa(POLCLASS_ITEM) || (item.objtype <> 0x14fb))
+      SendSysMessagePergon(who,
+        "Dies ist kein Dietrich!", "That's no lockpick!"
+      );
+      EraseObjProperty(who, "#UsesSkill");
+      return;
+    EndIf
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Was wollt Ihr damit öffnen?", "What do you want to open?"
+  );
+
+  var tgt := Target(who, TGTOPT_CHECK_LOS);
+  If (!tgt)
+    SendSysMessagePergon(who, "Kein Ziel", "No target");
+    EraseObjProperty(who, "#UsesSkill");
+    return;
+  EndIf
+
+  // zwischen den Versuchen ne kleine Pause
+  If (GetObjProperty(tgt, "#LastLockPick"))
+    If (GetObjProperty(tgt, "#LastLockPick") > ReadGameClock())
+      SendSysMessagePergon(who,
+        "Ihr müsst noch etwas Geduld haben.",
+        "You must wait a little while."
+      );
+      EraseObjProperty(who, "#UsesSkill");
+      return;
+    EndIf
+  EndIf
+
+  // Zu weit weg sollte man nicht stehen
+  If (Distance(who, tgt) > 1)
+    SendSysMessagePergon(who,
+      "Ihr müsst näher herantreten.", "You have to stand closer to it."
+    );
+    EraseObjProperty(who, "#UsesSkill");
+    return;
+  EndIf
+
+  // weitere Checks zum Objekt der Begierde
+  If (!AllowedToLockpick(who, tgt))
+    EraseObjProperty(who, "#UsesSkill");
+    return;
+  EndIf
+
+  // ein paar Werte noch berechnen
+
+  // Geschicklichkeit setzt den geforderten Skill runter
+  var bonus := CInt(GetDexPergon(who)*0.10);
+
+  // wie schwer ist das Schloss zu knacken
+  var difficult;
+  If (GetObjProperty(tgt, "LockDifficulty"))
+    difficult := CInt(GetObjProperty(tgt, "LockDifficulty"));
+  Else
+    // impossible (or buggy) locks
+    difficult := 70 + RandomInt(61);
+  EndIf
+
+  var knackskill := Max(0, difficult - bonus);
+
+  // Werkzeug-Eigenschaften auslesen
+  var dietrich := GetPropertyItem(item);
+
+  // und auf gehts
+
+  If (who.hidden) // Um unnoetige Events zu sparen...
+    who.hidden := 0;
+  EndIf
+
+  PrintTextAbovePrivatePergon(who,
+    "Ihr macht Euch ans Werk ...", "You start to break in ...", who
+  );
+  PlaySoundEffect(who, 0x242);
+
+  If (tgt.isa(POLCLASS_DOOR))
+    // an Tueren ein paar Fingerabdruecke hinterlassen
+    SetFingerPrint(who, tgt);
+  EndIf
+
+  var dummy := dietrich.hp*100.0/dietrich.maxhporig;
+  If ((dummy == 0) || (!item.hp))
+    If (RandomInt(20) < 1)
+      // normale Dietriche gehn mit gewisser Wahrscheinlichkeit auch kaputt
+      Sleep(6);
+      SendSysMessagePergon(who,
+        "Euer Dietrich ist zerbrochen.", "Your lockpick broke."
+      );
+      SubtractAmount(item, 1);
+      EraseObjProperty(who, "#UsesSkill");
+      return;
+    EndIf
+  ElseIf (dummy < 20)
+    SendSysMessagePergon(who,
+      "Eurer Dietrich ist kaum noch zu gebrauchen.",
+      "Your lockpick is hardly usable."
+    );
+  ElseIf (dummy < 50)
+    SendSysMessagePergon(who,
+      "Eurer Dietrich ist verbogen.", "Your lockpick is slightly used."
+    );
+  EndIf
+
+  // Bei 60% Skill kaum Delay mehr
+  var delay := Max(
+    CInt(10-(GetSkillPergon(who, SKILLID_SCHLOESSER_KNACK)/6)) + 5,
+    6
+  );
+  Sleep(delay); // 'n bisschen warten
+
+  // noch nah genug?
+  If (Distance(who, tgt) > 1)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    EraseObjProperty(who, "#UsesSkill");
+    return;
+  EndIf
+
+  SetObjProperty(tgt, "#LastLockPick", ReadGameClock() + 15);
+
+  var points := CInt(
+    GetSkillDefaultPoints(SKILLID_SCHLOESSER_KNACK) * 2.5) +
+    RandomInt(GetSkillPergon(who, SKILLID_SCHLOESSER_KNACK)
+  );
+
+  // Hab ich den SkillCheck bestanden?
+  If (CheckSkillPergon(who, SKILLID_SCHLOESSER_KNACK, knackskill, points))
+    PrintTextAbovePrivatePergon(who, "... geschafft!", "... done!", who);
+
+    If (tgt.isa(POLCLASS_DOOR))
+      // Script entkoppeln und 15 Minuten ruhen lassen; danach faellt
+      // Tuer wieder ins Schloss sofern selbige nicht bereits mal
+      // aufge-/verschlossen wurde
+      Detach();
+      EraseObjProperty(who, "#UsesSkill");
+
+      // siehe Fkt. IsLocked in der doors.inc
+      SetObjProperty(tgt, "#LockPicked", 1);
+
+      Sleep(15*60);
+      EraseObjProperty(tgt, "#LockPicked");
+    Else
+      // ist wohl ein Container
+      tgt.locked := 0;
+    EndIf
+    EraseObjProperty(who, "#UsesSkill");
+    return;
+  EndIf
+
+  // Schlossknacken fehlgeschlagen
+  If (RandomInt(100) <= 25)
+    // Trostpreis
+    AwardRawPointsPergon(who, SKILLID_SCHLOESSER_KNACK, RandomInt(20)+5);
+  EndIf
+
+  SetWerkzeugSchaden(who, item,
+    "Der Dietrich hat gelitten!",
+    "Der Dietrich ist stark beschädigt!",
+    "Der Dietrich ist zerbrochen!"
+  );
+
+  // mich selber informieren, dass es schiefgelaufen ist ...
+  SendSysMessagePergon(who,
+    "Euer Versuch ging daneben.", "Your opening attempt failed.",
+    _DEFAULT_TEXT_FONT, MSG_COLOR_FAIL
+  );
+  // FIXME: bei eigenen Schloessern nicht machen
+  // Schwups, ich bin kriminell ... (fuer eine gewisse Zeit)
+  who.setcriminal(1);
+
+  // Arschkarte
+  TellOtherPlayers(who);
+  // Wachen alarmieren
+  ForEach mob in (ListMobilesNearLocation(
+      who.x, who.y, who.z, 12, who.realm
+  ));
+    If (Lower(mob.npctemplate)["townguard"])
+      var ev := struct{
+        type   := SYSEVENT_ENGAGED,
+        source := who
+      };
+      SendEvent(mob, ev);
+      PrintTextAbovePergon(who, mob, "Ahaa! Ein Einbrecher!");
+    EndIf
+  EndForEach
+
+  Detach();
+
+  // 'n paar Strafsekunden ...
+  Sleep(6+RandomInt(4));
+  EraseObjProperty(who, "#UsesSkill");
+EndProgram
+
+Function AllowedToLockpick(who, tgt) // {{{
+  // Test, ob target verschlossen ist
+  If ((!tgt.locked) or GetObjProperty(tgt, "#LockPicked"))
+    // open things cannot be unlocked
+    SendSysMessagePergon(who,
+      "Das ist nicht abgeschlossen.", "That's not locked."
+    );
+    return 0;
+  EndIf
+
+  // vom GM verschlossene Tueren haben verschlossen zu bleiben,
+  // ebenso Hauscontainer
+  If ((GetObjProperty(tgt, "gmlocked")) || (tgt.usescript["securecont"]))
+    SendSysMessagePergon(who,
+      "So sehr Ihr Euch auch bemüht, es ist vergebens.",
+      "It's futile, you cannot open that.",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+    );
+    return 0;
+  EndIf
+
+  // Hauseinbruchschecks
+  If (!tgt.isa(POLCLASS_DOOR))
+    // Einbrechen kann man nur durch Tueren
+    return 1;
+  EndIf
+
+  // traegt jemand herum, gehoert also nicht zu einem Haus
+  var topcontainer := GetTopContainer(tgt);
+  If (topcontainer.isa(POLCLASS_MOBILE))
+    return 1;
+  EndIf
+
+  // Teile, die zu einem Haus gehoeren, sind immer fest
+  If (tgt.movable or topcontainer.movable)
+    return 1;
+  EndIf
+
+  // von Spieler festgemacht, gehoert ebenfalls nicht zu einem Haus
+  If (tgt.getprop(PROP_HS_C_FIXED))
+    return 1;
+  EndIf
+
+  // ist gar nicht in einem Haus?
+  var house := GetHouseContainingObject(tgt);
+  If (!house)
+    return 1;
+  EndIf
+
+  // doch in einem Haus
+  var ownerserial := GetObjProperty(house, PROP_HS_C_OWNER);
+  var owner := SystemFindObjectBySerial(
+    ownerserial, SYSFIND_SEARCH_OFFLINE_MOBILES
+  );
+  If (!owner)
+    // aber das Haus hat keinen Besitzer (mehr)
+    SendSysMessagePergon(who,
+      "Das Haus ist verwaist ...", "That house has no owner ..."
+    );
+    return 1;
+  EndIf
+
+  If (owner.connected)
+    // Besitzer ist anwesend
+    return 1;
+  EndIf
+
+  var guild := FindGuild(CInt(house.getprop("#guild_id")));
+  If (guild)
+    var guildleaders := guild.getprop(PROP_GUILD_LEADERS);
+    If (guildleaders)
+      ForEach serial in (guildleaders)
+        var leader := SystemFindObjectBySerial(serial);
+        If (leader and leader.connected)
+          return 1;
+        EndIf
+      EndForEach
+    EndIf
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Ihr dürft nur einbrechen, während der Eigentümer online ist!",
+    "You're only allowed to break in while the house owner is online!",
+    _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+  );
+  return 0;
+EndFunction // }}}
+
+Function TellOtherPlayers(who) // {{{
+  var range := Max(
+    // 'n besseres Schleichen verhindert zu lautes Rumgebruelle
+    CInt(25-(GetSkillPergon(who, SKILLID_SCHLEICHEN)/10.0)),
+    // aber einige sollen es schon mitbekommen
+    5
+  );
+  // Alle Spieler ringsum informieren
+  ForEach mobile in (ListMobilesNearLocation(
+      who.x, who.y, who.z, range, who.realm
+  ))
+    SleepMs(2);
+    If (mobile.isa(POLCLASS_NPC) or (mobile.serial == who.serial))
+      // NPCs oder sich selbst was zu "erzählen" bringt nix
+      continue;
+    EndIf
+
+    // tote Spione?
+    If (mobile.dead)
+      continue;
+    EndIf
+
+    var dirg, dire;
+    Get_Direction(who, mobile, dirg, dire);
+    If (dirg == "arschnah")
+      SendSysMessagePergon(mobile,
+        "Ihr bemerkt, wie "+who.name+" ein Schloss öffnen will.",
+        "You notice "+who.name+" trying to open a lock.",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+      );
+    Else
+      SendSysMessagePergon(mobile,
+        "Ihr bemerkt ein verdächtiges Geräusch aus "+dirg+" Richtung!",
+        "You notice a suspicious noise coming from "+dire,
+        _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+      );
+    EndIf
+  EndForEach
+
+  If (who.hidden) // Um unnoetige Events zu sparen...
+    who.hidden := 0; // Und das wars mit der Tarnung...
+  EndIf
+EndFunction // }}}
+
+Function Get_Direction(mobile, who, ByRef thedescg, ByRef thedesce) // {{{
+  If (Distance(mobile, who) <= 1)
+    thedescg := "arschnah";
+    thedesce := "very very close";
+    return;
+  EndIf
+
+  Case (GetFacing(who.x,who.y,mobile.x,mobile.y))
+  0:       thedescg := "nördlicher";
+           thedesce := "north";
+  1:       thedescg := "nordöstlicher";
+           thedesce := "northeast";
+  2:       thedescg := "östlicher";
+           thedesce := "east";
+  3:       thedescg := "südöstlicher";
+           thedesce := "southeast";
+  4:       thedescg := "südlicher";
+           thedesce := "south";
+  5:       thedescg := "südwestlicher";
+           thedesce := "southwest";
+  6:       thedescg := "westlicher";
+           thedesce := "west";
+  7:       thedescg := "nordwestlicher";
+           thedesce := "northwest";
+  default: thedescg := "irgendeiner";
+           thedesce := "anywhere";
+  EndCase
+EndFunction // }}}
+
+// vim: sw=2 sts=2

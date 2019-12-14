@@ -1,0 +1,36 @@
+//
+// Zeigt die Oeffnungs- und Ladenschlusszeiten von Haendler-Npcs an
+//
+//  18.10.2005 Fraggulus: .GetClose und .GetOpen zu .GetOpenClose vereint
+//
+
+
+use uo;
+
+Include "include/msgs";
+
+Program getopenclose(who)
+  SendSysMessagePergon(who, "Wessen Öffnungszeiten sollen angezeigt werden?",
+                            "Whose opening time shall be shown?");
+
+  Var ziel := Target(who, TGTOPT_NOCHECK_LOS);
+
+  If (ziel)
+    Var close := GetObjProperty(ziel, "close");
+    Var open  := GetObjProperty(ziel, "open");
+
+    If (!open)
+      SendSysMessagePergon(who, "Eine Öffnungszeit existiert nicht!", "There is no opening time!");
+    Else
+      SendSysMessagePergon(who, "Öffnungszeit: " + open);
+    EndIf
+
+    If (!close)
+      SendSysMessagePergon(who, "Eine Ladenschlusszeit existieren nicht!", "There is no closing time!");
+    Else
+      SendSysMessagePergon(who, "Ladenschlusszeit: " + close);
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

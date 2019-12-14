@@ -1,0 +1,52 @@
+/////////////////////////////////////////////////////////////////
+//
+//   TextCMD Ban - Account eines Spielern deaktivieren (bannen)
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+/////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/string";
+Include "include/msgs";
+Include "include/pergonutil";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_Ban(who)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  Var buchstabe:=ChooseAccountBuchstabe(who, FillInAccountBuchstaben(SHOW_NOTBANNED)); // Einen Anfangsbuchstaben auswaehlen
+  If (buchstabe<>-1)
+    Var accountname:=ChooseAccountName(who, FillInAccountNames(buchstabe,SHOW_NOTBANNED)); // Einen Account auswaehlen
+    If (accountname)
+      Var account:=FindAccount(accountname);
+      If (account)
+        If (!account.banned)
+          account.ban();
+
+          SendSysMessagePergon(who, "Der Account '"+accountname+"' wurde gebannt.");
+          SysLog("BAN! "+who.name+" ["+who.acctname+"] hat "+accountname+" von Server gebannt!");
+        Else
+          SendSysMessagePergon(who, "Der Account '"+accountname+"' war bereits gebannt.");
+        EndIf
+      Else
+        SysLog("'"+accountname+"' gibt es nicht !");
+      EndIf
+    EndIf
+  EndIf
+EndProgram

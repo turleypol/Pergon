@@ -1,0 +1,401 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Forestscript - Wälder
+//
+//  Dieses Script soll mal, wenn es denn funktioniert, Wälder dynamisch wachsen lassen.
+//
+//  2005.12.17  Unforgiven: Erstanlage
+//  2006.02.07  Unforgiven:   Mischwälder
+//  2006.02.16  Unforgiven:   Bei Veränderung am Globalprop wird der Spawnvorgang abgebrochen
+//  2006.03.07  Unforgiven:     Status "3" der globalen Variablen "forestscript" pausiert das Script
+//  2006.04.27  Turley:     Kleiner Fehler behoben bei Parametern (debug.log)
+//  23.02.07    Turley:     Setserials werden per CProp gespeichert ->keine Planlose Änderung der CProps über ChangePropertySet
+//                          ->Geschwindigkeit^2 oder so
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use math;
+use util;
+use os;
+use uo;
+
+Include "include/objtype";
+Include "include/msgs";
+Include "include/itemnpc";
+Include "include/set";
+
+
+Program Forestscript ()
+
+    var dichte ;
+    var ax1;
+    var ay1;
+    var ax2;
+    var ay2;
+    var arealm;
+    var alter;    // Alter in Minuten
+    var wood ;
+    var baumtyp1;
+    var baumtyp2 := 0;
+    var baumvar2 := 0;
+    var name :="";
+    var where := struct;
+
+    Var pause ;
+    var forest,forest2;
+
+    var anzahl;
+    var wahrscheinlichkeit ;
+
+    var x1;
+    var y1;
+    var ttl;
+
+while (1)
+
+  while (GetGlobalProperty( "forest" ).size() < 1)
+     sleep(20 );
+  EndWhile
+
+  pause := 10 + randomint(10) ;
+  forest:= GetGlobalProperty( "forest" );
+  forest2:= forest;
+
+  foreach area in forest
+
+    Pause_forest(10);
+
+    If( !(GetGlobalProperty("forest") == forest2 ))
+       // Syslog("Wald wurde verändert, Abbruch spawning");
+       Break;
+    EndIf
+
+    name :=   (area[1]);
+    dichte := CInt(area[2]);
+    ax1 :=    CInt(area[3][1]);
+    ay1 :=    CInt(area[4]);
+    ax2 :=    CInt(area[5]);
+    ay2 :=    CInt(area[6]);
+    arealm:=  area[3][2];
+    alter :=  CInt(area[7]) * 60;     // Alter in Minuten
+    wood :=   CInt(area[8]);
+    baumtyp1:=     area[9];
+    if ( area[11] )
+       baumtyp2:=     area[10];     // Mischwald baumtyp 2
+    Else
+       baumvar2:= area[9] ;
+    EndIf
+    if ( area[11] )
+       baumvar2:=  area[11];      // Prozentzahl Baum 2
+    Else
+       baumvar2:= 0 ;
+    EndIf
+
+    where := struct ; where.+x ; where.+y ; where.+z ; where.+realm;
+
+    area   := ( ax2-ax1 ) * (ay2 - aY1 ) ;
+    anzahl := ObjectCount ( ax1 , ay1, ax2, ay2, arealm);
+    wahrscheinlichkeit := CInt( dichte - CInt (( CDbl(anzahl) / CDbl(area) ) * 100) ) ;
+
+//    syslog( "Gebiet: " + name );
+
+    x1 := ax1;
+    y1 := ay1;
+
+    For ( x1; x1 <= ax2; x1 += 1)
+       y1 := ay1 ;
+       For ( y1; y1 <= ay2; y1 += 1)
+          var z := GetMapInfo( x1, y1,arealm);
+          If (!z.z)
+            z.z:=1;
+          Else
+            z.z:=z.z+1;
+          EndIf
+          where.x := x1  ;
+          where.y := y1  ;
+          where.z := z.z ;
+          where.realm:=arealm;
+          sleepms( pause );
+          If ( ! ItemAtLocation( x1, y1, z.z ,arealm) )
+             If ( randomint( 100 ) < wahrscheinlichkeit )
+
+                var serial := makeset( where , "kleinerbaum",1);
+                If (! serial)
+                   syslog ("irgendwas ist schief gegangen");
+                Else
+                  Var items:={};
+                  ttl := CInt ( Cint(ReadGameClock()) + randomint(alter) + CInt(alter/2) );
+                  ForEach slave in (serial[2])
+                    slave.setprop("evo", 1);
+                    slave.setprop("fserial", serial[1]);
+                    slave.setprop("set", "kleinerbaum");
+                    slave.setprop("script", "forestscript");
+                    slave.setprop("ttl", ttl);
+                    items.append(slave.serial);
+                  EndForEach
+                  var master:=SystemFindObjectBySerial(serial[1]);
+                  master.setprop("items",items);
+                EndIf
+             EndIf
+          EndIf
+       EndFor
+    EndFor
+
+    CheckAge( ax1 , ay1, ax2, ay2, arealm, alter, wood, baumtyp1, baumtyp2, baumvar2);
+  EndForEach
+
+
+  Pause_forest(pause) ;  // macht eine zufällig lange Pause
+
+
+endwhile
+
+EndProgram
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function Pause_forest
+//
+//  Macht Pause bis
+//    a) Zeit vorbei
+//    b) es kein anderes Script gibt, das auf die GlobalProp zugreift
+//
+/////////////////////////////////////////////////////////////////////////////
+
+Function Pause_forest(pause)
+
+   While ( CInt(GetGlobalProperty("forestscript")) > 1 )
+     Sleep (10);
+   EndWhile
+
+   SetGlobalProperty("forestscript", 1);
+   sleep (pause) ;
+   While ( CInt(GetGlobalProperty("forestscript"))  > 1 )
+     Sleep (10);
+   EndWhile
+   SetGlobalProperty("forestscript", 0);
+
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function ObjectCount
+//
+//  Zählt Anzahl der Objekte in dem Gebiet X1,y1:x2,y2 auf Maphöhe
+//
+/////////////////////////////////////////////////////////////////////////////
+
+Function ObjectCount (x1 , y1, x2, y2, realm)
+var anzahl :=0 ;
+var den := 0 ;
+var z:={};
+var yg := y1 ;
+
+for ( x1 ; x1 <= x2 ; x1 += 1 )
+   for ( y1  ; y1 <= y2 ; y1 += 1 )
+     den := 0 ;
+     z := GetMapInfo( x1, y1, realm);
+     If (!z.z)
+       z.z:=1;
+     Else
+       z.z:=z.z+1;
+     EndIf
+     foreach item in ListItemsNearLocation( x1, y1, z.z , 1,realm)
+        if ( (item.x == x1) && (item.y == y1) )
+           If (GetObjProperty(item, "evo" ) < 3 )
+              den := 1;
+              break ;
+           EndIf
+        EndIf
+     EndForEach
+     sleepms( 2);
+     anzahl += den ;
+   EndFor
+   y1 := yg ;
+EndFor
+
+Return anzahl;
+
+EndFunction
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function ItemAtLocation
+//
+//  Gibt 1 zurück, wenn sich ein Item an angegebener Koordinate befindet
+//
+/////////////////////////////////////////////////////////////////////////////
+
+Function ItemAtLocation( x, y, z ,realm)
+
+var res   := 0 ;
+var pause := 5 ;
+
+      ForEach item in ListItemsNearLocation( x, y, z , 1, realm)
+         If ( (item.x == x) && (item.y == y) )
+            If (GetObjProperty(item, "evo" ) < 3 )
+               sleepms( pause );
+               res := 1 ;
+               Return res ;
+            EndIf
+         EndIf
+      EndForEach
+Return res ;
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function CheckAge
+//
+//  überprüft livetime mit ReadGameClock() und Leitet je nach evolutionsstufe weitere Massnahmen ein
+//
+/////////////////////////////////////////////////////////////////////////////
+
+Function CheckAge( x1 , y1, x2, y2, realm, alter, wood, baumtyp1, baumtyp2, baumvar2)
+
+  var pause := 500 ;
+
+  ForEach item in ListObjectsInBox(x1, y1, -10, x2, y2, +10, realm)
+     sleepms( pause );
+     If (GetObjProperty(item , "script" ) == "forestscript")
+       If (ReadGameClock() > GetObjProperty(item, "ttl" ))
+         Case ( GetObjProperty(item, "evo" ))
+           1: if ( randomint(100) < CInt(baumvar2) )
+                MakeTree   (item, baumtyp2, alter, wood) ;
+//              syslog ("typ2 : " + baumtyp2 + " var2: " + baumvar2 );
+              Else
+                MakeTree   (item, baumtyp1, alter, wood) ;
+//              syslog ("typ1 : " + baumtyp1 + " var2: " + baumvar2 );
+              EndIf
+           2: MakeFallen (item, alter) ;
+           3: MakeEmpty  (item) ;
+         EndCase
+       EndIf
+     EndIf
+  EndForEach
+
+EndFunction
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function MakeTree
+//
+//  Zerstört kleinen Baum (0xc9b) und Setzt Set entsprechend Gebiet
+//
+/////////////////////////////////////////////////////////////////////////////
+
+Function MakeTree (item, baumtyp, alter, wood)
+  var ttl:= CInt ( Cint(ReadGameClock()) + randomint(alter) + CInt(alter/2) ); ;
+  var serial := makeset( item , baumtyp, 1);
+  If (! serial)
+    syslog ("irgendwas ist schief gegangen, forestscript konnte Set nicht erzeugen");
+  Else
+    Var items:={};
+    ForEach slave in (serial[2])
+      slave.setprop("fserial", serial[1]);
+      slave.setprop("evo", 2);
+      slave.setprop("script", "forestscript");
+      slave.setprop("ttl", ttl);
+      slave.setprop("set", baumtyp);
+      slave.setprop("wood", wood);
+      items.append(slave.serial);
+    EndForEach
+    var master:=SystemFindObjectBySerial(serial[1]);
+    master.setprop("items",items);
+  EndIf
+
+  // var set:= GetObjProperty(item, "set" );
+  var fserial:= GetObjProperty(item, "fserial" );
+  var temp;
+  If (item.getprop("items"))
+    ForEach serials in (item.getprop("items"))
+      temp:=SystemFindObjectBySerial(serials);
+      If (temp)
+        DestroyItem(temp);
+      EndIf
+    EndForEach
+  Else
+    // DestroySet(set, fserial);
+    DestroySet(fserial);
+  EndIf
+
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function MakeFallen
+//
+//  Zerstört alten Baum und Setzt Set baumliegend1 oder baumliegend2
+//
+/////////////////////////////////////////////////////////////////////////////
+
+Function MakeFallen (item, alter)
+var serial ;
+var baumtyp;
+var ttl ;
+  If (randomint(2) == 1 )
+    serial := makeset( item , "baumliegend1",1);
+    baumtyp := "baumliegend1" ;
+  Else
+    serial := makeset( item , "baumliegend2",1);
+    baumtyp := "baumliegend2" ;
+  EndIf
+  If (! serial)
+    syslog ("irgendwas ist schief gegangen");
+  Else
+    Var items:={};
+    ttl := CInt ( Cint(ReadGameClock()) + randomint(alter) + CInt(alter/2) );
+    ForEach slave in (serial[2])
+      slave.setprop("evo", 3);
+      slave.setprop("fserial", serial[1]);
+      slave.setprop("script", "forestscript");
+      slave.setprop("set", baumtyp);
+      slave.setprop("ttl", ttl);
+      items.append(slave.serial);
+    EndForEach
+    var master:=SystemFindObjectBySerial(serial[1]);
+    master.setprop("items",items);
+  EndIf
+  var temp;
+  var master:=SystemFindObjectBySerial(GetObjProperty(item, "fserial" ));
+  If (master.getprop("items"))
+    ForEach serials in (master.getprop("items"))
+      temp:=SystemFindObjectBySerial(serials);
+      If (temp)
+        DestroyItem(temp);
+      EndIf
+    EndForEach
+  Else
+    // DestroySet(GetObjProperty(item, "set" ), GetObjProperty(item, "fserial" ));
+    DestroySet(GetObjProperty(item, "fserial" ));
+  EndIf
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Function MakeEmpty
+//
+//  Zerstört alten umgefallenen Baum
+//
+/////////////////////////////////////////////////////////////////////////////
+
+Function MakeEmpty (item)
+  var temp;
+  var master:=SystemFindObjectBySerial(GetObjProperty(item, "fserial" ));
+  If (master.getprop("items"))
+    ForEach serials in (master.getprop("items"))
+      temp:=SystemFindObjectBySerial(serials);
+      If (temp)
+        DestroyItem(temp);
+      EndIf
+    EndForEach
+  Else
+    // DestroySet(GetObjProperty(item, "set" ), GetObjProperty(item, "fserial" ));
+    DestroySet(GetObjProperty(item, "fserial" ));
+  EndIf
+EndFunction
+
+

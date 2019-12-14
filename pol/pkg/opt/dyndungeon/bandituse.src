@@ -1,0 +1,141 @@
+/////////////////////////////////////////////////////////
+// bandituse - use one-armed bandit, i.e. play
+
+use os;
+use uo;
+include ":dyndungeon:bandit";
+include ":dyndungeon:dyndungeon";
+include "include/msgs";
+include "include/server";
+include "include/starteqp";
+
+Program BanditUse(who, item)
+    var layout := array{
+        "nodispose",
+        "page 0",
+        // kleine Windrose
+        "gumppic  15  15 5010", // 0x1392
+        // Pfeile ueber Himmelsrichtungen
+        "gumppic  91   0 4500", // 0x1194
+        "gumppic 153  27 4501", // 0x1195
+        "gumppic 181  90 4502", // 0x1196
+        "gumppic 153 153 4503", // 0x1197
+        "gumppic  91 181 4504", // 0x1198
+        "gumppic  27 153 4505", // 0x1199
+        "gumppic   0  90 4506", // 0x119a
+        "gumppic  27  27 4507", // 0x119b
+        // "Euer Einsatz"
+        "text     75  60  53 0",
+        // "(1-100)"
+        "text     95  80  53 1",
+        // Einsatz-Hintergrund
+        "gumppic           85 105 2443", // 0x098b
+        // Einsatz-Eingabe         w  h  col ret id len
+        "textentrylimited 105 107 40 20 1153  99  2   3",
+        // Start-Button
+        "button            80 145 12012 12013 1 0 100"
+    };
+
+    var amount := who.getprop(PROP_BANDIT_AMOUNT);
+    If (amount == error)
+        amount := 10;
+    EndIf
+
+    var data := array{
+        "Euer Einsatz:",
+        "(1-100)",
+        amount
+    };
+
+    var ret := SendDialogGump(who, layout, data, 50, 50);
+
+    If (!ret[100]) // Start-Button
+        SendSysMessagePergon(who, "Abbruch", "Cancelled");
+        return;
+    EndIf
+
+    // Text ausschneiden ("99: <wert>")
+    amount := ret[99];
+    amount[1, 4] := "";
+    amount := CInt(amount);
+    If (amount < 1 or amount > 100)
+        SendSysMessagePergon(who, "Ungueltiger Einsatz!", "Invalid bet!");
+        return;
+    EndIf
+
+    // fuer die naechste Runde zwischenspeichern
+    who.setprop(PROP_BANDIT_AMOUNT, amount);
+
+    // Muenzen abziehen
+    If (!ConsumeSubstance(who.backpack, 0x66c0, amount))
+        SendSysMessagePergon(who,
+            "Ihr habt nicht genug Muenzen!",
+            "You don't have enough coins!"
+        );
+        return;
+    EndIf
+
+    // kann gestartet werden
+    var wheel; var lever;
+    If (WHEEL_STILL == item.graphic or WHEEL_TURNING == item.graphic)
+        wheel := item;
+        lever := SystemFindObjectBySerial(CInt(item.getprop(PROP_OTHER)));
+    Else
+        wheel := SystemFindObjectBySerial(CInt(item.getprop(PROP_OTHER)));
+        lever := item;
+    EndIf
+
+    PlaySoundEffect(lever, SND_LEVER);
+    lever.graphic := LEVER_DOWN;
+    Sleep(2);
+    lever.graphic := LEVER_UP;
+
+    PlaySoundEffect(wheel, SND_WHEEL_START);
+    wheel.graphic := WHEEL_TURNING;
+    Sleep(2);
+
+    // "klick, klick ... klick"
+    PlaySoundEffect(wheel, SND_WHEEL_STOP);
+    Sleep(1);
+    PlaySoundEffect(wheel, SND_WHEEL_STOP);
+    SleepMs(700);
+    PlaySoundEffect(wheel, SND_WHEEL_STOP);
+    wheel.graphic := WHEEL_STILL;
+
+    // Gewinn ermitteln
+    amount := CDbl(amount);
+    // Level 3: bei 100 Muenzen 50% Chance
+    If (0.5 * amount >= RandomInt(100))
+        MakeLoot(who.backpack, 96);
+        SendSysMessagePergon(who,
+            "Ein grossartiger Gewinn!",
+            "A great price!"
+        );
+        return;
+    EndIf
+
+    // Level 2: ab 60 Muenzen 100% Chance
+    If (1.66 * amount >= RandomInt(100))
+        MakeLoot(who.backpack, 95);
+        SendSysMessagePergon(who,
+            "Ein schoener Gewinn!",
+            "A nice price!"
+        );
+        return;
+    EndIf
+
+    // Level 1: ab 10 Muenzen 100% Chance
+    If (10 * amount >= RandomInt(100))
+        MakeLoot(who.backpack, 94);
+        SendSysMessagePergon(who,
+            "Immerhin ein Trostpreis!",
+            "A solatium!"
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Leider kein Gewinn.",
+        "No win."
+    );
+EndProgram

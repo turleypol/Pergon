@@ -1,0 +1,231 @@
+///////////////////////////////////////////////////////////////////////////
+// CaptureTheFlag -- Flaggen-KI
+
+// - rennt fremdem Team hinterher, sobald sie beruehrt wurde
+// - wenn Verfolgter stirbt, stehenbleiben
+// - wenn eigenes Team flagge beruehrt, zu Startpunkt springen
+// - periodisch Flaggeneffekt abspielen, bei Bewegung Questpfeile
+//   aktualisieren
+
+use npc;
+use uo;
+include "common";
+include "include/eventid";
+include "include/msgs";
+include "include/packets";
+include "include/server";
+include "include/sysevent";
+
+Program CaptureTheFlag()
+    // Init {{{
+    var me := Self();
+    // erst mal verstecken und vor wegrennen sichern
+    me.cmdlevel  := CMDLEVEL_PLAYER;
+    me.concealed := CMDLEVEL_SEER;
+    me.frozen    := 1;
+    me.hidden    := 1;
+
+    // alle Events sicherheitshalber abschalten
+    DisableEvents(
+        SYSEVENT_DAMAGED + SYSEVENT_DISENGAGED + SYSEVENT_ENGAGED +
+        SYSEVENT_ENTEREDAREA + SYSEVENT_GHOST_SPEECH + SYSEVENT_HOSTILE_MOVED +
+        SYSEVENT_ITEM_GIVEN + SYSEVENT_LEFTAREA + SYSEVENT_MERCHANT_BOUGHT +
+        SYSEVENT_MERCHANT_SOLD + SYSEVENT_OPPONENT_MOVED + SYSEVENT_SPEECH
+    );
+
+    // Farbe (Team) festlegen
+    me.color := FlagNameToColor(me.npctemplate);
+    var info := struct;
+
+    // relevante Informationen sammeln
+    info.+master := 0;
+
+    // auf uebergeordnetes ControlScript warten
+    // syslog("DEBUG: Warte auf PID");
+    While (me)
+        var pid := GetGlobalProperty(PROP_CAPTURE_FLAG_PID);
+        If (!pid)
+            Sleep(RandomIntMinMax(10, 60));
+            continue;
+        EndIf
+        info.+ctl := GetProcess(pid);
+        break;
+    EndWhile
+    If (!info.ctl)
+        // abschalten
+        syslog("FEHLER: "+CharInfoStr(me)+" findet Kontrollprozess nicht");
+        exit;
+    EndIf
+
+    // melden und warten, dass ControlScript Koordinaten uebergibt
+    // syslog("DEBUG: Hallo sagen");
+    FlagEvent(info.ctl, me, EVID_MASTER_HELLO, 0);
+    While (me)
+        // syslog("DEBUG: Warte auf Startpunkt");
+        var ev := Wait_for_Event(300);
+        If (ev and ev.type == EVID_ROBOT_INIT)
+            info.+start := ev.start;
+            // syslog("DEBUG: Startpunkt erhalten");
+            break;
+        EndIf
+    EndWhile
+
+    // uns interessiert nur Bewegung
+    EnableEvents(SYSEVENT_LEFTAREA, 0);
+    // }}}
+
+    // syslog("DEBUG: Beginne Mainloop");
+    var arrow_group := array{};
+    var lastloop := ReadGameClock();
+    While (me)
+        SleepMs(2);
+        var ev := Wait_for_Event(2);
+        // erst loslegen wenn das Spiel laeuft
+        If (!GetGlobalProperty(PROP_CAPTURE_RUNNING))
+            continue;
+        EndIf
+
+        var now := ReadGameClock();
+        If (lastloop < now)
+            // nicht mehrfach pro Sekunde erledigen, auch bei Rennen etc.
+            lastloop := now;
+
+            // Effekt abspielen
+            If (info.master)
+                PlayObjectCenteredEffectEx(info.master,
+                    FX_SMOKE,       1, 30, me.color, 0, 3
+                );
+            Else
+                PlayStationaryEffectEx(me.x, me.y, me.z, me.realm,
+                    FX_FLAMESTRIKE, 1, 30, me.color, 0, 3
+                );
+            EndIf
+
+            // Master pruefen
+            If (
+                // nur wenn gesetzt
+                info.master <> 0 and
+                // sichtbar muss er sein
+                (info.master.hidden or info.master.stealthsteps or
+                // Verfolgter gestorben/weg?
+                info.master.dead or !info.master.connected)
+            )
+                // Verlust melden
+                FlagEvent(info.ctl, me, EVID_TOURNAMENT_CHAR_DIED, info.master);
+                info.master := 0;
+            EndIf
+        EndIf
+
+        If (!ev or ev.source.isa(POLCLASS_NPC) or ev.source.dead)
+            // fertig, solange nichts weiter anliegt; Tote und NPCs
+            // interessieren nicht (NPC waere ueberlegenswert)
+            continue;
+        EndIf
+
+        Case (ev.type)
+        // Hauptaufgabe ist Herumlaufen
+        SYSEVENT_LEFTAREA: // {{{
+            If (
+                !info.master and
+                // direkt ins Ziel teleportieren ist nicht
+                // (verhindert auch hinterherrennen, wenn Flagge von
+                // Controlscript resettet wird)
+                Distance(me, ev.source) <= 1 and
+                // nur sichtbar mitnehmbar
+                !ev.source.hidden and
+                !ev.source.stealthsteps
+            )
+                // wenn jemand auf mich tritt und ich gerade frei bin
+                SteppedOn(me, info, ev.source);
+            EndIf
+
+            If (info.master)
+                If (
+                    Distance(me, info.master) >= 5 or
+                    info.master.hidden or
+                    info.master.stealthsteps
+                )
+                    // Teleportieren/Verstecken weitgehend verbieten
+                    FlagEvent(info.ctl, me, EVID_TOURNAMENT_CHAR_DIED, info.master);
+                    info.master := 0;
+                    break;
+                EndIf
+
+                // hinterher-"rennen"
+                MoveObjectToLocation(
+                    me, info.master.x, info.master.y, info.master.z,
+                    info.master.realm, MOVEOBJECT_FORCELOCATION
+                );
+                // Ziel anzeigen
+                SendArrows(me, info, arrow_group);
+            EndIf
+            break;
+        // }}}
+
+        // Reset (zu Start zurueck und Master loswerden)
+        EVID_TOURNAMENT_RESET: // {{{
+            // syslog("DEBUG: Reset empfangen");
+            MoveObjectToLocation(
+                me, info.start.x, info.start.y, info.start.z,
+                info.start.realm, MOVEOBJECT_FORCELOCATION
+            );
+            info.master := 0;
+            SendArrows(me, info, arrow_group, QUESTARROW_OFF);
+            // ForEach arrow in (arrow_group)
+            //     SleepMs(2);
+            //     syslog("DEBUG: Arrow für "+arrow.serial);
+            // EndForEach
+            // Sleep(1);
+            break;
+        // }}}
+
+        // neues Pfeilarray empfangen
+        EVID_MASTER_HELLO: // {{{
+            // syslog("DEBUG: Gruppe empfangen");
+            arrow_group := ev.group;
+            SendArrows(me, info, arrow_group);
+            break;
+        // }}}
+        EndCase
+    EndWhile
+EndProgram
+
+// jemand ist auf mich getreten, als ich frei war
+Function SteppedOn(byref me, byref info, byref src) // {{{
+    var team := src.getprop(PROP_CAPTURE_TEAM);
+    If (!team)
+        // kein Mitspieler, ignorieren
+        return;
+    EndIf
+
+    If (team <> me.color)
+        // fremdes Team, demjenigen folgen
+        FlagEvent(info.ctl, me, EVID_FOLLOW, src);
+        info.master := src;
+        return;
+    EndIf
+
+    // eigenes Team, ggf. zum Start zurueckkehren
+    If (Distance(me, info.start) >= 1 or me.z <> info.start.z)
+        MoveObjectToLocation(
+            me, info.start.x, info.start.y, info.start.z,
+            info.start.realm, MOVEOBJECT_FORCELOCATION
+        );
+        FlagEvent(info.ctl, me, EVID_TOURNAMENT_RESET, 0);
+        info.master := 0;
+    EndIf
+    return;
+EndFunction // }}}
+
+// Questpfeile fuer Gruppe auf meine Position setzen
+Function SendArrows(byref me, byref info, byref group, onoff := QUESTARROW_ON) // {{{
+    ForEach member in (group)
+        SleepMs(2);
+        If (member == info.master)
+            // Master nicht mit Pfeil auf sich selbst irritieren
+            SetQuestArrow(member, QUESTARROW_OFF, 1, 1);
+            continue;
+        EndIf
+        SetQuestArrow(member, onoff, me.x, me.y);
+    EndForEach
+EndFunction // }}}

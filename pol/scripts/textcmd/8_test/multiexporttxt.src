@@ -1,0 +1,79 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+//   MultiExportTxt - Extract Items to make Multi
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     C&P von MultiImport für anderes Format
+//
+////////////////////////////////////////////////////////////////////////////////
+//
+// Creates:
+//   config/multi/multi_*.uoa
+//
+////////////////////////
+
+use file;
+
+Include "include/msgs";
+
+Program TextCMD_MultiExportTxt(who, filename)
+  
+  If (filename[" "])
+    SendSysMessagePergon(who, "Usage: .multiexporttxt {filename}\nfilename darf keine Leerzeichen enthalten");
+    return;
+  EndIf
+  
+  SendSysMessagePergon(who, "Wählt die NW-Ecke aus!");
+  var loc1 := TargetCoordinates(who);
+  If (!loc1)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+  
+  SendSysMessagePergon(who, "Wählt die SO-Ecke aus!");
+  var loc2 := TargetCoordinates(who);
+  If (!loc2)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+  
+  If (loc1.x > loc2.x || loc1.y > loc2.y)
+    SendSysMessagePergon(who, "Fehler bei der Auswahl der Eckpunkte!");
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+  
+  ExportArea(who, loc1.x, loc1.y, loc2.x, loc2.y, filename);
+  
+EndProgram
+
+Function ExportArea(who, x1, y1, x2, y2,filename)
+  var txtlines := {};
+  txtlines[1] := "6 version";
+  txtlines[2] := "1 template id";
+  txtlines[3] := "-1 item version";
+  txtlines[4] := "";
+  var cfg := ReadConfigFile("::itemdesc");
+  var counter := 1;
+  ForEach item in ListObjectsInBox(x1, y1, -128, x2, y2, 127)
+    If (item.isa(POLCLASS_ITEM))
+      txtlines[counter+4] := item.graphic+" "+item.x+" "+item.y+" "+item.z;
+      If (cfg[item.objtype].Script == "sign")
+        txtlines[counter+4] += " 0";
+      ElseIf (item.isA(POLCLASS_DOOR))
+        txtlines[counter+4] += " 0";
+      Else
+        txtlines[counter+4] += " 1";
+      EndIf
+      
+      counter += 1;
+      DestroyItem(item);
+    EndIf
+  EndForEach
+  txtlines[4] := (counter-1)+" num components";
+
+  WriteFile("config/multi/multi_"+filename+".uoa",txtlines);
+  SendSysMessagePergon(who, "Alle items wurden exportiert. Datei gespeichert unter config/multi/multi_"+filename+".uoa");
+EndFunction

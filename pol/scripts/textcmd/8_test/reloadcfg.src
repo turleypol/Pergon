@@ -1,0 +1,24 @@
+Use uo;
+Use cfgfile;
+use polsys;
+
+Include "include/pergonutil";
+Include "include/msgs";
+
+Program TextCMD_ReloadCfg(who)
+  var res;
+  res:=UnloadConfigFile("::npcdesc");
+  SendSysMessagePergon(who,"Unloading : '::npcdesc' "+res);
+  res:=UnloadConfigFile(":*:npcdesc");
+  SendSysMessagePergon(who,"Unloading : ':*:npcdesc' "+res);
+  foreach package in (Packages())
+		if ( package.npcdesc )
+			res:=UnloadConfigFile(":"+(package.name)+":npcdesc");
+			SendSysMessage(who, "Unloading : '"+(package.name)+":npcdesc' "+res);
+		endif
+	  SleepMS(2);
+  endforeach
+  SendSysMessagePergon(who, "ReloadConfiguration = "+ReloadConfiguration());
+  UnloadConfigFile("::../regions/regions");
+  UnloadConfigFile("::regions");
+EndProgram

@@ -1,0 +1,107 @@
+///////////////////////////////////////////////////////////////////////////
+// timers -- updates onlinetimer cprop every 5 mins, checks murder count decay
+//
+// Author: Shinigami
+
+use os;
+use uo;
+include "include/death";
+include "include/server";
+
+Program Timers()
+  var runs := 0;
+  While (1)
+    runs += 1;
+    ForEach who in EnumerateOnlineCharacters()
+      var clock := ReadGameClock();
+      var sessiontime := clock - GetObjProperty(who, "logontime");
+      SetObjProperty(who, "logontime", clock);
+
+      var timer := CInt(GetObjProperty(who, "onlinetimer"));
+      SetObjProperty(who, "onlinetimer", timer+sessiontime);
+
+      CheckLongTermCounts(who);
+      CheckShortTermCounts(who);
+    EndForEach
+
+    Sleep(300);
+  EndWhile
+EndProgram
+
+// immer, wenn Decay-Zeit abgelaufen ist, einen Langzeitmord "vergeben"
+Function CheckLongTermCounts(who) // {{{
+  var longcount := CInt(GetObjProperty(who, "longmurders"));
+  If (longcount == 0)
+    // nothing to do
+    return;
+  EndIf
+
+  // this is against a who's online timer, not the gameclock.
+  var longdecaytime := GetObjProperty(who, "decaylongcountat");
+  var onlinetime := GetObjProperty(who, "onlinetimer");
+  If (onlinetime < longdecaytime)
+    // char has to wait longer
+    return;
+  EndIf
+
+  // we should decrease long count
+  longcount -= 1;
+  SetObjProperty(who, "longmurders", longcount);
+
+  // check to see If less then MAX_MURDERS longterm counts (blue)
+  If ((longcount < MAX_MURDERS) And (!GetObjProperty(who, TYPKILLER)))
+    who.setmurderer(0);
+  EndIf
+
+  If (longcount == 0)
+    // all done
+    return;
+  EndIf
+
+  // set next decay time
+  SetObjProperty(who, "decaylongcountat", onlinetime+LONG_COUNT_DECAY_TIME);
+EndFunction // }}}
+
+// immer, wenn Decay-Zeit abgelaufen ist, einen Kurzzeitmord "vergeben"
+Function CheckShortTermCounts(who) // {{{
+  var shortcount := CInt(GetObjProperty(who, "shortmurders"));
+  If (shortcount == 0)
+    // nothing to do
+    return;
+  EndIf
+
+  // this is against a who's online timer, not the gameclock.
+  var shortdecaytime := GetObjProperty(who, "decayshortcountat");
+  var onlinetime := GetObjProperty(who, "onlinetimer");
+  If (onlinetime < shortdecaytime)
+    // char has to wait longer
+    return;
+  EndIf
+
+  // we should decrease short count
+  shortcount -= 1;
+  SetObjProperty(who, "shortmurders", shortcount);
+
+  If (shortcount == (MAX_MURDERS - 1))
+    // we just went from statloss to no statloss
+    var pingpong := GetObjProperty(who, "pingpong");
+    If (!pingpong)
+      pingpong := 0;
+    EndIf
+
+    pingpong += 1;
+    SetObjProperty(who, "pingpong", pingpong);
+
+    If (pingpong >= 5)
+      SetObjProperty(who, TYPKILLER, 1);
+    EndIf
+  EndIf
+
+  If (shortcount == 0)
+    // all done
+    return;
+  EndIf
+
+  // set next decay at
+  SetObjProperty(who, "decayshortcountat", onlinetime+SHORT_COUNT_DECAY_TIME);
+EndFunction // }}}

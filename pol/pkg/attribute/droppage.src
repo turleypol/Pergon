@@ -1,0 +1,30 @@
+///////////////////////////////////////////////////////////////////////////
+// droppage - zeitverzoegerter Fallschaden
+
+use basic;
+use os;
+include "include/objtype";
+include "include/packets";
+include "include/pergonutil";
+include "include/vitals";
+
+Program Droppage(p)
+	  SetScriptController(p.who);
+    // könnte waehrend Sleep weglaufen
+    var pos    := struct{
+        x     := p.who.x,
+        y     := p.who.y,
+        z     := p.who.z,
+        realm := p.who.realm
+    };
+    // ca. 1s pro Etage
+    Sleep(CInt(p.depth / 16.0));
+
+    var damage := CInt(CDBl(GetMaxHPPergon(p.who)) * p.damage);
+    ApplyRawDamagePergon(p.who, damage, DAMAGE_NO_REPSYS);
+
+    var blood := CreateItemAtLocationPergon(
+        pos.x, pos.y, pos.z, UOBJ_BLOOD, 1, pos.realm
+    );
+    Start_ScriptPergon("::items/itemdestroy", {blood, 120});
+EndProgram

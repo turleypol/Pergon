@@ -1,0 +1,38 @@
+// 20.10.05 Turley - Über Tillerman geht es jetzt auch
+
+
+use uo;
+
+Include "include/msgs";
+
+program destroy_boat(who)
+  Var boat;
+  SendSysMessagePergon(who, "Zielt auf den Masten oder Steuermann.", "Target the mast or tillerman.");
+  var mast := Target(who, TGTOPT_NOCHECK_LOS);
+  if (!mast)
+  	SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  endif
+  Var boatserial := GetObjProperty(mast, "shipserial");
+  If (boatserial) //Wohl Tillerman angeklickt
+    boat := SystemFindObjectBySerial(boatserial);
+  Else
+    boat:=mast;
+  EndIf
+  if (boat.has_offline_mobiles)
+    SendSysMessagePergon(who, "Das Boot hat Offline-Player an Bord.", "There are offline players aboard.");
+    SendSysMessagePergon(who, "Wohin sollen die bewegt werden?", "Target a new location for them.");
+    var newloc := TargetCoordinates(who);
+    if (newloc)
+      boat.move_offline_mobiles(newloc.x, newloc.y, newloc.z);
+    else
+    	SendSysMessagePergon(who, "Abbruch", "Abort");
+    	Return;
+    endif
+  endif
+
+  var res := DestroyMulti(boat);
+  if (!res)
+    SendSysMessagePergon(who, "Konnte nicht löschen: " + res.errortext, "Could not destroy: " + res.errortext);
+  endif
+endprogram

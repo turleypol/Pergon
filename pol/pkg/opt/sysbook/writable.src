@@ -1,0 +1,227 @@
+///////////////////////////////////////////////////////////////////////////
+//
+//   Writable Book Interface - Alle Funktionen fuer beschreibbare Buecher
+//
+//     based on Bookcase Spawning System v0.3 (2000/12/08)
+//       Author: Syzygy, Zulu, Bishop Ebonhand
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2002/04/25 Shinigami: ReWrite
+//     2002/04/29 Shinigami: ZeroByte-Bug gefunden und umgangen
+//
+///////////////////////////////////////////////////////////////////////////
+//
+// Benutzte CProp's
+//   Boolean(book.nowrite) - Ist das Buch beschreibbar?
+//   CInt(book.maxpages)   - Wieviele Seiten darf das Buch haben?
+//   String(book.title)    - Titel des Buches
+//   String(book.author)   - Autor des Buches
+//   Array(book.contents)  - Inhalt des Buches (String-Array)
+
+// ZeroByte-Bug
+//   Bug #1
+//     SetTitle und SetAuthor liefern grundsaetzlich Strings mit einer fixen Laenge
+//     von 60 bzw. 30 Bytes, wobei sie mit 0x00-Bytes aufgefuellt sind.
+//     Die Zeichenketten enthalten immer mind. eine 0x00...
+//   Bug #2
+//     SetObjProperty schnippelt bei der Windowsversion die ueberschuessigen 0x00-Bytes ab,
+//     die Linuxversion hingegen nicht. Letztere speichert die 0x00 in den Datenfiles was
+//     dazu fuehrt, dass Pol beim naechsten Start das entsprechende Item, wegen Fehlern,
+//     automatisch loescht.
+//   Bug #3
+//     Die Suche nach dem ersten 0x00-Byte funktioniert nur mit der Linuxversion wie folgt:
+//       Var pos:=Find(string, CChr(0), 1);
+//     Die Windowsversion straeubt sich gegen das CChr(0) und liefert deshalb beim Find
+//     grundsaetzlich eine 1 zurueck. Selbst die Manuelle Suche in eienr Schleife funzt
+//     nicht, da dass CChr(0) nicht will.
+//     Um zwischen Linux- und Windowsversion zu unterscheiden einfach folgendes verwenden:
+//       Var pos:=Find(" "+string, CChr(0), 1);
+//     und dann pos nach 1 pruefen. Wenn 1, dann Windows, wenn groesser, dann Linux.
+//     Unter Windows lassen sich die 0x00-Bytes nur entfernen, indem man Bug #2 ausnutzt,
+//     d.h. SetObjProperty und anschliessend den Wert mit GetObjProperty wieder einliest.
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+////////////////////////////////////////////
+// IsWritable - Ist das Buch beschreibbar?
+////////////////////////////////////////////
+
+Exported Function IsWritable(book)
+  If (GetObjProperty(book, "nowrite"))
+    Return (0);
+  Else
+    Return (1);
+  EndIf
+EndFunction
+
+/////////////////////////////////////////////////////////////////////
+// GetNumLines - Wieviele Zeilen hat das Buch (und damit Seiten...)
+/////////////////////////////////////////////////////////////////////
+
+Exported Function GetNumLines(book)
+  Var minpages:=1;
+
+  Var contents:=GetObjProperty(book, "contents");
+  If (contents)
+    Var index:=contents.size(); // Den Content trimmen, d.h. Leerseiten rausschmeissen
+    While (((contents[index]=="") Or (!contents[index])) And (index>1))
+      contents.erase(index);
+      index:=index-1;
+    EndWhile
+    SetObjProperty(book, "contents", contents);
+
+    minpages:=CInt((contents.size()+7)/8);
+  EndIf
+
+  If (minpages<48) // Naja, gewisser Mindestsatz waere schon ganz nett...
+    minpages:=48;
+  EndIf
+
+  SetObjProperty(book, "maxpages", (minpages+16)*8);
+  Return ((minpages+16)*8);
+EndFunction
+
+//////////////////////////////////////
+// GetTitle - Titel des Buches holen
+//////////////////////////////////////
+
+Exported Function GetTitle(book)
+  Var title:=GetObjProperty(book, "title");
+  If (title)
+    Return (title);
+  Else
+    SetObjProperty(book, "title", ""); // Hmm, da fehlte wohl was...
+    Return ("");
+  EndIf
+EndFunction
+
+///////////////////////////////////////
+// SetTitle - Titel des Buches setzen
+///////////////////////////////////////
+
+Exported Function SetTitle(book, title)      // [ZeroByte-Bug] Bug #1 - Windows- und Linuxversion
+  Var zerochar:=Find(" "+title, CChr(0), 1); // [ZeroByte-Bug] Bug #3 - Windowsversion
+  If (zerochar>1)
+    title:=title[1, zerochar-2];
+  EndIf
+
+  SetObjProperty(book, "title", title);      // [ZeroByte-Bug] Bug #2 - Linuxversion
+
+  title:=GetObjProperty(book, "title");
+  Var author:=GetObjProperty(book, "author");
+  If (title And author) // Den Namen des Buches setzen
+    book.name:=title+" von "+author;
+  ElseIf (title)
+    book.name:=title;
+  ElseIf (author)
+    book.name:="Verfasst von "+author;
+  Else
+    book.name:="ein Buch";
+  EndIf
+EndFunction
+
+///////////////////////////////////////
+// GetAuthor - Autor des Buches holen
+///////////////////////////////////////
+
+Exported Function GetAuthor(book)
+  Var author:=GetObjProperty(book, "author");
+  If (author)
+    Return (author);
+  Else
+    SetObjProperty(book, "author", ""); // Hmm, da fehlte wohl was...
+    Return ("");
+  EndIf
+EndFunction
+
+////////////////////////////////////////
+// SetAuthor - Autor des Buches setzen
+////////////////////////////////////////
+
+Exported Function SetAuthor(book, author)     // [ZeroByte-Bug] Bug #1 - Windows- und Linuxversion
+  Var zerochar:=Find(" "+author, CChr(0), 1); // [ZeroByte-Bug] Bug #3 - Windowsversion
+  If (zerochar>1)
+    author:=author[1, zerochar-2];
+  EndIf
+
+  SetObjProperty(book, "author", author);     // [ZeroByte-Bug] Bug #2 - Linuxversion
+
+  Var title:=GetObjProperty(book, "title");
+  author:=GetObjProperty(book, "author");
+  If (title And author) // Den Namen des Buches setzen
+    book.name:=title+" von "+author;
+  ElseIf (title)
+    book.name:=title;
+  ElseIf (author)
+    book.name:="Verfasst von "+author;
+  Else
+    book.name:="ein Buch";
+  EndIf
+EndFunction
+
+//////////////////////////////////////////////////////
+// GetLine - Angeforderte Textzeile des Buches holen
+//////////////////////////////////////////////////////
+
+Exported Function GetLine(book, line)
+  Var contents:=GetObjProperty(book, "contents");
+  If (contents)
+    If (line<=contents.size()) // Existiert die angeforderte Zeile auch?
+      Var text:=contents[line];
+      If (text)
+        Return (text);
+      Else
+        Return ("");
+      EndIf
+    Else
+      Return ("");
+    EndIf
+  Else
+    SetObjProperty(book, "contents", {}); // Hmm, da fehlte wohl was...
+    Return ("");
+  EndIf
+EndFunction
+
+////////////////////////////////////////////////////
+// SetLine - Bestimmte Textzeile des Buches setzen
+////////////////////////////////////////////////////
+
+Exported Function SetLine(book, line, text)
+  Var contents:=GetObjProperty(book, "contents");
+  If (!contents)
+    contents:={}; // Hmm, da fehlte wohl was...
+  EndIf
+
+  contents[line]:=text;                       // Zeile setzen
+  SetObjProperty(book, "contents", contents);
+
+  Return (1);
+EndFunction
+
+///////////////////////////////////////////////////////
+// GetContents - Den gesamten Inhalt des Buches holen
+///////////////////////////////////////////////////////
+
+Exported Function GetContents(book)
+  Var contents:=GetObjProperty(book, "contents");
+  If (contents)
+    Return (contents);
+  Else
+    SetObjProperty(book, "contents", {}); // Hmm, da fehlte wohl was...
+    Return ({});
+  EndIf
+EndFunction
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program WritableBookInterface()
+  Return (1);
+EndProgram

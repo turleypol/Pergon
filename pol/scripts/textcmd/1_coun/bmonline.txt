@@ -1,0 +1,4 @@
+<h3 id="bmonline">bmonline</h3>
+
+<p>Die farblich hervorgehoben Darstellung des Namens in der
+Online-Übersicht wird an- bzw. ausgeschaltet.</p>

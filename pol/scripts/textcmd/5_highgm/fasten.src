@@ -1,0 +1,44 @@
+///////////////////////////////////////////////////////////////////////////
+// fasten --
+// macht alle Items mit entsprechender Property fest, die lose sind
+
+use math;
+use os;
+use uo;
+include "include/msgs";
+include "include/server";
+
+Program Fasten(who, range)
+    range := Max(10, Min(100, CInt(range)));
+
+    SendSysMessagePergon(who,
+        "Befestige alle Items in Umkreis "+range,
+        "Fastening all items in range "+range
+    );
+
+    var count := 0;
+    ForEach item in (ListItemsNearLocation(
+        who.x, who.y, LIST_IGNORE_Z, range, who.realm
+    ))
+        SleepMs(2);
+        If (!item.movable)
+            // ist schon fest
+            continue;
+        EndIf
+
+        If (
+            // mit "festmachen" festgemacht
+            item.getprop(PROP_HS_C_FIXED) or
+            // ist Sicherheitscontainer
+            item.getprop(PROP_HS_C_SC_BOX)
+        )
+            item.movable := 0;
+            count += 1;
+        EndIf
+    EndForEach
+
+    SendSysMessagePergon(who,
+        count+" Items wurden befestigt",
+        count+" items had to be fastened"
+    );
+EndProgram

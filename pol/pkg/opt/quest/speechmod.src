@@ -1,0 +1,93 @@
+//////////////////////////////////
+//
+//   SpeechModifier Script v1.0
+//
+//     Author: Shinigami
+//
+//////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+use os;
+use uo;
+use util;
+use polsys;
+
+/////////////
+// Includes
+/////////////
+
+include "include/eventid";
+include "include/client";
+include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program SpeechModifier(item)
+  item.invisible := 1;
+
+  var timeout := ReadGameClock()+10;
+  While (timeout>=ReadGameClock())
+    SleepMS(120);
+
+    If (item.container)
+      If (GetObjProperty(item, "SpeechMod"))
+        var player := SystemFindObjectBySerial((item.container).container.serial);
+        If (player.isa(POLCLASS_MOBILE) And (!player.isa(POLCLASS_NPC)))
+         // RegisterForSpeechEvents(item, 1);
+
+          Case (GetObjProperty(item, "SpeechMod"))
+            "huehnchen": Huehnchen(item, player);
+          EndCase
+        EndIf
+      EndIf
+    EndIf
+  EndWhile
+
+  DestroyItem(item);
+EndProgram
+
+//////////////////////////////////////////
+// Huehnchen - Wie ein Huehnchen gackern
+//////////////////////////////////////////
+
+Function Huehnchen(item, player)
+  SysLog(player.name+" gackert ab sofort wie ein Huehnchen.");
+  player.squelch(-1);
+  IncRevision(player);
+
+  var length;
+  var text;
+ // var ev := Wait_for_Event(120);
+  While (GetObjProperty(item, "SpeechMod"))
+    SleepMS(RandomInt(10000));
+    length := RandomInt(30);
+
+   // If ((ev) And (ev.type=SYSEVENT_SPEECH))
+   //   text := ev.text;length:=Len(text);
+      If (length<10)
+        text := "*gack*";
+      ElseIf (length<20)
+        text := "*gack* *gack*";
+      ElseIf (length<30)
+        text := "*gack* *gack* *gack*";
+      Else
+        text := "*gack* *gack* *gack* *gack*";
+      EndIf
+      PlaySoundEffect(player, 0x6F+RandomInt(5));
+   //   PrintTextAbovePergon(ev.source, ev.source, text, "", _DEFAULT_TEXT_FONT, FONTCOLOR_YELLOW);
+   // EndIf
+
+   // ev := Wait_for_Event(120);
+
+    PrintTextAbovePergon(player, player, text, "", _DEFAULT_TEXT_FONT, FONTCOLOR_YELLOW);
+  EndWhile
+
+  player.squelch(0);
+  IncRevision(player);
+  SysLog(player.name+" gackert jetzt nicht mehr.");
+EndFunction

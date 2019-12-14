@@ -1,0 +1,15 @@
+/*
+ *  MirrorUpdate
+ *  ControlScript, ruft regelmaessig Updatefunktion auf
+ */
+
+include "mirror";
+
+Program MirrorUpdate(mirror)
+  Sleep(RandomInt(60));
+
+  While (mirror)
+    UpdateSign(mirror);
+    Sleep(60);
+  EndWhile
+EndProgram

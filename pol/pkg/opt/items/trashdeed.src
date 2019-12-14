@@ -1,0 +1,119 @@
+///////////////////////////////////////////////
+//
+//   TrashDeed - Abfalleimer aufstellen
+//
+//     based on Trash (2000/01/06)
+//       Author: Zulu
+//
+//     Author: Shinigami
+
+///////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+// Revision 1.11  2008/05/19 22:47:30  mehdorn
+// auf Wunsch von Murphy multiple Deednutzung auf Counselor (BM) gesenkt
+//
+// 2008-04-29 mehdorn:    Seer und hoeher duerfen beliebig viele Tonne mit
+//                        einem Deed aufbauen
+// 2008-04-28 mehdorn:    Typo
+// 2001/10/04 Shinigame:  Complete ReWrite
+
+use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/itemnpc";
+Include "include/msgs";
+Include "include/modifyskill";
+
+///////////////
+// Konstanten
+///////////////
+
+Const SEARCH_RANGE:=10;
+Const TRASH_BARREL:=0x7007;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program MakeTrash(who, deed)
+  If (!deed.movable)
+    SendSysMessagePergon(who,
+      "Ihr müsst die Urkunde erst losmachen.",
+      "You will have to make your deed movable first."
+    );
+    return;
+  EndIf
+  ReserveItem(Deed);
+
+  SendSysMessagePergon(who,
+    "Wo moechtet Ihr den Abfalleimer aufstellen?",
+    "Where do you want to position the trash can?"
+  );
+
+  Var pos := TargetCoordinates(who);
+  If (!pos)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (pos.item and pos.item.container)
+    // CreateItemInContainerPergon(pos.item.container, TRASH_BARREL, 1);
+    SendSysMessagePergon(who,
+      "Das ist ein Behälter. Wählt eine Stelle in der Landschaft.",
+      "This is a container. Select a position on the ground."
+    );
+    return;
+  EndIf
+
+  If (CheckForTrashCans(pos))
+    // falls zu dicht bereits ein Eimer herumsteht
+    SendSysMessagePergon(who,
+      "Ihr könnt Euren Abfalleimer hier nicht aufstellen.",
+      "You cannot position your trash can at this location."
+    );
+    return;
+  EndIf
+
+  var trash := CreateItemAtLocationPergon(
+    pos.x, pos.y, pos.z, TRASH_BARREL, 1, pos.realm
+  );
+  If (!trash)
+    SendSysMessagePergon(who,
+      "Euer Abfalleimer wurde nicht aufgestellt.",
+      "Your trash can wasn't positioned."
+    );
+    return;
+  EndIf
+
+  If (who.cmdlevel < CMDLEVEL_COUNSELOR)
+    DestroyItem(deed);
+  EndIf
+
+  SetObjProperty(trash, "Aufsteller", Hex(who.serial)+" ("+who.name+")");
+
+  SendSysMessagePergon(who,
+    "Ihr habt einen Abfalleimer aufgestellt.",
+    "You positioned a trash can."
+  );
+EndProgram
+
+////////////////////////////////////////////////////////////////////
+// CheckForTrashCans - Befindet sich ein Abfalleimer in der Naehe?
+////////////////////////////////////////////////////////////////////
+
+Function CheckForTrashCans(place)
+  ForEach item in (
+    ListItemsNearLocation(place.x, place.y, place.z, SEARCH_RANGE,place.realm)
+  )
+    If (item.objtype == TRASH_BARREL)
+      return (1);
+    EndIf
+    SleepMS(2);
+  EndForEach
+EndFunction
+
+// vim: sw=2 sts=2

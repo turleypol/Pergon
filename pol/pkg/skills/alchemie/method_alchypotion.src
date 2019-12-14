@@ -1,0 +1,28 @@
+/////////////////////////////////////////////////////////
+//
+//   method_alchypotion - Für Tooltips
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     12.08.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Include ":tooltips:method_include";
+
+Program Install()
+  Return(1);
+EndProgram
+
+Exported Function HasTooltip(potion,who)
+  Return(1);
+  who:=who;
+  potion:=potion;
+EndFunction
+
+Exported Function setTooltip(potion,byref packet)
+  setTooltipAlchyPotion(potion,packet);
+EndFunction

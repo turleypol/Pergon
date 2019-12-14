@@ -1,0 +1,440 @@
+///////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   Skill Tierkunde - Gibt Informationen zum Tier v1.0
+//
+//     Konzept: DeMohn
+//     eMail:   ?
+//
+//     Author: Shinigami
+//
+//   Modification:
+//     2001/06/02 Shinigami: ReWrite
+//     07.01.2002 Fraggulus: Gewichtung von Dex bei der Schwierigkeitsberechnung herabgesetzt
+//                           (die meisten Viecher haben ja extrem hohe Dex-Werte)
+//     xx.04.2002 Paukerli:  Haus-Tier Eigenschaften werden mit ausgegeben
+//     22.01.2006 Seppel:    Delay eingebaut
+//
+///////////////////////////////////////////////////////////////////////////////////////////////
+//
+// Benutzte CProp's
+//   GetPoisonLevel(npc)    - Ist das Tier vergiftet?
+//   CInt(npc.prevtamed)    - War das Tier schonmal zahm/wurde es gekauft?
+//   CInt(npc.young)        - Ist es ein Jungtier?
+// Benutzte zusaetzliche Prop's
+//   CInt(npc.abrichtskill) - Wie hoch ist der SkillCheck?
+//   CInt(npc.zaehmskill)   - Wie hoch ist der SkillCheck?
+
+use attributes;
+use cfgfile;
+use os;
+use uo;
+use util;
+include ":drinking:common";
+include "include/modifyskill";
+include "include/poison";
+
+// aus taming/enticement
+Const DIFFMOD_PREVTAMED_TAMING :=  5; // ... bei bereits gezaehmten Tieren
+Const DIFFMOD_YOUNG_TAMING     := 10; // ... bei Jungtieren
+Const DIFFMOD_YOUNG_ENTICEMENT := 20; // ... bei Jungtieren
+
+Program Skill_Tierkunde(who)
+
+  ///////////////////////////
+  // Vorbedingungen checken
+  ///////////////////////////
+
+  // Tierkundler im Kampfmodus?
+  If (who.warmode)
+    SendSysMessagePergon(who,
+      "Ihr seid viel zu aggressiv und könnt Euch nicht richtig konzentrieren!",
+      "You are too aggressive and are not able to concentrate!",
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+    return;
+  EndIf
+
+  // Taugt der Kenntnisstand irgendwas?
+  If (GetSkillPergon(who, SKILLID_TIERKUNDE)<1)
+    SendSysMessagePergon(who, "Ihr wisst rein gar nichts über Tiere!",
+                              "You know absolutely nothing about animals!", _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+    Return;
+  EndIf
+
+  If (GetObjProperty(who, "#UsesSkill") > ReadGameClock())
+    SendSysMessagePergon(who, "Ihr müsst noch ein wenig warten bevor ihr wieder ein Tier untersuchen könnt");
+    Return(0);
+  EndIf
+
+  SetObjProperty(who, "#UsesSkill", ReadGameClock() + 2);           // Delay bis zur nächsten Nutzung eines Skills 2 Sekunden
+
+  // Untersuchungs-Objekt auswaehlen
+  SendSysMessagePergon(who, "Was möchtet Ihr untersuchen?", "What do you wanna examine?");
+
+  Var animal:=Target(who);
+  If (animal And (animal.isa(POLCLASS_MOBILE)))
+    If (animal.objtype in {0x190, 0x191}) // Es ist ein Mensch
+      If (animal==who)
+        SendSysMessagePergon(who, "Dies ist wahrlich ein außergewöhnliches Tier. Und so schrecklich dumm!",
+                                  "This is a really remarkable animal. And so almighty stupid!", _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+      Else
+        If ((RandomInt(5)==1) And (who.gender<>animal.gender))
+          SendSysMessagePergon(who, "Seid ihr denn schon volljährig?", "Are you really of full age?", _DEFAULT_TEXT_FONT, FONTCOLOR_BLUE);
+        Else
+          SendSysMessagePergon(who, "Ihr seid solch ein Narr, wenn ihr einen Menschen nicht von einem Tier zu unterscheiden wisst!",
+                                    "Do you really can't differentiate a human from an animal?", _DEFAULT_TEXT_FONT, FONTCOLOR_BLUE);
+        EndIf
+
+        If (!animal.isa(POLCLASS_NPC))
+          SendSysMessagePergon(animal, who.name+" versuchte gerade Euch zu untersuchen und stellte erstaunt fest, dass Ihr kein Tier seid!",
+                                       who.name+" just tried to examine you and realized you are no animal.", _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+        EndIf
+      EndIf
+
+      Return;
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    Return;
+  EndIf
+
+  // Sieht der Tierkundler das Tier ueberhaupt?
+  If (!CheckLineofSight(who, animal))
+    SendSysMessagePergon(who, "Ihr könnt es nicht sehen!", "You cannot see that!", _DEFAULT_TEXT_FONT, FONTCOLOR_BLUE);
+    Return;
+  EndIf
+
+  // Zu weit weg?
+  If (Distance(who, animal)>8)
+    SendSysMessagePergon(who, "Ihr solltet noch etwas näher herangehen!",
+                              "You have to stand closer to it!", _DEFAULT_TEXT_FONT, FONTCOLOR_BLUE);
+    Return;
+  EndIf
+
+  ////////////////////////////////////////////////////
+  // könnt ihr dieses Tier ueberhaupt einschaetzen?
+  ////////////////////////////////////////////////////
+
+  // Schwierigkeit ermitteln
+  Var difficulty:=CInt((GetStrPergon(animal)+GetIntPergon(animal)+(GetDexPergon(animal)/8.0)-(GetIntPergon(who)/2.0))/3.0);
+  difficulty:=Max(1,Min(100,difficulty));
+
+  // Besteht der Tierkundler die Probe?
+  If (CheckSkillPergon(who, SKILLID_TIERKUNDE, difficulty,
+     (CInt(RawPointsForSkillCheck(difficulty)*1.5)+10)))
+
+    //////////////////////////////////////
+    // Eckdaten ueber das Tier ermitteln
+    //////////////////////////////////////
+
+    // Konstanten [aus dem Template] auslesen
+    Var mytemplate:=GetNPCConfig(animal.npctemplate);
+
+    ///////////////////////////
+    // Grunddaten ausplaudern
+    ///////////////////////////
+
+    // Geschlecht mittels erneuter Probe bestimmen
+    Var gender_txt  :="", gender_txt_e:="";
+    If (CheckSkillPergon(who, SKILLID_TIERKUNDE, difficulty, RawPointsForSkillCheck(difficulty/2.0)))
+      If (animal.gender)
+        gender_txt  :="weiblich, ";
+        gender_txt_e:="female, ";
+      Else
+        gender_txt  :="männlich, ";
+        gender_txt_e:="male, ";
+      EndIf
+    EndIf
+
+    // Staerke schaetzen
+    Var strength_guessed:=GetStrPergon(animal);
+    If (GetIntPergon(who)<100)
+      strength_guessed:=CInt(strength_guessed*
+        (RandomInt(CInt((101-GetIntPergon(who))*2))+GetIntPergon(who))/100.0);
+    EndIf
+
+    // Staerke ausformulieren
+    Var strength_txt  :="übernatürlich stark";
+    Var strength_txt_e:="miraculous strong";
+    Case (CInt(strength_guessed/20.0))
+      0: strength_txt  :="ein gar schwaches kleines Tier";
+          strength_txt_e:="a very weakly animal";
+      1: strength_txt  :="schwach wie ein Rehlein";
+          strength_txt_e:="weak like a little deer";
+      2: strength_txt  :="von durchschnittlicher Stärke";
+          strength_txt_e:="on an average strength";
+      3: strength_txt  :="etwa so stark wie ein Panther";
+          strength_txt_e:="nearly as strong as a panther";
+      4: strength_txt  :="stark wie ein Pferd";
+          strength_txt_e:="strong as a horse";
+      5: strength_txt  :="sehr stark";
+          strength_txt_e:="very strong";
+      6: strength_txt  :="stark wie ein Raubostard";
+          strength_txt_e:="strong like a frenzied ostard";
+      7: strength_txt  :="schrecklich stark";
+          strength_txt_e:="extraordinary strong";
+    EndCase
+
+    // Gesundheit ermitteln und ausformulieren
+    Var health_txt  :="kerngesund";
+    Var health_txt_e:="as fit as a fiddle";
+    Case (CInt((GetHPPergon(animal)/GetMaxHPPergon(animal))*10))
+      0: health_txt  :="dem Tode nah";
+          health_txt_e:="acherontic";
+      1: health_txt  :="schwer verwundet";
+          health_txt_e:="heavy wounded";
+      2:
+      3: health_txt  :="böse angeschlagen";
+          health_txt_e:="wounded";
+      4:
+      5: health_txt  :="verletzt";
+          health_txt_e:="injured";
+      6:
+      7: health_txt  :="leicht verwundet";
+          health_txt_e:="slightly injured";
+      8:
+      9: health_txt  :="etwas angeschlagen";
+          health_txt_e:="hardly injured";
+    EndCase
+
+    // Ist das Tier vergiftet?
+    Var poison_txt  :=".";
+    Var poison_txt_e:=".";
+    If (IsPoisoned(animal))
+      poison_txt  :=", sowie vergiftet.";
+      poison_txt_e:=", furthermore poisoned.";
+    EndIf
+
+    // Ist es ein Jungtier?
+    Var young_txt  :="";
+    Var young_txt_e:="";
+    Var young:=0;
+    If (GetObjProperty(animal, "Young"))
+      If (GetObjProperty(animal, "Young")>ReadGameClock())
+        young_txt  :=" Es ist ein Jungtier!";
+        young_txt_e:=" It's a pup!";
+        young:=1;
+      Else
+        EraseObjProperty(animal, "Young");
+      EndIf
+    EndIf
+
+    // Grunddaten ausplaudern
+    PrintTextAbovePrivatePergon(animal, animal.name+" ist "+gender_txt+strength_txt+" und "+health_txt+poison_txt+young_txt,
+                                        animal.name+" is "+gender_txt_e+strength_txt_e+" and "+health_txt_e+poison_txt_e+young_txt_e, who, _DEFAULT_TEXT_FONT, FONTCOLOR_BLUE);
+    Sleep(1);
+
+    //////////////////////////////////
+    // Daten zum Zaehmen ausplaudern
+    //////////////////////////////////
+
+    // Kann man das Tier zaehmen?
+    Var zaehmdiff:=mytemplate.zaehmskill;
+    If (zaehmdiff)
+      // Jungtiere sind leichter zu zaehmen
+      If (young)
+        zaehmdiff := Max(0, zaehmdiff - DIFFMOD_YOUNG_TAMING);
+      EndIf
+
+      // Tiere, die schon einmal zahm waren, sind leichter neu zu zaehmen
+      Var zaehm_txt, zaehm_txt_e;
+      If (GetObjProperty(animal, "PrevTamed"))
+        zaehm_txt  :="Es wurde bereits gezähmt";
+        zaehm_txt_e:="It already was tamed";
+
+        zaehmdiff := Max(0, zaehmdiff - DIFFMOD_PREVTAMED_TAMING);
+      Else
+        zaehm_txt  :="Es wurde noch nie gezähmt";
+        zaehm_txt_e:="It was never tamed before";
+      EndIf
+
+      // Besteht der Tierkundler die Probe bzgl. Zaehmen?
+      If (CheckSkillPergon(who, SKILLID_ZAEHMEN, zaehmdiff/2.0, RawPointsForSkillCheck(zaehmdiff/5.0)) And
+          CheckSkillPergon(who, SKILLID_TIERKUNDE, zaehmdiff/2.0, RawPointsForSkillCheck(zaehmdiff/2.0)))
+        // Chance zu Zaehmen ausformulieren
+        Var zaehmskill:=GetSkillPergon(who, SKILLID_ZAEHMEN);
+        If (zaehmskill<1)
+          zaehm_txt  +=", aber Ihr könnt ja sowieso nicht zähmen!";
+          zaehm_txt_e+=", but you can't tame it anyway!";
+        ElseIf (zaehmskill<zaehmdiff-20)
+          zaehm_txt  +=", aber Ihr seid lange nicht gut genug, es selbst zu zähmen!";
+          zaehm_txt_e+=", but you are far away from taming it by yourself!";
+        ElseIf (zaehmskill<zaehmdiff-10)
+          zaehm_txt  +=", aber Ihr müsst noch etwas üben, um es selbst zu zähmen!";
+          zaehm_txt_e+=", but you still have to exercise!";
+        ElseIf (zaehmskill<zaehmdiff)
+          zaehm_txt  +=", aber Ihr könntet es versuchen - es wird gewiss nicht einfach!";
+          zaehm_txt_e+=", but you can try - it won't be easy!";
+        ElseIf (zaehmskill<=zaehmdiff+10)
+          zaehm_txt  +=". Das Zähmen dieses Tieres sollte Euch keine allzu großen Probleme bereiten.";
+          zaehm_txt_e+=". Taming this animal shouldn't be too difficult for you.";
+        ElseIf (zaehmskill<=zaehmdiff+20)
+          zaehm_txt  +=". Ihr müsstet dieses Tier ohne weiteres zähmen können.";
+          zaehm_txt_e+=". You should be able to tame this animal.";
+        Else
+          zaehm_txt  +=". Es sollte Euch ein Leichtes sein, dieses Tier zu zähmen!";
+          zaehm_txt_e+=". It's easy to tame this animal.!";
+        EndIf
+      Else
+        zaehm_txt  :="Ihr seid Euch nicht sicher, was das Zähmen dieses Tieres betrifft.";
+        zaehm_txt_e:="You are absolutely not sure about taming this animal.";
+      EndIf
+
+      // Zaehmdaten ausplaudern
+      PrintTextAbovePrivatePergon(animal, zaehm_txt, zaehm_txt_e, who, _DEFAULT_TEXT_FONT, FONTCOLOR_BLUE);
+      Sleep(1);
+    EndIf
+
+    ////////////////////////////////////
+    // Daten zum Abrichten ausplaudern
+    ////////////////////////////////////
+
+    // Kann man das Tier abrichten?
+    Var abrichtdiff:=mytemplate.abrichtskill;
+    If (abrichtdiff)
+      // Jungtiere sind leichter abzurichten
+      If (young)
+        zaehmdiff := Max(0, abrichtdiff - DIFFMOD_YOUNG_ENTICEMENT);
+      EndIf
+
+      Var abricht_txt, abricht_txt_e;
+
+      // Besteht der Tierkundler die Probe bzgl. Abrichten?
+      If (CheckSkillPergon(who, SKILLID_ABRICHTEN, abrichtdiff/2.0, RawPointsForSkillCheck(abrichtdiff/5.0)) And
+          CheckSkillPergon(who, SKILLID_TIERKUNDE, abrichtdiff/2.0, RawPointsForSkillCheck(abrichtdiff/2.0)))
+        // Chance zu Abrichten ausformulieren
+        Var abrichtskill:=GetSkillPergon(who, SKILLID_ABRICHTEN);
+        If (abrichtskill<1)
+          abricht_txt  :="Ihr habt keine Chance, es abzurichten!";
+          abricht_txt_e:="You have no chance to drill this animal!";
+        ElseIf (abrichtskill<abrichtdiff-20)
+          abricht_txt  :="Ihr seid lange nicht gut genug, es selbst abzurichten!";
+          abricht_txt_e:="You are far away from drilling this animal by youself!";
+        ElseIf (abrichtskill<abrichtdiff-10)
+          abricht_txt  :="Ihr müsst noch etwas üben, um es selbst abzurichten!";
+          abricht_txt_e:="You still have to exercise to drill this animal!";
+        ElseIf (abrichtskill<abrichtdiff)
+          abricht_txt  :="Ihr könntet versuchen, es abzurichten.";
+          abricht_txt_e:="You could try to drill this animal.";
+        ElseIf (abrichtskill<=abrichtdiff+10)
+          abricht_txt  :="Das Abrichten sollte Euch keine allzu grossen Probleme bereiten.";
+          abricht_txt_e:="Drilling this animal shouldn't be too difficult for you.";
+        ElseIf (abrichtskill<=abrichtdiff+20)
+          abricht_txt  :="Ihr müsstet es ohne weiteres abrichten können.";
+          abricht_txt_e:="You should be able to drill this animal.";
+        Else
+          abricht_txt  :="Das Abrichten dieses Tieres sollte ein Leichtes sein!";
+          abricht_txt_e:="It's easy to drill this animal!";
+        EndIf
+      Else
+        abricht_txt  :="Ihr seid Euch nicht sicher, was das Abrichten dieses Tieres betrifft.";
+        abricht_txt_e:="You are absolutely not sure about taming this animal.";
+      EndIf
+
+      // Abrichtdaten ausplaudern
+      PrintTextAbovePrivatePergon(animal, abricht_txt, abricht_txt_e, who, _DEFAULT_TEXT_FONT, FONTCOLOR_BLUE);
+      Sleep(1);
+    EndIf
+
+    ///////////////////////////////////////////////////////////////////////////
+    //   Haus-Tier Eigenschaften ausplaudern
+    ///////////////////////////////////////////////////////////////////////////
+
+    Var generation:=getobjproperty(animal, "Generation");
+    if (generation)
+      PrintTextAbovePrivatePergon(animal, "Das Tier ist die "+generation+". Generation.",
+                                          "This animal is generation "+generation+".", who, _DEFAULT_TEXT_FONT, FONTCOLOR_BLUE);
+    else
+      PrintTextAbovePrivatePergon(animal, "Das Tier ist die 1. Generation.",
+                                          "This animal ist first generation.", who, _DEFAULT_TEXT_FONT, FONTCOLOR_BLUE);
+    endif
+    Var Tierzuchtdiff:=mytemplate.tierzuchtskill;
+    if (Tierzuchtdiff)
+      If ((animal.script==":tierzucht:w_domest") or (animal.script==":tierzucht:m_domest"))
+          if (GetObjProperty(animal, PROP_HUNGER))
+              If (GetSkillPergon(who, SKILLID_TIERZUCHT)>Tierzuchtdiff-5)
+                  PrintTextAbovePrivatePergon(animal, text_hungrylevel(animal, "g"), text_hungrylevel(animal, "e"), who, _DEFAULT_TEXT_FONT, FONTCOLOR_BLUE);
+                  PrintTextAbovePrivatePergon(animal, text_drinklevel(animal, "g"), text_drinklevel(animal, "e"), who, _DEFAULT_TEXT_FONT, FONTCOLOR_BLUE);
+                  Sleep(1);
+                  Var gepoppt:=getobjproperty(animal, "GePoppt");
+                  if (gepoppt)
+                    PrintTextAbovePrivatePergon(animal, "Das Tier ist schwanger.", "This animal is pregnant.", who, _DEFAULT_TEXT_FONT, FONTCOLOR_BLUE);
+                  endif
+                  Sleep(1);
+              endif // getskill
+          endif // Haus-Tier
+      EndIf
+    endif
+  Else
+    SendSysMessagePergon(who, "Ihr scheitert bei dem Versuch, die Kreatur einzuschätzen.", "You failed.", _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+  EndIf
+EndProgram
+
+////////////////////////////////////////////////////////////////
+// RawPointsForSkillCheck - Liefert Punkte fuer den SkillCheck
+////////////////////////////////////////////////////////////////
+
+Function RawPointsForSkillCheck(difficulty)
+  If (difficulty==0)
+    return 2;
+  ElseIf (difficulty<=100)
+    return CInt(Sqrt(BaseSkillToRawSkillPergon(CInt(difficulty*10)))/2.0);
+  Else
+    return 530;
+  EndIf
+EndFunction
+
+
+
+function text_hungrylevel(animal, lang)
+  Var hungrylevel:=CDbl(GetObjProperty(animal, PROP_HUNGER));
+
+  If (lang == "e")
+    if (hungrylevel>12.0)
+      return "This animal is very well fed.";
+    elseif (hungrylevel>9.0)
+      return "This animal is well fed.";
+    elseif (hungrylevel>3.0)
+      return "This animal is a bit hungry.";
+    else
+      return "Help! My maw hurts.";
+    endif
+  Else
+    if (hungrylevel>12.0)
+      return "Das Tier steht sehr gut im Futter.";
+    elseif (hungrylevel>9.0)
+      return "Das Tier ist satt und zufrieden.";
+    elseif (hungrylevel>3.0)
+      return "So langsam könnte ich mal wieder etwas Futter vertragen.";
+    else
+      return "Hilfe! Mein Magen knurrt.";
+    endif
+  Endif
+endfunction
+
+function text_drinklevel(animal, lang)
+  Var level_drink:=CDbl(GetObjProperty(animal, PROP_THIRST));
+
+  If (lang == "e")
+    if (level_drink>12.0)
+      return "This animal has almost drunken too much.";
+    elseif (level_drink>9.0)
+      return "This animal has drunken enough.";
+    elseif (level_drink>3.0)
+      return "This animal is a bit thirsty";
+    else
+      return "Help! I am parched.";
+    endif
+  Else
+    if (level_drink>12.0)
+      return "Ich habe schon fast einen Wasserbauch.";
+    elseif (level_drink>9.0)
+      return "Ich habe genug getrunken.";
+    elseif (level_drink>3.0)
+      return "So langsam könnte ich mal wieder etwas zu Trinken vertragen.";
+    else
+      return "Hilfe! Ich verdurste.";
+    endif
+  EndIf
+endfunction
+
+// vim: sw=2 sts=2

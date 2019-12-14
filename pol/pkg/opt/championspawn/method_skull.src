@@ -1,0 +1,35 @@
+/////////////////////////////////////////////////////////
+//
+//   method_skull - Weiﬂer/Roter Kopp
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     04.07.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+use uo;
+
+Enum Color
+  COLOR_REDSKULL:=   0x26,
+  COLOR_WHITESKULL:= 0x0
+EndEnum
+
+Program Install()
+  Return(1);
+EndProgram
+
+Exported Function MakeRedSkull(skull)
+  skull.color:=COLOR_REDSKULL;
+  skull.invisible:=0;
+EndFunction
+
+Exported Function MakeWhiteSkull(skull)
+  skull.color:=COLOR_WHITESKULL;
+  skull.invisible:=0;
+  PlaySoundEffect(skull,0x29);
+  PlayStationaryEffect(skull.x+1,skull.y+1,skull.z,0x3728,1,15,0,skull.realm);
+EndFunction

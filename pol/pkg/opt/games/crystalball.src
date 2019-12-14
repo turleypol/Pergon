@@ -1,0 +1,115 @@
+//////////////////////////////////////////////////////////
+//                                                      //
+// Fortune telling script which picks a random fortune  //
+//      used in conjunction with a crystal ball.        //
+//                                                      //
+//      GM Basara - April 1 2001                        //
+//                                                      //
+//////////////////////////////////////////////////////////
+
+use math;
+use os;
+use uo;
+use util;
+include "common";
+include "include/client";
+include "include/msgs";
+
+Program crystalball(who, item)
+    If (GetObjProperty(item, "inuse") == 1)
+        SendSysMessagePergon(who,
+            "Die Geister können nur eine Zukunft auf einmal sehen!",
+            "No spirit can see two futures at once!"
+        );
+        return;
+    EndIf
+
+    var tgt := CheckFortuneTarget(who, item);
+    If (!tgt)
+        return;
+    EndIf
+
+    SetObjProperty(item, "inuse", 1);
+
+    PrintTextAboveLocalizedPergon(who,
+        "*" + who.name + " beginnnt, ein Mantralied zu singen*",
+        "*" + who.name + " starts to hum a mantra song*"
+    );
+    PerformAction(who, ANIM_CAST_AREA);
+    PlaySoundEffect(who, SFX_SKILL_SPIRITSPEAK);
+    Sleep(2);
+    PerformAction(who, ANIM_CAST_AREA);
+    PlaySoundEffect(who, SFX_SKILL_SPIRITSPEAK);
+    Sleep(2);
+
+    If (item.graphic == 0x0e2f)
+        item.graphic := 0x0e2e;
+    EndIf
+
+    PrintTextAboveLocalizedPergon(item,
+        "*Die Nebel in der Kugel fangen an, zu wirbeln ...*",
+        "*Fogs in the crystal ball start to swirl*"
+    );
+    PlaySoundEffect(item, 260);
+    PlayObjectCenteredEffect(tgt, FX_BLESS_EFFECT, 0x0a, 0x1e);
+    PlayObjectCenteredEffect(who, FX_BLESS_EFFECT, 0x0a, 0x1e);
+    Sleep(2);
+    PlayObjectCenteredEffect(tgt, FX_BLESS_EFFECT, 0x0a, 0x1e);
+    PlayObjectCenteredEffect(who, FX_BLESS_EFFECT, 0x0a, 0x1e);
+    Sleep(2);
+    PlayObjectCenteredEffect(tgt, FX_BLESS_EFFECT, 0x0a, 0x1e);
+    PlayObjectCenteredEffect(who, FX_BLESS_EFFECT, 0x0a, 0x1e);
+    Sleep(2);
+    PlayObjectCenteredEffect(tgt, FX_BLESS_EFFECT, 0x0a, 0x1e);
+    PlayObjectCenteredEffect(who, FX_BLESS_EFFECT, 0x0a, 0x1e);
+    Sleep(2);
+    PrintTextAboveLocalizedPergon(item,
+        "*Im Nebel erscheint ein Bild...*",
+        "*A picture appears in the fogs...*"
+    );
+    Sleep(8);
+    PrintTextAboveLocalizedPergon(who,
+        tgt.name + "... Eure Zukunft wird sichtbar!",
+        tgt.name + "... Your future looms!",
+        _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+    Sleep(8);
+
+    tellfortune(who);
+
+    Sleep(8);
+    PrintTextAboveLocalizedPergon(who,
+        "*" + who.name + " beginnt, einen weiteren Mantragesang anzustimmen*",
+        "*" + who.name + " starts to hum another mantra song*"
+    );
+    PerformAction(who, ANIM_CAST_AREA);
+    PlaySoundEffect(who, SFX_SKILL_SPIRITSPEAK);
+    Sleep(2);
+    PerformAction(who, ANIM_CAST_AREA);
+    PlaySoundEffect(who, SFX_SKILL_SPIRITSPEAK);
+    Sleep(2);
+    PlaySoundEffect(item, 260);
+    PlayObjectCenteredEffect(tgt, FX_HEAL_EFFECT, 0x0a, 0x1e);
+    PlayObjectCenteredEffect(who, FX_HEAL_EFFECT, 0x0a, 0x1e);
+    Sleep(2);
+    PlayObjectCenteredEffect(tgt, FX_HEAL_EFFECT, 0x0a, 0x1e);
+    PlayObjectCenteredEffect(who, FX_HEAL_EFFECT, 0x0a, 0x1e);
+    Sleep(2);
+    PlayObjectCenteredEffect(tgt, FX_HEAL_EFFECT, 0x0a, 0x1e);
+    PlayObjectCenteredEffect(who, FX_HEAL_EFFECT, 0x0a, 0x1e);
+    Sleep(2);
+    PlayObjectCenteredEffect(tgt, FX_HEAL_EFFECT, 0x0a, 0x1e);
+    PlayObjectCenteredEffect(who, FX_HEAL_EFFECT, 0x0a, 0x1e);
+    Sleep(2);
+    PrintTextAboveLocalizedPergon(item,
+        "*Das Bild in der Kristallkugel löst sich langsam auf*",
+        "*The picture smoothly disappears*"
+    );
+
+    If (item.graphic == 0x0e2e)
+        item.graphic := 0x0e2f;
+    EndIf
+
+    Sleep(60);
+    EraseObjProperty(item, "inuse");
+EndProgram

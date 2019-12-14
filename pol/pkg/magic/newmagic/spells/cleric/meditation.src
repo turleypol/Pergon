@@ -1,0 +1,70 @@
+//**************************************************************************************************
+// Script file meditation.src
+//
+//    implements spell 223 <Meditation> - "Meditation"
+//
+//	refreshes HP, Stamina and Mana
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 03.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use os;
+use vitals;
+
+Include "../magicpergon";
+
+program cast_meditation (params)
+
+   Var caster;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_MEDITATION);
+   Var mana:=    spell.mana;
+   Var time:=    spell.primary;
+   Var mintime:= spell.primarymin;
+   Var maxtime:= spell.primarymax;
+   Var power;
+
+
+   if (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+   elseif (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_MEDITATION);
+   endif
+
+   PerformAction(caster, ANIM_CAST_DIR);
+
+   time:= CInt(time*100.0/power);				// calc necessary time according to casters intelligence
+   if (mintime and mintime > time)
+      time:= mintime;
+   elseif (maxtime and maxtime < time)
+      time:= maxtime;
+   endif
+
+   Var healamnt:= CInt((GetMaxHPPergon(caster) - GetHPPergon(caster)) / time);			// calc amounts
+   Var manaamnt:= CInt((GetMaxManaPergon(caster) - mana - GetManaPergon(caster)) / time);
+   Var stamamnt:= CInt((GetMaxStaminaPergon(caster) - GetStaminaPergon(caster)) / time);
+   Var i;
+
+   PlayObjectCenteredEffect(caster, FX_HEAL_EFFECT, 10, 20);
+   PlaySoundEffect(caster , SFX_20C);
+
+   for (i:= 0;  i < time; i+= 1)								// refresh attribs
+      HealDamage(caster, healamnt);									// in time seconds
+      SetManaPergon(caster, GetManaPergon(caster) + manaamnt);
+      SetStaminaPergon(caster, GetStaminaPergon(caster) + stamamnt);
+      SleepMS(1000);
+   endfor
+
+   SetHPPergon(caster, GetMaxHPPergon(caster));					// set final values
+   SetManaPergon(caster, GetMaxManaPergon(caster) - mana);
+   SetStaminaPergon(caster, GetMaxStaminaPergon(caster));
+
+endprogram

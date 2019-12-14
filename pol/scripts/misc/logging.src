@@ -1,0 +1,71 @@
+/////////////////////////////////////////////////////
+//
+//   Logging - Zentrales Script fuer Unique Logging
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+/////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use file;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonstatistik";
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+Var translate:="";          // Was ist noch zu uebersetzen
+Var translated:="";         // Was wurde bereits uebersetzt
+Var translate_scripts:="";  // Welches Script ist noch zu uebersetzen
+Var translated_scripts:=""; // Welches Script wurde bereits uebersetzt
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Logging()
+  SetGlobalProperty("#Statistik", GetPID()); // Die eigene PID speichern
+
+  Set_Event_Queue_Size(100);
+
+  While (1)
+    Var ev:=Wait_for_Event(120);
+    If (ev)
+      Case (ev.type)
+        "translate":  If (!Find(translate, "'"+ev.logtext+"'", 1))             // Wurde der Text bereits geloggt?
+                        translate+="'"+ev.logtext+"' ";
+                        LogToFile("log/translate_unique.log", ev.logtext);
+                      EndIf
+
+                      If (!Find(translate_scripts, "'"+ev.scriptname+"'", 1))  // Wurde das Script bereits geloggt?
+                        translate_scripts+="'"+ev.scriptname+"' ";
+                        LogToFile("log/translate_scripts_unique.log", ev.scriptname);
+                      EndIf
+
+        "translated": If (!Find(translated, "'"+ev.logtext+"'", 1))            // Wurde der Text bereits geloggt?
+                        translated+="'"+ev.logtext+"' ";
+                        LogToFile("log/translated_unique.log", ev.logtext);
+                      EndIf
+
+                      If (!Find(translated_scripts, "'"+ev.scriptname+"'", 1)) // Wurde das Script bereits geloggt?
+                        translated_scripts+="'"+ev.scriptname+"' ";
+                        LogToFile("log/translated_scripts_unique.log", ev.scriptname);
+                      EndIf
+
+        default:      StatistikLogging(ev); // Statistische Analyse durchfuehren
+      EndCase
+    EndIf
+  EndWhile
+EndProgram

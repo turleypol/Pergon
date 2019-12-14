@@ -1,0 +1,58 @@
+/////////////////////////////////////////////////////////
+//
+// ChangeNPCScript - Angegebener NPCTemplate wird mit in
+//                   der npcdesc angegebenen Script "restartet"
+//
+//
+//     Author: Turley
+//
+//   Modifications:
+//
+/////////////////////////////////////////////////////////
+
+Use uo;
+Use cfgfile;
+
+Include "include/msgs";
+Include "include/npc";
+Include "include/eventwaiter";
+
+Program ChangeNPCScript(who, template)
+	Var newscript, number:=0, subnumber:=0;
+	Var waitershort:=GetProcess(GetGlobalProperty(PID_EVENTWAITERSHORT));
+  Var waiterlong:=GetProcess(GetGlobalProperty(PID_EVENTWAITERLONG));
+  Var event:=struct{erase};
+	If (!template)
+		SendSysMessagePergon(who,"Usage: .changeNPCScript NPCTemplate");
+		Return;
+	EndIf
+	newscript:=GetNPCConfig(template).script;
+	If (!newscript)
+		SendSysMessagePergon(who,"Template '"+template+"' konnte nicht gefunden werden.");
+		Return;
+	EndIf
+	SysLog("ChangeNPCScript mit NPCTemplate '"+template+"' und Script '"+newscript+"'");
+
+	ForEach npc in ListObjectsInBox(0, 0, -128, 6143, 4095, 127,who.realm)
+    If (npc.isa(POLCLASS_NPC))
+      If ((lower(npc.npctemplate)==lower(template)) // Passendes Template & kein "Sonder"-Script
+      	  && (!(npc.script in {":tierzucht:m_domest",":tierzucht:w_domest","calmanimal","tamedanimal","tamed","enticedanimal","heaven"})))
+      	SysLog("Ersetze bei "+npc.name+" ["+npc.serial+"] Script "+npc.script+" mit "+newscript);
+      	npc.script:=newscript;
+      	event.erase:=npc.serial;
+        waitershort.sendevent(event);
+        waiterlong.sendevent(event);
+        RestartScript(npc);
+        number+=1;
+        subnumber+=1;
+        If (subnumber>=10)
+          subnumber:=0;
+          SendSysMessagePergon(who, number+" NPCs geändert");
+        EndIf
+      EndIf
+    EndIf
+    SleepMs(2);
+  EndForEach
+  SysLog("ChangeNPCScript beendet "+number+" Aenderungen ["+template+"->"+newscript+"]");
+  SendSysMessagePergon(who,"ChangeNPCScript beendet "+number+" Änderungen ["+template+"->"+newscript+"]");
+EndProgram

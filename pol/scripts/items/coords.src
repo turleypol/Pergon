@@ -1,0 +1,6 @@
+use os;
+include "include/pergonutil";
+
+Program get_coords(who)
+    Start_ScriptPergon("textcmd/3_seer/where", who);
+EndProgram

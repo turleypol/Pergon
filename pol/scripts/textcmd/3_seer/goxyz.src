@@ -1,0 +1,50 @@
+/////////////////////////////////////////////////////////////////////////////
+//  ".goxyz x y [z]" - jump to a location, specifying coordinates.
+//
+//  If Z is not specified, map data will be read.  Note statics and dynamic
+//  items won't be taken into account, except insofar as
+//  MoveObjectToLocation does automatically.
+
+use uo;
+include "include/msgs";
+include "include/place";
+
+Program TextCMD_GoXYZ(who, text)
+  var params := SplitWords(text);
+  var mtype  := MOVEOBJECT_NORMAL;
+  
+  If (text["?"] or text["h"] or params.size() < 2)
+    SendSysMessagePergon(who, "Parameter: .goxyz <x> <y> [z] [realm]");
+    SendSysMessagePergon(who, "z - Höhe und Position erzwingen");
+    return;
+  EndIf
+  
+  If (params.size()<3) // Kein Z
+    params[3] := GetMapInfo(CInt(params[1]), CInt(params[2]), who.realm).z;
+  Else
+    mtype := MOVEOBJECT_FORCELOCATION;
+  EndIf
+
+  If (params.size()<4) // Kein Realm
+    params[4] := who.realm;
+  Else
+    Case (CInt(params[4]))
+      0: params[4] := REALM_BRITANNIA;
+      2: params[4] := REALM_ILSHENAR;
+      3: params[4] := REALM_MALAS;
+      4: params[4] := REALM_TOKUNO;
+
+      default: params[4] := who.realm;
+    EndCase
+  EndIf
+
+  JumpLocationAdd(who);
+  var res := MoveObjectToLocation(
+    who, CInt(params[1]), CInt(params[2]), CInt(params[3]), params[4], mtype
+  );
+  If (!res)
+    SendSysMessagePergon(
+      who, "Nicht moeglich dorthin zu gehen: "+res.errortext
+    );
+  EndIf
+EndProgram

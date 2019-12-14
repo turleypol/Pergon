@@ -1,0 +1,209 @@
+///////////////////////////////////////////////////////////////////////////
+// GameBoardControl -- Spielsteine zusammenhalten und ggf. neu erzeugen
+//
+// Author: Mehdorn
+// based on GameBoardCreate by Fraggulus
+
+use math;
+use os;
+use uo;
+include "include/itemnpc";
+include "include/logutil";
+
+Const UOBJ_GAMETOKEN := 0x669b;
+// fuer Muehlespiel extra Steine, da im dortigen Gump die Grafik 0x3584/b
+// nicht korrekt angezeigt wird
+Const UOBJ_GAMETOKEN_MILL_BLACK := 0x15fc;
+Const UOBJ_GAMETOKEN_MILL_WHITE := 0x15ff;
+
+Const TOKEN_BLACK := 0x358b;
+Const TOKEN_WHITE := 0x3584;
+
+Const PROP_STONELIST := "stones";
+
+Program GameBoardControl(board)
+  // Lastverteilung bei Serverstart
+  If (polcore().uptime < 300)
+    Sleep(RandomInt(300));
+  EndIf
+
+  // Hauptschleife
+  While (board)
+    If (StonesMissing(board))
+      RecreateStones(board);
+    EndIf
+    Sleep(30);
+  EndWhile
+EndProgram
+
+// guckt, ob noch alle Spielsteine existieren und holt sie ggf. zurueck
+// - falls alle noch/wieder da sind, return 0
+// - muessen Steine wiederhergestellt werden, return >= 1
+Function StonesMissing(board) // {{{
+  var list := board.getprop(PROP_STONELIST);
+  If (!list)
+    // keine Liste, z. B. frisch initialisiert
+    return 1;
+  EndIf
+
+  // mal gucken, was so auf dem Brett liegt
+  // (erst Fremdkoerper entfernen, danach ggf. Steine holen, damit das
+  // Brett nicht zu voll wird)
+  ForEach item in (EnumerateItemsInContainer(board, ENUMERATE_ROOT_ONLY))
+    SleepMs(2);
+    If (!(item.serial in (list)))
+      syslog(
+        ItemInfoStr(board, COORDS_REALM)+" wurde mit unpassendem Item "+
+        ItemInfoStr(item)+" befuellt und vernichtet es"
+      );
+      DestroyItem(item);
+    EndIf
+  EndForEach
+
+  // nun Steine durchzaehlen und ggf. holen
+  var missing := 0;
+  ForEach serial in (list)
+    SleepMs(2);
+    If (!serial)
+      // Luecke in der Liste (moeglich, sollte aber hier nicht auftreten)
+      missing += 1;
+      continue;
+    EndIf
+
+    // vielleicht hat's jemand eingesteckt oder in die Bankbox getan
+    var stone := SystemFindObjectBySerial(
+      serial, SYSFIND_SEARCH_OFFLINE_MOBILES
+    );
+    If (!stone)
+      // da fehlt ein Stein!
+      list[_serial_iter] := error{errortext := "Stone missing"};
+      missing += 1;
+      continue;
+    EndIf
+
+    If (stone.container.serial <> board.serial)
+      // Stein nicht auf dem Brett, mal zurueckholen
+      var res := MoveItemToContainer(stone, board);
+      If (!res)
+        syslog(
+          ItemInfoStr(board)+" konnte Spielstein "+ItemInfoStr(stone)+
+          " nicht zurueckholen: "+res.errortext
+        );
+      EndIf
+    EndIf
+  EndForEach
+
+  If (missing)
+    // Liste wurde wahrscheinlich veraendert, setzen
+    board.setprop(PROP_STONELIST, list);
+  EndIf
+
+  return missing;
+EndFunction // }}}
+
+// geht die Liste der Spielsteine durch und erzeugt fehlende Steine
+Function RecreateStones(board) // {{{
+  var list := board.getprop(PROP_STONELIST);
+  If (!list)
+    list := array{};
+  EndIf
+
+  var def := GetGameDefinition(board);
+  ForEach graph in (def.graphics)
+    SleepMs(2);
+    If (list[_graph_iter] == error)
+      // Stein vorbereiten
+      var newstone := GetItemDescriptor(def.type);
+      newstone.graphic := graph;
+
+      // fuer boardcaninsert markieren
+      newstone["CProps"] := dictionary{};
+      newstone["CProps"].insert("bserial", board.serial);
+
+      // Erzeugungsversuch
+      var res := CreateItemInContainer(board, newstone);
+      If (res)
+        list[_graph_iter] := res.serial;
+      Else
+        syslog(
+          ItemInfoStr(board, COORDS_REALM)+" konnte Spielstein "+graph+
+          " nicht erzeugen: "+res.errortext
+        );
+      EndIf
+    EndIf
+  EndForEach
+
+  // da wird nur aufgerufen werden, wenn Steine fehlen, machen wir
+  // immer etwas und speichern daher immer
+  board.setprop(PROP_STONELIST, list);
+EndFunction // }}}
+
+// holt Daten ueber die zu verwendenden Steine abhaengig vom Brett
+Function GetGameDefinition(board) // {{{
+  var def := struct{
+    type     := UOBJ_GAMETOKEN,
+    graphics := array{}
+  };
+
+  If (board.objtype in (array{0x0e1c, 0x0fad}))
+    // Backgammon
+    def.graphics := {
+      // jeweils 15 Spielsteine
+      TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK,
+      TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK,
+      TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK,
+      TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE,
+      TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE,
+      TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE
+    };
+    return def;
+
+  ElseIf (board.objtype == 0x0fa6)
+    // Schach
+    def.graphics := {
+      // 8 Bauern
+      0x3589, 0x3589, 0x3589, 0x3589, 0x3589, 0x3589, 0x3589, 0x3589,
+      // hintere Reihe
+      0x3585, 0x3585, 0x3588, 0x3588, 0x3586, 0x3586, 0x3587, 0x358a,
+      // Gegenseite
+      // 8 Bauern
+      0x3590, 0x3590, 0x3590, 0x3590, 0x3590, 0x3590, 0x3590, 0x3590,
+      // hintere Reihe
+      0x358c, 0x358c, 0x358f, 0x358f, 0x358d, 0x358d, 0x358e, 0x3591
+    };
+    return def;
+
+  ElseIf (board.objtype == 0x6670)
+    // Dame
+    def.graphics := {
+      // jeweils 12 Spielsteine
+      TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK,
+      TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK, TOKEN_BLACK,
+      TOKEN_BLACK, TOKEN_BLACK,
+      TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE,
+      TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE, TOKEN_WHITE,
+      TOKEN_WHITE, TOKEN_WHITE
+    };
+    return def;
+
+  ElseIf (board.objtype == 0x0e11)
+    // Muehle
+    // FIXME: Muehle ist derzeit unbenutzbar
+    // def.type := UOBJ_TOKEN_WHITE_MILL;
+    // def.graphics := {
+    //   // jeweils 9 Steine
+    //   UOBJ_TOKEN_WHITE_MILL, UOBJ_TOKEN_WHITE_MILL, UOBJ_TOKEN_WHITE_MILL,
+    //   UOBJ_TOKEN_WHITE_MILL, UOBJ_TOKEN_WHITE_MILL, UOBJ_TOKEN_WHITE_MILL,
+    //   UOBJ_TOKEN_WHITE_MILL, UOBJ_TOKEN_WHITE_MILL, UOBJ_TOKEN_WHITE_MILL,
+    //   UOBJ_TOKEN_BLACK_MILL, UOBJ_TOKEN_BLACK_MILL, UOBJ_TOKEN_BLACK_MILL,
+    //   UOBJ_TOKEN_BLACK_MILL, UOBJ_TOKEN_BLACK_MILL, UOBJ_TOKEN_BLACK_MILL,
+    //   UOBJ_TOKEN_BLACK_MILL, UOBJ_TOKEN_BLACK_MILL, UOBJ_TOKEN_BLACK_MILL
+    // };
+    // return def;
+    exit;
+  EndIf
+
+  return error{errortext := "Keine Definition fuer "+ItemInfoStr(board)};
+EndFunction // }}}
+
+// vim: sw=2 sts=2

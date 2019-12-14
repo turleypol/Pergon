@@ -1,0 +1,70 @@
+Package System
+==============
+
+Packages sit in /pol/pkg/[dir]
+
+pol/pkg/[dir]/pkg.cfg is the package configuration file.
+
+Subdirectories can contain packages, too.  If a directory under pol/pkg has
+no pkg.cfg, or has a pkg.cfg and is enabled, subdirectories will be searched.
+
+The following can be defined in PKG.CFG (see also pkg/template/pkg.cfg)
+    Enabled 0/1     if false, package is totally ignored
+    Name            The package name
+    Version         The package version
+    Requires        zero or more required packages (one per line)
+    Conflicts       zero or more conflicting packages (one per line)
+
+The following special files can exist in a package directory:
+
+    pkg.cfg         package descriptor file
+    itemdesc.cfg    item descriptor entries for items 
+    skills.cfg      skills defined in this package
+    spells.cfg      spells defined in this package
+    start.ecl       script to be run on system startup
+    (to be done:)
+    docs/           documentation directory.  Should contain index.htm
+                    for automatic support through web server
+
+Special notes for package itemdesc.cfg files
+--------------------------------------------
+    scripts specified in itemdesc.cfg are assumed to exist in the package's
+    main directory. 
+
+Script/Config File Descriptors
+------------------------------
+    Wherever script names are specified a full ":pkgname:scriptname" format
+    can be used, to refer to a script in another package.
+    item.usescript variables should always use full :pkgname:script format.
+
+Config Files and Packages
+-------------------------
+    ReadConfigFile(cfgfilename) now accepts several forms of config filename:
+    "cfgname"  
+        - for a script not in a package, looks for pol/config/[cfgname].cfg
+        - for a script in a package, looks for [pkgdir]/[cfgname].cfg
+    ":pkgname:cfgname"
+        - looks for [pkgdir]/[cfgname].cfg
+    "::cfgname"
+        - always looks in pol/config/[cfgname].cfg
+
+Composite Config Files
+----------------------
+    "pol/config/itemdesc.cfg" used to contain all the item descriptors.  These
+     are now spread out in multiple packages.  ReadConfigFile( "::itemdesc" )
+     will access a special "composite" config file, which contains all
+     elements found in all itemdesc.cfg files.
+     The same goes for skills.cfg and spells.cfg
+
+
+todo / ideas
+============
+    package 'tips' directory
+    circles.cfg
+    allow -any- file to be specified as a composite
+      (would allow packages to provide hooks to support other packages)
+
+problem areas
+=============
+    text commands
+    object type ranges

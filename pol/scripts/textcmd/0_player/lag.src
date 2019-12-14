@@ -1,0 +1,41 @@
+//////////////////////////////////////////////////////////////////////////////////////
+//
+//   Lag TextCMD - Schickt eine Meldung an den Spectator ueber akt. auftretende Lags
+//
+//     Author: Shinigami
+//
+//   Modification:
+//
+//////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_Lag(who, param)
+  Var Spectator:=GetGlobalProperty("#Spectator"); // Den Spectator ueber das Lag informieren
+  If (Spectator)
+    Var spectatorev:=struct;
+    spectatorev.+type:="lag";
+    spectatorev.+value:="["+who.acctname+" / "+who.name+"] "+param;
+
+    GetProcess(Spectator).sendevent(spectatorev);
+
+    SendSysMessagePergon(who, "Die Nachricht wurde verschickt...");
+  Else
+    SendSysMessagePergon(who, "Die Nachricht konnte nicht verschickt werden! Versucht es später erneut.");
+  EndIf
+EndProgram

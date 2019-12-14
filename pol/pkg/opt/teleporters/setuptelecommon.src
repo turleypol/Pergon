@@ -1,0 +1,56 @@
+///////////////////////////////////////////////////////////////////////////
+// setuptelecommon -- Koordinaten/Richtung setzen fuer diverse Tele-Isteine
+
+include "include/msgs";
+include "include/server";
+include "common";
+use uo;
+
+Program SetupTeleCommon(who, item)
+    If (who.isa(POLCLASS_NPC) or who.cmdlevel < CMDLEVEL_SEER)
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Dreht Euch in die Richtung, in die man nach dem Teleport "+
+        "gucken soll, und wählt ein Ziel.",
+        "Turn into the direction you want to face after teleportation "+
+        "and select a target."
+    );
+
+    var dest;
+    While (1)
+      dest := TargetCoordinates(who);
+      If (!dest)
+          SendSysMessagePergon(who,
+              "Abbruch",
+              "Abort"
+          );
+          return;
+      EndIf
+      If (dest.x == item.x and dest.y == item.y)
+        SendSysMessagePergon(who,
+              "Ziel Koordinaten und Teleporter Koordinaten sind gleich!",
+              "Equal coordinates for target and teleporter!"
+          );
+      Else
+        break;
+      EndIf
+    EndWhile
+
+    // dest kann zusätzlich objtype des Statics sowie Mobiles/Items
+    // an Zielkoordinaten enthalten
+    var newdest := struct{
+        x      := dest.x,
+        y      := dest.y,
+        z      := dest.z,
+        realm  := dest.realm,
+        facing := who.facing
+    };
+
+    SetObjProperty(item, PROP_TELEP_DEST, newdest);
+    SendSysMessagePergon(who,
+        "Koordinaten gesetzt",
+        "Coordinates set"
+    );
+EndProgram

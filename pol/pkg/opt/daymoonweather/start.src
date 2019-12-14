@@ -1,0 +1,43 @@
+/////////////////////////////////////////////////////////////////////
+//
+//   DayMoonWeather - Start
+//
+//     based on DayNight Pkg (1999/06/02)
+//       Author: Racalac
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     1999/06/02 Rac: Day/Night transitions for one time zone only
+//     2000/04/23 Raxxla: Played around with a little bit
+//     2000/05/28 Shinigami: Complete ReWrite
+//
+/////////////////////////////////////////////////////////////////////
+
+//////////////
+// Libraries&Includes
+//////////////
+use os;
+use uo;
+include "daymoonweather";
+include "include/pergonutil";
+include "include/server";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program DayMoonWeather()
+  If (GetGlobalProperty(BAUSERVER))
+    return;
+  EndIf
+
+  CheckGlobalProperty("LightDay");
+  CheckGlobalProperty("LightMoon");
+  CheckGlobalProperty("LightWeather");
+  CheckGlobalProperty("Season");
+
+  Start_ScriptPergon("daynight");
+  Start_ScriptPergon("moons");
+  Start_ScriptPergon("weather");
+EndProgram

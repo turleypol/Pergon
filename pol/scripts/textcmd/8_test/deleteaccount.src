@@ -1,0 +1,45 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD DeleteAccount - Account eines Spielern loeschen
+//
+// Author: Shinigami
+
+use uo;
+include "include/msgs";
+include "include/logutil";
+include "include/pergonutil";
+include "include/string";
+
+Program TextCMD_DeleteAccount(who)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  // Einen Anfangsbuchstaben auswaehlen
+  var buchstabe := ChooseAccountBuchstabe(who, FillInAccountBuchstaben());
+  If (buchstabe == -1)
+    return;
+  EndIf
+
+  // Einen Account auswaehlen
+  var accountname := ChooseAccountName(who, FillInAccountNames(buchstabe));
+  If (!accountname)
+    return;
+  EndIf
+
+  var account := FindAccount(accountname);
+  If (!account)
+    syslog("'"+accountname+"' gibt es nicht !");
+    return;
+  EndIf
+
+  var charnr;
+  For (charnr := 1; charnr <= 6; charnr := charnr+1)
+    var char := account.getcharacter(charnr);
+    If (char)
+      SendSysMessagePergon(who,
+        "Lösche Character '"+char.name+"' vom Account '"+accountname+"'."
+      );
+      DeleteCharacterPergon(account, charnr);
+    EndIf
+  EndFor
+  syslog(CharInfoStr(who)+" loescht Account: "+account.name);
+  account.delete();
+EndProgram

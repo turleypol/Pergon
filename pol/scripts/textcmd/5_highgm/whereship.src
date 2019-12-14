@@ -1,0 +1,24 @@
+use boat;
+use uo;
+
+Include "include/msgs";
+
+program textcmd_where( who )
+    SendSysMessagePergon( who, "Wählt den Bauplan zum Schiff gehörend aus" );
+
+    Var tgt := Target( who );
+    if (tgt)
+        Var shipserial := GetObjProperty( tgt, "builtserial" );
+        if (shipserial)
+            Var ship := SystemFindBoatBySerial( shipserial );
+            if (ship)
+                SendSysMessagePergon( who, "Das Schiff befindet sich bei ("+ship.x+","+ship.y+")" );
+            else
+                SendSysMessagePergon( who, "Das Schiff scheint nicht zu existieren." );
+            endif
+        else
+            SendSysMessagePergon( who, "Das ist kein Bauplan für ein Schiff." );
+        endif
+
+    endif
+endprogram

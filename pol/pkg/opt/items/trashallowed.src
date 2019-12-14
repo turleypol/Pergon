@@ -1,0 +1,71 @@
+//////////////////////////////////////////////////////////
+// trashallowed - darf der Muelleimer benutzt werden?
+
+//////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+// Revision 1.2  2008/05/18 20:50:59  mehdorn
+// bei Benutzung ohne Festmachen kommt nun Muell aus der Tonne
+//
+// Revision 1.1  2008/05/09 14:01:20  mehdorn
+// Muelleimer nur noch aufgestellt benutztbar
+//   (Ausnahmen: serverseitige Scripte und Cmdlevel >= Seer)
+//
+
+//////////////////////////
+// Bibliotheken & Includes
+//////////////////////////
+Use uo;
+Include "include/msgs";
+Include "include/modifyskill";
+
+Program TrashCanCheck(who, can, movetype, inserttype, item)
+    // serverseitige Scripte duerfen immer wegwerfen
+    If (!who or MOVETYPE_COREMOVE == movetype)
+        return 1;
+    EndIf
+
+    // Muelleimer muessen zur Benutzung festgemacht sein
+    If (!can.movable)
+        // "Kudi"-Container-Pruefung
+        // (haette Anfang 2017 fast ihren Fell-Beutel weggeworfen)
+        If (INSERT_ADD_ITEM == inserttype)
+            // Container sind nicht stackbar, muss also ADD sein
+            // (damit ist klar, dass "item" belegt ist)
+            If (item.isa(POLCLASS_CONTAINER))
+                // ist wirklich ein Container
+                If (EnumerateItemsInContainer(item).size() >= 1)
+                    // nur einen leeren Container zulassen
+                    SendSysMessagePergon(who,
+                        "Ihr solltet das vorher leerraeumen!",
+                        "You should empty that beforehand!"
+                    );
+                    return 0;
+                EndIf
+            EndIf
+        EndIf
+        return 1;
+    EndIf
+
+    // Seer und hoeher duerfen immer
+    If (who.cmdlevel >= CMDLEVEL_SEER)
+        return 1;
+    EndIf
+
+    If (who)
+        If (CreateItemInBackpack(who, 0x10f3, 1))
+            SendSysMessagePergon(
+                who,
+                "Euch fällt etwas Müll aus der Tonne.",
+                "Some garbage drops out of your trash can."
+            );
+        EndIf
+        SendSysMessagePergon(
+            who,
+            "Ihr solltet Eure Tonne fest aufstellen.",
+            "You should place your trash can somewhere first."
+        );
+    EndIf
+
+    return 0;
+EndProgram

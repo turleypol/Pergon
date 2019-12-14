@@ -1,0 +1,28 @@
+use uo;
+include "include/msgs";
+
+Program textcmd_setmovable(who, movable)
+    If (!movable)
+        SendSysMessagePergon(who,
+            "Ziel wählen zum Umschalten der Bewegbarkeit."
+        );
+    Else
+        If (CInt(movable))
+            SendSysMessagePergon(who, "Ziel wählen zum Losmachen.");
+        Else
+            SendSysMessagePergon(who, "Ziel wählen zum Festmachen.");
+        EndIf
+    EndIf
+
+    var obj := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!obj)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (!movable)
+        obj.movable := 1 - obj.movable;
+    Else
+        obj.movable := CInt(movable);
+    EndIf
+EndProgram

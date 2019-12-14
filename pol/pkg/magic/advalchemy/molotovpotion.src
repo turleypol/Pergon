@@ -1,0 +1,125 @@
+use os;
+use cfgfile;
+use uo;
+
+Include "include/eventid";
+Include "include/itemnpc";
+Include "include/msgs";
+Include "include/modifyskill";
+
+Const MOVING_EFFECT_PURPLE_POTION  := 0x0F0D;
+Const SOUND_EFFECT_EXPLOSION	   := 0x208;
+Const EFFECT_EXPLOSION             := 0x36b0;
+Const SOUND_EFFECT_FIREFIELD:= 0x1DE;
+
+program use_explosion( character, potion )
+
+    Var tobjtype := potion.objtype;
+
+    if (!AccessiblePergon( character, potion))
+	    SendSysMessagePergon(character,"Ihr kommt da nicht ran!");
+	    return;
+    endif
+
+    If (character.hidden) // Um unnoetige Events zu sparen...
+      character.hidden := 0;
+    EndIf
+
+    SendSysMessagePergon (character, "Ziel wählen");
+
+    Var cast_on := TargetCoordinates( character );
+    if (!cast_on)
+        return;
+    endif
+
+    if (!CheckLosAt( character, cast_on.x, cast_on.y, cast_on.z ))
+        SendSysMessagePergon(character, "Ihr könnt das nicht sehen!");
+        return;
+    endif
+
+    SubtractAmount(potion, 1);
+    Detach();
+
+    Var itemdef := readconfigfile("::itemdesc");
+
+    if (!itemdef)
+        print ("couldn't open itemdesc");
+        return;
+    endif
+
+    Var telem := itemdef[tobjtype];
+    if (! telem)
+        print ("Couldn't find elem " + cstr(potion.objtype));
+    endif
+
+    Var potion_strength := telem.strength;
+
+    if (potion_strength == 0)
+	    potion_strength := 1;
+    endif
+
+    print ("potion strength = " + potion_strength);
+
+    PlayMovingEffectXYZ( character.x, character.y, character.z+15,
+                         cast_on.x, cast_on.y, cast_on.z,
+                         MOVING_EFFECT_PURPLE_POTION, 8, 0, 0 ,character.realm);
+
+    Sleep(2);
+    Var lookout := CreateItemAtLocationPergon( cast_on.x, cast_on.y, cast_on.z, 0x0f0d, 1,cast_on.realm );
+    lookout.movable := 0;
+
+    PrintTextAbovePergon(character, lookout, "3", "3");
+    sleep(1);
+    PrintTextAbovePergon(character, lookout, "2", "2");
+    sleep(1);
+    PrintTextAbovePergon(character, lookout, "1", "1");
+    sleep(1);
+
+    PlaySoundEffect( character,  SOUND_EFFECT_EXPLOSION );
+//    PlayStationaryEffect( cast_on.x, cast_on.y, cast_on.z, EFFECT_EXPLOSION, 7, 0xA, 0 );
+
+    DestroyItem( lookout );
+
+    Var ev := struct;
+    ev.+type;
+    ev.+source;
+    ev.source := character;
+
+    ev.type := SYSEVENT_ENGAGED;
+    Var Fires:=Array(9);
+    Fires[1]:=CreateItemAtLocationPergon(cast_on.x-1,cast_on.y-1, cast_on.z, 0x398c, 1,cast_on.realm);
+    Fires[2]:=CreateItemAtLocationPergon(cast_on.x-1,cast_on.y, cast_on.z, 0x398c, 1,cast_on.realm);
+    Fires[3]:=CreateItemAtLocationPergon(cast_on.x-1,cast_on.y+1, cast_on.z, 0x398c, 1,cast_on.realm);
+    Fires[4]:=CreateItemAtLocationPergon(cast_on.x,cast_on.y-1, cast_on.z, 0x398c, 1,cast_on.realm);
+    Fires[5]:=CreateItemAtLocationPergon(cast_on.x,cast_on.y, cast_on.z, 0x398c, 1,cast_on.realm);
+    Fires[6]:=CreateItemAtLocationPergon(cast_on.x,cast_on.y+1, cast_on.z, 0x398c, 1,cast_on.realm);
+    Fires[7]:=CreateItemAtLocationPergon(cast_on.x+1,cast_on.y-1, cast_on.z, 0x398c, 1,cast_on.realm);
+    Fires[8]:=CreateItemAtLocationPergon(cast_on.x+1,cast_on.y, cast_on.z, 0x398c, 1,cast_on.realm);
+    Fires[9]:=CreateItemAtLocationPergon(cast_on.x+1,cast_on.y+1, cast_on.z, 0x398c, 1,cast_on.realm);
+    Var i;
+    For (i:=1;i<=9;i+=1)
+      Setobjproperty(fires[i], "creater", character.serial);
+      SetObjProperty(fires[i] , "f","1");
+    endfor
+  Var counter := 0;
+
+  Var duration := 30;
+  for (counter := 1; counter <= duration; counter += 1)
+
+    foreach fire in fires
+	  if (fire)
+            PlaySoundEffect(fire, SOUND_EFFECT_FIREFIELD);
+          endif
+    endforeach
+    sleep(1);
+
+  endfor
+
+//now, cleanup
+foreach fire in fires
+    DestroyItem( fire );
+endforeach
+
+//endfunction
+
+endprogram

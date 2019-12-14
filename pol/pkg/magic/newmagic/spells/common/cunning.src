@@ -1,0 +1,104 @@
+//**************************************************************************************************
+// Script file cunning.src
+//
+//    implements spell 12 <Cunning> - "Scharfsinn"
+//
+//	increases intelligence of spelltarget
+//		 [ Resisted (Magic) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 27.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+Include "include/spellcheck";
+Include "../magicpergon";
+
+program cast_cunning (params)
+
+   Var caster;
+   Var caston;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_COMMON_CUNNING);
+   Var difficulty:= spell.skill;
+   Var resist:=  spell.resist;
+   Var amnt:=    spell.primary;
+   Var minamnt:= spell.primarymin;
+   Var maxamnt:= spell.primarymax;
+   Var dur:=     spell.duration;
+   Var mindur:=  spell.durationmin;
+   Var maxdur:=  spell.durationmax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_COMMON_CUNNING);
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+
+   PlayObjectCenteredEffect(caston, FX_BLESS_EFFECT, 7, 7);
+   PlaySoundEffect(caston, SFX_SPELL_CUNNING);
+
+   if (GetObjProperty(caston, "spell_cunning"))				// check if spelltarget can be manipulated
+      SendSysMessagePergon(caster, "Die Intelligenz Eures Ziels wurde bereits magisch gestärkt",
+                                   "Your target's intelligence is already magically boosted");
+      return;
+   endif
+							// check and calc amount/duration depending on spelltargets magic resistance
+   if (resist)			// and casting power
+      amnt:= CInt(MagicResistance(caston, difficulty, resist, power*amnt/100.0, 1));
+      dur:=  CInt(MagicResistance(caston, difficulty, resist, power*dur/100.0, 0));
+   else
+      amnt:= CInt(power*amnt/100.0);
+      dur:=  CInt(power*dur/100.0);
+   endif
+
+   if (minamnt and minamnt > amnt)
+      amnt:= minamnt;
+   elseif (maxamnt and maxamnt < amnt)
+      amnt:= maxamnt;
+   endif
+
+   if (mindur and mindur > dur)
+      dur:= mindur;
+   elseif (maxdur and maxdur < dur)
+      dur:= maxdur;
+   endif
+   
+   var modifystruct:=struct{spelltarget:=0,
+                            int:=0,
+                            cprop:=struct{name:="",value:={}},
+                            CastPower:={}};
+   modifystruct.spelltarget:=caston;
+   modifystruct.int:=amnt;
+   modifystruct.cprop.value:={};
+   modifystruct.cprop.value[1]:= ReadGameClock() + dur;
+   modifystruct.cprop.value[2]:= amnt;
+   modifystruct.cprop.value[3]:= ReadMilliSecondClock();
+   modifystruct.cprop.name:="spell_cunning";
+   modifystruct.CastPower:={{caston, "Magie", amnt,"","",0}};
+
+   SendSpellWaiter(caston, "spell_cunning", dur, modifystruct.cprop.value[3], caston,modifystruct);
+
+endprogram

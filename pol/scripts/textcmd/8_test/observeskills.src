@@ -1,0 +1,64 @@
+///////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD ObserveSkills - Ueberwacht den An-/Abstieg bestimmter Skills
+//                           (wird ggf. in scripts\start.src eingeklingt)
+//
+//     Author: Shinigami
+//
+//   Modification
+//
+///////////////////////////////////////////////////////////////////////////
+
+use file;
+use os;
+use uo;
+include "include/clock";
+include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+// nur die aktiven spielerchars und da die skills dann quasi als block, am besten, vielleicht alle 10 skills 'n bindestrich oder so
+
+Program TextCMD_ObserveSkills()
+
+  Var skillnames:="";
+  For skillid:=0 To MAX_SKILLS
+    skillnames:=skillnames+" "+GetSkillName(skillid);
+  EndFor
+  LogToFile("log/observerskills.log", "Skills ="+skillnames);
+  LogToFile("log/observerskills.log", "");
+
+  While (1)
+    Var active_check:=ReadGameClock()-5184000; // 2 Monate
+    Var time:=GetDateTimeStr();
+
+    ForEach accountname in ListAccounts()
+      Var account:=FindAccount(accountname);
+      If (account)
+        For charnr:=1 To 5
+          Var char:=account.getcharacter(charnr);
+          If (char)
+            If (GetObjProperty(char, "LastLog")>=active_check) // Ist der Character aktiv?
+              If (char.cmdlevel<CMDLEVEL_SEER)
+                Var skillvalues:="";
+                Var skillrawvalues:="";
+                For skillid:=0 To MAX_SKILLS
+                  skillvalues:=skillvalues+" "+GetSkillFloatPergon(char, skillid);
+                  skillrawvalues:=skillrawvalues+" "+GetRawSkillPergon(char, skillid);
+                EndFor
+                LogToFile("log/observerskills.log", time+char.name+" ["+Lower(Hex(char.serial))+"]"+skillvalues+" /"+skillrawvalues);
+              EndIf
+            EndIf
+          EndIf
+        EndFor
+      Else
+        SysLog("'"+accountname+"' gibt es nicht !");
+      EndIf
+    EndForEach
+
+    LogToFile("log/observerskills.log", "");
+    Sleep(1800);
+  EndWhile
+EndProgram

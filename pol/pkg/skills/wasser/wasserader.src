@@ -1,0 +1,32 @@
+////////////////////////////////////////////
+//
+//   Water - System
+//
+//   Author: Pauker
+//           11/2001
+//
+////////////////////////////////////////////
+
+use os;
+use uo;
+
+Program ControlWasserader(item)
+  
+  If (item.graphic == 0x373a)
+    Sleep(300);
+  ElseIf(item.graphic == 0x3779)
+    Sleep (60);
+  Else
+    var wasser := GetObjProperty(item, "wasser");
+    If (wasser)
+      While (wasser > 0.2)
+        Sleep(10);
+        wasser := GetObjProperty(item, "wasser");
+        wasser -= 1.0;
+        SetObjProperty(item, "wasser", wasser);
+      Endwhile
+    EndIf
+  EndIf
+
+  DestroyItem(item);
+EndProgram

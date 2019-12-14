@@ -1,0 +1,72 @@
+///////////////////////////////////////////////////////////////////////////
+// opencont -- Container mit angegebener Serial öffnen
+
+use uo;
+include "include/msgs";
+
+Program OpenCont(who, params)
+    var parm := SplitWords(params);
+
+    var cont;
+    If (parm.size() < 1)
+        SendSysMessagePergon(who,
+            "Mögliche Parameter: <serial> ['p'] - "+
+            "Öffnet Container mit angegebener Serial, oder "+
+            "(mit 'p') Obercontainer (wenn möglich)",
+            "Available parameters: <serial> ['p'] - "+
+            "Opens container with given serial, or "+
+            "(if 'p' is given) its parent container (if any)"
+        );
+
+        SendSysMessagePergon(who,
+            "Container wählen", "Select container"
+        );
+        cont := Target(who);
+        If (!cont)
+            SendSysMessagePergon(who, "Abbruch", "Abort");
+            return;
+        EndIf
+    Else
+        cont := SystemFindObjectBySerial(
+            CInt(parm[1]), SYSFIND_SEARCH_OFFLINE_MOBILES
+        );
+        If (!cont)
+            SendSysMessagePergon(who,
+                "Objekt nicht gefunden", "Object not found"
+            );
+            return;
+        EndIf
+    EndIf
+
+    If (parm.size() == 2 and parm[2] == "p")
+        If (cont.container)
+            cont := cont.container;
+        Else
+            SendSysMessagePergon(who,
+                "Kein Obercontainer gefunden, versuche es direkt",
+                "No parent container, trying to open container itself"
+            );
+        EndIf
+    EndIf
+
+    If (!cont.isa(POLCLASS_CONTAINER))
+        SendSysMessagePergon(who,
+            "Objekt ist kein Container", "Object is not a container"
+        );
+        return;
+    EndIf
+
+    If (Distance(who, cont) <= 2)
+        OpenRecursive(who, cont);
+    Else
+        SendOpenSpecialContainer(who, cont);
+    EndIf
+EndProgram
+
+Function OpenRecursive(who, cont);
+    If (cont.container)
+        OpenRecursive(who, cont.container);
+    EndIf
+    SleepMs(2);
+    SendViewContainer(who, cont);
+EndFunction

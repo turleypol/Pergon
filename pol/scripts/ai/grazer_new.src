@@ -1,0 +1,818 @@
+///////////////////////////////////////////////////////////////////////////
+// Grazer Script - Control script for friendly Animal-NPC
+//
+// based on Meek Script (1998/April)
+// Author: ENS
+//
+// Author: DeMohn
+
+// Optimierungen
+//   Wait_for_EventLogging(5) -> Wait_for_EventLogging(120)
+//     Reicht, wenn der im Leerlauf nur alle 2 Minuten was macht
+//   HateLove nur einmal zentral in der Haupt-While-Do-Schleife einlesen
+//   Multiplikation ist schneller als Division (schon wegens Fehlercheck...)
+//   Sub-Haupt-Loop aufloesen, weil unsinnig
+//   SetWarMode(1) geht nicht... siehe Fight() -> SetOpponent(opponent)
+//   Case-Statements brauchen kein Break... das dient zum abbrechen von Schleifen
+//   Events komplett ueberarbeitet
+//   EnteredAreas -> max. Range auf 8... ScanRange im Look_Up unbeeinflußt
+//     => Zahl der Events stark reduziert
+
+use cfgfile;
+use npc;
+use os;
+use uo;
+use util;
+include "include/animal";
+include "include/clock";
+include "include/eventid";
+include "include/eventwaiter";
+include "include/modifyskill";
+include "include/names";
+include "include/npc";
+
+// Konstanten
+Const LOOP_MAIN      := 0;   // Hauptschleife
+Const LOOP_INACTIVE  := 1;   // Schlafen
+
+Const MAX_EVENTRANGE := 8;   // Wird benutzt fuer EnteredArea
+
+Const DEBUG          := 0;   // DebugMessages ein- oder ausschalten
+
+Const WALKWAIT       := 300; // Wartezeit zwischen einzelnen Bewegungen
+Const LOOKAROUNDWAIT := 120; // Wartezeit zwischen zweimal umschauen
+
+// Globale Variablen
+Var me:=Self();
+Var senserange:=MAX_EVENTRANGE; // Reaktionsradius
+Var idlesound:=0;
+Var angersound:=0;
+Var wakeuptime:=0;
+Var sleeptime:=0;
+
+Var looptype;   // Wichtig fuer die Event-Verwaltung
+Var eventrange; // EnteredArea-Radius
+
+/////////////////////////////
+// Grazer - Initialisierung
+/////////////////////////////
+
+Program Grazer()
+  If (GetObjProperty(me, "frozen"))
+    me.frozen:=1;
+    IncRevision(me);
+  EndIf
+
+  UpdateHunger(me);
+
+  If (me.name["<random>"])
+    SetName(me, RandomName(me));
+  EndIf
+
+    Var mytemplate:=GetNPCConfig(me.npctemplate);
+
+    If (mytemplate.senserange)
+      senserange:=CInt(mytemplate.senserange);
+    EndIf
+    If (mytemplate.idlesound)
+      idlesound:=CInt(mytemplate.idlesound);
+    EndIf
+    If (mytemplate.angersound)
+      angersound:=CInt(mytemplate.angersound);
+    EndIf
+
+    // Bestimmt zu welcher Tagestunde die Viecher in den Grazer_InactiveLoop
+    // gehen, wo sie sich ggf. verstecken und nur wach werden, wenn sie
+    // verletzt werden oder jemand ganz nah an sie rankommt
+    Case (Lower(mytemplate.activetime))
+      "day":       wakeuptime:= 8;
+                   sleeptime :=20;
+      "daydawn":   wakeuptime:= 6;
+                   sleeptime :=22;
+      "night":     wakeuptime:=22;
+                   sleeptime := 6;
+      "nightdawn": wakeuptime:=20;
+                   sleeptime := 8;
+    EndCase
+
+  // Fuer Voegel gibts mehrere Sounds und damits schoen zwitschert,
+  // kriegt jeder einen zufaelligen
+  If (Lower(me.npctemplate)=="bird")
+    idlesound:=24+RandomInt(9);
+  EndIf
+
+  // Schraenkt den EventRange ein, weil sonst uebelste Performance-Probleme
+  If (senserange>MAX_EVENTRANGE)
+    eventrange:=MAX_EVENTRANGE;
+  Else
+    eventrange:=senserange;
+  EndIf
+
+  Stats_korrigieren(me); // Ggf. MegaMonster erzeugen
+  SetWarMode(0);
+
+  If (DEBUG)
+    SysLog("Grazer: ["+Hex(me.serial)+"] SenseRange  = "+senserange);
+    SysLog("Grazer: ["+Hex(me.serial)+"] EventRange  = "+eventrange);
+    If (wakeuptime)
+      SysLog("Grazer: ["+Hex(me.serial)+"] Aufwachen   = "+(wakeuptime-1)+":00 Uhr");
+      SysLog("Grazer: ["+Hex(me.serial)+"] Einschlafen = "+(sleeptime-1)+":00 Uhr");
+    Else
+      SysLog("Grazer: ["+Hex(me.serial)+"] Daueraktiv");
+    EndIf
+  EndIf
+
+  Grazer_MainLoop(); // Hauptschleife aufrufen
+EndProgram
+
+////////////////////////////////////
+// Grazer_MainLoop - Hauptschleife
+////////////////////////////////////
+Function Grazer_MainLoop()
+  //Ist denke mal ueberfluessig
+  //Set_Priority(10);
+
+  //Hier die Events anstossen fuers Rumlaufen und co
+  InitEvents();
+
+  EnableEvents(SYSEVENT_ENGAGED+SYSEVENT_DAMAGED);
+  EnableEvents(SYSEVENT_ENTEREDAREA, eventrange);
+  looptype:=LOOP_MAIN;
+
+  Var last_action:=0;
+  Var ev;
+  Var SleepEvent;
+
+  If (Is_SleepTime())
+    ev:=Grazer_InactiveLoop(); // Schlafen
+    If (ev)
+      SleepEvent:=1;
+    EndIf
+  Else
+    SleepEvent:=0;
+  EndIf
+
+  While (me)
+    if (!SleepEvent)
+      ev:=Wait_for_EventLogging(300);
+    else
+      SleepEvent:=0;
+    endif
+
+    If (ev)
+      If (DEBUG)
+        SysLog("Grazer: ["+Hex(me.serial)+"] Main-Event = "+ev);
+      EndIf
+
+      Case (ev.type)
+        EVID_WALK:
+          WanderPergon();
+          //next WalkEvent
+          SendEventWaiter(me, 60+RandomInt(WALKWAIT), EVID_WALK);
+
+        EVID_DOMEST_TIME:
+          If (!me.warmode)
+            //Time SleepTime Time_Diff()+0 bis 30min IGZeit (/4)
+            SendEventWaiter(me, CInt(((Diff_Time()*60*60)+RandomInt(120)*60)/4), EVID_DOMEST_TIME);
+            If (Is_SleepTime())
+              ev:=Grazer_InactiveLoop(); // Schlafen
+              If (ev)
+                SleepEvent:=1;
+              EndIf
+            EndIf
+          Else  // In 20min nochmal Probieren
+            SendEventWaiter(me, 1200, EVID_DOMEST_TIME);
+          EndIf
+        SYSEVENT_ENGAGED:
+          If (Distance(me, ev.source)<=senserange)
+            If (DEBUG)
+              SysLog("Grazer: ["+Hex(me.serial)+"] Angriff aus "+Distance(me, ev.source));
+            EndIf
+
+            If (CheckOtherMobile(ev.source)==LOVEHATE_FRIGHT)
+              If (DEBUG)
+                SysLog("Grazer: ["+Hex(me.serial)+"] Hab Angst, hau ab vor Agressor");
+              EndIf
+
+              FleeOutofSenseRange(ev.source);
+            Else // Wenn ich schlau genug bin, die Lage einzuschaetzen, und ich mich haushoch ueberlegen waehne...
+              If ((GetHPPergon(me)>=GetMaxHPPergon(me)*0.8) And (GetHPPergon(me)>=GuessStrength(ev.source)*2))
+                If (DEBUG)
+                  SysLog("Grazer: ["+Hex(me.serial)+"] Bin schlau und stark, greife an.");
+                EndIf
+
+                Fight(ev.source);
+              Else // ansonsten hau ich ab
+                FleeOutOfSenseRange(ev.source);
+              EndIf
+            EndIf
+
+            last_action:=ReadGameClock();
+          EndIf
+
+        SYSEVENT_DAMAGED:
+          If (ev.source)
+            If (DEBUG)
+              SysLog("Grazer: ["+Hex(me.serial)+"] Aua!");
+            EndIf
+
+            If (CheckOtherMobile(ev.source)==LOVEHATE_FRIGHT)
+              If (GetHPPergon(me)<GetMaxHPPergon(me)*0.5) // Bin schwer verletzt
+                If (DEBUG)
+                  SysLog("Grazer: ["+Hex(me.serial)+"] Bin gleich tot. Ich fliehe soweit, wie ich kann!");
+                EndIf
+
+                PanicEscape(ev.source, 60);
+              Else
+                If (DEBUG)
+                  SysLog("Grazer: ["+Hex(me.serial)+"] Der will mich fressen. Ich renne 10 Sekunden lang weg!");
+                EndIf
+
+                PanicEscape(ev.source, 10);
+              EndIf
+            Else // Wenn ich schlau genug bin, die Lage einzuschaetzen, und ich mich haushoch ueberlegen waehne...
+              If ((GetHPPergon(me)>=GetMaxHPPergon(me)*0.8) And (GetHPPergon(me)>=GuessStrength(ev.source)*2))
+                If (DEBUG)
+                  SysLog("Grazer: ["+Hex(me.serial)+"] Isch bin viel staerka als der, den mach isch alle!");
+                EndIf
+
+                Fight(ev.source);
+              Else
+                If (GetHPPergon(me)<GetMaxHPPergon(me)*0.5) // Bin schwer verletzt
+                  If (DEBUG)
+                    SysLog("Grazer: ["+Hex(me.serial)+"] Ich nehme panisch reissaus.");
+                  EndIf
+
+                  PanicEscape(ev.source, 60);
+                Else
+                  If (DEBUG)
+                    SysLog("Grazer: ["+Hex(me.serial)+"] Ich renn soweit weg, bis ihn nicht mehr sehen kann.");
+                  EndIf
+
+                  FleeOutOfSenseRange(ev.source);
+                EndIf
+              EndIf
+            EndIf
+
+            last_action:=ReadGameClock();
+          EndIf
+
+        SYSEVENT_ENTEREDAREA:
+          If (CheckLineOfSight(me, ev.source))
+            If (DEBUG)
+              SysLog("Grazer: ["+Hex(me.serial)+"] Da kommt was.");
+            EndIf
+
+            Var actiontype:=CheckOtherMobile(ev.source);
+            If (actiontype==LOVEHATE_FRIGHT)
+              If (DEBUG)
+                SysLog("Grazer: ["+Hex(me.serial)+"] Den "+(ev.source).name+" fuerchte ich und hau ab.");
+              EndIf
+
+              FleeOutOfSenseRange(ev.source);
+            ElseIf (actiontype==LOVEHATE_PLAYER)
+              last_action:=0;
+            EndIf
+          EndIf
+
+        EVID_DOMEST_SOUND:
+          PlaySoundEffect(me, idlesound);
+          SendEventWaiter(me, RandomInt(121)+180, EVID_DOMEST_SOUND);
+          // nicht unnoetig oft aufrufen
+          UpdateHunger(me);
+
+      EndCase
+    EndIf
+  EndWhile
+EndFunction
+
+
+/////////////////////////////////////////////////////////
+// Look_Around - Nach Feinden suchen, Umgebung absuchen
+/////////////////////////////////////////////////////////
+// Gibt 1 zurueck, wenn was vorgefallen ist
+Function Look_Around()
+  Var result:=1;
+
+  If (DEBUG)
+    SysLog("Grazer: ["+Hex(me.serial)+"] Ich schau mich um ("+me.x+" "+me.y+" "+me.z+")");
+  EndIf
+
+  // Alles in meiner Sichtweite wird in Listen gemerkt und dann je nach
+  // Prioritaet (zuerst Fright, dann Player, dann Love) behandelt
+  Var fright:={ };
+  Var love:={ };
+  Var player:={ };
+
+  ForEach critter in ListMobilesInLineOfSight(me, senserange)
+    Case (CheckOtherMobile(critter))
+      LOVEHATE_FRIGHT: fright.append(critter);
+                       If (DEBUG)
+                         SysLog("Grazer: ["+Hex(me.serial)+"] Ich sehe und fuerchte "+critter.name);
+                       EndIf
+      LOVEHATE_LOVE:   love.append(critter);
+                       If (DEBUG)
+                         SysLog("Grazer: ["+Hex(me.serial)+"] Ich sehe und mag "+critter.name);
+                       EndIf
+      LOVEHATE_PLAYER:
+      LOVEHATE_HUMAN:  player.append(critter);
+                       If (DEBUG)
+                         SysLog("Grazer: ["+Hex(me.serial)+"] Ich sehe den Menschen "+critter.name);
+                       EndIf
+    EndCase
+  EndForEach
+
+  // Wenn einer oder mehrere da sind, vor denen ich Angst habe, dann renn ich
+  // vor dem weg, der mir am naechsten ist
+  If (fright.size())
+    Var range:=senserange+1;
+    Var abstand;
+    Var opponent;
+
+    ForEach critter in fright
+      abstand:=Distance(me, critter);
+      If (range>abstand)
+        range:=abstand;
+        opponent:=critter;
+      EndIf
+    EndForEach
+
+    If (DEBUG)
+      SysLog("Grazer: ["+Hex(me.serial)+"] Ich renn weg vor "+opponent.name+" in "+range+"m Entfernung.");
+    EndIf
+
+    FleeOutOfSenseRange(opponent);
+  ElseIf (player.size()) // Sind Player da und mir kommt einer zu nahe, geh ich weg
+    Var range:=senserange+1;
+    Var abstand;
+    Var opponent;
+
+    ForEach critter in player
+      abstand:=Distance(me, critter);
+      If (range>abstand)
+        range:=abstand;
+        opponent:=critter;
+      EndIf
+    EndForEach
+
+    If (range*2<=senserange)
+      If (DEBUG)
+        SysLog("Grazer: ["+Hex(me.serial)+"] "+opponent.name+" rueckt mir auf die Pelle.");
+      EndIf
+
+      KeepDistanceToOpponent(opponent, CInt(senserange/2), 0);
+    EndIf
+  ElseIf (love.size()) // Sind welche da, die ich mag, dann bleib ich in der Naehe
+    If (looptype==LOOP_MAIN)
+      Var range:=senserange+1;
+      Var abstand;
+      Var opponent;
+
+      ForEach critter in love
+        abstand:=Distance(me, critter);
+        If (range>abstand)
+          range:=abstand;
+          opponent:=critter;
+        EndIf
+      EndForEach
+
+      If (DEBUG)
+        SysLog("Grazer: ["+Hex(me.serial)+"] Ich bleibe in der Naehe meines Freundes.");
+      EndIf
+
+      KeepDistanceToOpponent(opponent, CInt(senserange/4), CInt(senserange/3));
+    EndIf
+
+    result:=0;
+  Else
+    result:=0;
+  EndIf
+
+  Return (result);
+EndFunction
+
+////////////////////////////////////////////////////////////////////////
+// FleeOutOfSenseRange - Fliehe solange, bis Feind nicht mehr sichtbar
+////////////////////////////////////////////////////////////////////////
+// Wenn stark genug, dann wird nach 30 Sekunden angegriffen
+Function FleeOutOfSenseRange(opponent)
+  If (DEBUG)
+    SysLog("Grazer: ["+Hex(me.serial)+"] Ich fliehe aaaaaaaaah...");
+  EndIf
+
+  Case (looptype) // SYSEVENT_DAMAGED+SYSEVENT_ENTEREDAREA bleiben aktiv
+    LOOP_MAIN:        DisableEvents(SYSEVENT_ENGAGED);
+    LOOP_INACTIVE:    If (me.hidden) // Um unnoetige Events zu sparen...
+                        me.hidden:=0;
+                      EndIf
+  EndCase
+
+  ClearEventQue();
+
+  Var attack:=0;
+  Var timeout:=ReadGameClock()+30;
+  Var abstand:=Distance(me, opponent);
+  While (opponent And (!opponent.hidden) And (!opponent.concealed) And ((abstand<
+        senserange+1) Or CheckLineOfSight(me, opponent)) And (!Events_Waiting()))
+    If (timeout<=ReadGameClock())
+      If ((GetMaxHPPergon(me)>=50) And (abstand*2<senserange) And (abstand<8))
+        attack:=1;
+        Break;
+      Else
+        timeout:=ReadGameClock()+15;
+      EndIf
+    EndIf
+
+    RunAwayFrom(opponent);
+    SleepMS(100);
+
+    abstand:=Distance(me, opponent);
+  EndWhile
+
+  Case (looptype)
+    LOOP_MAIN:        EnableEvents(SYSEVENT_ENGAGED);
+  EndCase
+
+  If (attack)
+    If (DEBUG)
+      SysLog("Grazer: ["+Hex(me.serial)+"] Ich kann ihn nicht abhaengen, also greif ich an.");
+    EndIf
+
+    Fight(opponent);
+  EndIf
+EndFunction
+
+////////////////////////////////////////////////
+// PanicEscape - Fluechte fuer <time> Sekunden
+////////////////////////////////////////////////
+Function PanicEscape(opponent, time)
+  If (DEBUG)
+    SysLog("Grazer: ["+Hex(me.serial)+"] Die naechsten "+time+" Sekunden renne ich erstmal nur wie doof!");
+  EndIf
+
+  Case (looptype) // Alle abgeschaltet
+    LOOP_MAIN:        DisableEvents(SYSEVENT_ENGAGED+SYSEVENT_DAMAGED);
+                      DisableEvents(SYSEVENT_ENTEREDAREA);
+    LOOP_INACTIVE:    DisableEvents(SYSEVENT_DAMAGED);
+                      DisableEvents(SYSEVENT_ENTEREDAREA);
+                      If (me.hidden) // Um unnoetige Events zu sparen...
+                        me.hidden:=0;
+                      EndIf
+  EndCase
+
+  ClearEventQue();
+
+  Var timeout:=ReadGameClock()+time;
+  While (opponent And (!opponent.hidden)  And (!opponent.concealed) And ((Distance(me, opponent)<
+        senserange+1) Or CheckLineOfSight(me, opponent)) And (timeout>ReadGameClock()))
+    RunAwayFrom(opponent);
+    SleepMS(100);
+  EndWhile
+
+  Case (looptype)
+    LOOP_MAIN:        EnableEvents(SYSEVENT_ENGAGED+SYSEVENT_DAMAGED);
+                      EnableEvents(SYSEVENT_ENTEREDAREA, eventrange);
+    LOOP_INACTIVE:    EnableEvents(SYSEVENT_DAMAGED);
+                      EnableEvents(SYSEVENT_ENTEREDAREA, CInt(eventrange/4));
+  EndCase
+EndFunction
+
+//////////////////////////////////////////////////////
+// KeepDistanceToOpponent - Entferne mich vom Gegner
+//////////////////////////////////////////////////////
+Function KeepDistanceToOpponent(opponent, mindist:=10, maxdist:=0)
+  Var timeout:=ReadGameClock()+Distance(me, opponent)*2;
+  Var abstand:=Distance(me, opponent);
+  While (opponent And (!opponent.hidden) And (!opponent.concealed) And
+        (abstand<mindist) And (!Events_Waiting()) And (timeout>ReadGameClock()))
+    If (abstand*2<mindist)
+      RunAwayFrom(opponent);
+    Else
+      WalkAwayFrom(opponent);
+    EndIf
+    SleepMS(100);
+
+    abstand:=Distance(me, opponent);
+  EndWhile
+
+  If (maxdist)
+    While (opponent And (!opponent.hidden) And (!opponent.concealed) And
+          (abstand<maxdist) And (!Events_Waiting()) And (timeout>ReadGameClock()))
+      WalkAwayFrom(opponent);
+      SleepMS(100);
+
+      abstand:=Distance(me, opponent);
+    EndWhile
+  EndIf
+EndFunction
+
+//////////////////////////////
+// Fight - Gegner bekaempfen
+//////////////////////////////
+Function Fight(opponent)
+  If ((opponent) And (opponent.cmdlevel < CMDLEVEL_SEER))
+    If (DEBUG)
+      SysLog("Grazer: ["+Hex(me.serial)+"] Ich greife an.");
+    EndIf
+
+    Case (looptype) // SYSEVENT_ENGAGED+SYSEVENT_DAMAGED+SYSEVENT_OPPONENT_MOVED bleiben aktiv
+      LOOP_MAIN:        DisableEvents(SYSEVENT_ENTEREDAREA);
+      LOOP_INACTIVE:    DisableEvents(SYSEVENT_ENTEREDAREA);
+                        If (me.hidden) // Um unnoetige Events zu sparen...
+                          me.hidden:=0;
+                        EndIf
+    EndCase
+
+    ClearEventQue();
+
+    If (angersound)
+      PlaySoundEffect(me, angersound);
+    EndIf
+
+    SetOpponent(opponent);
+
+    Var abstand:=Distance(me, opponent);
+    Var oldabstand:=-1;
+    Var timeout:=0;
+
+    Var fleefrom:=0;
+    Var ev;
+    While (opponent And (!opponent.dead) And (!opponent.hidden) And (!fleefrom) And (abstand<25))
+      If (CheckLineOfSight(me, opponent))
+        If ((oldabstand<>abstand) Or (abstand<=1))
+          timeout:=ReadGameClock()+15;
+          oldabstand:=abstand;
+        EndIf
+
+        ev:=Wait_for_EventLogging(CloseDistance(opponent)*5);
+        If (ev)
+          Repeat
+            Case (ev.type)
+              SYSEVENT_ENGAGED:
+              SYSEVENT_DAMAGED: If (!CheckLineOfSight(me, opponent))
+                                  fleefrom:=ev.source;
+                                  Break;
+                                EndIf
+              EVID_DOMEST_SOUND:
+                SendEventWaiter(me, RandomInt(121)+180, EVID_DOMEST_SOUND);
+              EVID_WALK:
+                SendEventWaiter(me, 60+RandomInt(WALKWAIT), EVID_WALK);
+              EVID_DOMEST_TIME:
+                SendEventWaiter(me, 1200, EVID_DOMEST_TIME);
+            EndCase
+          Until (!(ev:=Wait_for_EventLogging(0)));
+        EndIf
+
+        If (!fleefrom)
+          If ((GetHPPergon(me)<CInt(GetMaxHPPergon(me)*0.6)) Or (timeout<=ReadGameClock()))
+            fleefrom:=opponent;
+          EndIf
+        EndIf
+      Else
+        timeout:=ReadGameClock()+5;
+        Repeat
+          SleepMS(100);
+        Until ((CheckLineOfSight(me, opponent)) Or Events_Waiting() Or (timeout<=ReadGameClock()));
+
+        If (Events_Waiting() Or (timeout<=ReadGameClock()))
+          fleefrom:=opponent;
+        EndIf
+      EndIf
+
+      abstand:=Distance(me, opponent);
+    EndWhile
+
+    Case (looptype)
+      LOOP_MAIN:        EnableEvents(SYSEVENT_ENTEREDAREA, eventrange);
+      LOOP_INACTIVE:    EnableEvents(SYSEVENT_ENTEREDAREA, CInt(eventrange/4));
+    EndCase
+
+    If (fleefrom)
+      If (fleefrom==opponent)
+        PanicEscape(opponent, 10);
+      EndIf
+
+      FleeOutOfSenseRange(fleefrom);
+    EndIf
+  EndIf
+
+  SetWarMode(0);
+  Sleep(1);
+EndFunction
+
+//////////////////////////////////////////////
+// Is_SleepTime - Sollte ich jetzt schlafen?
+//////////////////////////////////////////////
+//
+// currenthour - momentane Tageszeit, die aktuelle Stunde
+//    1    = 0001-0100 Geisterstunde
+//    2- 5 = 0101-0500 Nacht
+//    6- 7 = 0501-0700 Morgendaemmerung
+//    8-12 = 0701-1200 Vormittag
+//   13    = 1201-1300 Mittagsstunde
+//   14-19 = 1301-1900 Nachmittag
+//   20-21 = 1901-2100 Abenddaemmerung
+//   22-24 = 2101-2400 Nacht
+Function Is_SleepTime()
+  If (wakeuptime)
+    if (HourWithinRange(GetPergonHourOfDay(0), sleeptime, wakeuptime))
+      Return(1);
+    else
+      Return(0);
+    endif
+  EndIF
+EndFunction
+
+//////////////////////////////////////////////////
+// CheckOtherMobile - Mag ich das Gegenueber?
+//////////////////////////////////////////////////
+Function CheckOtherMobile(mobile)
+  return CheckHateLove(me, mobile, array{"nohate", "nohunt"});
+EndFunction
+
+//////////////////////////////////////////////////
+// GuessStrength - Staerke des Gegners schaetzen
+//////////////////////////////////////////////////
+Function GuessStrength(opponent)
+  Var guessedhp:=GetHPPergon(opponent);
+  If (GetIntPergon(me)<100)
+    guessedhp:=CInt((guessedhp*(RandomInt(2*(100-GetIntPergon(me))+1)+GetIntPergon(me)))/100);
+  EndIf
+
+  If (DEBUG)
+    SysLog("Grazer: ["+Hex(me.serial)+"] Ich schaetze, dass "+Hex(opponent.serial)+" "+guessedhp+" HP hat.");
+  EndIf
+
+  Return (guessedhp);
+EndFunction
+
+////////////////////////////////////////////////////
+// ClearEventQue - Loesche alle anliegenden Events
+////////////////////////////////////////////////////
+Function ClearEventQue()
+  var ev;
+  While(ev:=Wait_for_EventLogging(0))
+    //Standardevents neustarten
+    Case (ev.type)
+      EVID_DOMEST_SOUND:
+          SendEventWaiter(me, RandomInt(121)+180, EVID_DOMEST_SOUND);
+      EVID_WALK:
+          SendEventWaiter(me, 60+RandomInt(WALKWAIT), EVID_WALK);
+      EVID_DOMEST_TIME:
+          SendEventWaiter(me, 1200, EVID_DOMEST_TIME);
+    EndCase
+  EndWhile
+EndFunction
+
+////////////////////////////////////////////////////
+// StartEvents ausloesen
+////////////////////////////////////////////////////
+Function InitEvents()
+  //WalkEvent
+  SleepMS(RandomInt(2000));  // Streuen damit der Event_Queue hoffentlich nicht überläuft.
+  SendEventWaiter(me, 60+RandomInt(WALKWAIT), EVID_WALK);
+  //EVID von Domest geklaut, haben dort aber die selbe Bedeutung
+  If (wakeuptime)
+    SleepMS(RandomInt(2000));  // Streuen damit der Event_Queue hoffentlich nicht überläuft.
+    //Time SleepTime Time_Diff()+0 bis 30min IGZeit (/4)
+    SendEventWaiter(me, CInt(((Diff_Time()*60*60)+RandomInt(120)*60)/4), EVID_DOMEST_TIME);
+  EndIf
+  If (idlesound)
+    SleepMS(RandomInt(2000));
+    //IdleSound abgeben 3-5min
+    SendEventWaiter(me, RandomInt(121)+180, EVID_DOMEST_SOUND);
+  EndIf
+EndFunction
+
+//////////////////////////////////////////////////
+// Diff_Time() - Berechnet Zeit bis Schlafenszeit/Aufwachzeit
+//  etwas ungenau aber reicht
+//////////////////////////////////////////////////
+Function Diff_Time()
+  If (wakeuptime)
+    Var currenthour:=GetPergonHourOfDay(0);
+    Var sleepstop:=wakeuptime;
+
+    // Umrechnen wegen Ueberlauf bei Tageswechsel (2300->0000)
+    If (sleepstop<sleeptime)
+      If (currenthour<sleepstop)
+        currenthour+=24;
+      else
+        sleepstop+=24;
+      endif
+    EndIf
+
+    If ((sleeptime - currenthour)>0) // Über Schlafenszeit also Aufwachzeit interessant
+      Return(sleepstop - currenthour);
+    Else
+      Return(currenthour - sleeptime);
+    EndIf
+  EndIf
+EndFunction
+
+Function Grazer_InactiveLoop()
+  ForEach critter in ListMobilesInLineOfSight(me, cint(senserange/2))
+    If (!critter.isa(POLCLASS_NPC))
+      If ((!critter.hidden) And (critter.cmdlevel < CMDLEVEL_SEER))
+
+        KeepDistanceToOpponent(critter);
+        Return (0);
+      EndIf
+    EndIf
+  EndForEach
+
+  // Ich schau mich 10 Sekunden um, ob meine Schlafstaette ruhig bleibt.
+  Var ev:=Wait_for_EventLogging(10);
+  If (!ev)
+    If (GetSkillPergon(me, SKILLID_VERSTECKEN))
+      me.hidden:=1;
+    EndIf
+
+    DisableEvents(SYSEVENT_ENGAGED);
+    looptype:=LOOP_INACTIVE;
+
+    Var wakedup:=0;
+    While (!wakedup)
+      ev:=Wait_for_EventLogging(300);
+      If (ev)
+
+        Case (ev.type)
+          SYSEVENT_DAMAGED:
+            If (ev.source)
+              PanicEscape(ev.source, 20);
+              wakedup:=1;
+            EndIf
+
+          EVID_WALK:
+            //next WalkEvent
+            SendEventWaiter(me, Diff_Time()*60*60/4 + RandomInt(WALKWAIT), EVID_WALK);
+
+          EVID_DOMEST_TIME:
+            If (!me.warmode)
+              //Time SleepTime Time_Diff()+0 bis 30min IGZeit (/4)
+              SendEventWaiter(me, CInt(((Diff_Time()*60*60)+RandomInt(120)*60)/4), EVID_DOMEST_TIME);
+              If (!Is_SleepTime())
+                wakedup:=1;
+              EndIf
+            Else  // In 20min nochmal Probieren
+              SendEventWaiter(me, 1200, EVID_DOMEST_TIME);
+            EndIf
+
+          EVID_DOMEST_SOUND:
+            PlaySoundEffect(me, idlesound);
+            SendEventWaiter(me, RandomInt(121)+180, EVID_DOMEST_SOUND);
+            // nicht unnoetig oft aufrufen
+            UpdateHunger(me);
+
+          default:
+        EndCase
+      EndIf
+
+      SleepMS(20);
+    EndWhile
+
+    looptype:=LOOP_MAIN;
+    EnableEvents(SYSEVENT_ENGAGED);
+
+    If (me.hidden) // Um unnoetige Events zu sparen...
+      me.hidden:=0;
+    EndIf
+
+  EndIf
+
+  Return (ev);
+EndFunction
+
+///////////////////////////////////////////
+// CloseDistance - Verringere den Abstand
+///////////////////////////////////////////
+
+Function CloseDistance(opponent)
+  //Case (Distance(me, opponent))
+  //  1: // oben, weil am haeufigsten
+  //  0: TurnToward(opponent);
+  //     Return (1);
+  // 2: WalkToward(opponent);
+  //     Return (0);
+  //
+  //  default: RunToward(opponent);
+  //           Return (0);
+  //EndCase
+
+    Case (Distance(me, opponent))
+    1: // oben, weil am haeufigsten
+    0: TurnToward(opponent);
+       Return (1);
+    2: If (!WalkToward(opponent))
+         Return (2);
+       Else
+         Return (0);
+       EndIf
+
+    default: If (!RunToward(opponent))
+               Return (1);
+             Else
+               Return (0);
+             EndIf
+  EndCase
+EndFunction

@@ -1,0 +1,29 @@
+use os;
+use uo;
+
+Include "drinkpotion";
+Include "include/poison";
+Include "include/modifyskill";
+
+Program Drink_Blue(character, potion)
+  If (CheckIfCanDrink(character))
+    If (Is_Poison(potion))
+      Do_Poison(character, potion);
+    Else
+      Var potion_strength:=Get_Potion_Strength(potion);
+
+      Empty_Bottle(character, potion);
+
+      PlayObjectCenteredEffect(character, EFFECT_BLUE_SPARKLE, 10, 10);
+
+      AddPoisonLevel(character, -potion_strength); // Entgiftung durchfuehren
+
+      Detach();
+      Sleep(10);
+      CanDrink(character);
+      Sleep(60*potion_strength);
+
+      SendSysMessagePergon(character, "Der Schutz vor Gift lässt nach.");
+    EndIf
+  EndIf
+EndProgram

@@ -1,0 +1,185 @@
+//  FingerPrint.Src: Erstellt anhand der Fingerabdruecke an einer Tuer Beweismaterialien (bzgl. Einbruch)
+//                   Fingerabdruecke verfallen aktuell nach einer UO-Woche (halt 2 rl-Tage)
+//                   Erstellt anhand der Fingerabdruecke an einem Spieler Beweismaterialien (bzgl. Bestohlenwordensein)
+//                   Fingerabdruecke verfallen aktuell nach acht UO-Wochen (halt 2 rl-Wochen)
+//
+//                   Wichtige CProps:
+//                   "FPrintWho"       - Serial des ausfuehrenden Diebs/Einbrechers
+//                   "FPrintTime"      - Zeit des Diebstahls/Einbruchs
+//                   "FPrintPlace"     - X,Y des Objekts zum Zeitpunkt der Beweisnahme (nur wichtig bei Tueren)
+//                   "FPrintTimeStamp" - Zeitpunkt der Beweisnahme (Beweis haelt nur eine gewisse Zeit lang)
+//                   "FPrintVictim"    - Serial des Opfers (nur wichtig und belegt bei Diebstahl)
+//
+//  30.06.2003 Fraggulus: Create
+//  08.11.2003 Fraggulus: Diebstahlbeweise am Spieler sicherbar
+//  17.11.2003 Fraggulus: anstelle des Opfers können andere Spieler mit Obduktion den Beweis sichern (ins Backpack des Opfers)
+//  19.02.2006 Fox: Victim ist jetzt wirklich das Opfer und nicht der Beweisnehmer
+
+use util;
+use attributes;
+use uo;
+use os;
+
+include "include/modifyskill";
+Include ":forensicevaluation:forensic";
+
+Const UOBJ_FPRINTEVIDENCE := 0xbe35;
+
+Program fprint(params)
+
+//  Sleep(3);
+
+  Var who    := params[1];
+  Var object := params[2];
+  Var source := params[3];
+
+  If (!who || !object)
+    If (source)
+      SysLog("WARNUNG: fingerprint wurde mit falschen/fehlerhaften Referencen aufgerufen von: " + source);
+    Else
+      SysLog("WARNUNG: fingerprint wurde mit falschen/fehlerhaften Referencen aufgerufen.");
+    EndIf
+    Return;
+  EndIf
+
+  If (source == "item_id")
+    FPrintDoor(who, object);
+	ElseIf (source == "forensic")
+    FPrintPlayer(who, object);
+  Else
+    SysLog("WARNUNG: fingerprint wurde fehlende Referencen uebergeben.");
+  EndIf
+
+EndProgram
+
+Function FPrintDoor(who, door)
+
+  // nur bei nicht verschlossenen Tueren // dh Hauseigentuemer muss die Tuer geoeffnet haben, sonst könnte ja jeder Dieb seine Fingerabdruecke mitnehmen
+  If (door.locked)
+    SendSysMessagePergon(who, "Ihr müsst die Tür erst aufschließen!");
+    Return;
+  EndIf
+
+  // Array {who.serial, Zeitstempel} mit Fingerabdruecken suchen
+  Var FPrintArray:=array;
+  Var evidence;
+
+  FPrintArray := GetObjProperty(door, "FingerPrintArray");
+
+  // SkillCheck durchfuehren
+  If (CheckSkillPergon(who, SKILLID_GEGENSTAENDE_IDENT, -1, 50))
+    // Array existent?
+	  If (FPrintArray)
+      // Array von zu alten Eintraegen befreien
+      CleanFingerPrintArray(FPrintArray, 60*60*24*2);  // 2 Tage
+
+	    // Array Eintrag fuer Eintrag durchforsten und Beweise nehmen
+	    ForEach entry in FPrintArray
+        // Beweis nehmen
+        evidence := CreateItemInBackPackPergon(who, UOBJ_FPRINTEVIDENCE, 1);
+        If (!evidence)
+          CreateItemAtLocationPergon(who.x, who.y, who.z, UOBJ_FPRINTEVIDENCE, 1,who.realm);
+        EndIf
+        If (!evidence)
+          SendSysMessagePergon(who, "Der Beweis konnte nicht erzeugt werden!");
+          Return;
+        EndIf
+
+        // benoetigte Infos uebergeben
+        SetObjProperty(evidence, "FPrintWho",   CInt(entry[1]));
+        SetObjProperty(evidence, "FPrintTime",  CInt(entry[2]));
+        SetObjProperty(evidence, "FPrintPlace", "(" + door.x + "/" + door.y + ")");
+        SetObjProperty(evidence, "FPrintTimeStamp",  ReadGameClock());
+
+        // Namen noch etwas aussagekraeftiger gestalten
+        SetName(evidence, "Fingerabdruck fuer eine Tuer an: " + GetObjProperty(evidence, "FPrintPlace") + "%");
+	    EndForEach
+
+	    // nach getaner Arbeit alle Fingerabdruecke auf der Tuer vernichten
+	    EraseObjProperty(door, "FingerPrintArray");
+	  Else
+	    SendSysMessagePergon(who, "Es wurden keine Fingerabdrücke gefunden.");
+		EndIf
+  ElseIf (FPrintArray)
+  	SendSysMessagePergon(who, "Ihr wart nicht in der Lage, etwas zu finden, aber versucht es weiter.");
+  Else
+  	SendSysMessagePergon(who, "Ihr wart nicht in der Lage, etwas zu finden.");
+  EndIf
+EndFunction
+
+
+Function FPrintPlayer(who, tgtchar)
+
+  If (tgtchar.dead)  // nur bei nicht lebenden Spielern
+    SendSysMessagePergon(who, "Der zu Untersuchende muss unter den Lebenden weilen!");
+    Return;
+//  ElseIf (who.serial != tgtchar.serial)  // Spieler darf sich nur selbser untersuchen (sonst nimmt der Dieb ja die Fingerabdruecke ab)
+//    SendSysMessagePergon(who, "Ihr dürft nur Euch selber untersuchen!");
+//    Return;
+  EndIf
+
+  // Array {who.serial, Zeitstempel} mit Fingerabdruecken suchen
+  Var FPrintArray:=array;
+  Var evidence;
+
+  FPrintArray := GetObjProperty(tgtchar, "FingerPrintArray");
+  // Check durchfuehren
+  If (RandomInt(100) <= GetSkillPergon(who, SKILLID_OBDUKTION) + 5)
+
+    If (who.serial != tgtchar.serial)
+      SendSysMessagePergon(tgtchar, who.name + " fertigt Steckbriefe von Dieben, die Euch bestohlen haben, an.");
+    EndIf
+
+    // Array existent?
+	  If (FPrintArray)
+      // Array von zu alten Eintraegen befreien
+      CleanFingerPrintArray(FPrintArray, 60*60*24*14);  // 14 Tage
+
+	    // Array Eintrag fuer Eintrag durchforstenund Beweise nehmen
+	    ForEach entry in FPrintArray
+        // Beweis nehmen
+        evidence := CreateItemInBackPackPergon(tgtchar, UOBJ_FPRINTEVIDENCE, 1);
+        If (!evidence)
+          CreateItemAtLocationPergon(tgtchar.x, tgtchar.y, tgtchar.z, UOBJ_FPRINTEVIDENCE, 1,tgtchar.realm);
+        EndIf
+        If (!evidence)
+          SendSysMessagePergon(who, "Der Beweis konnte nicht erzeugt werden!");
+          If (who.serial != tgtchar.serial)
+            SendSysMessagePergon(tgtchar, "Der Beweis konnte nicht erzeugt werden!");
+          EndIf
+          Return;
+        EndIf
+
+        // benoetigte Infos uebergeben
+        SetObjProperty(evidence, "FPrintWho",   CInt(entry[1]));
+        SetObjProperty(evidence, "FPrintTime",  CInt(entry[2]));
+        SetObjProperty(evidence, "FPrintPlace", "(" + tgtchar.x + "/" + tgtchar.y + ")");
+        SetObjProperty(evidence, "FPrintTimeStamp",  ReadGameClock());
+        SetObjProperty(evidence, "FPrintVictim",  Hex(tgtchar.serial));
+
+        // Namen noch etwas aussagekraeftiger gestalten
+        If (GetObjProperty(tgtchar, "myname"))
+          SetName(evidence, "Diebstahlsnachweis an " + GetObjProperty(tgtchar, "myname") + ": " + GetObjProperty(evidence, "FPrintPlace") + "%");
+        Else
+          SetName(evidence, "Diebstahlsnachweis an " + tgtchar.name + ": " + GetObjProperty(evidence, "FPrintPlace") + "%");
+        EndIf
+        
+	      If (who.serial != tgtchar.serial)
+	        SendSysMessagePergon(who, "Ein Diebstahlsnachweis wurde genommen.");
+	      EndIf
+	    EndForEach
+
+	    // nach getaner Arbeit alle Fingerabdruecke auf der Tuer vernichten
+	    EraseObjProperty(tgtchar, "FingerPrintArray");
+	  Else
+	    SendSysMessagePergon(who, "Es wurden keine Diebstahlsspuren gefunden.");
+      If (who.serial != tgtchar.serial)
+        SendSysMessagePergon(tgtchar, "Es wurden keine Diebstahlsspuren gefunden.");
+      EndIf
+		EndIf
+  ElseIf (FPrintArray)
+  	SendSysMessagePergon(who, "Ihr wart nicht in der Lage, etwas zu finden, aber versucht es weiter.");
+  Else
+  	SendSysMessagePergon(who, "Ihr wart nicht in der Lage, etwas zu finden.");
+  EndIf
+EndFunction

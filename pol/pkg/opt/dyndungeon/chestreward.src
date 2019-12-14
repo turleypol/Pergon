@@ -1,0 +1,46 @@
+/////////////////////////////////////////////////////////
+// chestreward - prepare reward chests
+
+use os;
+use uo;
+use util;
+include ":dyndungeon:dyndungeon";
+include "include/msgs";
+include "include/server";
+include "include/varutil";
+
+Program ChestReward(who, item)
+    var difficulty := item.getprop(CPITEM_DIFFICULTY);
+    If (error == difficulty)
+        If (who.cmdlevel >= CMDLEVEL_SEER)
+            ChestSetup(item, who);
+            exit;
+        EndIf
+
+        SendSysMessagePergon(who,
+            "Diese Schatzkiste ist leider verklemmt.",
+            "This treasure chest is locked."
+        );
+        syslog(ItemInfoStr(item, COORDS_REALM)+" ist nicht konfiguriert");
+        exit;
+    EndIf
+
+    DungeonChestReward(item, who, difficulty);
+EndProgram
+
+// manuelles Setup, wenn man sie z.B. bei Quests aufstellen will
+Function ChestSetup(item, who);
+    var amount := CInt(SendTextEntryGump(
+            who, "Schwierigkeitsgrad (1..3)", TE_CANCEL_ENABLE,
+            TE_STYLE_NUMERICAL, 4, "4 fuer Zufall"
+    ));
+    If ((amount < 1) or (amount > 4))
+        SendSysMessagePergon(who,
+            "Ungueltiger Wert!",
+            "Invalid value!"
+        );
+        return;
+    EndIf
+
+    item.setprop(CPITEM_DIFFICULTY, amount);
+EndFunction

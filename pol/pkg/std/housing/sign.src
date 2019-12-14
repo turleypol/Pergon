@@ -1,0 +1,77 @@
+///////////////////////////////////////////////////////////////////////////
+// UseScript Sign - Doppelklick auf das Hausschild
+//
+// Author:
+// eMail:
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use os;
+use uo;
+include "house";
+include "include/msgs";
+include "include/server";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program UseSign(who, sign)
+  var houseserial := GetObjProperty(sign, PROP_HS_M_HOUSE);
+  If (!houseserial)
+    If (who.cmdlevel >= CMDLEVEL_SEER)
+      HideShowSign(who, sign);
+      return;
+    EndIf
+    SendSysMessagePergon(who,
+      "Dieses Schild scheint keinem Haus zugeordnet zu sein!"
+    );
+    return;
+  EndIf
+
+  var house := SystemFindObjectBySerial(houseserial);
+  If (house.isa(POLCLASS_HOUSE))
+    UseHouseSign(who, sign, house); // Das Hausschild benutzen
+  Else
+    SendSysMessagePergon(who,
+      "Das dem Schild zugeordnete Haus existiert nicht!"
+    );
+    syslog(
+      "WARNUNG: Das dem Schild "+LHex(sign.serial)+
+      " zugeordnete Haus existiert nicht!"
+    );
+  EndIf
+EndProgram
+
+// HideShowSign - Schild zwischen versteckt/unversteckt umschalten
+Function HideShowSign(who, sign)
+  If (!who.enabled("seeinvisitems"))
+    SendSysMessagePergon(who,
+      "Schild wird nicht versteckt/aufgedeckt, da bei Euch das Privileg "+
+      "'seeinvisitems' nicht aktiv ist."
+    );
+    return;
+  EndIf
+
+  If (sign.invisible)
+    // "ent"-stecken
+    sign.invisible := 0;
+    SendSysMessagePergon(who, "Schild aufgedeckt");
+    // ggf. Farbe wiederherstellen
+    var oldcolor := GetObjProperty(sign, "color_before_hiding");
+    If (oldcolor == error)
+      return;
+    EndIf
+    sign.color := oldcolor;
+  Else
+    // verstecken
+    sign.invisible := 1;
+    SendSysMessagePergon(who, "Schild versteckt");
+    // "graumachen"
+    If (SetObjProperty(sign, "color_before_hiding", sign.color))
+      sign.color := 946;
+    EndIf
+  EndIf
+EndFunction
+
+// vim: sw=2 sts=2

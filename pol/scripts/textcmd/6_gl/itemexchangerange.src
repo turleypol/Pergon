@@ -1,0 +1,137 @@
+//////////////////////////////////////////////////////////////////
+//
+//   StaticsExchange - Exchange Objects from Source to Dest Location
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+//////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/errormsg";
+Include "include/itemnpc";
+Include "include/msgs";
+
+///////////////
+// Konstanten
+///////////////
+
+Const ERRORMSGS_GERMAN:=
+  "{}StaticsExchange: ExchangeArea aktiviert..."+
+  "{}StaticsExchange: ExchangeArea beendet."+
+  "{}X1 muss kleiner-gleich X2 bzw. Y1 muss kleiner-gleich Y2 sein!"+
+  "{}%% darf nur 0 bis 4095 sein!"+
+  "{}%% darf nur 0 bis 6143 sein!"+
+  "{}%% darf nur 0 bis 16383 (0x3fff) sein!"+
+  "{}Sie muessen 6 Paramter angeben: X1 Y1 X2 Y2 ObjType1 ObjType2"+
+  "{}Die Objekte wurden vertauscht."+
+  "{}Abbruch";
+Const ERRORMSGS_ENGLISH:=
+  "{}StaticsExchange: ExchangeArea started..."+
+  "{}StaticsExchange: ExchangeArea done."+
+  "{}X1 must be lower/equal X2 and Y1 must be lower/equal Y2!"+
+  "{}%% must be between 0 and 4095!"+
+  "{}%% must be between 0 and 6143!"+
+  "{}%% darf nur 0 bis 16383 (0x3fff) sein!"+
+  "{}U've to enter 6 Paramters: X1 Y1 X2 Y2 ObjType1 ObjType2"+
+  "{}Objects have been exchanged."+
+  "{}Cancel";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_StaticsMove(who, params)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  params:=SplitWords(params);
+  If ((params.size()>=6) And (params.size()<=7))
+    If ((0<=CInt(params[1])) And (CInt(params[1])<6144))
+      If ((0<=CInt(params[2])) And (CInt(params[2])<4096))
+        If ((0<=CInt(params[3])) And (CInt(params[3])<6144))
+          If ((0<=CInt(params[4])) And (CInt(params[4])<4096))
+            If ((0<=CInt(params[5])) And (CInt(params[5])<16384))
+              If ((0<=CInt(params[6])) And (CInt(params[6])<16384))
+                If ((CInt(params[1])<=CInt(params[3])) And (CInt(params[2])<=CInt(params[4])))
+                  Var prescolor;
+                  If (params[7])
+                     prescolor:= 1;
+                  Else
+                     prescolor:= 0;
+                  EndIf
+
+                  PrintErrorMessage(1);
+                  ExchangeArea(who, CInt(params[1]), CInt(params[2]), CInt(params[3]), CInt(params[4]),
+                                    CInt(params[5]), CInt(params[6]), prescolor);
+                  PrintErrorMessage(2);
+                Else
+                  PrintErrorMessage(3, {}, who);
+                EndIf
+              Else
+              	PrintErrorMessage(6, {"ObjType2"}, who);
+              EndIf
+            Else
+              PrintErrorMessage(5, {"ObjType1"}, who);
+            EndIf
+          Else
+            PrintErrorMessage(4, {"Y2"}, who);
+          EndIf
+        Else
+          PrintErrorMessage(5, {"X2"}, who);
+        EndIf
+      Else
+        PrintErrorMessage(4, {"Y1"}, who);
+      EndIf
+    Else
+      PrintErrorMessage(5, {"X1"}, who);
+    EndIf
+  Else
+    PrintErrorMessage(7, {}, who);
+  EndIf
+EndProgram
+
+////////////////////////////////////////
+// ExchangeArea - Vertauscht die Items
+////////////////////////////////////////
+
+Function ExchangeArea(who, x1, y1, x2, y2, olditem, newitem, colorpreserve)
+  Var x, y, z;
+  Var movable;
+  Var color;
+  Var item;
+
+  ForEach object in ListObjectsInBox(x1, y1, -128, x2, y2, 127,who.realm)
+    If (object.isa(POLCLASS_ITEM) And (object.objtype==olditem))
+      x:= object.x;
+      y:= object.y;
+      z:= object.z;
+      movable:=object.movable;
+      If (colorpreserve)
+         color:= object.color;
+      Else
+      	 color:= 0;
+      EndIf
+
+      DestroyItem(object);
+      item:= CreateItemAtLocationPergon(x, y, z, newitem, 1,who.realm);
+      if (item)
+        item.movable:=movable;
+        item.color:=color;
+        item.decayat:= 0;
+      EndIf
+    EndIf
+  EndForEach
+
+  PrintErrorMessage(8, {}, who);
+EndFunction

@@ -1,0 +1,106 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Eislanze
+//
+// Lanze fliegt zum Ziel und schadet allem auf dem Weg
+
+include ":newspells:magicpergon";
+include ":newspells:resistance";
+include "common";
+include "include/effects";
+include "include/modifyskill";
+include "include/packets";
+include "include/spellcheck";
+use cfgfile;
+use os;
+use uo;
+use util;
+
+Program IceLance(who, item)
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var delay := artefact.delay;
+  var range := artefact.range;
+  var difficulty := artefact.useskill;
+  var damage := SplitWords(GetConfigString(artefact, "Damage"));
+  var minDamage := CInt(damage[1]);
+  var maxDamage := CInt(damage[3]);
+
+  If (GetSkillPergon(who, SKILLID_MAGIE) < difficulty)
+    SendSysMessagePergon(who,
+      "Ihr könnt das nicht benutzen", " You cannot use this"
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who, "Ziel wählen", "Select target");
+  var where := TargetCoordinates(who);
+  If (!where)
+    SendSysMessagePergon(who, "Zielen abgebrochen", "Cancelled");
+    return;
+  ElseIf (!CheckLosAt(who, where.x, where.y, where.z))
+    SendSysMessagePergon(who,
+      "Ihr könnt das nicht sehen", " You cannot see this"
+    );
+    return;
+  EndIf
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", (ReadGameClock() + delay));
+
+  // Lanze abziehen
+  SubtractAmount(item, 1);
+
+  TurnCharTo(who, where);
+  PerformAction(who, ANIM_ATTACK_1HAND_WIDE);
+  SleepMS(700);
+
+  Detach();
+
+  var trajectory := GetCoordsInLine(who.x, who.y, where.x, where.y);
+  // Mobiles auf der eigener Koordinate werden nicht getroffen
+  trajectory.erase(1);
+  // maximale Reichweite
+  trajectory.shrink(range);
+
+  // Animation auf letzter Koordinate stoppen
+  If (trajectory[range-1])
+    where.x := trajectory[range-1].x;
+    where.y := trajectory[range-1].y;
+  EndIf
+
+  PlayMovingEffectXYZ(
+    who.x, who.y, who.z+10, where.x, where.y, where.z+10,
+    0x1bfe, 1, 0, 0, who.realm
+  );
+  SleepMS(80);
+  var i;
+  For (i := 0; i <= 10; i += 1)
+    PlayMovingEffectXYZ(
+      who.x, who.y, who.z+10, where.x, where.y, where.z+10,
+      0x36a1, 1, 0, 0, who.realm
+    );
+    SleepMS(15);
+  EndFor
+
+  ForEach coord in trajectory
+    // umso weiter weg, umso später wird geschadet (Ausweichen möglich)
+    SleepMS(100);
+    // Opfer durchgehen
+    ForEach victim in (ListMobilesNearLocationEx(
+        coord.x, coord.y, who.z, 0,
+        LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN, who.realm
+    ))
+      SleepMs(2);
+      // Schaden berechnen, anwenden und anzeigen
+      var resistWater := 1 - CDbl(GetResistance(victim, "water"));
+      var rawDamage := (RandomIntMinMax(minDamage, 1+maxDamage) * resistWater);
+      ApplyRawDamagePergon(victim, rawDamage);
+    EndForEach
+  EndForEach
+EndProgram
+
+// vim: sts=2 sw=2

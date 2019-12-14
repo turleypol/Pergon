@@ -1,0 +1,47 @@
+///////////////////////////////////////////////////////////////////////////
+// Controlscript zum Backpack, das die Leichenueberreste beinhaltet
+// Das Backpack verschwindet 60 Minuten nach dem create
+
+use file;
+use os;
+use uo;
+include "include/pergonutil";
+
+Program GraveStoneBackpack(backpack)
+  If (!GetObjProperty(backpack, "decaytime"))
+    SetObjProperty(backpack, "decaytime", ReadGameClock() + 60*60);
+  EndIf
+
+  While (1)
+    Sleep(60);
+
+    If (GetObjProperty(backpack, "decaytime") < ReadGameClock())
+      Start_ScriptPergon("::misc/waitdestroyitem", backpack);
+      return;
+    EndIf
+  EndWhile
+
+  // Wann wurde der Corpse und Gravestone erzeugt und wem gehoert er?
+  var corpseinfo := GetObjProperty(backpack, "corpseinfo");
+  If (!corpseinfo)
+    return;
+  EndIf
+
+  var ghost := SystemFindObjectBySerial(
+    corpseinfo[1], SYSFIND_SEARCH_OFFLINE_MOBILES
+  );
+  If (!ghost)
+    ghost.+name := "[geloescht]";
+  EndIf
+
+  var text :=
+    "TOD: Der Grabstein-Rucksack "+ItemInfoStr(backpack)+" von "+ghost.name+
+    ", erzeugt um "+corpseinfo[3]+", wird nach "+
+    (ReadGameClock() - corpseinfo[3])+
+    " Sekunden vom GraveStoneBackpack-Script geloescht. Der Corpse lag "+
+    (corpseinfo[3] - corpseinfo[2])+" Sekunden da. [Typ A]";
+  syslog(text);
+  LogToFile(
+    "log/corpses.log", corpseinfo[2]+"_"+LHex(corpseinfo[1])+text, LOG_DATETIME
+  );
+EndProgram

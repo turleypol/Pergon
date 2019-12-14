@@ -1,0 +1,24 @@
+//////////////////////////////////////////////////////////////////
+//
+//			Hotny - Nightherb ControlScript
+//
+//			Erstellt: 05.08.2006
+//
+//			Modifikations:
+//
+//////////////////////////////////////////////////////////////////
+
+use os;
+use uo;
+
+Include "include/clock";
+
+program NightHerbControl(nightherb)
+	while(nightherb)
+		var hour:=GetPergonHourOfDay(0);
+		if ((hour>=6)&&(hour<20))
+			DestroyItem(nightherb);
+		endif
+		Sleep(900);
+	endwhile
+endprogram

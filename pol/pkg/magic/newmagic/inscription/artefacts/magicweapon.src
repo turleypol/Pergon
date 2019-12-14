@@ -1,0 +1,127 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Magische Waffen von Priester und Necro
+//
+// Beschwört Magische Waffe, die dem Beschwörer hilft
+//
+// Author: Seppel (2005-12-11)
+
+include "common";
+include ":newspells:magicpergon";
+include ":newspells:resistance";
+include "include/effects";
+include "include/logutil";
+include "include/mobile";
+include "include/modifyskill";
+include "include/packets";
+use cfgfile;
+use math;
+use os;
+use uo;
+use vitals;
+
+Program MagicWeapon(who, item)
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var delay    := artefact.delay;
+  // Zeit die die Falle maximal besteht
+  var lifetime := artefact.lifetime;
+  // Benutzungsschwierigkeit
+  var difficulty := artefact.useskill;
+
+  // Geweihter Streitkolben, Gesegnete Axt, Heiliger Speer
+  var clericWeapons := {0xe253, 0xe262, 0xe273};
+  // Schattendolch, Geisterstab, Phantomklinge
+  var necroWeapons  := {0xe352, 0xe362, 0xe372};
+
+  var skillid;
+  If (item.objtype in clericWeapons)
+    skillid := SKILLID_SEGNEN;
+  ElseIf (item.objtype in necroWeapons)
+    skillid := SKILLID_FLUCHEN;
+  Else
+    syslog(
+      "FEHLER: "+ItemInfoStr(item, COORDS_REALM)+" hat Script magicweapon"
+    );
+    return;
+  EndIf
+
+  If (GetSkillPergon(who, skillid) < difficulty)
+    SendSysMessagePergon(who,
+      "Ihr könnt das (noch) nicht benutzen",
+      "You cannot use this (yet)"
+    );
+    return;
+  EndIf
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", (ReadGameClock() + delay));
+
+  Detach();
+  var pos := struct{
+    x     := who.x + ConvertDirectionToLocX(who.facing),
+    y     := who.y + ConvertDirectionToLocY(who.facing),
+    z     := who.z + 10,
+    realm := who.realm
+  };
+
+  PerformAction(who, ANIM_CAST_AREA);
+  Sleep(1);
+  ExplodeInCircle(pos.x, pos.y, pos.z, pos.realm, 2, 50, 0, 0, FX_SMOKE);
+  PlaySoundEffect(who, SFX_SPELL_SUMMON_ELEMENTAL);
+
+  var weapontemplate;
+  var summon;
+  Case (item.objtype)
+  0xe253:
+    weapontemplate := "HolyMace";
+    summon         := SUMMON_BY_CLERIC;
+  0xe262:
+    weapontemplate := "BlessedAxe";
+    summon         := SUMMON_BY_CLERIC;
+  0xe273:
+    weapontemplate := "SacredSpear";
+    summon         := SUMMON_BY_CLERIC;
+  0xe352:
+    weapontemplate := "ShadowDagger";
+    summon         := SUMMON_BY_NECRO;
+  0xe362:
+    weapontemplate := "GhostStaff";
+    summon         := SUMMON_BY_NECRO;
+  0xe372:
+    weapontemplate := "PhantomEdge";
+    summon         := SUMMON_BY_NECRO;
+  EndCase
+
+  // Controlscript von NPC vorbereiten
+  var parms := struct{
+    Script := "enticedanimal",
+    CProps := dictionary,
+    Master := who.serial
+  };
+  parms.CProps.insert("master", who.serial);
+  // set enticed time (high enough)
+  parms.CProps.insert("RoamsFreeAt", ReadGameClock() + LifeTime * 6);
+  // mark as summoned
+  parms.CProps.insert(PROP_SUMMONED, summon);
+
+  var critter := CreateNpcFromTemplate(
+    weapontemplate, pos.x, pos.y, pos.z, parms, pos.realm
+  );
+  If (!critter)
+    return;
+  EndIf
+
+  SubtractAmount(item, 1);
+
+  Sleep(lifetime);
+  // Zeit um; Waffe töten, falls sie noch existiert
+  If (critter)
+    KillMobile(critter, "MagischeWaffe");
+  EndIf
+EndProgram
+
+// vim: sw=2 sts=2

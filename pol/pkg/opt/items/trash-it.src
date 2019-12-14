@@ -1,0 +1,47 @@
+//////////////////////////////////////////////////////////
+//
+//   DoTrash - Ein Player wirft etwas in den Abfalleimer
+//
+//     based on Trash (1999/12/08)
+//       Author: Zulu
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2001/10/04 Shinigame: Complete ReWrite
+//
+//////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use util;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/client";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Trash(params)
+  Var who:=params[1];
+  Var trashcan:=params[2];
+
+  ForEach item in EnumerateItemsInContainer(trashcan)
+    DestroyItem(item);
+    SleepMS(2);
+  EndForEach
+
+  If (who) // Versucht ein Player was wegzuwerfen?
+    PlaySoundEffect(who, SFX_55);
+    SleepMS(400);
+    PlayStationaryEffect(trashcan.x, trashcan.y, trashcan.z+6, FX_FLAMESTRIKE, 1, 30,0,trashcan.realm);
+  EndIf
+EndProgram

@@ -1,0 +1,17 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  START.src for 'saver' package
+//
+//     saver saves game state periodically
+//     saverchk checks that saver is working
+//
+/////////////////////////////////////////////////////////////////////////////
+
+Use os;
+
+Include "include/pergonutil";
+
+Program Saver_Start()
+  Start_ScriptPergon("saver");
+  Start_ScriptPergon("saverchk");
+EndProgram

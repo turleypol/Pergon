@@ -1,0 +1,23 @@
+////////////////////////////////////////////
+//
+//  blesseditems.src - Blessed Items Skill
+//
+//  20.01.2002 - Bihinos - Neuerstellung
+//
+////////////////////////////////////////////
+
+use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include ":newmagic:spellbook";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Do_BlessedItems(who)
+  CheckAndUseItemsAndInscribe(who, UOBJ_SPELLBOOK_CLERIC, "keinen Liber Castus");
+EndProgram

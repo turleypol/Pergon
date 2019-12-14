@@ -1,0 +1,7 @@
+<h3 id="quest">quest</h3>
+
+<h4>Parameter: keiner oder <kbd>&lt;remote&gt;</kbd></h4>
+
+<p>Zeigt die Liste der bereits abgeschlossenen Quests an. High GMs
+dürfen mit Angabe des Parameters auch die Quests anderer Player
+einsehen.</p>

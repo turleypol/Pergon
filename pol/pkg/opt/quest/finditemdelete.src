@@ -1,0 +1,18 @@
+///////////////////////////////////////////////////////////////////////////
+// FindItemDelete - Zu findendes Item vernichten
+
+use os;
+use uo;
+use util;
+include "common";
+
+Program FindItemDelete(item)
+    If (!GetGlobalProperty(GPROP_FINDITEM_KILL))
+        return;
+    EndIf
+
+    Sleep(RandomIntMinMax(150, 300));
+
+    EraseGlobalProperty(GPROP_FINDITEM_LIST);
+    DestroyItem(item);
+EndProgram

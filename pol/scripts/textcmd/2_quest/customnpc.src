@@ -1,0 +1,468 @@
+///////////////////////////////////////////////////////////////////////
+//
+//   TextCMD CustomNPC - Ermöglicht Templates online zu erstellen auf
+//                       Basis existierender Templates
+//
+//     Author: Fox und Turley
+//     eMail:
+//
+//   Modifications:
+//     26.02.2007 Turley: NoCarve,NoCorpse,NoLoot + RunSpeed
+//     07.03.2007 Turley: Beim Speichern wird Anzeige aktualisiert
+//     18.03.2007 Turley: MoveMode
+//
+///////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+use datafile;
+use math;
+use os;
+use uo;
+use vitals;
+
+/////////////
+// Includes
+/////////////
+include "include/modifyskill";
+include "include/npc";
+
+Enum Buttons
+  CUSTOM:=100,
+  OKCUSTOM,
+  CUSTOMDEL,
+  OKTEMPLATE,
+  SAVE,
+  NPCTEMPLATE,
+  NAME,
+  NPCNAME,
+  MAXHP,
+  MAXSTAM,
+  MAXMANA,
+  STR,
+  DEX,
+  INT,
+  AR,
+  GRAPHIC,
+  COLOR,
+  RUNSPEED,
+  MOVEMODE,
+  NOCARVE,
+  NOCORPSE,
+  NOLOOT,
+EndEnum
+
+Enum Pos
+  POSCUSTOMS:=2,
+  POSCUSENTRY,
+  POSTEMPLATE:=7,
+  POSNAME:=9,
+  POSNPCNAME:=11,
+  POSHP:=13,
+  POSSTAM:=15,
+  POSMANA:=17,
+  POSSTR:=19,
+  POSDEX:=21,
+  POSINT:=23,
+  POSAR:=25,
+  POSGRAPHIC:=27,
+  POSCOLOR:=29,
+  POSRUNSPEED:=31,
+  POSMOVEMODE:=33,
+
+  POSNOCARVE:=57, // im Layoutarray
+  POSNOCORPSE:=59,
+  POSNOLOOT:=61
+EndEnum
+
+
+Var layout:={"nodispose",
+             "page 0",
+             "resizepic 0 0 9200 220 500",
+             "resizepic 222 0 9200 220 380",
+             "htmlgump 239 95 184 20 0 0 0",
+             "htmlgump 239 120 184 160 1 1 1", //custom NPCs
+             "gumppic 240 290 2446",
+             "textentry 248 290 157 20 0 "+CUSTOM+" 2",
+             "htmlgump 240 316 100 20 4 0 0",
+             "button 300 314 247 248 1 0 "+OKCUSTOM,
+             "htmlgump 240 342 100 20 3 0 0",
+             "button 300 340 247 248 1 0 "+CUSTOMDEL,
+
+             "htmlgump 248 16 157 20 5 0 0",
+             "gumppic 242 40 2446",
+             "textentry 248 40 157 20 0 "+NPCTEMPLATE+" 6",
+             "button 290 65 247 248 1 0 "+OKTEMPLATE,
+
+             "htmlgump 20 20 100 20 7 0 0",
+             "gumppic 107 18 2445",
+             "textentry 111 18 100 20 0 "+NAME+" 8",
+             "htmlgump 20 50 100 20 9 0 0",
+             "gumppic 107 48 2445",
+             "textentry 111 48 100 20 0 "+NPCNAME+" 10",
+             "htmlgump 20 80 100 20 11 0 0",
+             "gumppic 107 78 2445",
+             "textentry 111 78 100 20 0 "+MAXHP+" 12",
+             "htmlgump 20 110 100 20 13 0 0",
+             "gumppic 107 108 2445",
+             "textentry 111 108 100 20 0 "+MAXSTAM+" 14",
+             "htmlgump 20 140 100 20 15 0 0",
+             "gumppic 107 138 2445",
+             "textentry 111 138 100 20 0 "+MAXMANA+" 16",
+             "htmlgump 20 170 100 20 17 0 0",
+             "gumppic 107 168 2445",
+             "textentry 111 168 100 20 0 "+STR+" 18",
+             "htmlgump 20 200 100 20 19 0 0",
+             "gumppic 107 198 2445",
+             "textentry 111 198 100 20 0 "+DEX+" 20",
+             "htmlgump 20 230 100 20 21 0 0",
+             "gumppic 107 228 2445",
+             "textentry 111 228 100 20 0 "+INT+" 22",
+             "htmlgump 20 260 100 20 23 0 0",
+             "gumppic 107 258 2445",
+             "textentry 111 258 100 20 0 "+AR+" 24",
+             "htmlgump 20 290 100 20 25 0 0",
+             "gumppic 107 288 2445",
+             "textentry 111 288 100 20 0 "+GRAPHIC+" 26",
+             "htmlgump 20 320 100 20 27 0 0",
+             "gumppic 107 318 2445",
+             "textentry 111 318 100 20 0 "+COLOR+" 28",
+             "htmlgump 20 350 100 20 29 0 0",
+             "gumppic 107 348 2445",
+             "textentry 111 348 100 20 0 "+RUNSPEED+" 30",
+             "htmlgump 20 380 100 20 31 0 0",
+             "gumppic 107 378 2445",
+             "textentry 111 378 100 20 0 "+MOVEMODE+" 32",
+
+             "htmlgump 20 410 100 20 33 0 0",
+             "checkbox 30 430 9720 9723 1 "+NOCARVE,
+             "htmlgump 90 410 100 20 34 0 0",
+             "checkbox 100 430 9720 9723 0 "+NOCORPSE,
+             "htmlgump 165 410 100 20 35 0 0",
+             "checkbox 170 430 9720 9723 0 "+NOLOOT,
+
+             "button 80 470 247 248 1 0 "+SAVE
+             };
+
+Var data:={"<center>Custom NPCTemplates</center>",
+           "",  //custom
+           "",  //custom entry
+           "Löschen",
+           "Auswählen",
+           "<center>NPCTemplate</center>",
+           "", //template entry
+           "TemplateName","",
+           "NPCName","",
+           "Max HP","",
+           "Max Stam","",
+           "Max Mana","",
+           "Str","",
+           "Dex","",
+           "Int","",
+           "AR","",
+           "Graphic","",
+           "Color","",
+           "RunSpeed","",
+           "MoveMode(LSA)","",
+           "NoCarve","NoCorpse","NoLoot"
+           };
+
+Program customnpc(who)
+  Var temp:="", ret, prop, globalname, orig_template:="";
+
+  Var datafile:=OpenDataFile("::customnpcs");
+  If (!datafile)
+    datafile:=CreateDataFile("::customnpcs",DF_KEYTYPE_STRING);
+  EndIf
+  ForEach entry in (datafile.keys())
+    temp+=entry+"<br>";
+  EndForEach
+  data[POSCUSTOMS]:=temp;
+
+  While (who.connected)
+    ret:=senddialoggump(who,layout,data,50,50);
+    If (ret[OKCUSTOM]) // bestehendes ausgewählt
+      //wie OKTEMPLATE nur aus datafile besorgen
+      Var full_line:=ret[CUSTOM];
+      If (len(full_line) > 5)
+        Var template_name:=full_line[6, len(full_line)-5];
+        //aus datafile holen
+        Var dfelem:=datafile.FindElement(template_name);
+        If (dfelem)
+          var elem:=dfelem.getprop("data");
+          data[POSNAME]:=template_name;//Template Name
+          data[POSNPCNAME]:=elem.npcname;
+          data[POSHP]:=elem.maxhp;
+          data[POSSTAM]:=elem.maxstam;
+          data[POSMANA]:=elem.maxmana;
+          data[POSSTR]:=elem.str;
+          data[POSDEX]:=elem.dex;
+          data[POSINT]:=elem.int;
+          data[POSAR]:=elem.ar;
+          data[POSGRAPHIC]:= UngueltigeGraphic(who, elem.graphic);
+          data[POSCOLOR]:=elem.color;
+          data[POSRUNSPEED]:=elem.runspeed;
+          data[POSTEMPLATE]:=elem.origtemplate;
+          data[POSMOVEMODE]:=elem.movemode;
+
+          layout[POSNOCARVE][27,1]:=CStr(CInt(elem.nocarve));  // Muß direkt im Layoutarray geändert werden
+          layout[POSNOCORPSE][28,1]:=CStr(CInt(elem.nocorpse));
+          layout[POSNOLOOT][28,1]:=CStr(CInt(elem.noloot));
+          orig_template:=elem.origtemplate;
+        Else
+          SendSysMessagePergon(who, "Dieses Template gibt es nicht.");
+        EndIf
+      EndIf
+    ElseIf (ret[OKTEMPLATE]) // NPCTemplate ausgewählt
+      Var full_line:=ret[NPCTEMPLATE];
+      If (len(full_line) > 5)
+        Var template_name:=full_line[6, len(full_line)-5];
+        //npcdescladen
+        Var elem:= GetNPCConfig(template_name);
+        If (elem)
+          data[POSNAME]:="";//Template Name
+          data[POSNPCNAME]:=GetElemProperty(elem, "Name");
+          data[POSHP]:=GetElemProperty(elem, "HITS");
+          data[POSSTAM]:=GetElemProperty(elem, "STAM");
+          data[POSMANA]:=GetElemProperty(elem, "MANA");
+          data[POSSTR]:=GetElemProperty(elem, "STR");
+          data[POSDEX]:=GetElemProperty(elem, "DEX");
+          data[POSINT]:=GetElemProperty(elem, "INT");
+          data[POSAR]:=GetElemProperty(elem, "AR");
+          data[POSGRAPHIC]:=GetElemProperty(elem, "Objtype");
+          data[POSCOLOR]:=GetElemProperty(elem, "Color");
+          If (GetElemProperty(elem, "RunSpeed"))
+            data[POSRUNSPEED]:=GetElemProperty(elem, "RunSpeed");
+          Else
+            If (CInt(GetElemProperty(elem, "DEX"))>250)  // Definiert nur zwischen 0 und 250
+              data[POSRUNSPEED]:="250";
+            Else
+              data[POSRUNSPEED]:=GetElemProperty(elem, "DEX");
+            EndIf
+          EndIf
+          data[POSTEMPLATE]:=template_name;
+          data[POSMOVEMODE]:=GetElemProperty(elem, "MoveMode");
+          orig_template:=template_name;
+        Else
+          SendSysMessagePergon(who, "Dieses Template gibt es nicht.");
+        EndIf
+      EndIf
+    ElseIf (ret[SAVE]) // Neues Template speichern
+      prop:=struct;
+      If (len(ret[NAME]) > 5) //Template Name angegeben?
+        globalname:=ret[NAME];
+        globalname[1,5]:="";
+        Var dfelem:=datafile.FindElement(globalname);
+        If (!dfelem)
+          dfelem:=datafile.CreateElement(globalname);
+        EndIf
+        prop.+origtemplate:=orig_template; //Basistemplate für Create speichern
+        data[POSNAME]:=globalname;
+
+        temp:=ret[NPCNAME];
+        temp[1,5]:="";
+        prop.+npcname:=temp;
+        data[POSNPCNAME]:=temp;
+
+        temp:=ret[MAXHP];
+        temp[1,5]:="";
+        temp:=CInt(temp);
+        prop.+maxhp:=temp;
+        data[POSHP]:=CStr(temp);
+
+        temp:=ret[MAXSTAM];
+        temp[1,5]:="";
+        temp:=CInt(temp);
+        prop.+maxstam:=temp;
+        data[POSSTAM]:=CStr(temp);
+
+        temp:=ret[MAXMANA];
+        temp[1,5]:="";
+        temp:=CInt(temp);
+        prop.+maxmana:=temp;
+        data[POSMANA]:=CStr(temp);
+
+        temp:=ret[STR];
+        temp[1,5]:="";
+        temp:=CInt(temp);
+        prop.+str:=temp;
+        data[POSSTR]:=CStr(temp);
+
+        temp:=ret[DEX];
+        temp[1,5]:="";
+        temp:=CInt(temp);
+        prop.+dex:=temp;
+        data[POSDEX]:=CStr(temp);
+
+        temp:=ret[INT];
+        temp[1,5]:="";
+        temp:=CInt(temp);
+        prop.+int:=temp;
+        data[POSINT]:=CStr(temp);
+
+        temp:=ret[AR];
+        temp[1,5]:="";
+        temp:=CInt(temp);
+        prop.+ar:=temp;
+        data[POSAR]:=CStr(temp);
+
+        temp:=ret[GRAPHIC];
+        temp[1,5]:="";
+        prop.+graphic:= UngueltigeGraphic(who, temp);
+        data[POSGRAPHIC]:=temp;
+
+        temp:=ret[COLOR];
+        temp[1,5]:="";
+        temp:=CInt(temp);
+        prop.+color:=temp;
+        data[POSCOLOR]:=CStr(temp);
+
+        temp:=ret[RUNSPEED];
+        temp[1,5]:="";
+        temp:=CInt(temp);
+        prop.+runspeed:=temp;
+        data[POSRUNSPEED]:=CStr(temp);
+
+        temp:=ret[MOVEMODE];
+        temp[1,5]:="";
+        prop.+movemode:=temp;
+        data[POSMOVEMODE]:=temp;
+
+        temp:=ret[NOCARVE];
+        temp[1,5]:="";
+        temp:=CInt(temp);
+        prop.+nocarve:=temp;
+        layout[POSNOCARVE][27,1]:=CStr(temp);
+
+        temp:=ret[NOCORPSE];
+        temp[1,5]:="";
+        temp:=CInt(temp);
+        prop.+nocorpse:=temp;
+        layout[POSNOCORPSE][28,1]:=CStr(temp);
+
+        temp:=ret[NOLOOT];
+        temp[1,5]:="";
+        temp:=CInt(temp);
+        prop.+noloot:=temp;
+        layout[POSNOLOOT][28,1]:=CStr(temp);
+
+        If (CheckValid(who, prop))
+          dfelem.setprop("data",prop);
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Template Name fehlt.");
+      EndIf
+    ElseIf (ret[CUSTOMDEL]) // Template aus Global löschen
+      Var full_line:=ret[CUSTOM];
+      If (len(full_line) > 5)
+        Var template_name:=full_line[6, len(full_line)-5];
+        //aus datafile holen
+        If (datafile.FindElement(template_name))
+          datafile.DeleteElement(template_name);
+          data[POSNAME]:="";
+          data[POSNPCNAME]:="";
+          data[POSHP]:="";
+          data[POSSTAM]:="";
+          data[POSMANA]:="";
+          data[POSSTR]:="";
+          data[POSDEX]:="";
+          data[POSINT]:="";
+          data[POSAR]:="";
+          data[POSGRAPHIC]:="";
+          data[POSCOLOR]:="";
+          data[POSTEMPLATE]:="";
+          data[POSRUNSPEED]:="";
+          data[POSMOVEMODE]:="";
+          orig_template:="";
+        Else
+          SendSysMessagePergon(who, "Dieses Template gibt es nicht.");
+        EndIf
+      EndIf
+    Else
+      Return;
+    EndIf
+    temp:="";
+    ForEach entry in (datafile.keys())
+      temp+=entry+"<br>";
+    EndForEach
+    data[POSCUSTOMS]:=temp;
+  EndWhile
+EndProgram
+
+Function CheckValid(who, element)
+  //npcdescladen
+  Var elem:= GetNPCConfig(element.origtemplate);
+  If (!(elem))
+    SendSysMessagePergon(who, "Basis Template nicht gesetzt.");
+    return 0;
+  EndIf
+  If (len(element.npcname) == 0)
+    SendSysMessagePergon(who, "NPC Name fehlt.");
+    return 0;
+  EndIf
+  If (element.maxhp < 10) //10 ist nen frei erfundener Grenzwert
+    SendSysMessagePergon(who, "MaxHP muss >= 10 sein.");
+    return 0;
+  EndIf
+  If (element.maxstam < 10)
+    SendSysMessagePergon(who, "MaxStam muss >= 10 sein.");
+    return 0;
+  EndIf
+  If (element.maxmana < 0)
+    SendSysMessagePergon(who, "MaxMana muss >= 0 sein.");
+    return 0;
+  EndIf
+  If (element.str < 1)
+    SendSysMessagePergon(who, "Str muss >= 1 sein.");
+    return 0;
+  EndIf
+  If (element.dex < 1)
+    SendSysMessagePergon(who, "Dex muss >= 1 sein.");
+    return 0;
+  EndIf
+  If (element.int < 1)
+    SendSysMessagePergon(who, "Int muss >= 1 sein.");
+    return 0;
+  EndIf
+  If (CInt(element.ar) < 1)
+    SendSysMessagePergon(who, "Ar muss als Zahl => 1 angegeben werden.");
+    return 0;
+  EndIf
+  If ((CInt(element.runspeed)<0) || (CInt(element.runspeed)>250))
+    SendSysMessagePergon(who, "RunSpeed muss eine Zahl zwischen 0 und 250 sein.");
+    return 0;
+  EndIf
+
+  If (Len(element.movemode)>3)
+    SendSysMessagePergon(who, "MoveMode kann nur 'LSA' enthalten.");
+    Return 0;
+  EndIf
+  var mode:=element.movemode;
+  mode["L"]:="";
+  mode["S"]:="";
+  mode["A"]:="";
+  If (Len(mode)>0)
+    SendSysMessagePergon(who, "MoveMode kann nur 'LSA' enthalten.");
+    Return 0;
+  EndIf
+
+  //graphic und color nicht prüfbar
+  //nocarve,noloot,nocorpse nicht nötig
+  return 1;
+EndFunction
+
+Function UngueltigeGraphic(who, graphic)
+    graphic := IsValidNPCGraphic(graphic);
+    If (graphic)
+        return graphic;
+    EndIf
+
+    SendSysMessagePergon(who, graphic.errortext);
+    SendSysMessagePergon(who,
+        "Ungültige 'Graphic'-Einstellung. Verwende Standardwert.",
+        "Invalid 'graphic' value. Falling back to standard value."
+    );
+
+    return 1;
+EndFunction

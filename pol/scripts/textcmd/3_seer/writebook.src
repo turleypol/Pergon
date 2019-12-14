@@ -1,0 +1,29 @@
+Use os;
+Use uo;
+
+Include "include/itemnpc";
+Include "include/msgs";
+
+Program write_book(Me)
+  Var booktext:={ };
+
+  Var book:=CreateItemInBackpackPergon(Me.serial, 0x0fef, 1);
+  If (book)
+    Var pagetext:=SendTextEntryGump(Me, "Buchtitel: ",
+      TE_CANCEL_DISABLE, TE_STYLE_NORMAL, 50);
+
+    book.name:=pagetext;
+
+    Var prompt:=pagetext;
+    Repeat
+      pagetext:=SendTextEntryGump(Me, "Zeile "+Len(booktext)+" ("+prompt+")",
+        TE_CANCEL_DISABLE, TE_STYLE_NORMAL, 22);
+      If (pagetext)
+        booktext[Len(booktext)+1]:=pagetext;
+        prompt:=pagetext;
+      EndIf
+    Until (!pagetext);
+
+    SetObjProperty(book, "booktext", booktext);
+  EndIf
+EndProgram

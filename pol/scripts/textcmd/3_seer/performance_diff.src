@@ -1,0 +1,356 @@
+/////////////////////////////////////////////////////////////////
+//  Performance_Diff Befehl - gibt wahlweise übersicht über
+//     Performance Informationen als Logfile oder als SysMessage
+//     als Differenz über einen angegebenen Zeitraum
+//     Param[1] - Messzeit in s
+//     Param[2] - max_anzahl
+//
+//     Author: Fox
+//
+//     Änderung: 29.11.2005 Fox - Neue Sortierfunktion, Parameter 2 mit neuer Bedeutung
+// 							 10.01.2006 Fox - dank attached_to braucht man keine globale Infovariable mehr
+//               23.01.2006 Turley - Ein script.npctemplate war überflüssig
+//               18.02.2006 Fox - Template Liste wird jetzt auch sortiert
+//               17.12.2006 Fox - Man kann jetzt mit Parameter 3 nach Script bzw Template auswählen
+//
+/////////////////////////////////////////////////////////////////
+
+use file;
+use math;
+use os;
+use uo;
+include "include/client";
+include "include/clock";
+include "include/msgs";
+include "include/server";
+
+Const bLog := 0;
+
+Program view_script_profiles_diff(who, text)
+
+	var zeit := 60;
+	var max_anzahl := 10;
+	var filter_wort := "";
+
+	If (text)
+      var params := SplitWords(text);
+      var size := params.size();
+      If (size >= 1)
+      	zeit := CInt(params[1]);
+      EndIf
+      If (size >= 2)
+      	max_anzahl := CInt(params[2]);
+      EndIf
+      If (size >= 3)
+      	filter_wort := lower(CStr(params[3]));
+      EndIf
+  EndIf
+
+	If (max_anzahl < 1)
+		max_anzahl := 1;
+	EndIf
+
+	If (max_anzahl > 1000)
+		max_anzahl := 1000;
+	EndIf
+
+  SendSysMessagePergon(who, "zeit: "+zeit+"s");
+	SendSysMessagePergon(who, "max_anzahl: "+max_anzahl);
+	SendSysMessagePergon(who, "Filterwort: "+filter_wort);
+	//Daten ausgeben
+	var textL := ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>";
+  If (bLog)
+		LogToFile("log/performance.log", textL);
+	Else
+		SendSysMessagePergon(who, textL);
+	EndIf
+
+
+	 SendSysMessagePergon(who, " ");
+
+	 SendSysMessagePergon(who, "Uptime: "+polcore().uptime);
+
+	 SendSysMessagePergon(who, "sysload: "+polcore().sysload);
+   SendSysMessagePergon(who, "sysload_severity: "+polcore().sysload_severity);
+
+   SendSysMessagePergon(who, "bytes_sent: "+polcore().bytes_sent);
+	 SendSysMessagePergon(who, "bytes_received: "+polcore().bytes_received);
+
+	 SendSysMessagePergon(who, "itemcount: "+polcore().itemcount);
+   SendSysMessagePergon(who, "mobilecount: "+polcore().mobilecount);
+
+	 SendSysMessagePergon(who, "instr_per_min: "+polcore().instr_per_min);
+	 SendSysMessagePergon(who, "events_per_min: "+polcore().events_per_min);
+	 SendSysMessagePergon(who, "combat_operations_per_min: "+polcore().combat_operations_per_min);
+	 SendSysMessagePergon(who, "skill_checks_per_min: "+polcore().skill_checks_per_min);
+
+  //Daten Referenz holen Start
+	var vall_scriptsR := polcore().all_scripts;
+
+	//Daten festschreiben
+	var scriptK := struct;
+	//var vall_scripts_start := array;
+	var vall_scripts_start_map := dictionary;
+	ForEach script in vall_scriptsR
+		scriptK.pid := script.pid;
+		scriptK.name := script.name;
+		scriptK.instr_cycles := script.instr_cycles;
+		vall_scripts_start_map[script.pid] := scriptK;
+		SleepMS(2);
+	EndForEach
+
+	//Pause
+	Sleep(zeit);
+
+	SendSysMessagePergon(who,"Zeit 1: "+GetDateTimeStr());
+	//Daten Referenz holen Ende
+	vall_scriptsR := polcore().all_scripts;
+
+	//Daten festschreiben
+	scriptK := struct;
+	var vall_scripts_ende := array;
+	ForEach script in vall_scriptsR
+		scriptK.pid := script.pid;
+		scriptK.name := script.name;
+		scriptK.instr_cycles := script.instr_cycles;
+		vall_scripts_ende.append(scriptK);
+		SleepMS(2);
+	EndForEach
+
+	SendSysMessagePergon(who,"Zeit 2: "+GetDateTimeStr());
+
+	//Vorauswahl nach Skript oder Template
+	var attached;
+	If (filter_wort)
+		var vall_scripts_ende_zw := array;
+		ForEach script in vall_scripts_ende
+	  	attached := GetProcess(script.pid).attached_to;
+	  	If (attached.isa(POLCLASS_NPC))
+	  		If (find(lower(attached.npctemplate), filter_wort, 1) || (filter_wort == lower(attached.script)))
+	  			vall_scripts_ende_zw.append(script);
+	  		EndIf
+		  EndIf
+		  SleepMS(2);
+	 	EndForEach
+	 	vall_scripts_ende := vall_scripts_ende_zw;
+	EndIf
+
+	//Differenz bilden
+	var diff_scripts := array;
+	var i;
+	var scriptD := struct;
+	var scripts_start := struct;
+	ForEach script in vall_scripts_ende
+		scripts_start := vall_scripts_start_map[script.pid];
+		If (scripts_start)
+				scriptD.pid := script.pid;
+				scriptD.name := script.name;
+				scriptD.diff_instr := script.instr_cycles-scripts_start.instr_cycles;
+				diff_scripts.append(scriptD);
+		EndIf
+		SleepMS(2);
+	EndForEach
+	SendSysMessagePergon(who,"Zeit 3: "+GetDateTimeStr());
+	//Summe Diff Instructions berechnen
+	var sum_instr := 0;
+	ForEach script in diff_scripts
+		sum_instr += script.diff_instr;
+		SleepMS(2);
+	EndForEach
+	SendSysMessagePergon(who,"sum_instr: "+sum_instr);
+
+	//Prozente ausrechnen Gesamtübersicht
+	For(i := 1; i <= diff_scripts.size(); i += 1)
+		diff_scripts[i].percent := CDbl(Ceil((diff_scripts[i].diff_instr/CDbl(sum_instr))*1000.0))/10.0;
+		SleepMS(2);
+	EndFor
+
+	SendSysMessagePergon(who,"Zeit 4: "+GetDateTimeStr());
+	//Ermitteln NPC-Template Übersicht
+	var template_sum_instr := 0;
+  var template_data := dictionary;
+  var template;
+  var structT := struct;
+  var laenge;
+  ForEach script in diff_scripts
+  	attached := GetProcess(script.pid).attached_to;
+  	If (attached.isa(POLCLASS_NPC))
+  		template := attached.npctemplate+" "+attached.script;
+	  	If (template_data.exists(template))
+				template_data[template].sum_instr := template_data[template].sum_instr+script.diff_instr;
+				template_data[template].anzahl := template_data[template].anzahl+1;
+			Else
+				structT.sum_instr := script.diff_instr;
+				structT.anzahl := 1;
+				laenge := len(attached.npctemplate)+len(attached.script);
+				structT.text := attached.npctemplate;
+				For (i := laenge;i<40;i += 1)
+					structT.text := structT.text+" ";
+				EndFor
+				structT.text := structT.text+attached.script;
+				template_data[template] := structT;
+			EndIf
+			template_sum_instr += script.diff_instr;
+	  EndIf
+	  SleepMS(2);
+ 	EndForEach
+
+ 	var template_array := array;
+ 	ForEach data in template_data
+ 		 template_array.append(data);
+ 		 SleepMS(2);
+	EndForEach
+
+  SendSysMessagePergon(who,"Anteil registrierte Templates an Gesamtlast: "+template_sum_instr*100/sum_instr+"%.");
+  template_array := GrenzSortPerformanceArray2(template_array, 1000);
+
+  SendSysMessagePergon(who,"Zeit 5: "+GetDateTimeStr());
+  //gibt die max_anzahl Einträge mit höchsten diff_instr sortiert zurück
+  var diff_scripts2 := GrenzSortPerformanceArray(diff_scripts, max_anzahl);
+	SendSysMessagePergon(who,"Zeit 6: "+GetDateTimeStr());
+
+	SendSysMessagePergon(who, "Anzahl Einträge Diff gesamt: "+diff_scripts.size());
+  SendSysMessagePergon(who, "Anzahl Einträge Diff mit Grenze: "+diff_scripts2.size());
+
+	If (bLog)
+		LogToFile("log/performance.log", " ");
+	Else
+		SendSysMessagePergon(who, " ");
+	EndIf
+
+	textL := FormatString(6, "PID") + " | " + FormatString(60, "Name") + " | " +
+				FormatString(12, "diff_instr") + " | " + FormatString(12, "diff_percent");
+  If (bLog)
+		LogToFile("log/performance.log", textL);
+	Else
+		SendSysMessagePergon(who, textL);
+	EndIf
+
+
+	textL := "__________________________________________________________________________________________________________________________________";
+	If (bLog)
+		LogToFile("log/performance.log", textL);
+	Else
+		SendSysMessagePergon(who, textL);
+	EndIf
+
+	ForEach script in diff_scripts2
+		textL := FormatString(6, CStr(script.pid)) + " | " + FormatString(60, script.name) + " | " +
+			FormatString(12, CStr(script.diff_instr)) + " | " + FormatString(12, CStr(script.percent)+"%");
+		If (bLog)
+			LogToFile("log/performance.log", textL);
+		Else
+			SendSysMessagePergon(who, textL);
+		EndIf
+		SleepMS(10);
+	EndForEach
+
+	//NPC Template Übersicht
+	If (bLog)
+		LogToFile("log/performance.log", " ");
+	Else
+		SendSysMessagePergon(who, " ");
+	EndIf
+
+	textL := FormatString(40, "NPC-Template") + " | " + FormatString(12, "Anzahl") + " | " +
+				FormatString(12, "diff_instr") + " | " + FormatString(12, "diff_percent");
+  If (bLog)
+		LogToFile("log/performance.log", textL);
+	Else
+		SendSysMessagePergon(who, textL);
+	EndIf
+
+
+	textL := "__________________________________________________________________________________________________________________________________";
+	If (bLog)
+		LogToFile("log/performance.log", textL);
+	Else
+		SendSysMessagePergon(who, textL);
+	EndIf
+
+	var percent;
+	ForEach data in template_array
+		percent := CDbl(Ceil((data.sum_instr/CDbl(sum_instr)*1000.0))/10.0);
+	  textL := FormatString(40, CStr(data.text)) + " | " + FormatString(12, CStr(data.anzahl)) + " | " +
+			FormatString(12, CStr(data.sum_instr)) + " | " + FormatString(12, CStr(percent)+"%");
+		If (bLog)
+			LogToFile("log/performance.log", textL);
+		Else
+			SendSysMessagePergon(who, textL);
+		EndIf
+		SleepMS(2);
+	EndForEach
+
+	SendSysMessagePergon(who,"Zeit 7: "+GetDateTimeStr());
+EndProgram
+
+//-----------------------------------------------------
+Function FormatString(laenge, shortString)
+	If (len(shortString) >= laenge)
+		return shortString;
+	EndIf
+	var returnString := "                                                                                          ";
+	returnString := returnString[1,laenge-len(shortString)]+shortString;
+	return returnString;
+EndFunction
+
+//-----------------------------------------------------
+Function GrenzSortPerformanceArray(byref PArray, anzahl)
+	var ergArray := array;
+	var temp := struct;
+	temp.k := 0;
+	temp.wert := -1;
+	var ArrayLen := Len(PArray);
+	If (anzahl > ArrayLen)
+		anzahl := ArrayLen;
+	EndIf
+	var i,k,f;
+	For(i := 1; i <= anzahl; i += 1)
+		For(k := 1; k <= ArrayLen; k += 1)
+			f := PArray[k];
+			If (f.diff_instr > temp.wert)
+				temp.k := k;
+				temp.wert := f.diff_instr;
+			EndIf
+			SleepMS(1);
+		EndFor
+		ergArray.append(PArray[temp.k]);
+		PArray.erase(temp.k);
+		ArrayLen := Len(PArray);
+		temp.k := 0;
+		temp.wert := -1;
+		SleepMS(2);
+	EndFor
+	return ergArray;
+EndFunction
+
+//-----------------------------------------------------
+Function GrenzSortPerformanceArray2(byref PArray, anzahl)
+	var ergArray := array;
+	var temp := struct;
+	temp.k := 0;
+	temp.wert := -1;
+	var ArrayLen := Len(PArray);
+	If (anzahl > ArrayLen)
+		anzahl := ArrayLen;
+	EndIf
+	var i,k,f;
+	For(i := 1; i <= anzahl; i += 1)
+		For(k := 1; k <= ArrayLen; k += 1)
+			f := PArray[k];
+			If (f.sum_instr > temp.wert)
+				temp.k := k;
+				temp.wert := f.sum_instr;
+			EndIf
+			SleepMS(1);
+		EndFor
+		ergArray.append(PArray[temp.k]);
+		PArray.erase(temp.k);
+		ArrayLen := Len(PArray);
+		temp.k := 0;
+		temp.wert := -1;
+		SleepMS(2);
+	EndFor
+	return ergArray;
+EndFunction
+

@@ -1,0 +1,72 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD ChangeCriminal - Schaltet zwischen den kriminell-Stufen hin und her
+//
+// Author: Shinigami
+//
+// Modifications:
+// 2005/01/19 Shinigami:
+// Bei "Murderer" wird auch die CProp(permared) gesetzt (siehe :opt:timers)
+
+use file;
+use uo;
+include "include/msgs";
+include "include/quests";
+
+Program TextCMD_ChangeCriminal(who, criminal)
+  Case (Lower(criminal))
+    "b": // blau
+    "l": // lawful
+      who.setmurderer(0); who.setcriminal(0);
+      // Wegens :opt:timers was sie sonst zuruecksetzen wuerde...
+      EraseObjProperty(who, TYPKILLER);
+    "g": // grau
+    "n": // neutral
+      who.setmurderer(0); who.setcriminal(100);
+      EraseObjProperty(who, TYPKILLER);
+    "r": // rot
+    "m": // murderer
+    "e": // evil
+      who.setmurderer(1);
+      SetObjProperty(who, TYPKILLER, 1);
+
+    default:
+      If (!criminal)
+        If (who.murderer)
+          who.setmurderer(0); who.setcriminal(0);
+          EraseObjProperty(who, TYPKILLER);
+        Else
+          If (who.criminal)
+            who.setmurderer(1);
+            SetObjProperty(who, TYPKILLER, 1);
+          Else
+            who.setmurderer(0); who.setcriminal(100);
+            EraseObjProperty(who, TYPKILLER);
+          EndIf
+        EndIf
+      Else
+        SendSysMessagePergon(who,
+          "Als Parameter sind nur 'b'lau, 'g'rau oder 'r'ot zulässig!",
+          "You can use 'b'lue, 'g'rey or 'r'ed only as parameter!"
+        );
+        return;
+      EndIf
+  EndCase
+
+  If (who.murderer)
+    SendSysMessagePergon(who,
+      "Ihr seid ein Mörder.", "You are a murderer."
+    );
+  Else
+    If (who.criminal)
+      SendSysMessagePergon(who,
+        "Ihr seid ein Krimineller.", "You are criminal."
+      );
+    Else
+      SendSysMessagePergon(who,
+        "Ihr seid friedvoll.", "You are lawful."
+      );
+    EndIf
+  EndIf
+
+  QuestCharLog(who, "TextCMD ChangeCriminal");
+EndProgram

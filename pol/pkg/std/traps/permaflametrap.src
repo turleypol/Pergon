@@ -1,0 +1,19 @@
+
+include ":newspells:resistance";
+include "traps";
+
+Program Walk_on_Perma_Flame_Trap(who, trap)
+  If (who.cmdlevel >= CMDLEVEL_SEER || trap.getProp("caster") == who.serial)
+    return;
+  EndIf
+
+  While (who && !who.dead && who.x == trap.x && who.y == trap.y)
+    var damage := CInt(
+      RandomDiceRoll(PlayTrapEffect(trap)) *
+      (1 - CDbl(GetResistance(who, "fire")))
+    );
+    SetScriptController(who);
+    ApplyRawDamagePergon(who, damage, DAMAGE_NO_REPSYS);
+    Sleep(2);
+  EndWhile
+EndProgram

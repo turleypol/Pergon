@@ -1,0 +1,527 @@
+///////////////////////////////////////////////////////////////////////////
+//
+//   weben.src
+//
+//   Author: Pauker
+//
+//   Modifications:
+//     2001/07/xx Pauker: First Write
+//     24.10.2003 Fraggulus: Hanf ergaenzt
+//     2004/06/02 Commander: Strohbedarf für Goldfäden halbiert / Magieanforderungen für Goldfäden reduziert
+//      (mit 60% Magie besteht nun eine 25%ige Chance auf die Fäden, bei 80% Magie 75%)
+//     2004/11/07 Shinigami: Goldfaeden lassen sich nun mit jedem Magieskill spinnen
+//     15.09.2005 Turley: Meldung bei Teppich mit .desc korrigiert (%-Zeichen löschen)
+//
+///////////////////////////////////////////////////////////////////////////
+
+use attributes;
+use cfgfile;
+use os;
+use uo;
+use util;
+include "include/client";
+include "include/modifyskill";
+include "include/objtype";
+
+Const SCISSORS_SOUND := SFX_249;
+
+var UOBJ_SPINNRAD := {0x1015, 0x1016, 0x1017, 0x1019, 0x101a, 0x101b, 0x101c, 0x101d};
+var UOBJ_Wolle := {0x1a9c, 0x0df9, 0x0def, 0x0df8, 0x101f, UOBJ_SPINNENSEIDE, 0x1ebd, 0xdc6};
+var UOBJ_GARN := {0x8000, 0x8001, 0x8002, 0x8003, 0x8004, 0x8009};
+
+Program weben(character, tool)
+
+  If (!AccessiblePergon(character, tool))
+    SendSysMessagePergon(character, "Ihr könnt das nicht benutzen!");
+    return;
+  EndIf
+
+  If (tool.objtype in UOBJ_SPINNRAD)
+    make_thread(character, tool);
+  EndIf
+
+  If (tool.objtype in UOBJ_GARN)
+
+    SendSysMessagePergon(character, "Wählt einen Webstuhl aus.");
+    var use_on := Target(character);
+    If (!use_on)
+      SendSysMessagePergon(character, "Abbruch", "Abort");
+      return;
+    EndIf
+
+    var x := character.x; // Char Position wird festgestellt fuer Abbruch
+    var y := character.y;
+    var z := character.z;
+
+    If ((use_on.objtype < UOBJ_LOOM_START) or (use_on.objtype > UOBJ_LOOM_END))
+      // If the object is NOT a loom, give the player an error message.
+      SendSysMessagePergon(character, "Ihr könnt die Fäden nur auf einem Webstuhl verarbeiten.");
+    Else
+
+      var Mat_Cfg := ReadConfigFile(":crafting:materials");
+      var mat_special := FindConfigElem(Mat_Cfg, tool.objtype);
+      If (!mat_special)
+        SendSysMessagePergon(character, "Wolle "+tool.objtype+" ist noch nicht in die Configs eingetragen!");
+        SendSysMessagePergon(character, "Benachrichtigt den zuständigen GM.");
+        return;
+      EndIf
+      ReserveItem(tool);
+      var difficulty := mat_special.difficulty;
+      var target_obj := mat_special.product;
+      var skill_char := GetSkillPergon(character, SKILLID_WEBEN);
+
+      /* If (character.cmdlevel)
+      print("**********weben.src************");
+      print("Skill: "+difficulty);
+      print("Skill_CHAR: "+skill_char);
+      EndIf */
+
+      var stoff := 1;
+
+      // wenn skill weben char größer als difficulty+5% aus der materials.cfg fuer die spule ist ...
+      If (skill_char>cint(difficulty+5))
+        stoff := menue_teppiche(character, tool, skill_char);
+      EndIf
+      If (stoff)
+        If (GetAmount(tool)>=10)
+          While (getamount(tool)>=10)
+            PlaySoundEffect(character, SCISSORS_SOUND);
+            SleepMS (1000);
+
+            If (!((character.x==x) and (character.y==y) and (character.z==z)))   // fall's sich der char bewegt, Abbruch der Schleife
+              SendSysMessagePergon(character, "Abbruch", "Abort");
+              return;
+            EndIf
+
+            If (CheckSkillPergon(character, SKILLID_WEBEN, cint(difficulty),cint(difficulty*6)))
+              SubtractAmount(tool, 10);
+              CreateItemInBackpackPergon (character, target_obj, 1);
+              SendSysMessagePergon(character, "Ihr legt einen Ballen Stoff in Euer Backpack.");
+            Else
+              SubtractAmount(tool, 3);
+              SendSysMessagePergon(character, "Ihr könnt keinen Stoff weben.");
+            EndIf
+          EndWhile
+        Else
+          SendSysMessagePergon(character, "Ihr habt zu wenig Material!");
+        EndIf
+      EndIf
+
+    EndIf // kein webstuhl
+  EndIf // kein garn gewaehlt
+
+EndProgram
+
+
+Function make_thread(character, tool)
+
+  SendSysMessagePergon(character, "Wählt die Faeden, die gesponnen werden sollen.");
+  var use_on := Target(character);
+
+  // Test to see If the player can reach the targed thread.
+  If (!AccessiblePergon(character, use_on))
+    SendSysMessagePergon(character, "Ihr habt kein Stück Faden!");
+    return;
+  EndIf
+
+  If (not(use_on.objtype in UOBJ_Wolle))
+    SendSysMessagePergon(character, "Das kann nicht versponnen werden.");
+    return;
+  EndIf
+  var Mat_Cfg := ReadConfigFile(":crafting:materials");
+  var mat_special := FindConfigElem(Mat_Cfg, use_on.objtype);
+  If (!mat_special)
+    SendSysMessagePergon(character, "Wolle "+use_on.objtype+" ist noch nicht in die Configs eingetragen!");
+    SendSysMessagePergon(character, "Benachrichtigt den zuständigen GM.");
+    return;
+  EndIf
+  ReserveItem(use_on);
+  ReserveItem(tool);
+
+  var anzahl_rohstoffe := 10;
+  If (use_on.objtype==0x1ebd)   // fuer stroh zu "Goldfaden"
+    anzahl_rohstoffe := 50; // von 100 auf 50 gesenkt
+  EndIf
+
+  var difficulty := mat_special.difficulty;
+  var target_obj := mat_special.product;
+
+  var x := character.x; var y:=character.y; var z:=character.z; // Char Position wird festgestellt fuer Abbruch
+
+  If (getamount(use_on)<anzahl_rohstoffe)
+    SendSysMessagePergon(character, "Ihr habt nicht genug Material !");
+    return;
+  EndIf
+  
+  If (tool.objtype in {0x1019,0x101A,0x101B})
+    tool.graphic:=0x101A;
+  EndIf
+  If (tool.objtype in {0x1015,0x1016,0x1017})
+    tool.graphic:=0x1016;
+  EndIf
+
+  /* If (character.cmdlevel >= CMDLEVEL_SEER)
+  print("Skill: "+difficulty);
+  print("Target Obj: "+target_obj);
+
+  print("Spinnrad desc: "+tool_desc);
+  print("Spinnrad color: "+tool_color);
+  print("Type: "+tool_orig);
+  EndIf */
+
+  var abbruch := 0;
+
+  While ((getamount(use_on)>=anzahl_rohstoffe) and (abbruch==0))
+
+
+    PlaySoundEffect(character, SCISSORS_SOUND);
+    SleepMS (1000);
+
+    If (!((character.x==x) and (character.y==y) and (character.z==z)))   // fall's sich der char bewegt, Abbruch der Schleife
+      SendSysMessagePergon(character, "Abbruch", "Abort");
+      abbruch := 1;
+    EndIf
+
+    If (CheckSkillPergon(character, SKILLID_WEBEN, cint(difficulty),cint(difficulty*2)))
+      If (use_on.objtype==0x1ebd) // fuer stroh zu "Goldfaden"
+        var mage_skill := GetSkillPergon(character, SKILLID_MAGIE);
+        If (mage_skill<GetSkillPergon(character, SKILLID_SEGNEN))
+          mage_skill := GetSkillPergon(character, SKILLID_SEGNEN);
+        EndIf
+        If (mage_skill<GetSkillPergon(character, SKILLID_FLUCHEN))
+          mage_skill := GetSkillPergon(character, SKILLID_FLUCHEN);
+        EndIf
+
+        If (mage_skill>=(Randomint(40)+50)) //statischer anteil gesenkt von 60 auf 50
+          SubtractAmount(use_on, anzahl_rohstoffe);
+          CreateItemInBackpackPergon (character, target_obj, 1);
+          SendSysMessagePergon(character, "Oh Wunder!");
+          SendSysMessagePergon(character, "Ihr legt eine Spule aus Gold in Euer Backpack.");
+        Else                              // Skill Magie reicht nicht
+          SubtractAmount(use_on, randomint(cint(anzahl_rohstoffe/2))+1);
+          SendSysMessagePergon(character, "Oh je, Eure magischen Fähigkeiten sind noch nicht ausreichend.");
+        EndIf
+      Else
+        SubtractAmount(use_on, anzahl_rohstoffe);
+        CreateItemInBackpackPergon (character, target_obj, 1);
+        SendSysMessagePergon(character, "Ihr legt eine Spule in Euer Backpack.");
+      EndIf
+    Else
+      SubtractAmount(use_on, randomint(cint(anzahl_rohstoffe/2))+1);
+      SendSysMessagePergon(character, "Ihr könnt keine Spule gewinnen.");
+    EndIf
+
+  EndWhile
+
+  tool.graphic:=tool.objtype;  // Grafik zurücksetzen
+
+EndFunction
+
+
+Function menue_teppiche(character, use_on, skill_char)
+  var itemdesc := ReadConfigFile("::itemdesc");
+  var Mat_Cfg := ReadConfigFile(":crafting:materials");
+  var cfg := ReadConfigFile("weben");
+  var temp := {};
+  var Ok1 := 0;
+  var op := 0;
+  var Elm;
+  var Sai := 0;
+  var i := 0;
+  var j := 1;
+  var Type;
+  var Skill_1;          //skill needed to create the item
+
+  var quality;
+  var item_price;
+
+  var material1 := Mat_Cfg[use_on.objtype];
+  If (!material1)
+    SendSysMessagePergon(character, "Das Material ist nicht in die crafting\materials.cfg eingetragen !");
+    return 0;
+  EndIf
+
+  // Material1 Skillberechnung
+
+  var material1_skill := cint(material1.difficulty); // crafting\materials.cfg   Item.difficulty
+
+  Case(use_on.objtype)
+    0x8000: i := 1; op:=1;            // Flax
+    0x8001: i := 100; op:=2;        // Schafwolle
+    0x8002: i := 200; op:=3;        // Baumwolle
+    0x8003: i := 300; op:=4;        // Seide
+  EndCase
+
+  If (!i)
+    return 1;
+  EndIf
+
+  var Menu := CreateMenu("Was wollt Ihr anfertigen?");
+  Temp[j] := 0;
+  AddMenuItem(menu, 0X0f95, "Stoff");
+  j+=1;
+
+  While (!Sai);
+    elm := cfg[i];
+    If (!elm)
+      Sai := 1;
+    Else
+      // Werte aus der Config auslesen
+      Type := CInt(elm.type);
+      Skill_1 := CDbl(elm.skill1);
+
+      // im Herstellungsmenue tauchen nur Items mit Char-Skill>=Skill_1 auf
+      If ((Type==Op) And (skill_char>=CInt(Skill_1+material1_skill)))
+        Temp[j] := i;
+        AddMenuItem(menu, Cint(Hex(GetElemProperty(Elm,"icon"))),GetElemProperty(Elm,"desc"));
+        j+=1;
+      EndIf
+    EndIf
+    i+=1;
+  EndWhile;
+
+  // wenn nichts im menue gewaehlt wurde
+  OP := SelectMenuItem2(character, menu);
+  If (!OP)
+    SendSysMessagePergon(character,"Abbruch", "Abort");
+    return 0;
+  EndIf
+  // wenn im menue der stoff gewaehlt wurde
+  If (temp[op.index]==0)
+    return 1;
+  EndIf
+
+  // Auslesen des angewaehlten Items aus der weben.cfg
+  elm := cfg[temp[op.index]];
+
+  // Werte aus der Config auslesen
+  Skill_1 := CDbl(elm.skill1);
+  var Skill_2 := CDbl(elm.skill2);
+  var SkillID_2 := GetAttributeName_(elm.attribute2);
+
+  var Objtype := CInt(elm.objtype);
+  var Material_1 := CInt(elm.material1);
+  var Material_2 := CInt(elm.material2);
+  var Material_2Obj := CInt(elm.material2obj);
+
+  // Auslesen von Item.maxhp var aus beliebiger itemdesc.cfg
+  var MaxHP := 50;
+
+  var material2;
+  var use_on2;
+
+  /* If (character.cmdlevel >= CMDLEVEL_SEER)
+  print("OP: "+op);
+  print("temp[op.index]: "+temp[op.index]);
+  print("Material_1: "+Material_1);
+  print("Material_2: "+Material_2);
+  print("Material_1Obj: "+Material_1Obj);
+  print("use_on.objtype: "+use_on.objtype);
+  print("Material_2Obj: "+Material_2Obj);
+  EndIf */
+
+  If (material_2obj)
+    // wenn, dann welches 2. material
+
+    var mat2 := itemdesc[Material_2Obj];
+    var mat2desc := DescEinzahl(mat2.desc);
+    SendSysMessagePergon(character, "Ihr benötigt "+mat2desc+" um den Teppich zu weben.");
+
+    // fadenkreuz fuer die auswahl
+    use_on2 := target(character);
+    If (!use_on2)
+      SendSysMessagePergon(character, "Kein Material gewählt!");
+      return 0;
+    EndIf
+
+    // ob auch das richtige gewaehlt wurde
+    If (!(material_2obj==use_on2.objtype))
+      SendSysMessagePergon(character, "Mit diesem Material könnt Ihr nichts anfangen !");
+      return 0;
+    EndIf
+
+    material2 := Mat_Cfg[use_on2.objtype];
+    If (!material2)
+      SendSysMessagePergon(character, "Das Material ist nicht in die crafting\materials.cfg eingetragen !");
+      return 0;
+    EndIf
+  EndIf
+
+  var TX := character.x;
+  var TY := character.y;
+
+  // Anzahl der herzustellenden Stuecke
+  var val := cint(SendTextEntryGump(character, "Wieviele wollt Ihr anfertigen? (Max 10)", 40));
+  If (!val or val>10)
+    SendSysMessagePergon(character, "Abbruch", "Abort");
+    return 0;
+  EndIf
+  var Sound1;
+  var Sound2;
+  var skill2_offset;
+  var skill1_offset;
+
+  For (i := 1;i<=val;i+=1)
+    If (TX<>character.x or TY<>character.y)
+      break;
+    Else
+      Ok1 := 0;
+      var Ok2 := 1;
+      var Item1;
+      var Item2;
+
+      If (SkillID_2)
+        Ok2 := 0;
+      EndIf
+      ForEach item in EnumerateItemsInContainer(character.backpack)
+        If (((!ok1) and (item.objtype==use_on.objtype)) and (GetAmount(item)>=material_1))
+          Item1 := item; ok1:=1;
+          reserveitem(Item1);
+        ElseIf (((!ok2) and (item.objtype==use_on2.objtype)) and (GetAmount(item)>=material_2))
+          ok2 := 1; Item2:=item;
+          reserveitem(Item2);
+        EndIf
+        If ((Ok1) and (Ok2))
+          Break;
+        EndIf
+        SleepMS(2);
+      EndForEach
+
+      If (!Ok1)
+        SendSysMessagePergon(character,"Ihr habt nicht genügend "+material1.shortdesc);
+        return 0;
+      EndIf
+      If (!Ok2)
+        SendSysMessagePergon(character,"Ihr habt nicht genügend "+material2.shortdesc);
+        return 0;
+      EndIf
+
+      If (SkillID_2)
+        sound2 := SCISSORS_SOUND;
+        PlaySoundEffect(character, sound2);
+        Sleep (2);
+        PlaySoundEffect(character, sound2);
+        Sleep (2);
+        PlaySoundEffect(character, sound2);
+        Sleep (2);
+
+        var material2_skill := cint(material2.difficulty);
+        skill2_offset := cint(skill_2+material2_skill);
+
+        var Check := CheckSkillPergon(character, SkillID_2, skill2_offset, Cint(skill2_offset*6));
+        If (!check)
+          If (material_2 > 2) // mind. 1 Material vernichten
+            SubtractAmount(item2, cint(material_2/2));
+          Else
+            SubtractAmount(item2, 1);
+          EndIf
+          SendSysMessagePergon(character, "Ihr zerstört etwas "+material2.shortdesc+".");
+          continue;
+        EndIf
+      EndIf
+
+      sound1 := SCISSORS_SOUND;
+      PlaySoundEffect(character, sound1);
+      Sleep (2);
+      PlaySoundEffect(character, sound1);
+      Sleep (2);
+      PlaySoundEffect(character, sound1);
+      Sleep (2);
+      skill1_offset := Cint (skill_1+material1.difficulty);
+      If (CheckSkillPergon(character, SKILLID_WEBEN, skill1_offset, Cint(skill1_offset*6)))
+
+        var theitem := CreateItemInBackpackPergon(character, objtype, 1);
+        If (!theitem)
+          return 0;         // hmm, create failed.  backpack full?
+          // FIXME macro exploit
+        EndIf
+
+        theitem.movable := 1;
+        theitem.vendorsellsfor := 10000;
+        theitem.vendorbuysfor := 100;
+
+
+        //regular-quality
+        quality := cint (60+GetSkillPergon(character, SKILLID_WEBEN))/100.0;
+        var itemnameF := GetElemProperty(Elm, "desc");
+        var toolinfocprop := struct{material:=material1.shortdesc};
+        If (material_2obj)
+          toolinfocprop.material := toolinfocprop.material+" und "+material2.shortdesc;
+        EndIf
+        theitem.setprop(TOOLINFO,toolinfocprop);
+        SetName(theitem, itemnameF); //
+        SendSysMessagePergon(character, "Ihr stellt den Gegenstand her und legt ihn in Euren Rucksack.");
+        item_price := 1;
+
+        // material- und werkzeug-eigenschaften gehen mit in die item eigenschaften ein
+
+        var dummy;
+
+        If (material_2obj)
+          dummy := quality;
+          item_price := cint(item_price*((Material_2*GetPropertyPrice(use_on2))+(Material_1*GetPropertyPrice(use_on))));
+        Else
+          dummy := quality;
+          item_price := cint(item_price*(Material_1*GetPropertyPrice(use_on)));
+        EndIf
+        var maxhp_item := maxhp;
+
+        /* If (character.cmdlevel >= CMDLEVEL_SEER)
+        print("******* weben.src ********");
+        print("Skill1: "+skill1_offset);
+        print("Skill2: "+skill2_offset);
+        print("Rohpoints1: "+Cint(skill1_offset*6));
+        print("Quali Item orig.:"+quality);
+        print("MaxHP: "+MaxHP);
+        print("-----------------------------");
+        print("Price: "+GetPropertyPrice(use_on)+" * "+Material_1+" + "+GetPropertyPrice(use_on2)+" * "+Material_2);
+        print("Item Price: "+item_price);
+        print("Itemdesc: "+theitem.desc);
+        print("Color: "+theitem.color);
+        print("Gewicht: "+theitem.weight);
+        print("Item Quality/Qualityorig: "+dummy);
+        print("Item Hp/Maxhp/Maxhporig: "+maxhp_item);
+        print("SkillID_1: "+SKILLID_WEBEN);
+        print("Skill_repair: "+(skill_1+material1_skill));
+        print("*****************************");
+        EndIf */
+
+        //item-property's setzen
+        //SetPropertyItem(item, quality, hp, maxhp, qualityorig, maxhporig, type, skillid)
+        SetPropertyItem(theitem, dummy, maxhp_item, maxhp_item, dummy, maxhp_item, "s", SKILLID_WEBEN, skill_1+material1_skill, item_price);
+
+        If (material_1 > 2)   // mind. 1 Material vernichten
+          SubtractAmount(item1, material_1);
+        Else
+          SubtractAmount(item1, 1);
+        EndIf
+        If (SkillID_2)
+          If (material_2 > 2) // mind. 1 Material vernichten
+            SubtractAmount(item2, material_2);
+          Else
+            SubtractAmount(item2, 1);
+          EndIf
+        EndIf
+      Else
+        If (material_1 > 2) // mind. 1 Material vernichten
+          SubtractAmount(item1, cint(material_1/2));
+        Else
+          SubtractAmount(item1, 1);
+        EndIf
+        SendSysMessagePergon(character, "Eure Anstrengungen waren umsonst, Ihr zerstört etwas "+material1.shortdesc+".");
+      EndIf
+    EndIf
+  EndFor
+  return 0;
+EndFunction
+
+
+////////////////////////////////////////////////////////////////
+// GetAttributeName - Ermittelt und Prueft den Attribute-Namen
+////////////////////////////////////////////////////////////////
+
+Function GetAttributeName_(attribute)
+  If (attribute)
+    return (GetSkillName(attribute));
+  EndIf
+EndFunction

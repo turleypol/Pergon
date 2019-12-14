@@ -1,0 +1,57 @@
+/////////////////////////////////////////////////////////////
+//
+// Author: olor
+// Date: 23.03.2001
+//
+// 24.10.2001 - Fraggulus - Uebersetzung und Einbau
+// 29.09.2005 - Turley    - Paperdollitems
+//
+// Description: Listet alle benutzerdefinierten Propertys eines Items/Mobiles
+/////////////////////////////////////////////////////////////
+use uo;
+
+Include "include/modifyskill";
+
+// Get all CProp names of the targeted object
+program textcmd_listCProps (me)
+  If ((me.cmdlevel>=CMDLEVEL_HIGHGM) Or (me.serial==0x50fbfc) Or (me.serial==0x59241a))
+    var i := 0;
+    var sCProp := "";
+    SendSysMessagePergon (me, "Item/Mobile wählen.");
+    var obj :=  Target (me, TGTOPT_NOCHECK_LOS);
+    If (!obj)
+      SendSysMessagePergon(me, "Kein normales Item - Wählt ein Paperdoll Item!");
+      obj:= TargetCoordinates(me);
+      If (obj.item)
+        obj:=obj.item;
+      EndIf
+    EndIf
+    if (obj)
+       var arr := GetObjPropertyNames (obj);
+       var lenarr := len(arr);
+
+       if (lenarr >=1)
+          if (typeofint(obj)==OT_ITEMREF)
+ 	     SendSysMessagePergon (me, "CProps für " + obj.desc);
+          elseif (typeofint(obj)==OT_MOBILEREF)
+ 	     SendSysMessagePergon (me, "CProps für " + obj.name);
+          EndIf
+          for (i := 1; i <= lenarr; i += 1)
+             sCProp := GetObjProperty (obj, arr[i]);
+             SendSysMessagePergon (me, "" + arr[i] + ": " + sCProp);
+             SleepMS(2);
+          endfor
+       else
+          SendSysMessagePergon (me, "Keine nutzerdefinierten Propertys gefunden.");
+       endif
+
+    elseif (obj == error)
+       SendSysMessagePergon (me, "Fehler: " + obj.errortext);
+       return;
+    else
+      SendSysMessagePergon (me, "Abbruch", "Abort");
+    endif
+  Else
+    SendSysMessagePergon(me, "Ihr seid nicht befugt, diesen Befehl zu benutzen!", "You are not authorizied to use this command!");
+  EndIf
+endprogram

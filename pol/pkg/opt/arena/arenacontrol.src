@@ -1,0 +1,871 @@
+///////////////////////////////////////////////////////////////////////////
+// Arena Control Script
+//
+// Fuehrt den eigentlichen Kampf durch (based on Sigismund's Release)
+//
+// Author: Shinigami
+
+use cfgfile;
+use math;
+use os;
+use polsys;
+use uo;
+use util;
+include "include/logutil";
+include "include/modifyskill";
+include "include/msgs";
+include "include/npc";
+include "include/server";
+include "include/varutil";
+include "include/vitals";
+
+// Warten, Initialisieren, Hauptschleife starten
+Program ArenaInit(arenactl) // {{{
+  Sleep(1+RandomInt(5));
+
+  var arenacfg := ReadConfigFile("arena");
+  If (!arenacfg)
+    syslog(
+      "FEHLER: arenaregistry.cfg konnte nicht geoeffnet werden: "+
+      arenacfg.errortext
+    );
+    return;
+  EndIf
+
+  var arenadesc;
+  // Warten, bis gueltige ArenaID gesetzt wurde
+  var tries := 0;
+  While (arenactl)
+    var arenaid := GetObjProperty(arenactl, "ArenaID");
+    If (arenaid)
+      // Konfiguration der Arena einlesen
+      arenadesc := FindConfigElem(arenacfg, arenaid);
+      If (arenadesc)
+        break;
+      EndIf
+    EndIf
+    // beim ersten Fehlversuch noch warnen
+    If (tries == 0)
+      syslog(
+        "HINWEIS: "+ItemInfoStr(arenactl, COORDS_REALM)+
+        ": (noch) keine gültige Arena-ID"
+      );
+    EndIf
+    tries += 1;
+    Sleep(CInt(Min(300, tries)));
+  EndWhile
+
+  // Die Bezeichnung der Arena einlesen
+  var name := arenadesc.name;
+  If (name)
+    SetName(arenactl, name);
+    IncRevision(arenactl);
+  EndIf
+
+  // Vergabe von Punkten fuer den Kampf
+  // Falls es die Prop noch nicht gibt, anlegen
+  If (!GetObjProperty(arenactl, "Points"))
+    SetObjProperty(arenactl, "Points", Dictionary);
+  EndIf
+
+  // PID bekanntmachen (fuer Doppelklickscript)
+  SetObjProperty(arenactl, "#pid", GetPID());
+
+  // Die Arena ist nun initialisiert ...
+  ArenaMainLoop(arenactl, arenadesc);
+EndProgram // }}}
+
+// Warten auf Kaempfer, wechseln in Kampfmodus
+Function ArenaMainLoop(arenactl, byref arenadesc) // {{{
+  // Und los gehts...
+  While (arenactl)
+    SleepMs(2);
+    var event := Wait_for_Event(3600);
+    If (!event)
+      continue;
+    EndIf
+
+    If (event.type == 1) // Kampf
+      var who := event.fighter;
+      If (!who or who.dead)
+        continue;
+      EndIf
+
+      SetObjProperty(arenactl, "#Fighter", who.serial);
+
+      // Die Ausmasse der Arena einlesen ... {{{
+      var arena := SplitWords(arenadesc.koords);
+      arena := CIntArray(arena);
+
+      // z nicht, Arenen können flach sein
+      If (arena[1] == arena[4] or arena[2] == arena[5])
+        syslog(
+          "FEHLER: "+ItemInfoStr(arenactl, COORDS_REALM)+": ungültige Abmessungen"
+        );
+        return;
+      EndIf
+
+      // Koordinaten ggf. zurechtsortieren
+      SortBySize(arena, 1, 4);
+      SortBySize(arena, 2, 5);
+      SortBySize(arena, 3, 6);
+      // }}}
+
+      // Die Arena fuer den Kampf vorbereiten, spricht entleeren
+      Maintenance(arenactl, arena);
+      // Lasst den Kampf beginnen ...
+      StartFight(who, arenactl, arena, arenadesc);
+
+      EraseObjProperty(arenactl, "#Fighter");
+    EndIf
+  EndWhile
+EndFunction // }}}
+
+// Bereitet die Arena fuer den Kampf vor, sprich, leert sie
+Function Maintenance(arenactl, arena) // {{{
+  ForEach object in (ListObjectsInBox(
+      // Nordwest-Ecke
+      arena[1], arena[2], arena[3],
+      // Suedost-Ecke
+      arena[4], arena[5], arena[6], arenactl.realm
+  ))
+    SleepMs(2);
+    If (object.isa(POLCLASS_MOBILE)) // NPC oder Player
+      If (object.isa(POLCLASS_NPC))
+        // NPC
+        RevokePrivilege(object, "invul");
+        SetObjProperty(object, "guardkill", 1);
+        KillMobile(object, "arena-bereinigung");
+        continue;
+      EndIf
+
+      If (object.cmdlevel<CMDLEVEL_SEER)
+        // Player
+        SendSysMessagePergon(object,
+          "Es findet ein Kampf in der Arena statt. "+
+          "Zur eigenen Sicherheit werdet Ihr aus der Arena entfernt.",
+          "A fight is already occuring. "+
+          "You will been removed from the arena for your own protection."
+        );
+        MoveObjectToLocation(
+          object, arenactl.x, arenactl.y+1, arenactl.z, object.realm
+        );
+      EndIf
+      continue;
+    EndIf
+
+    // Items (gibt ja ausser Mobiles nix anneres,
+    // was in der Weltgeschichte rumliegt)
+    If (object.isa(POLCLASS_CORPSE))
+      If (!GetObjProperty(object, "lifetime"))
+        // keine Playerleiche -> entfernen
+        DestroyItem(object);
+      EndIf
+    ElseIf (object.movable)
+      DestroyItem(object);
+    EndIf
+  EndForEach
+EndFunction // }}}
+
+// Arenaconfig einlesen, Kampf beginnen
+Function StartFight(who, arenactl, arena, arenadesc) // {{{
+  If (GetEquipmentByLayer(who, LAYER_MOUNT))
+    SendSysMessagePergon(who,
+      "Ihr reitet und könnt deshalb nicht kämpfen.",
+      "You are riding and therefore you cannot fight."
+    );
+    return;
+  EndIf
+
+  // es mag ineffizient sein, die Daten pro Kampf einzulesen;
+  // andererseits ist es eine erhebliche Speicherersparnis
+  // Startpunkte in der Arena auslesen {{{
+  var positions := {};
+  ForEach pos in (GetConfigStringArray(arenadesc, "Position"))
+    SleepMs(2);
+    // Den Ort in seine Koords zerlegen ...
+    pos := CIntArray(SplitWords(pos));
+    If (
+      ((arena[1] <= pos[1]) and (pos[1] <= arena[4])) and
+      ((arena[2] <= pos[2]) and (pos[2] <= arena[5])) and
+      ((arena[3] <= pos[3]) and (pos[3] <= arena[6]))
+    )
+      positions.append(pos);
+    Else
+      syslog(
+        "FEHLER: "+ItemInfoStr(arenactl, COORDS_REALM)+
+        ": Startpunkt ausserhalb der Arena: "+join(", ", pos)
+      );
+    EndIf
+  EndForEach
+  // ist etwas übrig
+  If (positions.size() <= 0)
+    syslog(
+      "FEHLER: "+ItemInfoStr(arenactl, COORDS_REALM)+
+      ": keine gueltigen Startpunkte"
+    );
+    // abschalten
+    return;
+  EndIf // }}}
+
+  // Und nun noch alle moeglichen Monster {{{
+  var monster := {};
+  ForEach npc in (GetConfigStringArray(arenadesc, "Monster"))
+    SleepMs(2);
+    // Das Monster in seine Bestandteile zerlegen ...
+    npc := SplitWords(npc);
+    npc[2] := CInt(npc[2]); // Schwierigkeit
+    npc[3] := CInt(npc[3]); // Typ
+
+    // NPCTemplate
+    If (!GetNPCConfig(npc[1]))
+      syslog(
+        "FEHLER: "+ItemInfoStr(arenactl, COORDS_REALM)+
+        ": NPC-Template "+npc[1]+" existiert nicht"
+      );
+      continue;
+    EndIf
+
+    // nur Schwierigkeit im Bereich 1..5 zulaessig
+    If ((npc[2] < 1) or (npc[2] > 5))
+      syslog(
+        "FEHLER: "+ItemInfoStr(arenactl, COORDS_REALM)+
+        ": NPC mit ungueltiger Schwierigkeit ("+npc[2]+"): "+npc[1]
+      );
+      continue;
+    EndIf
+    // nur Typ im Bereich 1..5 zulaessig
+    If ((npc[3] < 1) or (npc[3] > 5))
+      syslog(
+        "FEHLER: "+ItemInfoStr(arenactl, COORDS_REALM)+
+        ": NPC mit ungueltigem Typ ("+npc[3]+"): "+npc[1]
+      );
+      continue;
+    EndIf
+
+    monster.append(npc);
+  EndForEach
+
+  If (monster.size() <= 0)
+    syslog(
+      "FEHLER: "+ItemInfoStr(arenactl, COORDS_REALM)+": keine gueltigen NPCs"
+    );
+    // abschalten
+    return;
+  EndIf // }}}
+
+  // Gegner auswaehlen bzw. herbeiholen ... {{{
+  var type := SelectEnemy(who, arenadesc);
+  If (type == error)
+    return;
+  EndIf
+
+  var enemy          := 0;       // ggf. menschlicher Gegner
+  var npclist        := array{}; // Liste der NPC-Gegner (Templates)
+  var usedpos        := array{}; // besetzte Positionen
+  var points         := 0;
+  var fighterspoints := {};
+  var pointsum       := 0;
+  var i;
+
+  var diff; // fuer Broadcast
+  Case (type)
+  1: // Mensch
+  2: // Bestie
+  3: // menschlicher NPC
+    diff := SelectDifficulty(who, arenadesc);
+    If (diff == error)
+      return;
+    EndIf
+
+    // Liste der moeglichen Gegner zusammenbasteln
+    var enemytmpl := GetRandomEnemyTemplate(type, diff, monster);
+    If (!enemytmpl)
+      SendSysMessagePergon(who,
+        "Es ist kein Gegner für diese Auswahl vorhanden. "+
+        "Meldet das bitte einem GM und versucht es später erneut.",
+        "There's no opponent for this selection. "+
+        "Please call a GM and try again later."
+      );
+      return;
+    EndIf
+    npclist.append(enemytmpl);
+    points := diff;
+
+
+  4: // zufaelliger Gegner
+    SendSysMessagePergon(who,
+      "Keine Auswahl ergibt einen zufälligen Schwierigkeitsgrad.",
+      "Cancelling the selection will result in random difficulty."
+    );
+    diff := SelectDifficulty(who, arenadesc);
+    If (diff == error)
+      // keine Angabe -> zufaellige Schwierigkeit
+      diff := 1+RandomInt(5);
+    EndIf
+    type := 1+RandomInt(3);
+    var enemytmpl := GetRandomEnemyTemplate(type, diff, monster);
+    If (!enemytmpl)
+      SendSysMessagePergon(who,
+        "Es ist kein Gegner für diese Auswahl vorhanden. "+
+        "Meldet das bitte einem GM und versucht es später erneut.",
+        "There's no opponent for this selection. "+
+        "Please call a GM and try again later."
+      );
+      return;
+    EndIf
+    npclist.append(enemytmpl);
+    points := diff;
+
+  5: // anderer Spieler
+    enemy := Target(who, TGTOPT_CHECK_LOS);
+
+    // Checks {{{
+    If ((!enemy.isa(POLCLASS_MOBILE)) or enemy.isa(POLCLASS_NPC))
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+
+    // Den Gegner fragen, ob er den Kampf akzeptiert ...
+    var yes := GetHumanAccept(enemy, who);
+    If (!yes)
+      return;
+    EndIf
+
+    If (GetEquipmentByLayer(enemy, LAYER_MOUNT))
+      SendSysMessagePergon(who,
+        "Euer Gegner reitet und kann nicht mit Euch kämpfen.",
+        "You enemy is riding and therefore cannot fight."
+      );
+      SendSysMessagePergon(who,
+        "Ihr reitet und könnt deshalb nicht kämpfen.",
+        "You are riding and therefore you cannot fight."
+      );
+      return;
+    EndIf
+    // }}}
+
+    // Criminal-Status merken
+    enemy.setprop(PROP_ARENACRIME, CInt(enemy.criminal));
+    who.setprop(  PROP_ARENACRIME, CInt(who.criminal));
+
+    // Vorbereitung des Kampfes
+    BeforeBattle(enemy, GetFreePosition(positions, usedpos));
+    points := 1;
+
+  6: // grosses Gemetzel
+    SendSysMessagePergon(who,
+      "Keine Auswahl ergibt einen zufälligen Schwierigkeitsgrad.",
+      "Cancelling the selection will result in random difficulty."
+    );
+    diff := SelectDifficulty(who, arenadesc);
+    var dorandom := 0;
+    If (diff == error)
+      // keine Angabe -> pro NPC zufaellige Schwierigkeit
+      dorandom := 1;
+    EndIf
+
+    var npcdiff := diff;
+    For (i := 1; i < positions.size(); i += 1)
+      SleepMs(2);
+      If (dorandom)
+        npcdiff := 1+RandomInt(5);
+      EndIf
+      var enemytmpl := GetRandomEnemyTemplate(
+        1+RandomInt(3), npcdiff, monster
+      );
+      If (!enemytmpl)
+        SendSysMessagePergon(who,
+          "Es ist kein Gegner für diese Auswahl vorhanden. "+
+          "Meldet das bitte einem GM und versucht es später erneut.",
+          "There's no opponent for this selection. "+
+          "Please call a GM and try again later."
+        );
+        return;
+      EndIf
+      npclist.append(enemytmpl);
+      fighterspoints.append(npcdiff);
+      pointsum += npcdiff;
+    EndFor
+  EndCase // }}}
+
+  BroadCastFight(arenactl, who, enemy);
+
+  var fighters := array{who};
+  If (enemy)
+    // menschlichen Gegner hinzufuegen
+    fighters.append(enemy);
+  EndIf
+
+  // schon einmal holen, sonst steht man beim Gemetzel immer auf der
+  // letzten freien Position
+  var mypos := GetFreePosition(positions, usedpos);
+
+  // NPCs aus Liste erzeugen
+  ForEach tmpl in (npclist)
+    SleepMs(2);
+    var newnpc :=
+      CreateArenaNPC(tmpl, GetFreePosition(positions, usedpos), who.realm);
+    If (!newnpc)
+      return;
+    EndIf
+    fighters.append(newnpc);
+  EndForEach
+
+  // Vorbereitung des Kampfes
+  BeforeBattle(who, mypos);
+
+  // kaempfen lassen
+  While (
+    // solange man lebt und da ist
+    (who   and !who.dead   and IsInArena(who, arena)) and
+    // und ggf. der menschliche Gegner
+    (enemy and !enemy.dead and IsInArena(enemy, arena) or enemy == 0)
+  )
+    Sleep(2);
+
+    For (i := fighters.size(); i > 0; i -= 1)
+      SleepMs(2);
+      If (!fighters[i] or fighters[i].dead)
+        If (fighterspoints)
+          points += fighterspoints[i];
+          fighterspoints.erase(i);
+        EndIf
+        fighters.erase(i);
+      EndIf
+    EndFor
+
+    If (fighters.size() <= 1)
+      // nur noch einer da, der kaempfen kann?
+      break;
+    EndIf
+  EndWhile
+
+  // ueberfluessige NPCs beseitigen
+  ForEach mob in (fighters)
+    SleepMs(2);
+    If (mob and mob.isa(POLCLASS_NPC) and !mob.dead)
+      KillMobile(mob, "arena-ende");
+    EndIf
+  EndForEach
+
+  // Kampf ist beendet, Bewertung abgeben ...
+  EvaluateFight(arenactl, arena, who, points, pointsum);
+  If ((enemy != 0) and (!enemy.isa(POLCLASS_NPC)))
+    // bei PvP bekommen beide eine Bewertung
+    EvaluateFight(arenactl, arena, enemy, points, pointsum);
+  EndIf
+
+  Sleep(1);
+
+  // ... und die menschlichen Spieler wandern zurueck
+  AfterBattle(who);
+  If ((enemy != 0) and (!enemy.isa(POLCLASS_NPC)))
+    AfterBattle(enemy);
+  EndIf
+EndFunction // }}}
+
+// BroadCastFight - Kampf ankuendigen
+Const BCAST_RANGE := 50;
+Function BroadCastFight(arenactl, who, enemy) // {{{
+  var text_de := who.name+" beginnt einen ";
+  var text_en := who.name+" starts a ";
+
+  If (enemy)
+    text_de += "Zweikampf mit "+enemy.name;
+    text_en += "duel with "+enemy.name;
+    BroadcastPergonLocal(arenactl, BCAST_RANGE, text_de, text_en);
+    return;
+  EndIf
+
+  // If (diff)
+  //   var diff_de := {
+  //     "leichten ",          // schwach
+  //     "mittelschweren ",    // mittelmass
+  //     "schwierigen ",       // erfahren
+  //     "herausfordernden ",  // gefaehrlich
+  //     "todesmutigen "       // verdammt, lauft!
+  //   };
+  //   var diff_en := {
+  //     "easy     ",          // schwach
+  //     "medium ",            // mittelmass
+  //     "hard ",              // erfahren
+  //     "challenging ",       // gefaehrlich
+  //     "death-defying "      // verdammt, lauft!
+  //   };
+  //   text_de += diff_de[diff];
+  //   text_en += diff_en[diff];
+  // Else
+  //   text_de += "zufälligen ";
+  //   text_en += "random ";
+  // EndIf
+  // text_de += "Kampf gegen ";
+  // text_en += "fight against ";
+
+  text_de += "Kampf in der Arena!";
+  text_en += "fight in the arena!";
+
+  // Case (type)
+  // 1:
+  //   text_de += "ein menschenähnliches Scheusal";
+  //   text_en += "a humanoid fiend";
+  // 2:
+  //   text_de += "eine wilde Bestie";
+  //   text_en += "an angry beast";
+  // 3:
+  //   text_de += "einen Menschen";
+  //   text_en += "another human";
+  // 4: 5: // Zufall/PC entfallen
+  //   return;
+  // 6:
+  //   text_de += "eine wilde Meute";
+  //   text_en += "a furious pack";
+  // EndCase
+
+  BroadcastPergonLocal(arenactl, 50, text_de, text_en);
+EndFunction // }}}
+
+// BeforeBattle - Vorbereitung des Kampfes
+Function BeforeBattle(who, pos) // {{{
+  SendSysMessagePergon(who, "Eurer Kampf beginnt.", "Your fight starts.");
+
+  // Alte Koords speichern ...
+  var old_pos := array{who.x, who.y, who.z};
+  SetObjProperty(who, ARENABATTLE, old_pos);
+
+  MoveObjectToLocation(who,
+    pos[1], pos[2], pos[3], who.realm, MOVEOBJECT_FORCELOCATION
+  );
+
+  who.hidden := 1;
+  SendSysMessagePergon(who,
+    "Ihr könnt Euch in Ruhe auf den Kampf vorbereiten. "+
+    "Sobald ihr Euch bewegt, geht es los.",
+    "Now prepare for your battle. If you move, the fight begins."
+  );
+EndFunction // }}}
+
+// IsInArena - Befindet sich der Mobile innerhalb der Arena?
+Function IsInArena(who, arena) // {{{
+  return (
+    (arena[1] <= who.x) and (who.x <= arena[4]) and
+    (arena[2] <= who.y) and (who.y <= arena[5]) and
+    (arena[3] <= who.z) and (who.z <= arena[6])
+  );
+EndFunction // }}}
+
+// Kampf ist beendet, ein paar Worte mitteilen und Punkte vergeben
+Function EvaluateFight(arenactl, arena, who, points, pointsum) // {{{
+  // Kriminalitaet pruefen // {{{
+  var crime := CInt(who.getprop(PROP_ARENACRIME));
+  If (
+    // crime == 1 ist kriminell, d. h. nicht kriminell und
+    crime <> 1 and
+    // inzwischen kriminell geworden
+    who.criminal == 1
+  )
+    // wieder lawful machen
+    who.setcriminal(0);
+  EndIf
+  // }}}
+
+  // Punkte fuer Kampf verteilen {{{
+  If ((!who) Or (who.dead))
+    // ...und ich bin tod
+    SendSysMessagePergon(who,
+      "Ihr habt verloren. Vielleicht nächstes Mal.",
+      "You've lost. Maybe you win next time."
+    );
+    If (pointsum)
+      points -= pointsum;
+    EndIf
+    UpdateStandings(arenactl, who.serial, points);
+
+  ElseIf (!IsInArena(who, arena))
+    // ... ich hab aufgegeben, bin geflohen
+    SendSysMessagePergon(who,
+      "Ihr habt aufgegeben. Vielleicht nächstes Mal.",
+      "You've given up. Maybe you win next time."
+    );
+    If (pointsum)
+      points -= pointsum;
+    EndIf
+    UpdateStandings(arenactl, who.serial, points);
+
+  Else
+    SendSysMessagePergon(who,
+      "Ihr habt gewonnen. Gut gekämpft.",
+      "You've won. Good fight."
+    );
+    If (pointsum)
+      points := pointsum;
+    EndIf
+    UpdateStandings(arenactl, who.serial, points);
+  EndIf // }}}
+EndFunction // }}}
+
+// UpdateStandings - Vergabe von Punkten fuer den Kampf
+Function UpdateStandings(arenactl, serial, points) // {{{
+  var playerpoints := GetObjProperty(arenactl, "Points");
+
+  If (playerpoints[serial]) // Es existiert schon ein Eintrag...
+    playerpoints[serial] := playerpoints[serial]+points;
+  Else
+    playerpoints[serial] := points;
+  EndIf
+
+  SetObjProperty(arenactl, "Points", playerpoints);
+EndFunction // }}}
+
+// AfterBattle - Nachbereitung des Kampfes
+Function AfterBattle(who) // {{{
+  var pos := GetObjProperty(who, ARENABATTLE);
+  MoveObjectToLocation(who, pos[1], pos[2], pos[3], who.realm);
+  EraseObjProperty(who, ARENABATTLE);
+
+  If (who.dead) // Ich bin tod
+    ResurrectPergon(who);
+    ResPenalties(who);
+    SetHPPergon(who,      CInt(0.75 * GetMaxHPPergon(who)));
+    SetStaminaPergon(who, CInt(0.50 * GetMaxStaminaPergon(who)));
+    SetManaPergon(who,    CInt(0.50 * GetMaxManaPergon(who)));
+  Else
+    var itemlist := {}; // Erstmal Rueste und Waffe ablegen ...
+    ForEach item in ListEquippedItems(who)
+      SleepMs(2);
+      If (item.isa(POLCLASS_WEAPON) Or item.isa(POLCLASS_ARMOR))
+        MoveItemToContainer(item, who.backpack);
+        itemlist.append(item);
+      EndIf
+    EndForEach
+
+    ForEach item in itemlist // ... und wie EquipTest durchpruefen
+      SleepMs(2);
+      EquipItem(who, item);
+    EndForEach
+  EndIf
+  who.hidden := 1;
+
+  SendSysMessagePergon(who,
+    "Ihr könnt Euch nun Ruhe wieder korrekt ankleiden.",
+    "You may redress yourself now."
+  );
+EndFunction // }}}
+
+// Array stellenweise mit speziellen Texten aus Konfig ueberschreiben
+Function ModifyArenaText(arenadesc, byref textarr, type, first, last) // {{{
+  // die Auswahlen ueberschreiben mit arenaspezifischem Text
+  ForEach class in (GetConfigStringArray(arenadesc, type))
+    SleepMs(2);
+
+    // Nummer abtrennen
+    var num := CInt(SplitWords(class)[1]);
+    If (num < 0)
+      syslog("Entry "+class+" broken, cannot split first number");
+      continue;
+    EndIf
+    class[num+" "] := "";
+
+    // Test auf Bereich testen
+    If (first - 1 + num > last)
+      syslog("Entry "+class+" broken, number bigger than "+last);
+      continue;
+    EndIf
+
+    // eintragen
+    textarr[(first - 1 + num)] := class;
+  EndForEach
+EndFunction // }}}
+
+// Wahl des Gegners
+Function SelectEnemy(who, arenadesc) // {{{
+  var gametypelayout := {               // Wahl des Gegners (type)
+    "page 0",
+    "resizepic 30 30 9250 300 200",
+    "text 50 42 10 0",
+    "button 50 70 2104 2103 1 0 1001",  //   Mensch
+    "text 70 65 10 1",
+    "button 50 90 2104 2103 1 0 1002",  //   Bestie
+    "text 70 85 10 2",
+    "button 50 110 2104 2103 1 0 1003", //   menschlicher NPC
+    "text 70 105 10 3",
+    "button 50 130 2104 2103 1 0 1004", //   zufaelliger Gegner
+    "text 70 125 10 4",
+    "button 50 150 2104 2103 1 0 1005", //   anderer Spieler
+    "text 70 145 10 5",
+    "button 50 170 2104 2103 1 0 1006", //   grosses Gemetzel
+    "text 70 165 10 6",
+    "button 288 195 4017 4019 1 0 1"
+  };
+
+  var gametypedata := {
+    "Waehlt Euren Gegner:",
+    "Mensch",
+    "Bestie",
+    "menschlicher NPC",
+    "zufaelliger Gegner",
+    "anderer Spieler",
+    "grosses Gemetzel"
+  };
+  // die ersten drei Auswahlen (Index 2 .. 4) ueberschreiben mit
+  // arenaspezifischem Text
+  ModifyArenaText(arenadesc, gametypedata, "EnemyClass", 2, 4);
+
+  var result := SendDialogGump(who, gametypelayout, gametypedata);
+  If (result[0] <= 1)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    var ret := error;
+    ret.errortext := "Cancelled";
+    return ret;
+  EndIf
+
+  return result[0] - 1000;
+EndFunction // }}}
+
+// Wahl des Schwierigkeitsgrades (difficulty)
+Function SelectDifficulty(who, arenadesc) // {{{
+  var difflayout := {
+    "page 0",
+    "resizepic 30 30 9250 300 200",
+    "text 50 42 10 0",
+    "button 50 70 2104 2103 1 0 2001",  //   schwach
+    "text 70 65 10 1",
+    "button 50 90 2104 2103 1 0 2002",  //   mittelmass
+    "text 70 85 10 2",
+    "button 50 110 2104 2103 1 0 2003", //   erfahren
+    "text 70 105 10 3",
+    "button 50 130 2104 2103 1 0 2004", //   gefaehrlich
+    "text 70 125 10 4",
+    "button 50 150 2104 2103 1 0 2005", //   Oh verdammt, lauft ... LAAAAUUFT!
+    "text 70 145 10 5",
+    "button 288 195 4017 4019 1 0 1"
+  };
+
+  var diffdata := {
+    "Waehlt die Schwierigkeit:",
+    "schwach",
+    "mittelmass",
+    "erfahren",
+    "gefaehrlich",
+    "Oh verdammt, lauft ... LAAAAUUFT!"
+  };
+  // die fuenf Auswahlen (Index 2 .. 6) ueberschreiben mit
+  // arenaspezifischem Text
+  ModifyArenaText(arenadesc, diffdata, "DiffLevel", 2, 6);
+  var result := SendDialogGump(who, difflayout, diffdata);
+
+  If (result[0] <= 1)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    var ret := error;
+    ret.errortext := "Cancelled";
+    return ret;
+  EndIf
+
+  return result[0] - 2000;
+EndFunction // }}}
+
+// Akzeptiert der (menschliche) Gegner die Aufforderung?
+Function GetHumanAccept(enemy, who) // {{{
+  var acceptlayout := {
+    "page 0",
+    "resizepic 30 30 9250 300 200",
+    "text 50 62 10 0",
+    "text 50 82 10 1",
+    "text 50 102 10 2",
+    "button 50 130 2104 2103 1 0 3001", //   Ja
+    "text 70 125 10 3",
+    "button 50 150 2104 2103 1 0 3002", //   Nein
+    "text 70 145 10 4"
+  };
+
+  var acceptdata := {
+    "Ihr werdet zu einem Duell",
+    "mit "+who.name+" herausgefordert.",
+    "Moechtet Ihr antreten?",
+    "Ja",
+    "Nein"
+  };
+
+  var result := SendDialogGump(enemy, acceptlayout, acceptdata);
+  If (result[0] != 3001)
+    SendSysMessagePergon(who,
+      "Euer Gegner möchte nicht mit Euch kämpfen.",
+      "Your choosen opponent don't wanna fight."
+    );
+    return 0;
+  EndIf
+  return 1;
+EndFunction // }}}
+
+// erzeugt verwundbaren, leichenlosen NPC
+Function CreateArenaNPC(template, pos, realm) // {{{
+  var enemy := CreateNPCFromTemplate(
+    template, pos[1], pos[2], pos[3], 0, realm
+  );
+  If (enemy)
+    RevokePrivilege(enemy, "invul");
+    SetObjProperty(enemy, "guardkill", 1);
+    IncRevision(enemy);
+  EndIf
+  return enemy;
+EndFunction // }}}
+
+// ermittelt zufaellige Position
+Function GetFreePosition(byref positions, byref usedpos) // {{{
+  // FIXME: nicht sehr effizient, besser Kopie von positions machen,
+  // usedpos rausstreichen und dann zufaellig waehlen
+
+  // freie Position suchen
+  var num := 0;
+  // solange was frei ist
+  While (usedpos.size() <= positions.size())
+    SleepMs(2);
+    // zufaellige Position probieren
+    num := 1+RandomInt(positions.size());
+    If (num in (usedpos))
+      continue;
+    EndIf
+    // reservieren
+    usedpos.append(num);
+    break;
+  EndWhile
+
+  // nichts gefunden
+  If (num == 0)
+    var ret := error;
+    ret.errortext := "No free positions";
+    return ret;
+  EndIf
+
+  return positions[num];
+EndFunction // }}}
+
+// zufaelliges NPC-Template mit angegebenem Typ und Schwierigkeit
+Function GetRandomEnemyTemplate(type, diff, byref monster) // {{{
+  var enemylist := array{};
+  ForEach elem in monster
+    SleepMs(2);
+    If ((elem[2] == diff) and (elem[3] == type))
+      enemylist.append(elem[1]);
+    EndIf
+  EndForEach
+
+  If (enemylist.size() <= 0)
+    var ret := error;
+    ret.errortext := "No enemy for this selection found";
+    return ret;
+  EndIf
+
+  return enemylist[1+RandomInt(enemylist.size())];
+EndFunction // }}}
+
+// Vertauscht ggf. Arraywerte mit angegebenen Indizes, damit aufsteigend
+Function SortBySize(byref arr, pos1, pos2) // {{{
+  If (arr[pos1] > arr[pos2])
+    var temp  := arr[pos1];
+    arr[pos1] := arr[pos2];
+    arr[pos2] := temp;
+  EndIf
+EndFunction // }}}
+
+// vim: sw=2 sts=2

@@ -1,0 +1,77 @@
+//
+// Mais Bürste zum Tiere bürsten
+//
+//
+//
+
+use os;
+use uo;
+
+Include "include/client";
+Include "include/modifyskill";
+
+Const TREUEZEIT := 57600; //sollte die nicht lieber im animal.inc declariert sein?!
+
+program brush(character)
+    SendSysMessagePergon( character, "Tier wählen." );
+    var subject := Target(character);
+
+    if (!subject)
+        SendSysMessagePergon(character, "Zielen abgebrochen");
+        return;
+    elseif (!CheckLineOfSight(character,subject))
+	SendSysMessagePergon(character,"Ihr könnt das Tier nicht sehen.");
+	return;
+    elseif (Distance(character, subject) >= 2 )
+        SendSysMessagePergon(character, "So lange Arme habt ihr nicht!");
+        return;
+    elseif( (subject.isa(POLCLASS_MOBILE)) && (!subject.isa(POLCLASS_NPC)) )
+	BrushHuman( character, subject );
+	return;
+    elseif (!( Lower(subject.npctemplate)["horse"] || Lower(subject.npctemplate)["llama"] ))
+	SendSysMessagePergon(character,"Das ist nur zum Bürsten von Lamas und Pferden!");
+	return;
+    else
+	BrushAnimal( character, subject );
+    EndIf
+endprogram
+
+
+function BrushHuman( character, subject )
+
+	if( character.serial == subject.serial )
+	    SendSysMessagePergon(character, "Ihr bürstet euch sorgfältig.");
+	else
+	  if( character.gender == 0 )
+	    PrintTextAbovePergon(character, character, "*" + character.name + " ist frech! Er bürstet " + subject.name + "!*" );
+	  else
+	    PrintTextAbovePergon(character, character, "*" + character.name + " ist frech! Sie bürstet " + subject.name + "!*" );
+	  EndIf
+	endif
+	PrintTextAbovePergon(subject, subject, "*schrubb*" );
+	PrintTextAbovePergon(subject, subject, "*schrubb*" );
+
+	PlaySoundEffect( character, SFX_5A ); //lederbuerstsound
+
+endfunction
+
+function BrushAnimal( character, subject )
+    SendSysMessagePergon(Character, "Ihr bürstet " + subject.name + " liebevoll.");
+    PlaySoundEffect( character, SFX_5A ); //lederbuerstsound
+    SleepMs(800);
+    if(Lower(subject.npctemplate)["llama"] )
+	PlaySoundEffect( character, 0x3F5 ); //lamasound
+    else
+	PlaySoundEffect( character, SFX_AC ); //pferdsound
+    endif
+
+    // 1/60 der Treuezeit fuers Streicheln hinzufuegen :)
+    if( GetObjProperty(subject, "master") == character.serial ) //aber nur beim eigenen tier
+    	if (GetObjProperty(subject, "RoamsFreeAt"))
+        	SetObjProperty(subject, "RoamsFreeAt", GetObjProperty(subject, "RoamsFreeAt") + CInt(TREUEZEIT/60.0));
+		//SendSysMessagePergon( character, "punkte " + GetObjProperty(subject, "RoamsFreeAt") );
+
+    	endIf
+    endif
+
+endfunction

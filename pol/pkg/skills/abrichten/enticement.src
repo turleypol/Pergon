@@ -1,0 +1,425 @@
+//////////////////////////////////////////////////////////////////////////////
+// Skill Abrichten - Richtet das Tier ab v1.0
+//
+// Der Abrichter versucht ein vorher besaenftigtes Tier abzurichten. Bei
+// Erfolg, ist das Tier ihm treu ergeben und man kann, sofern moeglich,
+// auf ihm reiten und es fuer vielfaeltige Dinge "missbrauchen".
+// (siehe pol/scripts/ai/enticedanimal.src)
+//
+// Konzept: DeMohn
+// eMail:   ?
+//
+// Author: Shinigami
+//
+// Benutzte CProp's
+//   CInt(npc.prevtamed)   - War das Tier schonmal zahm/wurde es gekauft?
+//   CInt(npc.roamsfreeat) - Wann verliert das Tier sein Interesse?
+//   CInt(npc.tametimer)   - Wie lange laesst sich das Tier nicht zaehmen?
+//   CInt(npc.young)       - Ist es ein Jungtier?
+// Benutzte zusaetzliche Prop's
+//   CInt(npc.abrichtskill) - Wie hoch ist der SkillCheck?
+
+use attributes;
+use cfgfile;
+use os;
+use uo;
+use util;
+include "include/animal";
+include "include/modifyskill";
+include "include/msgs";
+include "include/quests";
+
+// auch in Tierkunde ändern!
+Const DIFFMOD_YOUNG     := 20; // ... bei Jungtieren
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Skill_Abrichten(who)
+
+  ///////////////////////////
+  // Vorbedingungen checken
+  ///////////////////////////
+
+  // Abrichter im Kampfmodus?
+  If (who.warmode)
+    SendSysMessagePergon(who,
+      "Ihr seid zur Zeit viel zu agressiv, das arme Tier!",
+      "You are too aggressive!",
+      _DEFAULT_TEXT_FONT, COLOR_RED
+    );
+    return;
+  EndIf
+
+  // Abrichter bereits mit Abrichten beschaeftigt?
+  If (GetObjProperty(who, "#taming") || GetObjProperty(who, "#enticement"))
+    SendSysMessagePergon(who,
+      "Ihr seid bereits mit einem Tier beschäftigt!",
+      "You ain't able to handle more than one animal at once!",
+      _DEFAULT_TEXT_FONT, COLOR_RED
+    );
+    return;
+  EndIf
+
+  // Abricht-Objekt auswaehlen
+  SendSysMessagePergon(who,
+    "Was möchtet Ihr abrichten?", "What do you wanna drill?"
+  );
+
+  Var animal := Target(who);
+  If (!animal or !animal.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (animal == who)
+    // Selbstabrichtung?
+    SendSysMessagePergon(who,
+      "Diese Kreatur ist so dumm, dass sie sich nicht einmal selbst "+
+      "abrichten könnte.",
+      "This creature is one of a stupid sort.",
+      _DEFAULT_TEXT_FONT, COLOR_RED
+    );
+    return;
+  EndIf
+
+  If (animal.objtype in {
+    CID_HUMAN_MALE, CID_HUMAN_FEMALE,CID_ELF_MALE,CID_ELF_FEMALE
+  })
+    // Es ist ein Mensch oder eine Elfe
+    SendSysMessagePergon(who,
+      "Das hättet Ihr wohl gern?", "Nice try, eh.",
+      _DEFAULT_TEXT_FONT, COLOR_CYAN
+    );
+
+    If (!animal.isa(POLCLASS_NPC))
+      SendSysMessagePergon(animal,
+        who.name+" versuchte gerade Euch Abzurichten!",
+        who.name+" tried to drill you!",
+        _DEFAULT_TEXT_FONT, COLOR_RED
+      );
+    EndIf
+
+    return;
+  EndIf
+
+  // Sieht der Abrichter das Tier ueberhaupt?
+  If (!CheckLineofSight(who, animal))
+    SendSysMessagePergon(who,
+      "Ihr könnt es nicht sehen!", "You cannot see that!",
+      _DEFAULT_TEXT_FONT, COLOR_CYAN
+    );
+    return;
+  EndIf
+
+  // Zu weit weg?
+  If (Distance(who, animal)>4)
+    SendSysMessagePergon(who,
+      "Ihr solltet noch etwas näher herangehen!",
+      "You have to stand closer to it!",
+      _DEFAULT_TEXT_FONT, COLOR_CYAN
+    );
+    return;
+  EndIf
+
+  // Tier im Kampfmodus?
+  If (animal.warmode)
+    SendSysMessagePergon(who,
+      "Das Tier scheint ausgesprochen nervös zu sein.",
+      "This animal is very nervous.",
+      _DEFAULT_TEXT_FONT, COLOR_RED
+    );
+    return;
+  EndIf
+
+  // Tier schon gezaehmt?
+  If (animal.script<>"tamedanimal")
+    SendSysMessagePergon(who,
+      "Ihr müsst das Tier zuerst zähmen!",
+      "You have to tame this animal first!",
+      _DEFAULT_TEXT_FONT, COLOR_RED
+    );
+    return;
+  EndIf
+
+  ///////////////////////////////////////////////
+  // Kann man dieses Tier ueberhaupt abrichten?
+  ///////////////////////////////////////////////
+
+  var prevtamed := animal.getprop("PrevTamed");
+  If (!prevtamed and PlaceNoTame(animal))
+    SendSysMessagePergon(who,
+      "Die Götter gestatten das Abrichten in dieser Region nicht.",
+      "The gods disallow taming in this region."
+    );
+    return;
+  EndIf
+
+  // Konstanten [aus dem Template] auslesen
+  var mytemplate := GetNPCConfig(animal.npctemplate);
+
+  // Kann man das Tier abrichten?
+  var difficulty := mytemplate.abrichtskill;
+  If (!difficulty)
+    SendSysMessagePergon(who,
+      "Das ist wohl nicht abrichtbar!",
+      "This doesn't seem to be drillable!",
+      _DEFAULT_TEXT_FONT, COLOR_RED
+    );
+    return;
+  EndIf
+
+  // Hat der Abrichter ueberhaupt eine Chance es abzurichten?
+  If (GetSkillPergon(who, SKILLID_ABRICHTEN)<difficulty-10)
+    SendSysMessagePergon(who,
+      "Das Abrichten dieses Tieres berstiege Eure Fähigkeiten!",
+      "You're not skilled enough to drill this!",
+      _DEFAULT_TEXT_FONT, COLOR_RED
+    );
+    return;
+  EndIf
+
+  /////////////////////////////////////
+  // Eckdaten zum Abrichten bestimmen
+  /////////////////////////////////////
+
+  // Jungtiere sind leichter abzurichten
+  var young := GetObjProperty(animal, "Young");
+  If (young and young < ReadGameClock())
+    EraseObjProperty(animal, "Young");
+  ElseIf (young)
+    difficulty := CInt(Max(0, difficulty - DIFFMOD_YOUNG));
+  EndIf
+
+  // Tiere, die einem nicht gehoerig sind, lassen sich schwerer abrichten
+  If ((who<>animal.master) and (Distance(animal.master, animal)<4))
+    If (CheckLineofSight(animal.master, animal))
+      difficulty *= 1.1;
+    Else
+      difficulty *= 1.2;
+    EndIf
+  EndIf
+
+  // Zu schwer sollte es allerdings auch nicht sein
+  difficulty := Min(difficulty, mytemplate.abrichtskill*1.5);
+
+  // Erfolgspunkte. 10 mehr, damit's unten schneller steigt
+  Var points := (RawPointsForSkillCheck(difficulty)+10)*2;
+
+  // Ein gefaehrliches oder domestiziertes Tier bringt mehr Erfolgspunkte
+  If (
+    (!(mytemplate.script in {"grazer", "hunter", "meek"})) or
+    (mytemplate.scriptdomest in {":tierzucht:m_domest", ":tierzucht:w_domest"})
+  )
+    points := CInt(points*1.2);
+  EndIf
+
+  // Wie lange soll der Abrichtvorgang dauern (10..30 Sekunden)?
+  var enticeend := Min(20, 10 * CInt(
+    difficulty*2.0/
+    (GetSkillPergon(who, SKILLID_ABRICHTEN)+GetIntPergon(who))
+  ));
+
+  // Wann ist Schluss mit dem Abrichten (10..30 Sekunden)?
+  enticeend += ReadGameClock()+10;
+
+  ///////////////////////////
+  // Abrichten durchfuehren
+  ///////////////////////////
+
+  // Abrichtbeschaeftigung vermerken
+  SetObjProperty(who, "#enticement", 1);
+
+  Var abbruch := 0; // Ist der Abrichter im Kampfmodus?
+  Var index   := 1; // Schleifendurchlauf
+
+  // Brav den Text aufsagen und ggf. abbrechen
+  While (ReadGameClock() <= enticeend)
+    SpeakToAnimal(who, animal, index);
+    index += 1;
+
+    // Ist der Abrichter inzwischen in den Kampfmodus gewechselt?
+    If (who.warmode)
+      abbruch := 1;
+      break;
+    EndIf
+
+    Sleep(3);
+  EndWhile
+
+  // Ist der Abrichter inzwischen in den Kampfmodus gewechselt?
+  If (abbruch)
+    SendSysMessagePergon(who,
+      "Mit Eurem agressiven Gehabe macht Ihr das Tier nur nervös, Stümper!",
+      "Your aggressive manner let this animal getting nervous!",
+      _DEFAULT_TEXT_FONT, COLOR_RED
+    );
+
+    // Tier freilassen
+    FreeAnimal(animal, mytemplate, difficulty);
+
+    EraseObjProperty(who, "#enticement");
+    return;
+  EndIf
+
+  // Wenn der Abrichter zu weit weg ist, wird die Probe schwerer
+  If (Distance(who, animal)>2)
+    difficulty := difficulty + (Distance(who, animal)-2)*10;
+  EndIf
+
+  // Besteht der Abrichter die Probe?
+  If (CheckSkillPergon(who, SKILLID_ABRICHTEN, difficulty, points))
+    SendSysMessagePergon(who,
+      "Das Tier fügt sich nun Eurem Willen.",
+      "This animal knuckles down your will.",
+      _DEFAULT_TEXT_FONT, COLOR_GREEN
+    );
+
+    Tame(who, animal);
+  Else
+    SendSysMessagePergon(who,
+      "Das Tier versteht Euch nicht.",
+      "This animal doesn't understand you.",
+      _DEFAULT_TEXT_FONT, COLOR_RED
+    );
+
+    // CriticalMiss, es kann auch total schief gehen ...
+    If (GetSkillPergon(who, SKILLID_ABRICHTEN) < RandomInt(101))
+      SendSysMessagePergon(who,
+        "Und zudem wird es zunehmend misstrauischer!",
+        "It's getting more and more skeptikal!",
+        _DEFAULT_TEXT_FONT, COLOR_RED
+      );
+
+      // Tier wird wieder freigelassen
+      FreeAnimal(animal, mytemplate, difficulty);
+
+    EndIf
+  EndIf
+
+  EraseObjProperty(who, "#enticement");
+EndProgram
+
+
+// Tier ist total verstoert und laesst sich eine Weile weder
+// abrichten noch zaehmen
+Function FreeAnimal(animal, mytemplate, difficulty)
+    SetObjProperty(animal, "TameTimer", ReadGameClock() + 10 * difficulty);
+    EraseObjProperty(animal, "RoamsFreeAt");
+    animal.setmaster(0);
+    animal.eraseprop("master");
+
+    // Wieder urspruengliches Script und Namen setzen
+    // Spontane Namensänderung sollte man mal lassen
+    If (!mytemplate.name["<random>"])
+      animal.name := mytemplate.name;
+    EndIf
+    animal.script := mytemplate.script;
+    RestartScript(animal);
+EndFunction
+
+//////////////////////////////////////////
+// SpeakToAnimal - Das Tier unterrichten
+//////////////////////////////////////////
+Function SpeakToAnimal(who, animal, index)
+  Var random:=RandomInt(101);
+
+  Case (index)
+    1:  If (random>80)
+          PrintTextAbovePergon(who, who, "Na "+animal.name+", wie gehts dir?", "Hey "+animal.name+", how are you?", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>60)
+          PrintTextAbovePergon(who, who, "Dir gehts gut, stimmts?", "You're fine, aren't you?", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>40)
+          PrintTextAbovePergon(who, who, animal.name+", kennst du schon meinen Namen?", animal.name+", do you know my name?", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        Else
+          PrintTextAbovePergon(who, who, animal.name+", kommt dir meine Stimme bekannt vor?", animal.name+", do you know my voice?", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        EndIf
+    2:
+    6:
+    9:  If (random>88)
+          PrintTextAbovePergon(who, who, "Ich will dir nichts Schlimmes!", "I don't wanna hurt you!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>75)
+          PrintTextAbovePergon(who, who, "Du magst mich doch, oder?", "You like me, don't you?", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>63)
+          PrintTextAbovePergon(who, who, "Bleib einfach in meiner Nähe.", "Just keep close to me.", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>50)
+          PrintTextAbovePergon(who, who, "Bleib ruhig stehen!", "Stay calm!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>38)
+          PrintTextAbovePergon(who, who, "Sieh her, ich trage keine Waffen.", "Look, I'm waering no weapons.", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>25)
+          PrintTextAbovePergon(who, who, "Hab Vertrauen!", "Trust me!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        Else
+          PrintTextAbovePergon(who, who, "Du bist doch gelehrig, oder?", "You are teachable, aren't you?", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        EndIf
+    3:
+    7:  If (random>83)
+          PrintTextAbovePergon(who, who, "Wenn ich 'komm' sage, dann kommst du her!", "I'll say 'come' and you'll come!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>66)
+          PrintTextAbovePergon(who, who, "'Komm', hier ist ein Leckerli für dich!", "'Come', I got a kickshaw for you!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>50)
+          PrintTextAbovePergon(who, who, "'Komm', hier ist was Interessantes für dich!", "'Come', there's somethinginteresting for you!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>33)
+          PrintTextAbovePergon(who, who, "Weisst du, was du machen musst, wenn ich 'komm' sage?", "Do you know what to do, if I say 'come'?", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>16)
+          PrintTextAbovePergon(who, who, "Fangen wir mal mit ganz einfachen Kommandos an...", "We'll start with some easy commands...", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        Else
+          PrintTextAbovePergon(who, who, "Kennst du schon ein Kommando?", "Do you already know any command?", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        EndIf
+    4:  If (random>75)
+          PrintTextAbovePergon(who, who, "Weisst du, "+animal.name+", Leckerlis gibts nur, wenn du mir gehorchst!", animal.name+", you'll only get some kickshaws if you obey me!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>50);
+          PrintTextAbovePergon(who, who, "Willst du ein Leckerli?", "Do you want a kickshaw?", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>25)
+          PrintTextAbovePergon(who, who, "Wir passen gut zusammen.", "We fit together.", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        Else
+          PrintTextAbovePergon(who, who, "Ich glaube, wir werden Freunde fürs Leben!", "I think, we'll be friends forever!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        EndIf
+    5:  If (random>85)
+          PrintTextAbovePergon(who, who, "Du bist aber schlau!", "Almighty, you are clever!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>71)
+          PrintTextAbovePergon(who, who, "Du lernst schnell!", "You do learn very fast!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>57)
+          PrintTextAbovePergon(who, who, "Du begreifst schneller als andere Tiere!", "You're ,ore intelligent than other animals!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>42)
+          PrintTextAbovePergon(who, who, "Wieso gibts dich nicht zweimal? So klug, wie du bist.", "You're so intelligent, I wish you would be there twice.", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>28)
+          PrintTextAbovePergon(who, who, "Siehst du, es funktioniert schon ohne Leckerlies!", "Look, it's working without any kickshaws!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>14)
+          PrintTextAbovePergon(who, who, "Braves Tierchen.", "Good "+animal.name, _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        Else
+          PrintTextAbovePergon(who, who, "Ich mag dich!", "I like you!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        EndIf
+    8:  If (random>75)
+          PrintTextAbovePergon(who, who, "Hmm, so schwer ist es doch nicht, oder?", "It's not that difficult, is it?", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>50)
+          PrintTextAbovePergon(who, who, "So einen gelehrigen Schüler wie dich, hab ich mir schon immer gewünscht.", "I always wanted a teachable learner like you.", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>25)
+          PrintTextAbovePergon(who, who, "Wäre es nicht toll, wenn wir ein Team wären?", "Wouldn't it be nice, if we were one team?", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        Else
+          PrintTextAbovePergon(who, who, "Zusammen könnten wir so viel erreichen!", "Together we could achieve a great deal!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        EndIf
+    10: If (random>66)
+          PrintTextAbovePergon(who, who, "Hmm, "+animal.name+", was meinst du?", "Hmm, "+animal.name+", what do you mean?", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        ElseIf (random>33)
+          PrintTextAbovePergon(who, who, "Na komm, "+animal.name+", so schwer ist es nicht!", "Come, "+animal.name+", it's not so difficult!", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        Else
+          PrintTextAbovePergon(who, who, "Och, so schwer ist es doch nicht...", "C'mon, it's not so difficult...", _DEFAULT_TEXT_FONT, COLOR_CYAN);
+        EndIf
+  EndCase
+EndFunction
+
+////////////////////////////////////////////////////////////////
+// RawPointsForSkillCheck - Liefert Punkte fuer den SkillCheck
+////////////////////////////////////////////////////////////////
+Function RawPointsForSkillCheck(difficulty)
+  If (difficulty==0)
+    return 2;
+  ElseIf (difficulty<=100)
+    return CInt(Sqrt(BaseSkillToRawSkillPergon(CInt(difficulty*10)))/2.0);
+  Else
+    return 530;
+  EndIf
+EndFunction
+
+// vim: sw=2 sts=2

@@ -1,0 +1,128 @@
+///////////////////////////////////////////////////////////////////////////
+// parking --
+//
+// Script, um seine gezaehmten Tiere am Pflock anzubinden und stehen zu
+// lassen, ohne dass sie wild werden Dazu wird quasi das RoamsFreeAt
+// fuer die Zeit des Parkens angehalten.
+
+use os;
+use polsys;
+use uo;
+include "include/animal";
+include "include/eventid";
+include "include/msgs";
+
+Program Park_Animals(who, pflock)
+  If (pflock.movable)
+    SendSysMessagePergon(who,
+      "Solange der Pfosten lose ist, bringt das nichts.",
+      "As long as the post is not fixated, this will lead to nothing."
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Wählt ein Tier zum Anbinden bzw. Losmachen aus!",
+    "Select an animal for tethering up or detaching!"
+  );
+
+  var tier := Target(who, TGTOPT_CHECK_LOS);
+  If (!tier)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (!(
+      tier.isa(POLCLASS_NPC) and
+      tier.script in array{"enticedanimal", "tamed"}
+  ))
+    SendSysMessagePergon(who,
+      "Das könnt Ihr nicht hier anbinden.",
+      "You cannot tether this up here.");
+    return;
+  EndIf
+
+  If (tier.getprop("master") <> who.serial)
+    SendSysMessagePergon(who,
+      "Das ist nicht Euer Tier!", "That's not your animal!"
+    );
+    return;
+  EndIf
+
+  If (Distance(tier, pflock) > 2)
+    SendSysMessagePergon(who,
+      "Das ist zum Anbinden zu weit weg!",
+      "That is too far away for tethering up!");
+    return;
+  EndIf
+
+  // // nur Reittiere
+  // If (!GetMountType(tier, who))
+  //   // Packtiere doch einschliessen
+  //   If (!(tier.graphic in {0x123, 0x124}))
+  //     SendSysMessagePergon(who, "Das kann nicht angebunden werden.");
+  //     return;
+  //   EndIf
+  // EndIf
+  var parkable := IsParkable(tier.objtype);
+  If (parkable == 0)
+    SendSysMessagePergon(who,
+      "Dieses Tier kann man nicht anbinden.",
+      "This kind of animal cannot be tethered up."
+    );
+    return;
+  EndIf
+  If (parkable == error)
+    syslog(
+      "FEHLER: Anbindbarkeit von "+CharInfoStr(tier)+
+      " nicht ermittelbar: "+parkable.errortext
+    );
+  EndIf
+
+  // Ab hier eigentliches Parken
+  If (!GetObjProperty(tier, "parking"))
+    // Tier wird angebunden und ruhig gestellt
+    ParkAnimal(tier);
+    SendSysMessagePergon(who,
+      "Euer Tier ist nun angebunden und wird auf Euch warten.",
+      "Your animal is tethered up now and will wait for you.");
+  Else
+    // wieder losbinden
+    UnparkAnimal(tier);
+    SendSysMessagePergon(who,
+      "Euer Tier steht Euch nun wieder zur Verfügung.",
+      "The animal is at your disposal again.");
+  EndIf
+EndProgram
+
+// Anhand der Groesse (Grafik) wird entschieden, ob ein Tier anbindbar ist
+Function IsParkable(graphic)
+  If (!CInt(graphic) or CInt(graphic)<0)
+    // "0" and negative numbers and non-numbers are not valid by default
+    var res := error;
+    res.errortext := "Not a valid graphic number";
+    return res;
+  EndIf
+
+  var cfgfile := ReadConfigFile("::npcgraphics");
+  If (!cfgfile)
+    // fuer brauchbare Fehlermeldungen ohne Aufwand nehme man die
+    // Standard-Routinen
+    return cfgfile;
+  EndIf
+
+  var key := "npc"+CInt(graphic)+"graph";
+  var elem := FindConfigElem(cfgfile, key);
+  If (!elem)
+    return elem;
+  EndIf
+
+  var res := GetConfigInt(elem, "park");
+  If (res == 0)
+    return 0;
+  Else
+    return 1;
+  EndIf
+EndFunction
+
+// vim: sw=2 sts=2

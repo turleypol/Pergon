@@ -1,0 +1,43 @@
+////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD Show Container - Oeffnet einen Container via Serial (manchmal ganz nuetzlich)
+//
+//     Author: Shinigami
+//
+//   Modification:
+//
+////////////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_ShowCont(who, params)
+  params:=CInt(params);
+  If (params)
+    Var container:=SystemFindObjectBySerial(params);
+    If (container)
+      If (container.isa(POLCLASS_CONTAINER))
+        SendOpenSpecialContainer(who, container); // Container oeffnen
+      Else
+        SendSysMessagePergon(who, "Dies ist kein Container!");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Diese Serial zeigt auf kein Object!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr müsst die Serial eines Containers angeben!");
+  EndIf
+EndProgram

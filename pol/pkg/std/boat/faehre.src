@@ -1,0 +1,1217 @@
+///////////////////////////////////////////////////////////////////////////
+// Faehre Steuerungsscript - Steuert eine automatische Faehre
+//
+//      Author: Hotny
+
+// TODO:
+//      - Trockendock meckert ueber angeblich vollen Rucksack
+
+// Ideen:
+//      - kaufbare Faehrkarten
+
+///////////////////////////////////////////////////////////////////////////
+// Konstanten
+// {{{1
+Const DEBUG := 0;
+
+// Zeit die im Hafen gewartet wird (2 Minuten)
+Const HARBOUR_WAIT  := 120;
+// Zeit, nach der Abfahrt angesagt wird (knapp 1,5 Minuten)
+Const ANNOUNCE_WAIT := 80;
+// Bei Kollisionen, Restarts und so wird dann nach der Zeit fortgesetzt
+Const DELAY_WAIT    := 20;
+
+// alle x Sekunden Sound/Laber/Karte neumachen
+Const INTERVAL_SOUND  := 10;
+Const INTERVAL_BABBLE := 3*50;
+Const INTERVAL_MAP    := 30;
+
+// Pause zwischen einzelnen Schritten auf Kurs
+Const MS_DELAY_BETWEEN_MOVES := 200;
+
+// unused:
+// Bei welcher Entfernung zum Kartenrand teleportieren
+// Const DIST_EDGE_WHEN  := 12;
+// Mit welcher Entfernung zum Kartenrand teleportieren
+// Const DIST_EDGE_WHERE := 14;
+
+Const ACTION_CLEAN    := 0x815;
+
+// Weltgröße
+Const WORLD_X         := 5119;
+Const WORLD_Y         := 4096;
+
+// Karten aktualisieren oder komplett erneuern?
+Const REWRITE_UPDATE := 0;
+Const REWRITE_FULL   := 1;
+// }}}1
+
+// Bibliotheken&Includes
+// {{{1
+use boat;
+use cfgfile;
+use os;
+use uo;
+use util;
+include "boat";
+include "include/client";
+include "include/clock";
+include "include/eventid";
+include "include/eventwaiter";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/msgs";
+include "include/npc";
+include "include/pergonutil";
+include "include/server";
+include "plankutil";
+// }}}1
+
+// Globale Variablen
+// noetig fuer SendEvent
+var boatprocess := GetProcess(GetPID());
+
+// Hauptprogramm
+Program Faehre(boat) // {{{1
+    If (!boat)
+        // Falls Aufruf ohne Boot
+        SysLog("WARNUNG: Das scheint kein Boot zu sein.");
+        return;
+    EndIf
+
+    If (!boat.tillerman)
+        SysLog(
+            "WARNUNG: Das Boot bei "+boat.x+" "+boat.y+" "+boat.z+
+            " hat keinen Steuermann und wird zerstoert!"
+        );
+        DestroyMulti(boat);
+        return;
+    EndIf
+
+    // Sicher ist sicher
+    SetObjProperty(boat, "ist_faehre", 1);
+    var ist_faehre := 1;
+
+    // zufaellig etwas warten, damit Faehren beim Serverstart nicht
+    // alle gleichzeitig loslegen (Lastverteilung)
+    sleep(RandomInt(10));
+
+    // Fahrt und Route auslesen
+    var state := GetObjProperty(boat, "state");
+    var r_index := GetObjProperty(boat, "Zaehler");
+    If (!r_index)
+        r_index := 1;
+        SetObjProperty(boat, "Zaehler", 1);
+    EndIf
+    var route := GetObjProperty(boat, "Weg_Route");
+    If ((!route) or (route == {}))
+        // falls keine Route, Schiff anhalten
+        route := {};
+        SetObjProperty(boat, "Weg_Route", route);
+        state := STATE_STATIONARY;
+        SetObjProperty(boat, "state", STATE_STATIONARY);
+        DebugLog(boat, "WARNUNG: Uninitialisierte Faehre wurde angehalten");
+    Else
+        If (state == STATE_MOVING)
+            DebugLog(boat, "INIT: Boot im offenen Meer, setzt Bewegung fort");
+            HandleDeparture(boat, state, route, r_index);
+        Else
+            DebugLog(boat, "INIT: Boot wartet");
+
+            // sonst so tun, als waeren wir gerade im Hafen angekommen
+            SetObjProperty(boat, "LastAction", EVID_BOAT_STAY2);
+            // aber ohne Routenaenderung
+            HandleDestination(boat, state, route, r_index, 0);
+        EndIf
+    EndIf
+
+    // SpeechEvents registrieren {{{2
+    DisableEvents(SYSEVENT_SPEECH);
+
+    // Wie groß ist das Boot, damit nicht unnötig viele Speechevents ankommen
+    var foot_print := 1 + CInt(max(CoordinateDistance(
+                boat.footprint.xmin, boat.footprint.ymin,
+                boat.tillerman.x,    boat.tillerman.y
+            ), CoordinateDistance(
+                boat.footprint.xmax, boat.footprint.ymax,
+                boat.tillerman.x,    boat.tillerman.y
+            )
+    ));
+    // Der Bereich in dem der Steuermann lauscht
+    RegisterForSpeechEvents(boat.tillerman, foot_print);
+    // }}}2
+    RefreshEvent(EVID_BOAT_SPEECH);
+
+    // start normal processing
+    FaehreScript(boat, ist_faehre, state, route, r_index);
+
+    DebugLog(boat, "HINWEIS: Faehrscript wurde beendet");
+EndProgram // Faehre }}}1
+
+// Das eigentliche Faehrenscript
+Function FaehreScript(boat, ist_faehre, state, route, r_index) // {{{1
+    DebugLog(boat, "Hauptscript gestartet");
+
+    var last_action := GetObjProperty(boat, "LastAction");
+
+    // Solange das Boot ueberhaupt vorhanden und Faehre ist ...
+    While (boat and (ist_faehre))
+        var event := GetEvent(state);
+
+        Case (HandleSpeechEvent(boat, event, state, route, r_index))
+        1: // wurde der Faehre gesagt, sie soll nur noch ein Boot sein?
+            return;  // oder Boot trockendock (zur Fehlervermeidung auch sofort beenden)
+        2: // Pause-Befehl gegeben
+            SetObjProperty(boat, "state", STATE_STATIONARY);
+            state := STATE_STATIONARY;
+        EndCase
+
+        RefreshEvent(event.type);
+
+        Case (state)
+        STATE_MOVING:
+            // Wartezeit pro Bewegung, damit es nicht so schnell ist
+            SleepMS(MS_DELAY_BETWEEN_MOVES);
+
+            // Boot anhalten, falls es keine oder leere Route hat {{{2
+            If (
+                (!GetObjProperty(boat, "Weg_Route")) or
+                (GetObjProperty(boat, "Weg_Route") == {})
+            )
+                state := STATE_STATIONARY;
+                SetObjProperty(boat, "state", STATE_STATIONARY);
+                syslog(
+                    "FEHLER: "+ItemInfoStr(boat, COORDS_REALM)+
+                    " hat keine Route!"
+                );
+                break;
+            EndIf // }}}2
+
+            Case (event.type) // Fahrtevents {{{2
+            EVID_BOAT_SOUND:
+                PlayBoatSounds(boat);
+                SendEventWaiter(boatprocess, INTERVAL_SOUND, EVID_BOAT_SOUND);
+
+            EVID_BOAT_MAP:
+                MapRewrite(boat, state, route, r_index, REWRITE_UPDATE);
+                SendEventWaiter(boatprocess, INTERVAL_MAP, EVID_BOAT_MAP);
+
+            EVID_BOAT_SPEECH:
+                If (boat.mobiles.Size() > 0)
+                    Laber(boat);
+                EndIf
+            EndCase // Fahrtevents }}}2
+
+            If (ReachedDestination(boat, route))
+                HandleDestination(boat, state, route, r_index);
+                break;
+            EndIf
+
+            If (ReachedWaypoint(boat, route, r_index))
+                HandleWaypoint(boat, route, r_index);
+            EndIf
+
+            // Aktuelle Position speichern
+            var x := boat.x;
+            var y := boat.y;
+
+            // Boot zum naechsten Wegpunkt ausrichten und bewegen
+            FaehreTurn(boat, route, r_index);
+            MoveBoat(boat, boat.facing);
+
+            var crashed := CheckCrash(boat, x, y);
+            If (crashed == 1)
+                HandleCrash(boat, state, route, r_index);
+            EndIf
+
+        STATE_DRIFTING:
+            // unused?
+            // {{{2
+            // Ziemlich selten das es driftet, aber entweder
+            // runtersetzen oder den CounterMax runternehmen
+            Sleep(1);
+            var driftcounter := 10;
+            // Wieoft das Boot driften darf wenn es still steht
+            If (driftcounter > 15)
+                MoveBoatRelative(boat, randomint(8));
+                driftcounter := 1;
+            Else
+                driftcounter += 1;
+            EndIf
+            // }}}2
+
+        STATE_STATIONARY:
+            // kurz zum Ablauf:
+            // - sobald Boot stehen bleibt, wird es gereinigt
+            // - kommt das STAY1-Event, wird wird die Abfahrt angesagt
+            // - kommt das STAY2-Event, geht es los und in einen
+            //   anderen State (ueblicherweise MOVING).
+            //
+            // Alternativ kann bei einer Kollision etc. in BOAT_DELAY
+            // geraten
+
+            // Events kommen nur sekundengenau
+            Sleep(1);
+
+            // DebugLog(
+            //     boat, "Boot wartet, Event "+
+            //     TranslateEvent(thisevent)+" last: "+
+            //     TranslateEvent(GetObjProperty(boat, "LastAction"))
+            // );
+
+            Case (event.type)
+            EVID_BOAT_DELAY:
+                DebugLog(boat, "Unterbrechung Ende");
+                HandleDeparture(boat, state, route, r_index);
+                break;
+
+            EVID_BOAT_STAY1:
+                DebugLog(boat, "Abfahrt angekuendigt");
+                AnnounceDeparture(boat);
+                break;
+
+            EVID_BOAT_STAY2:
+                DebugLog(boat, "Abfahrt aus Hafen");
+
+                // Abfahrt vermerken, loest Deckschrubben bei Anhalten aus
+                SetObjProperty(boat, "LastAction", EVID_BOAT_STAY2);
+                last_action := EVID_BOAT_STAY2;
+
+                // Offline-Rauswurf, Bezahlung, Route, Karten etc.
+                PrepareDeparture(boat, state, route, r_index);
+                HandleDeparture(boat, state, route, r_index);
+                break;
+
+            default:
+                // nur einmal putzen, auch wenn wir laenger stehen
+                If (last_action == ACTION_CLEAN)
+                    boat.tillerman.eraseprop("#silence");
+                    break;
+                EndIf
+                SetObjProperty(boat, "LastAction", ACTION_CLEAN);
+                last_action := ACTION_CLEAN;
+
+            EndCase // Events while stationary
+        EndCase // state
+    EndWhile
+EndFunction // FaehreScript }}}1
+
+// Holt ein Event, wenn Events vorliegen, liefert ggf. 0, falls kein Event
+Function GetEvent(byref state) // {{{1
+    var evtime := 0;
+    If (state == STATE_STATIONARY)
+        evtime := CInt(HARBOUR_WAIT/4);
+    EndIf
+    var event;
+    If (Events_Waiting())
+        event := Wait_For_Event(evtime);
+        // DebugLog(boat, "Event bekommen: "+TranslateEvent(event));
+    EndIf
+    If (!event)
+        event := 0;
+    EndIf
+    return event;
+EndFunction // }}}1
+
+// langlaufende Events erneut triggern
+Function RefreshEvent(event) // {{{1
+    Case (event)
+    // EVID_BOAT_SOUND:
+    //     SendEventWaiter(boatprocess, INTERVAL_SOUND, EVID_BOAT_SOUND);
+
+    // EVID_BOAT_MAP:
+    //     SendEventWaiter(boatprocess, INTERVAL_MAP, EVID_BOAT_MAP);
+
+    EVID_BOAT_SPEECH:
+        SendEventWaiter(boatprocess, INTERVAL_BABBLE, EVID_BOAT_SPEECH);
+    EndCase
+EndFunction // }}}1
+
+// Events menschenfreundlich benennen
+Function TranslateEvent(event) // {{{1
+    Case (event.type)
+    EVID_BOAT_DELAY:
+        return "delay";
+    EVID_BOAT_STAY1:
+        return "stay1";
+    EVID_BOAT_STAY2:
+        return "stay2";
+    EVID_BOAT_SOUND:
+        return "sound";
+    EVID_BOAT_MAP:
+        return "map";
+    EVID_BOAT_SPEECH:
+        return "speech";
+    0:
+        return "dummy";
+    default:
+        return "unknown "+event;
+    EndCase
+EndFunction // }}}1
+
+// FaehreTurn - Richtungsfestlegung vom Boot
+Function FaehreTurn(boat, byref route, byref r_index) // {{{1
+    // Hmm, nur sicherheitshalber ...
+    If (r_index == 0)
+        return;
+    EndIf
+
+    // Aus den Koordinaten wird berechnet, in welche absolute Richtung
+    // (N, S, E, W) das Schiff dann beim naechsten Bewegen faehrt
+    var face := GetFacing(
+        boat.x,          boat.y,
+        route[r_index][1], route[r_index][2]
+    );
+    var turn := ((face - boat.facing) & 0x7)/2;
+    If (!turn)
+        return;
+    EndIf
+
+    // was zu tun?
+    If (TurnBoat(boat, turn))
+        return;
+    EndIf
+
+    // hat Drehung nicht funktioniert?
+    BoatReg(boat);
+    TellGroupPrivate(
+        "Da ist was im Weg!", "Something is in the way!",
+        boat, boat.mobiles
+    );
+EndFunction // }}}1
+
+// Prueft ob Zusammenstoss
+Function CheckCrash(boat, x, y) // {{{1
+    // wenn es sich nicht bewegt hat, ist es wohl irgendwo drangeknallt
+    If ((x == boat.x) and (y == boat.y))
+        DebugLog(boat, "WARNUNG: Crash bei "+boat.x+" "+boat.y+" "+boat.z);
+        return 1;
+    EndIf
+
+    // sonst kein Crash
+    return 0;
+EndFunction // }}}1
+
+// haut Passagiere um, versucht Faehre freizubekommen
+Function HandleCrash(boat, byref state, byref route, byref r_index) // {{{1
+    // Passagiere etwas beschaedigen und informieren
+    BoatReg(boat);
+    SmackEveryone(boat);
+    TellGroupPrivate(
+        "Aaargh! Wir sind aufgelaufen!", "Aaargh!  We've run ashore!",
+        boat, boat.mobiles
+    );
+    syslog("Faehre "+ItemInfoStr(boat, COORDS_REALM)+" ist aufgelaufen");
+
+    var crash := 1;
+    var propcrash := GetObjProperty(boat, "Crash_Count");
+    If (propcrash)
+        crash += propcrash;
+    EndIf
+
+    If (crash <= 3)
+        // Bei wenigen Crashs anhalten und warten
+        // (RL-Erklaerung: Boot von Hindernis losbekommen)
+        SendEventWaiter(
+            // etwas randomisiert, damit Boot-Kollisionen sich
+            // hoffentlich wegmitteln
+            boatprocess, RandomIntMinMax(1, 10)*DELAY_WAIT, EVID_BOAT_DELAY
+        );
+        SetObjProperty(boat, "Crash_Count", crash);
+        SetObjProperty(boat, "state", STATE_STATIONARY);
+        state := STATE_STATIONARY;
+        return;
+    EndIf
+
+    // sonst Weiterfahrt mittels Teleport zum aktuellen Wegpunkt
+    If (TeleToCurrentWaypoint(boat, route, r_index))
+        SetObjProperty(boat, "Crash_Count", 0);
+        SetObjProperty(boat, "state", STATE_MOVING);
+        state := STATE_MOVING;
+        return;
+    EndIf
+
+    // es kann sein, dass das Hindernis genau auf dem Wegpunkt ist,
+    // daher das gleiche Spiel mit dem naechsten Wegpunkt
+    r_index += 1;
+    SetObjProperty(boat, "Zaehler", r_index);
+    If (TeleToCurrentWaypoint(boat, route, r_index))
+        SetObjProperty(boat, "Crash_Count", 0);
+        SetObjProperty(boat, "state", STATE_MOVING);
+        state := STATE_MOVING;
+        return;
+    EndIf
+
+    // wenn das auch nicht geht, bleibt Faehre dauerhaft angehalten
+    DebugLog(boat, "WARNUNG: Zuviele Crashs, Boot bleibt angehalten");
+    SetObjProperty(boat, "state", STATE_STATIONARY);
+    state := STATE_STATIONARY;
+
+    // Leute wegschicken
+    TellGroupPrivate(
+        "Ich habe mich verfahren und sende Euch zum nächsten Hafen. "+
+        "Bitte ruft mir einen Gott.",
+        "I got lost and will send you to the next harbour. "+
+        "Please tell a god about my fate.",
+        boat, boat.mobiles
+    );
+    sleep(10);
+    TransportChar(boat);
+EndFunction // }}}1
+
+// Wegpunkt unterwegs erreicht?
+Function ReachedWaypoint(boat, byref route, r_index) // {{{1
+    If ((boat.x == route[r_index][1]) and (boat.y == route[r_index][2]))
+        DebugLog(boat, "Wegpunkt "+boat.x+" "+boat.y+" erreicht");
+        return 1;
+    EndIf
+EndFunction // }}}1
+
+// Neuen Wegpunkt ermitteln, ggf. Torus-Behandlung
+Function HandleWaypoint(boat, byref route, byref r_index) // {{{1
+    // Auf zum naechsten Punkt ...
+    r_index += 1;
+    SetObjProperty(boat, "Zaehler", r_index);
+
+    // Pergon ein Torus? Ueber Kartenrand beamen
+    If (route[r_index][3])
+        MoveBoatXY(boat, route[r_index][1], route[r_index][2]);
+    EndIf
+EndFunction // }}}1
+
+// Prueft, ob Zielhafen erreicht ist
+Function ReachedDestination(boat, byref route) // {{{1
+    var ende := route.Size();
+    If ((boat.x == route[ende][1]) && (boat.y == route[ende][2]))
+        DebugLog(boat, "Letzter Punkt "+boat.x+" "+ boat.y+" erreicht");
+        return 1;
+    EndIf
+    return;
+EndFunction // }}}1
+
+// Dinge, die bei Einfahrt in den Hafen getan werden
+Function HandleDestination(boat, byref state, byref route, byref r_index, set_route := 1) // {{{1
+    // Rueckroute planen und Hafenkoordinate ueberspringen
+    If (set_route)
+        UpdateRoute(boat, route, r_index);
+        r_index := 2;
+        SetObjProperty(boat, "Zaehler", r_index);
+    EndIf
+
+    // Crash-Counter zuruecksetzen
+    SetObjProperty(boat, "Crash_Count", 0);
+
+    // FIXME: remove me after restart
+    // Planken markieren, damit sie nicht manuell
+    // geoeffnet/geschlossen werden können
+    boat.portplank.setprop(PROP_FERRY_CONTROLS_PLANK, 1);
+    boat.starboardplank.setprop(PROP_FERRY_CONTROLS_PLANK, 1);
+
+    // Planken aufschliessen
+    boat.portplank.locked      := 0;
+    boat.starboardplank.locked := 0;
+    // Planken ausfahren, falls da Land ist
+    If (CanWalkOntoPlank(boat.portplank))
+        Extend(boat.portplank);
+    EndIf
+    If (CanWalkOntoPlank(boat.starboardplank))
+        Extend(boat.starboardplank);
+    EndIf
+
+    DebugLog(boat, "Im Hafen angekommen");
+
+    // tote Chars von Bord werfen
+    BoatReg(boat);
+    ForEach mob in (boat.mobiles)
+        If (mob.dead)
+            TransportChar(boat, mob);
+        EndIf
+    EndForEach
+
+    // Halten und Events fuer spaetere Weiterfahrt schicken
+    SendEventWaiter(boatprocess, ANNOUNCE_WAIT, EVID_BOAT_STAY1);
+    SendEventWaiter(boatprocess, HARBOUR_WAIT,  EVID_BOAT_STAY2);
+    SetObjProperty(boat, "state", STATE_STATIONARY);
+    state := STATE_STATIONARY;
+
+    MapRewrite(boat, state, route, r_index, REWRITE_FULL);
+
+    Deckschrubben(boat);
+    // zufaellig Laderaum auf-/zuschliessen
+    // RL: beim Loeschen der Ladung vergessen
+    boat.hold.locked := RandomInt(2);
+EndFunction // }}}1
+
+// Planken einziehen und Status auf "fahren"
+Function HandleDeparture(boat, byref state, byref route, byref r_index) // {{{1
+    // Planken einziehen
+    Retract(boat.portplank);
+    Retract(boat.starboardplank);
+
+    // Fahrevents ausloesen
+    SendEventWaiter(boatprocess, INTERVAL_SOUND,  EVID_BOAT_SOUND);
+    SendEventWaiter(boatprocess, INTERVAL_MAP,    EVID_BOAT_MAP);
+    // SendEventWaiter(boatprocess, INTERVAL_BABBLE, EVID_BOAT_SPEECH);
+
+    // Ab-/Weiterfahrt
+    SetObjProperty(boat, "state", STATE_MOVING);
+    state := STATE_MOVING;
+
+    // Karten aktualisieren
+    MapRewrite(boat, state, route, r_index, REWRITE_FULL);
+EndFunction // }}}1
+
+// Ausgeloggte runter, Bezahlung, Route aktualisieren, Karte neumalen
+Function PrepareDeparture(boat, byref state, byref route, byref r_index) // {{{1
+    // ausgeloggte Chars von Bord werfen
+    BoatReg(boat);
+    If (boat.has_offline_mobiles)
+        TransportChar(boat);
+    EndIf
+
+    // Bezahlung/Newbiecheck aller Mobiles
+    Fahrerlaubnis(boat);
+
+    // Karten auf Startpunkt setzen
+    MapRewrite(boat, state, route, r_index, REWRITE_FULL);
+EndFunction // }}}1
+
+// Abfahrt ansagen an alle in der Naehe
+Function AnnounceDeparture(boat) // {{{1
+    var near_mobs := ListMobilesNearLocationEx(
+        boat.x, boat.y, boat.z, 12,
+        LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN+LISTEX_FLAG_GHOST+
+        LISTEX_FLAG_CONCEALED,
+        boat.realm
+    );
+
+    If (!near_mobs)
+        return;
+    EndIf
+
+    var preis := GetObjProperty(boat, "Preis");
+    TellGroupPrivate(
+        "Eine Überfahrt kostet nur "+preis+" Goldstücke.",
+        "You'll only have to pay "+preis+" gold per passage.",
+        boat, near_mobs
+    );
+    sleep(1);
+
+    If (GetGlobalProperty("PresentWeather") == 4)
+        TellGroupPrivate(
+            Answering("very_bad_weather", PlaceName(boat), boat, "tillerman"),
+            // FIXME: Speech-System kann nicht Englisch
+            "The Sea is stormy, come aboard at your own risk.",
+            boat, near_mobs
+        );
+    Else
+        TellGroupPrivate(
+            Answering("normal_weather", PlaceName(boat), boat, "tillerman"),
+            // FIXME: Speech-System kann nicht Englisch
+            "Everyone come aboard, we start in a few seconds!",
+            boat, near_mobs
+        );
+    EndIf
+EndFunction // }}}1
+
+// alle Mobiles informieren
+Function TellGroupPrivate(de_text, en_text, boat, mobiles) // {{{1
+    ForEach mob in (mobiles)
+        PrintTextAbovePrivatePergon(
+            boat.tillerman, de_text, en_text, mob
+        );
+    EndForEach
+EndFunction // }}}1
+
+// Entfernt Items von Deck, abgesehen von Charleichen und Newbiekram
+Function Deckschrubben(boat) // {{{1
+    // Gerippe, Rucksaecke und Leichen
+    var noremove := array{0x669a, 0x669e, UOBJ_CORPSE};
+
+    ForEach item in (boat.items)
+        If ((!item.newbie) and (!(item.objtype in noremove)))
+            // Kein Newbie-Zeug und kein Ausnahme-Item
+            PrintTextAbovePergon(0, boat.tillerman, "*schrubb*");
+            PrintTextAbovePergon(0, item,           "*schrubb*");
+            Sleep(1);
+            DestroyItem(item);
+        EndIf
+    EndForEach
+EndFunction // }}}1
+
+// Teleportiert Boot zu aktuellem Wegpunkt
+Function TeleToCurrentWaypoint(boat, byref route, byref r_index) // {{{1
+    // wenn Wegpunkt nicht existiert
+    If ((r_index < 1) or (r_index > route.Size()))
+        return;
+    EndIf
+
+    var newplace := TryPlacement(boat, route[r_index][1], route[r_index][2]);
+    If (newplace)
+        return 1;
+    EndIf
+EndFunction // }}}1
+
+// Faehre mit Sprachevent steuern -- nur fuer Cmdlevel hoeher als GM
+// Befehle:
+//      faehre no     - Faehre abschalten
+//      pause         - Faehre kurz anhalten
+//      trockendock   - Faehre ins Backpack
+//      fluchtfaehre  - Faehre darf nicht von Newbies benutzt werden
+//      <ort1>_<ort2> - Faehre einschalten und auf Route von ort1 nach ort2
+//                      setzen (muss in faehrrouten.cfg existieren)
+Function HandleSpeechEvent(boat, event, byref state, byref route, byref r_index) // {{{1
+    If (event.type != SYSEVENT_SPEECH)
+        return;
+    EndIf
+    var text := lower(event.text);
+
+    // man sollte auf dem Boot sein
+    If (event.source.multi.serial != boat.serial)
+        return;
+    EndIf
+
+    DebugLog(boat, "Boot wurde angesprochen mit "+text);
+
+    // Passagiere mit dem ueblichen Zeug belaestigen
+    If (event.source.cmdlevel < CMDLEVEL_SEER)
+        If (text["unruhe"])
+            boat.tillerman.eraseprop("#silence");
+            return;
+        EndIf
+        If (text["ruhe"])
+            boat.tillerman.setprop("#silence", 1);
+            return;
+        EndIf
+        If (boat.tillerman.getprop("#silence"))
+            return;
+        EndIf
+        PrintTextAbovePergon(
+            event.source, boat.tillerman,
+            Answering(text, PlaceName(boat), boat, "tillerman")
+        );
+        return;
+    EndIf
+
+    // hoeher als GMs duerfen mir befehligen, SEER etc. darauf hinweisen
+    If (event.source.cmdlevel <= CMDLEVEL_GM)
+        // der Rest wird mit dem ueblichen Zeug belaestigt
+        SendSysMessagePergon(
+            event.source,
+            "Nur HighGMs und höher können mir Befehle geben!"
+        );
+        return;
+    EndIf
+
+    If (text["faehre no"])
+        // Startet das Bootskript und beendet das Faehrenskript
+        DisableEvents(SYSEVENT_SPEECH);
+        SetObjProperty(boat,   "ist_faehre", 0);
+        EraseObjProperty(boat, "fluchtfaehre");
+        EraseObjProperty(boat, "Crash_Count");
+        EraseObjProperty(boat, "LastAction");
+        EraseObjProperty(boat, "Maps");
+        EraseObjProperty(boat, "Preis");
+        EraseObjProperty(boat, "Routenname");
+        EraseObjProperty(boat, "Rueckroute");
+        EraseObjProperty(boat, "Weg_Route");
+        EraseObjProperty(boat, "Zaehler");
+        // Plankenmarkierung aufheben
+        // (manuelles Oeffnen/Schliessen erlauben)
+        boat.portplank.eraseprop(PROP_FERRY_CONTROLS_PLANK);
+        boat.starboardplank.eraseprop(PROP_FERRY_CONTROLS_PLANK);
+        PrintTextAbovePrivatePergon(
+            boat.tillerman,
+            "Beende meinen Fährdienst!", "I quit!",
+            event.source
+        );
+        Start_ScriptPergon("boat", boat);
+        return 1;
+    ElseIf (text["trockendock"])
+        // Trockendock der Faehre und ins Backpack des GMs
+        DryDock(boat, event.source);
+        return 1;
+    ElseIf (text["pause"])
+        // Faehre kurz anhalten
+        state := STATE_STATIONARY;
+        MapRewrite(boat, state, route, r_index, REWRITE_UPDATE);
+        SendEventWaiter(boatprocess, DELAY_WAIT, EVID_BOAT_DELAY);
+        return 2;
+    ElseIf (text["fluchtfaehre"])
+        // Fluchtfaehre fuer Jhe'lombewohner
+        SetObjProperty(boat, "fluchtfaehre", 1);
+        PrintTextAbovePrivatePergon(boat.tillerman,
+            "Ich werde Neulinge nur unter bestimmten Anforderungen mitnehmen!",
+            "Young passengers will be transported under special requirements.",
+            event.source
+        );
+        return;
+    ElseIf (text["beampunkt"])
+        SendSysMessagePergon(
+            event.source,
+            "Du bist so bös! Unendliche Langeweile und völlige "+
+            "Hirnlosigkeit, wa Junge? Klatscht gleich!"
+        );
+        return;
+    ElseIf (text["karte"])
+        // Leere Karte erzeugen
+        var map := CreateItemInContainerPergon(
+            event.source.backpack, UOBJ_MAP1, 1
+        );
+        If (!map)
+            SendSysMessagePergon(
+                event.source,
+                "Konnte keine Karte erzeugen: "+map.errortext
+            );
+            return;
+        EndIf
+
+        // Kartengump vorbereiten
+        map.gumpwidth  := 300;
+        map.gumpheight := 300;
+        map.editable   := 0;
+
+        // Karte an Schiff binden
+        var maps := array{};
+        If (GetObjProperty(boat, "Maps"))
+            maps := GetObjProperty(boat, "Maps");
+        EndIf
+        maps.append(map.serial);
+        SetObjProperty(boat, "Maps", maps);
+
+        // alle Karten (und somit auch die neue) aktualisieren
+        MapRewrite(boat, state, route, r_index, REWRITE_FULL);
+        return;
+    EndIf
+
+    var cfg := ReadConfigFile("faehrrouten");
+    If (!cfg[text])
+        SendSysMessagePergon(
+            event.source,
+            "Befehle: 'faehre no', 'fluchtfaehre', 'trockendock', 'karte', "+
+            "'<ort1>_<ort2>' (Route festlegen), z. B. 'jhelom_jhelomnord'"
+        );
+        SendSysMessagePergon(
+            event.source,
+            "Es sind nur definierte Routen aus faehrrouten.cfg erlaubt."
+        );
+        return;
+    EndIf
+
+    DebugLog(boat, "Route wird gesetzt");
+
+    // Setzt das Flag fuer Faehre, damit man testen kann ob es eine
+    // Faehre ist oder nur ein normales Boot
+    SetObjProperty(boat, "ist_faehre", 1);
+    If (!(GetObjProperty(boat, "Maps")))
+        SetObjProperty(boat, "Maps", array{});
+    EndIf
+
+    // Routenname festlegen und Route holen
+    SetObjProperty(boat, "Rueckroute", text);
+    // wird von HandleDestination aufgerufen
+    // UpdateRoute(boat);
+    // Hafenankunft simulieren
+    HandleDestination(boat, state, route, r_index);
+
+    // ... an Startposition packen, ggf. drehen
+    TryPlacement(
+        boat, route[1][1], route[1][2],
+        "Fehler beim Bewegen zum Heimathafen",
+        "Error, can't reach port of registry."
+    );
+
+    PrintTextAbovePrivatePergon(
+        boat.tillerman,
+        "Hab im Heimathafen angedockt!",
+        "The boat has docked in the port of registry.",
+        event.source
+    );
+
+    return;
+EndFunction // }}}1
+
+// Schiff an gewuenschte Position stellen
+// Function TryPlacement // {{{1
+Function TryPlacement(boat, x, y,
+    de_text := "Fehler beim Bewegen",
+    en_text := "Error while moving"
+)
+    If (MoveBoatXY(boat, x, y))
+        return 1;
+    EndIf
+
+    ForEach direction in (array{1, 3, 5, 7})
+        If (!TurnBoat(boat, direction))
+            // irgendwo bei 50, 50 - 150, 150 hinpacken
+            // (meist kollidieren mehrere Boote, bei fester Koordinate gaebe
+            // das erneute Kollision)
+            MoveBoatXY(
+                boat, RandomIntMinMax(50, 150), RandomIntMinMax(50, 150)
+            );
+            TurnBoat(boat, direction);
+        EndIf
+        If (MoveBoatXY(boat, x, y))
+            return 1;
+        EndIf
+    EndForEach
+
+    TellGroupPrivate(de_text, en_text, boat, boat.mobiles);
+    syslog(
+        "WARNUNG: "+ItemInfoStr(boat, COORDS_REALM)+
+        " konnte nicht auf "+x+" "+y+" plaziert werden"
+    );
+EndFunction // }}}1
+
+// Preis und Routeninformationen an Schiff anpappen
+Function UpdateRoute(boat, byref route, byref r_index) // {{{1
+    var rueckweg  := GetObjProperty(boat, "Rueckroute");
+    var cfg       := ReadConfigFile("faehrrouten");
+    var route_cfg := cfg[rueckweg];
+
+    If (route_cfg)
+        var Preis := GetConfigInt(route_cfg, "Preis");
+        SetObjProperty(boat, "Preis", Preis);
+        var Rueck := GetConfigString(route_cfg, "Rueckroute");
+        SetObjProperty(boat, "Rueckroute", Rueck);
+        var Name  := GetConfigString(route_cfg, "Name");
+        SetObjProperty(boat, "Routenname", Name);
+        boat.name := Name;
+
+        route := array{};
+        var punkte := GetConfigStringArray(route_cfg, "Wegpunkt");
+        ForEach wegpunkt in (punkte)
+            var koords := splitWords(wegpunkt);
+            route.append({CInt(koords[1]), CInt(koords[2]), CInt(koords[3])});
+        EndForEach
+        SetObjProperty(boat, "Weg_Route", route);
+        DebugLog(boat, "Routenaenderung auf "+rueckweg);
+    Else
+        // Fallback: Route umkehren
+        route.reverse();
+        SetObjProperty(boat, "Weg_Route", route);
+        DebugLog(boat, "Routenaenderung, Fallback auf umgekehrte Richtung");
+    EndIf
+
+    r_index := 1;
+    SetObjProperty(boat, "Zaehler", r_index);
+EndFunction // }}}1
+
+// Bezahlung oder Ausschluss aus der Faehre
+Function Fahrerlaubnis(boat) // {{{1
+    // Noobbedingung fuer Jhe'lombewohner
+    BoatReg(boat);
+    var fluechtlinge := array{};
+    ForEach mobile in (boat.mobiles)
+        If (
+            GetObjProperty(mobile, TYPNEWBIE) &&
+            GetObjProperty(boat, "fluchtfaehre")
+        )
+            If (GetObjProperty(mobile, TYPFLIGHT))
+                fluechtlinge.append(mobile);
+            Else
+                SendSysMessagePergon(
+                    mobile,
+                    "Ihr dürft diese Fähre noch nicht benutzen.",
+                    "You are not allowed to use this ferry."
+                );
+                TransportChar(boat, mobile);
+            EndIf
+        EndIf
+    EndForEach
+
+    var preis := GetObjProperty(boat, "Preis");
+    If (!preis)
+        // kein Fahrpreis definiert
+        ForEach mobile in (fluechtlinge)
+            // nur Newbie-Status ggf. entfernen
+            DeNewbie(mobile);
+        EndForEach
+        return;
+    EndIf
+
+    BoatReg(boat);
+    ForEach mobile in (boat.mobiles)
+        // CmdLevel oder NPCs reist kostenlos
+        If ((mobile.cmdlevel >= CMDLEVEL_SEER) or (mobile.isa(POLCLASS_NPC)))
+            continue;
+        EndIf
+
+        // wer tot ist, kann nicht bezahlen und wird prinzipiell
+        // vom Faehrmann auch nicht gesehen
+        If (mobile.dead)
+            // ggf. Newbie-Status wegnehmen
+            If (mobile in (fluechtlinge))
+                DeNewbie(mobile);
+            EndIf
+            continue;
+        EndIf
+
+        // Wer Gold hat darf fahren
+        If (mobile.gold >= preis)
+            mobile.spendgold(preis);
+
+            // ggf. Newbie-Status wegnehmen, nachdem bezahlt ist
+            If (mobile in (fluechtlinge))
+                DeNewbie(mobile);
+            EndIf
+            continue;
+        EndIf
+
+        // sonst Rauswurf
+        SendSysMessagePergon(
+            mobile, "Euch fehlen "+(preis-mobile.gold)+
+            " Gold zum Bezahlen des vollen Fahrpreises von "+preis+" Gold!",
+            "To pay the fare of "+preis+" gold you need "+
+            (preis-mobile.gold)+" more"
+        );
+        TransportChar(boat, mobile);
+    EndForEach
+EndFunction // }}}1
+
+// Karte benennen und (neu-)zeichnen
+Function MapRewrite(boat, byref state, byref route, byref r_index, do_rebuild := 0) // {{{1
+    var maps := array{};
+    If (GetObjProperty(boat, "Maps"))
+        maps := GetObjProperty(boat, "Maps");
+    EndIf
+
+    // alte Faehren konvertieren
+    ForEach map_prop in (array{"mapserial1", "mapserial2"})
+        var mapserial := GetObjProperty(boat, map_prop);
+        If (mapserial)
+            maps.append(mapserial);
+        EndIf
+        EraseObjProperty(boat, map_prop);
+    EndForEach
+
+    DebugLog(boat, "Aktualisierung "+maps.Size()+" Karten");
+    var time_left := TimeLeft(boat, state, route, r_index);
+    var boat_name := GetObjProperty(boat, "Routenname");
+
+    // Name fuer Bootsmann, Zeitproperty setzen
+    If (do_rebuild)
+        var till_name := boat_name;
+        till_name["Route"] := "Faehre";
+        boat.tillerman.name := till_name;
+    EndIf
+    SetObjProperty(boat.tillerman, "Arrival_Time", time_left);
+    IncRevision(boat.tillerman);
+
+    If (maps.Size() == 0)
+        DebugLog(boat, "Boot hat keine Karten, Aktualisierung abgebrochen");
+        return;
+    EndIf
+
+    ForEach mapserial in (maps)
+        var map := SystemFindObjectBySerial(mapserial);
+
+        // Wegkommenene Karten (Loeschscript, Muelleimer etc.) aussortieren
+        If (!map)
+            maps.erase(_mapserial_iter);
+            DebugLog(
+                boat, "Map ("+Lower(Hex(mapserial))+") fehlt, "+
+                "aus Updatezyklus entfernt"
+            );
+            continue;
+        EndIf
+
+        // Name fuer Karte, Zeitproperty setzen
+        If (do_rebuild)
+            var map_name := boat_name;
+            map_name["Route"] := "Faehrenkarte";
+            SetName(map, map_name);
+        EndIf
+        SetObjProperty(map, "Arrival_Time", time_left);
+        IncRevision(map);
+
+        // Karten selbst neumachen
+        // falls Anzahl stimmt und kein Neubau gefordert wurde
+        var pins := map.GetPins();
+        If ((pins.Size() == 3) and (!do_rebuild))
+            // nur Boots-Pin korrigieren
+            map.erasepin(1);
+            map.insertpin(1, boat.x, boat.y);
+            continue;
+        Else
+            // sonst alles erst wegmachen
+            While (pins.Size() > 0)
+                map.erasepin(0);
+                pins := map.GetPins();
+            EndWhile
+
+            CalcBoundaries(map, route);
+
+            // und danach neumachen
+            map.appendpin(route[1][1], route[1][2]);
+            map.appendpin(boat.x, boat.y);
+            map.appendpin(route[route.Size()][1], route[route.Size()][2]);
+        EndIf
+    EndForEach
+
+    SetObjProperty(boat, "Maps", maps);
+EndFunction // }}}1
+
+// Kartengrenzen berechnen und Karte daran anpassen
+Function CalcBoundaries(map, byref route) // {{{1
+    // kleinstes Quadrat, in das die komplette Strecke passt
+    var x_min := route[1][1];
+    var x_max := route[1][1];
+    var count;
+    For (count := 2; count <= route.Size(); count += 1)
+        // linker Rand
+        x_min := CInt(min(x_min, route[count][1]));
+        // rechter Rand
+        x_max := CInt(max(x_max, route[count][1]));
+    EndFor
+    var y_max := route[1][2];
+    var y_min := route[1][2];
+    For (count := 2; count <= route.Size(); count += 1)
+        // oberer Rand
+        y_min := CInt(min(y_min, route[count][2]));
+        // unterer Rand
+        y_max := CInt(max(y_max, route[count][2]));
+    EndFor
+
+    // Ausschnitt vergroessern und Limits pruefen
+    map.xwest  := CInt(max(x_min - 500,           0));
+    map.xeast  := CInt(min(x_max + 500, WORLD_X - 1));
+    map.ynorth := CInt(max(y_min - 500,           0));
+    map.ysouth := CInt(min(y_max + 500, WORLD_Y - 1));
+EndFunction // }}}1
+
+// Tillermans Erzaehlstunde
+Function Laber(boat) // {{{1
+    var de_text :=
+        Answering("tillerman_babble", PlaceName(boat), boat, "tillerman");
+    // FIXME: Speech-System sollte auch englisch können
+    var en_text := "I have nothing to say.";
+
+    BoatReg(boat);
+    ForEach mob in (boat.mobiles)
+        PrintTextAbovePrivatePergon(boat.tillerman, de_text, en_text, mob);
+    EndForEach
+EndFunction // }}}1
+
+// Berechnung der Restreisezeit
+Function TimeLeft(boat, byref state, byref route, byref r_index) // {{{1
+    If (state != STATE_MOVING)
+        return "wartet";
+    EndIf
+
+    // Entfernung bis zum naechsten Wegpunkt ermitteln
+    var destination_dist := CoordinateDistance(
+        boat.x, boat.y, route[r_index][1], route[r_index][2]
+    );
+
+    // Entfernungen zwischen noch kommenden Wegpunkten addieren
+    var node;
+    For (node := r_index; node < route.Size(); node += 1)
+        If ((route[node][3]) and (route[node+1][3]))
+            // Beamen ueber Kartenrand nicht mitzaehlen
+            continue;
+        EndIf
+        destination_dist += CoordinateDistance(
+            route[node  ][1], route[node  ][2],
+            route[node+1][1], route[node+1][2]
+        ) - 1;
+        // -1, weil wir jeden Knickpunkt doppelt zaehlen
+    EndFor
+
+    // Entfernung und Zeit in Millisekunden ergeben reale Minuten,
+    // danach auf Pergonzeit umrechnen (* 4) und normieren auf Sekunden
+    var time_left := Format_Time(
+        (destination_dist * MS_DELAY_BETWEEN_MOVES * 4) / 1000
+    );
+    DebugLog(boat, "Berechnete Endzeit: "+time_left);
+
+    return "Ankunft in ca. "+time_left;
+EndFunction // }}}1
+
+// Debug-Meldung sysloggen, falls DEBUG gesetzt ist
+Function DebugLog(boat, text) // {{{1
+    If (DEBUG)
+        syslog("DEBUG: "+ItemInfoStr(boat, COORDS_REALM)+" "+text);
+    EndIf
+EndFunction // }}}1
+
+// deaktivierter Code
+// {{{1
+// Faehrencrash-Verlustberechnung {{{2
+// Hier ist nun der Teil an dem die Wahrscheinlichkeit auftritt, das man
+// Sachen aus dem Backpack verliert (alle ausser Newbie)
+// If (
+//     sachen_sturm && (GetGlobalProperty("PresentWeather")==4) &&
+//     (route_index==3)
+// )
+//     sachen_sturm:=0;
+//     If (randomint(100)<10)
+//         ForEach mob in (boat.mobiles)
+//             PrintTextAbovePrivatePergon(boat.tillerman,
+//                 "Alle Mann festhalten, ein Sturm!!",
+//                 "Storm ahead, get ready.", mob
+//             );
+//         EndForEach
+//         // Einwenig Durchschütteln muß ja auch sein
+//         For (i:=0;i<=4;i:=i+1)
+//             TurnBoat(boat, (randomint(3)+1));
+//             sleep(1);
+//             SmackEveryone(boat);
+//         EndFor
+//         // Nochmal davor zur Sicherheit
+//         BoatReg(boat);
+//         boatmobiles := GetObjProperty(boat, "BoatMobiles");
+//         For (i := 1; i <= boatmobiles.Size(); i := i + 1)
+//             mob := SystemFindObjectBySerial(
+//                 boatmobiles[i], SYSFIND_SEARCH_OFFLINE_MOBILES
+//             );
+//             If (mob.cmdlevel<CMDLEVEL_SEER and
+//                 (!GetObjProperty(mob, TYPNEWBIE))
+//             )
+//             SendSysMessagePergon(mob,
+//                 "Eine Flutwelle erfasst euch und ihr könnt nur noch "+
+//                 "euer nacktes Leben retten!",
+//                 "You survived a terrible wave but all your property was "+
+//                 "washed overboard.");
+//             ForEach item in (ListEquippedItems(mob))
+//                 If (
+//                     (!item.newbie) and (item.objtype<>0xe75) and
+//                     (item.layer<>LAYER_HAIR) and (item.layer<>LAYER_BEARD)
+//                 )
+//                     SysLog("DEBUGERROR: Versuche gerade EquipmentA '"+
+//                         item.name+"' ("+Lower(Hex(item.serial))+") von '"+
+//                         mob.name+"' ("+ Lower(Hex(mob.serial))+" / "+mob.x+
+//                         " "+mob.y+" "+mob.z+" / "+Lower(Hex(boat.serial))+
+//                         " / "+Lower(Hex(mob.multi.serial))+") zu loeschen!"
+//                     );
+//                     //DestroyItem(item);
+//                 EndIf
+//             EndForEach
+//             ForEach item in EnumerateItemsInContainer(mob.backpack)
+//                 If ((!item.newbie) Or (item.objtype<>0x682f))
+//                     SysLog("DEBUGERROR: Versuche gerade BackpackinhaltA '"+
+//                         item.name+"' ("+Lower(Hex(item.serial))+") von '"+
+//                         mob.name+"' ("+Lower(Hex(mob.serial))+" / "+mob.x+
+//                         " "+mob.y+" "+mob.z+" / "+Lower(Hex(boat.serial))+
+//                         " / "+Lower(Hex(mob.multi.serial))+") zu loeschen!"
+//                     );
+//                     //DestroyItem(item);
+//                 EndIf
+//             EndForEach
+//         EndIf
+//     EndFor
+//     EndIf
+// EndIf
+// }}}2
+//
+// alter Jhe'lom-Workaround // {{{2
+// If ((boat.x == 1138) && (boat.y == 3693) && (route_index == 2))
+//     SetObjProperty(boat, "Zaehler", 2);
+//     MoveBoatXY(boat, route[route_index][1], route[route_index][2]);
+// EndIf
+// If ((boat.x == 1139) && (boat.y == 3693) && (route_index == 9))
+//     SetObjProperty(boat, "Zaehler", 10);
+//     MoveBoatXY(boat, route[route_index][1], route[route_index][2]);
+// EndIf
+// }}}2
+// }}}1

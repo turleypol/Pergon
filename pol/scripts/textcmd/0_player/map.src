@@ -1,0 +1,14 @@
+///////////////////////////////////////////////////////////////////////////
+// map - Oeffnet die mehdornischen Karten
+
+Use uo;
+Include "include/msgs";
+Include "include/urls";
+
+Program TextCMD_Karte(who)
+    SendSysMessagePergon(who,
+        "Ihr bittet den Navigator um Hilfe ...",
+        "You ask your navigator for help ..."
+    );
+    OpenURL(who, URL_MAPS);
+EndProgram

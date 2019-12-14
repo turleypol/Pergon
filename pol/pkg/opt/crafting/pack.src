@@ -1,0 +1,62 @@
+//
+//  Legt einem Pferd oder Lama eine Packtasche auf
+//  Problem: npctemplate ändert sich nicht auf "PackHorse" bzw "PackLLama"
+//
+//  13.11.2005 Fox:       merken des CProps "packer" zum Lootschutz von mit Sattel in Packer umgewandelten Packtieren
+
+use uo;
+
+Include "include/msgs";
+
+program use_backpack(who, backpack)
+
+  SendSysMessagePergon(who, "Welchem Tier wollt Ihr die Packtaschen auflegen?",
+                            "Which animal do you wanna equip these saddlebags?");
+  Var what := target(who, TGTOPT_CHECK_LOS);
+
+  if (!what)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  endif
+
+  case (what.graphic)
+    0xcc: equip_horse(who, backpack, what);
+    0xe4: equip_horse(who, backpack, what);
+    0xc8: equip_horse(who, backpack, what);
+    0xe2: equip_horse(who, backpack, what);
+    0xdc: equip_llama(who, backpack, what);
+    default: SendSysMessagePergon(who, "Diese Kreatur kann kein Gepäck tragen!",
+                                       "This creature is not able to carry any baggage!");
+  endcase
+
+endprogram
+
+function equip_horse(who, backpack, what)
+  if (getobjproperty(what, "master") == who.serial)
+    destroyitem(backpack);
+    what.graphic := 0x123;
+    SetObjProperty(what, "packer", 1);
+    SendSysMessagePergon(who, "Ihr stattet das Tier mit Packtaschen aus.",
+                              "You equip this animal with saddlebags.");
+  else
+    destroyitem(backpack);
+    SendSysMessagePergon(who, "Das Tier zerstört die Packtaschen in einem Wutanfall!",
+                              "This animal rips the saddlebags due to a rage attack.");
+    return;
+  endif
+endfunction
+
+function equip_llama(who, backpack, what)
+  if (getobjproperty(what, "master") == who.serial)
+    destroyitem(backpack);
+    what.graphic := 0x124;
+    SetObjProperty(what, "packer", 1);
+    SendSysMessagePergon(who, "Ihr stattet das Tier mit Packtaschen aus.",
+                              "You equip this animal with saddlebags.");
+  else
+    destroyitem(backpack);
+    SendSysMessagePergon(who, "Das Tier zerstört die Packtaschen in einem Wutanfall!",
+                              "This animal rips the saddlebags due to a rage attack.");
+    return;
+  endif
+endfunction

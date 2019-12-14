@@ -1,0 +1,89 @@
+////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD ShowPlay - Endloskurs fuer einen Character zu Praesentationszwecken abspielen
+//
+//     Author: Shinigami
+//
+//   Modification:
+//
+////////////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_ShowPlay(who, params)
+  If (!GetObjProperty(who, "#kurs"))
+    SetObjProperty(who, "#kurs", 1);
+
+    If (params)
+      Var kurs:=GetGlobalProperty("Kurs"+params);
+      If (kurs)
+        Var oldcmdlevel:=who.cmdlevel;
+        If (oldcmdlevel<CMDLEVEL_HIGHGM)
+          who.cmdlevel:=CMDLEVEL_COUNSELOR;
+          who.concealed:=CMDLEVEL_COUNSELOR;
+          SendSysMessagePergon(who, "Ihr seid nun auf dem CMDLevel 'Coun', um den Kurs abzulaufen!");
+        EndIf
+
+        SendSysMessagePergon(who, "Ihr wandert nun automatisch den Kurs ab. Nach '.showplay' stoppt ihr. "+
+          "Nach einem weiteren '.showplay' lauft ihr weiter. Nach '.showplay irgendwas' beendet ihr den Kurs.");
+
+        Var kursindex:=1;
+
+        While (GetObjProperty(who, "#kurs"))        // Solange die Prop gesetzt ist, weiterlaufen
+          While (GetObjProperty(who, "#kurspause")) // Pause einlegen?
+            SleepMS(250);
+          EndWhile
+
+          MoveObjectToLocation(who, kurs[kursindex][1], kurs[kursindex][2], kurs[kursindex][3], who.realm);
+          Sleep(2);
+
+          kursindex+=1;
+          If (kursindex>kurs.size())
+            kursindex:=1;
+          EndIf
+        EndWhile
+
+        If (oldcmdlevel<CMDLEVEL_HIGHGM)
+          who.concealed:=oldcmdlevel;
+          who.cmdlevel:=oldcmdlevel;
+          SendSysMessagePergon(who, "Ihr habt nun euer altes Level wieder.");
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Es gibt keinen Kurs '"+params+"' !");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Ihr müsst einen Kursnamen angeben!");
+    EndIf
+
+    EraseObjProperty(who, "#kurs");
+  Else
+    If (params)
+      EraseObjProperty(who, "#kurs");
+      SendSysMessagePergon(who, "Ihr beendet euren Kurs.");
+    Else
+      If (GetObjProperty(who, "#kurspause"))
+        EraseObjProperty(who, "#kurspause");
+        SendSysMessagePergon(who, "Ihr beendet eure Pause.");
+      Else
+        SetObjProperty(who, "#kurspause", 1);
+        SendSysMessagePergon(who, "Ihr legt eine Pause ein. Ein erneutes '.showplay' beendet die Pause.");
+      EndIf
+    EndIf
+  EndIf
+EndProgram

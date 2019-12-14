@@ -1,0 +1,29 @@
+/////////////////////////////////////////////////////////
+//
+//   method_pentagram - Farbwechsel für Pentagram
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     04.07.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Enum Color
+  COLOR_ALTAR_NOCHAMP:=    0x0,
+  COLOR_ALTAR_CHAMP:=      0x26
+EndEnum
+
+Program Install()
+  Return(1);
+EndProgram
+
+Exported Function Activate(pentagram)
+  pentagram.color:=COLOR_ALTAR_CHAMP;
+EndFunction
+
+Exported Function Deactivate(pentagram)
+  pentagram.color:=COLOR_ALTAR_NOCHAMP;
+EndFunction

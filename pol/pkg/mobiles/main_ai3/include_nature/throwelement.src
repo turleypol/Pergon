@@ -1,0 +1,47 @@
+////////////////////////////////////////////////////////////////////////////////////
+// 2004-10-24 Mai   script fuer feuerbaelle und aehnliches das elementaluser werfen
+// 2005-06-13 Turley   Behandlung der Elementtypen korrigiert
+// 2006-06-09 Fox   Anzeige Schaden hinzugefügt
+////////////////////////////////////////////////////////////////////////////////////
+
+use vitals;
+use os;
+use uo;
+
+Include "include/modifyskill";
+include "include/objtype";
+Include "include/client";
+Include ":newspells:resistance";
+Include "include/properties";
+Include "include/packets";
+
+program throwelement( params )
+//schaden wird zeitverzoegert zugefuegt, abhaengig davon wie sehr und weit der player weggerannt ist
+ Var mob := params[1];
+ Var opponent:= params[2];
+ Var element:= params[3];
+ Var elementdamage:= cdbl(params[4]);
+ params:=0;
+ Var distold := Distance(mob,opponent);
+ Var timeout:=CInt(ReadGameClock()+distold*0.1);
+ Var xold,yold;
+
+ xold := mob.x;
+ yold := mob.y;
+
+ While(ReadGameClock()<timeout)
+   If((mob.x != xold) || (mob.y != yold))
+     //aha. der mob ist weggerannt (egal wohin und wieweit) -> schaden verringern
+     If( elementdamage > 0)
+       elementdamage*=0.8; //20% schaden abziehen
+     EndIf
+   EndIf
+   xold := mob.x;
+   yold := mob.y;
+   sleepms(300);
+ EndWhile
+ //schaden zufuegen
+ elementdamage-=GetResistance(mob, element)*elementdamage;
+ SetScriptController(opponent);
+ ApplyRawDamagePergon(mob, CInt(elementdamage));
+endprogram

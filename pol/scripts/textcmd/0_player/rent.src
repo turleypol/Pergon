@@ -1,0 +1,67 @@
+///////////////////////////////////////////////////////////////////////////
+// rent -- Hausschilder nach Mietzahlung markieren
+
+use uo;
+include ":housing:mirror";
+include "include/logutil";
+include "include/msgs";
+include "include/server";
+
+Program Rent(who)
+    If (!who.getprop(TYPKASSENWART) and who.cmdlevel <= CMDLEVEL_SEER)
+        SendSysMessagePergon(who,
+            "Ihr seid kein Kassenwart!"
+        );
+        return;
+    EndIf
+    SendSysMessagePergon(who,
+        "Für welches Hausschild wurde die Miete bezahlt?"
+    );
+    var sign := Target(who, TGTOPT_NOCHECK_LOS+TGTOPT_HELPFUL);
+    If (!sign)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (!sign.getprop(PROP_HS_C_OWNERNAME))
+        SendSysMessagePergon(who, "Das ist kein Hausschild!");
+        return;
+    EndIf
+
+    // Schilder umfaerben
+
+    // ist es ein Spiegelschild?
+    var mirrored_serial := sign.getprop(PROP_MIRROR_WHAT);
+    If (mirrored_serial)
+        // es ist ein Spiegelschild, Schild faerben und Tooltip weg
+        sign.color := COLOR_PAID;
+        sign.setprop(PROP_HS_C_RENT_TOOLTIP, "");
+        IncRevision(sign);
+
+        // weiter mit gespiegeltem Objekt
+        sign := SystemFindObjectBySerial(mirrored_serial);
+        If (!sign)
+            return;
+        EndIf
+    EndIf
+
+    // gilt nur fuer statische Haeuser
+    var house := sign;
+
+    // Ist es ein Schild an einem Multihaus?
+    var multiserial := sign.getprop(PROP_HS_M_HOUSE);
+    If (multiserial)
+        house := SystemFindObjectBySerial(multiserial);
+        If (!house)
+            // wohl gerade im Abriss
+            return;
+        EndIf
+    EndIf
+
+    sign.color := COLOR_PAID;
+    ResetRent(house, sign);
+    syslog(
+        CharInfoStr(who)+" setzt Miete auf 'bezahlt' bei "+
+        ItemInfoStr(sign, COORDS_REALM)
+    );
+EndProgram

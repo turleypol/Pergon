@@ -1,0 +1,136 @@
+//**************************************************************************************************
+// Script file resistair.src
+//
+//    implements spell 124 <Resist Air> - "Luftresistenz"
+//
+//	raises spelltargets resistance against air
+//	slightly lowers spelltargets resistance against earth
+//		 [ Resisted (Magic) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 28.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+
+Include "include/spellcheck";
+Include "../magicpergon";
+
+program cast_resistair (params)
+
+   Var caster;
+   Var caston;
+   Var airres;
+   Var earthres;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_MAGE_RESISTAIR);
+   Var difficulty:= spell.skill;
+   Var resist:=  spell.resist;
+   Var resa:=    spell.primary;
+   Var minresa:= spell.primarymin;
+   Var maxresa:= spell.primarymax;
+   Var rese;
+   Var dur:=     spell.duration;
+   Var mindur:=  spell.durationmin;
+   Var maxdur:=  spell.durationmax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_MAGE_RESISTAIR);
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   PlaySoundEffect(caston, SFX_1EA);
+   PlayObjectCenteredEffect(caston, FX_SPARK_EFFECT, 10, 10);
+
+   if (GetObjProperty(caston, "spell_resist"))		// check if spelltarget already has elemental resistance
+																	// (only one enchantment at a time)
+      Var restypeger;
+      Var restypeeng;
+      case (GetObjProperty(caston, "spell_resist")[2])
+         "fire":	restypeger:= "Feuerangriffe";
+         			restypeeng:= "Fire Attacs";
+         "water":	restypeger:= "Wasserangriffe";
+         			restypeeng:= "Water Attacs";
+         "air":	restypeger:= "Luftangriffe";
+         			restypeeng:= "Air Attacs";
+         "earth":	restypeger:= "Erdangriffe";
+         			restypeeng:= "Earth Attacs";
+         default:	restypeger:= "magische Angriffe";
+         			restypeeng:= "Magical Attacs";
+      endcase
+
+      SendSysMessagePergon(caster, "Euer Ziel ist bereits gegen " + restypeger + " geschützt",
+                                   "Your target is already protected against " + restypeeng);
+      return;
+   endif
+
+   if (resist)					// calc spelleffect according to spelltargets magic resistance and casting power
+      resa:= CInt(Magicresistance(caston, difficulty, resist, power*resa/100.0, 1));
+      dur:=  CInt(Magicresistance(caston, difficulty, resist, power*dur/100.0, 0));
+   else
+      resa:= CInt(power*resa/100.0);
+      dur:=  CInt(power*dur/100.0);
+   endif
+
+   if (minresa and minresa > resa)
+      resa:= minresa;
+   elseif (maxresa and maxresa < resa)
+      resa:= maxresa;
+   endif
+   rese:= CInt(resa / 2);   					// get resulting loss of earth resistance
+   if (mindur and mindur > dur)
+      dur:= mindur;
+   elseif (maxdur and maxdur < dur)
+       dur:= maxdur;
+   endif
+
+   Set_Critical(1);
+   airres:=   CInt(GetObjProperty(caston, "resist_air"));		// get resistances of spelltarget
+   earthres:= CInt(GetObjProperty(caston, "resist_earth"));
+   SetObjProperty(caston, "resist_air", airres + resa);			// set new resistances
+   SetObjProperty(caston, "resist_earth", earthres - rese);
+   Set_Critical(0);
+   SetCastPowerProperty(caston,"Magie",CInt(resa/2),"","Air",0);
+   SetCastPowerProperty(caston,"Magie",CInt(rese/4),"","Earth",1);
+   RefreshSpellPowerGump(caston);
+
+   var tag:= array;
+
+   tag[1]:= ReadGameClock() + dur;
+   tag[2]:= "air";
+   tag[3]:= resa;
+   tag[6]:= ReadMilliSecondClock();
+
+   SetObjProperty(caston, "spell_resist", tag);						// tag spelltarget for spellchecker
+   SendSpellWaiter(caston, "spell_resist", dur, tag[6], caston);
+
+   if (!caston.isa(POLCLASS_NPC))											// spell has been casted on Player
+      PrintTextAbovePrivatePergon(caston, "Ihr spürt, wie Ihr unempfindlicher gegen Luft werdet",
+                                          "You feel yourself becoming less vulnerable to Air", caston);
+      SendStatus(caston);	 															//Update Statuswindow
+   endif
+ 
+endprogram

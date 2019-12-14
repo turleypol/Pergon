@@ -1,0 +1,5 @@
+Bewegen kannst du dich mit Maus und Tastatur.
+
+Wenn du mit der Maus rechtsklickst, drehst du dich in die Richtung, in die der Mauszeiger zeigt. Falls du schon passend gedrehst warst, machst du einen Schritt in die Richtung. Ist der Zeiger nah bei dir, gehst du langsam, ist er weit weg, rennst du.
+
+Auf der Tastatur kannst du dich mit den den Cursortasten und dem Zahlenblock drehen und, falls du schon passend gedreht warst, in die entsprechende Richtung bewegen. Wenn du zusaetzlich "Strg" gedrueckt haeltst, rennst du.

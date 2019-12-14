@@ -1,0 +1,114 @@
+// Modification:
+// 23.10.2003 Fraggulus:        Todes- und Beweisnahmezeitpunkt werden im
+//                              Beweis vermerkt
+// 07.07.2004 Fox:              Todesort wird mit angezeigt.
+// 2008-04-24 mehdorn:          druebergeguckt und eingeenglischt
+
+use uo;
+
+Include "include/msgs";
+Include "include/modifyskill";
+
+Program Evidence(who, evidence)
+    var ser := GetObjProperty(evidence, "serial");
+
+    If (!ser)
+        SendSysMessagePergon(
+            who,
+            "Dieser Beweis ist ungültig!",
+            "This proof is invalid!"
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(
+        who,
+        "Wählt etwas, zu dem Ihr den Beweis finden wollt!",
+        "Select something to check the proof against."
+    );
+    SendSysMessagePergon(
+        who,
+        "(Auswahl des Beweises selbst zum Lesen)",
+        "(Select the proof itself to read it)"
+    );
+
+    var what := target(who, TGTOPT_CHECK_LOS);
+    If (!what)
+        SendSysMessagePergon(who, "Zielen abgebrochen", "No valid target");
+        return;
+    EndIf
+
+    If (what.serial != evidence.serial)
+        If (what.serial == cint(ser))
+            PrintTextAbovePergon(
+                who, what,
+                "Das passt zum Beweis.", "This matches your proof."
+            );
+            return;
+        Else
+            PrintTextAbovePergon(
+                who, what,
+                "Das passt nicht zum Beweis.",
+                "This does not match your proof."
+            );
+            return;
+        EndIf
+    EndIf
+
+    var proofmsg := GetObjProperty(evidence, "proofmsg");
+    If (!proofmsg)
+        SendSysMessagePergon(
+            who,
+            "Aus irgendeinem Grund ist der Beweis nicht lesbar.",
+            "You cannot read the proof for reasons unknown to you."
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who, "Folgendes wurde herausgefunden:");
+    ForEach msg in proofmsg
+        SendSysMessagePergon(who, msg);
+    EndForEach
+
+    If (GetObjProperty(evidence, "deathtime"))
+        SendSysMessagePergon(
+            who, "Zeit des Todes: "+GetObjProperty(evidence, "deathtime")
+        );
+    EndIf
+
+    If (GetObjProperty(evidence, "deathlocation"))
+        var deathlocation := GetObjProperty(evidence, "deathlocation");
+        SendSysMessagePergon(
+            who,
+            "Ort des Todes: X=" + deathlocation.x +
+            ", Y=" + deathlocation.y + ", Z=" + deathlocation.z
+        );
+    EndIf
+
+    If (GetObjProperty(evidence, "prooftime"))
+        SendSysMessagePergon(
+            who,
+            "Zeit der Beweisnahme: " + GetObjProperty(evidence, "prooftime")
+        );
+    EndIf
+
+    // FIXME: internaltime gibt es nur noch bei alten Beweisen, bei
+    // Gelegenheit mal abschaffen
+    var internaltime := evidence.getprop("internalprooftime");
+    var staffmsg     := evidence.getprop("staffmsg");
+    If (
+        (internaltime or staffmsg) and
+        who.cmdlevel > CMDLEVEL_SEER
+    )
+        SendSysMessagePergon(who, "Weitere Daten für GMs:");
+        If (internaltime)
+            SendSysMessagePergon(who, "Zeit der Beweisnahme "+internaltime);
+        EndIf
+        If (staffmsg)
+            ForEach line in (staffmsg)
+                SleepMs(2);
+                SendSysMessagePergon(who, line);
+            EndForEach
+        EndIf
+    EndIf
+EndProgram

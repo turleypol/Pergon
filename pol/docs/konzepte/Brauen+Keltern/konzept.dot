@@ -1,0 +1,85 @@
+strict digraph brauen {
+    
+    // rankdir=LR;
+    ratio=compress;
+
+    // Hauptprozess
+    node [color=blue, shape=hexagon];
+    Maelzen;
+    Maischen    [label="Maischen/Mosten"];
+    Gaeren;
+    Brennen;
+    abfuellen   [label="Abfüllen\n(in Flaschen)"];
+    abfuellen0  [label="Abfüllen\n(in Flaschen)"];
+    abfuellen1  [label="Abfüllen\n(in Flaschen)"];
+    abfuellen2  [label="Abfüllen\n(in Flaschen)"];
+    Verschneiden;
+
+    node [color=turquoise, shape=ellipse];
+    edge [style=bold];
+    Maelzen     -> malz ->
+    Maischen    -> maische ->
+    Gaeren      -> bierwein ->
+    Brennen     -> brand;
+    bierwein    -> abfuellen;
+    bierwein    -> Verschneiden -> abfuellen0;
+    brand       -> abfuellen1;
+    brand       -> Verschneiden;
+    maische     -> Verschneiden;
+    maische     -> abfuellen2;
+
+    // Zwischen- und Endprodukte
+    malz        [label="Malz\n(Maismalz,\nWeizenmalz)"];
+    maische     [label="Maische/Most\n(Getreide-, Weinmaische/\nFruchtsaft)"];
+    bierwein    [label="Bier/\nWein"];
+    brand       [label="Schnaps/\nWeinbrand"];
+
+    // Hilfsmittel
+    node [color=red, shape=box];
+    paddel      [label="Ruehrpaddel"];
+    presse      [label="Presse"];
+    destille    [label="Destillierflasche"];
+    feuer       [label="Feuer/\nBrenner"];
+    kessel      [label="Braukessel"];
+
+    // Rohstoffe
+    node [color=green, shape=ellipse];
+    edge [style=solid];
+    getreide    [label="Getreide\n(Maiskolben,\nWeizenkorn)"];
+    // Apfel, Birne, Pfirsich, Banane, Melone, Kürbis
+    obst        [label="Obst (Apfel,\nBirne, ...)"];
+    gemuese     [label="Gemüse\n(Möhre, Rübe)"];
+    hefe        [label="Hefepilz"];
+    hopfen      [label="Hopfendolde"];
+    trauben     [label="Weintrauben"];
+    fass        [label="leeres\nFass"];
+    Wasser;
+
+    // Getreide+Wasser wird zu Malz
+    getreide    -> Maelzen;
+    Wasser      -> Maelzen;
+
+    // Obst oder Trauben zu Most per Presse
+    presse      -> Maischen;
+    obst        -> Maischen;
+    gemuese     -> Maischen;
+    trauben     -> Maischen;
+
+    // Maische aus Malz oder Honig unter Nutzung Ruehrpaddel (Bier/Met)
+    paddel      -> Maischen;
+    Honig       -> Maischen;
+    malz        -> Maischen;
+
+    // man braucht ein leeres Fass zum Einfuellen
+    fass        -> Maischen;
+
+    // Hefezugabe loest Gaerung aus
+    hefe        -> Gaeren;
+    hopfen      -> Gaeren;
+    kessel      -> Gaeren;
+    feuer       -> Gaeren;
+
+    // Brennen erfordert Waerme und Destilliergeraet
+    feuer       -> Brennen;
+    destille    -> Brennen;
+}

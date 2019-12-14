@@ -1,0 +1,248 @@
+//////////////////////////////////////////////////////////////////////////////
+// camping - Wildniskundescript
+//
+// Author: Turley
+
+//////////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.10  2008/09/19 12:22:09  turley
+// itemdescriptor am anfang holen und da schon grafik und ko reinpacken
+//
+// Revision 1.9  2008/08/13 19:24:31  mehdorn
+// - Mehrsprachigkeit
+// - Bedingung "Jeder darf überall auf Jhe'lom suchen" zu
+//   "Newbies dürfen überall suchen" geändert
+//
+// 21.05.07 Turley - Init
+
+use cfgfile;
+use os;
+use uo;
+include "include/modifyskill";
+include "include/msgs";
+include "include/npc";
+include "include/resources";
+
+Const DUMMY := 0xc005;
+
+Var DUMMY_desc:=GetItemDescriptor(DUMMY);
+
+Program Camping(who)
+  If (GetObjProperty(who, "#UsesSkill") > ReadGameClock())
+    SendSysMessagePergon(who,
+      "Ihr müsst noch ein wenig warten, bevor ihr wieder suchen könnt.",
+      "You will have to wait a few seconds before you can try again."
+    );
+    return(0);
+  EndIf
+
+  // Delay bis zur nächsten Nutzung eines Skills 2 Sekunden
+  SetObjProperty(who, "#UsesSkill", ReadGameClock() + 2);
+
+  If (PlaceTown(who))
+    // Newbies duerfen ueberall suchen
+    // (war: jeder darf auf Jhe'lom ueberall suchen)
+    If (!GetObjProperty(who, TYPNEWBIE))
+      SendSysMessagePergon(who,
+        "Ihr müsst außerhalb einer Stadt sein.",
+        "You have to search outside of a town."
+      );
+      return;
+    EndIf
+  EndIf
+
+  If (who.multi)
+    SendSysMessagePergon(who,
+      "In Häusern gibt es keine Wildnis!",
+      "There is no wilderness inside houses!"
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Ihr durchsucht die Wildnis ...",
+    "You search the wilderness ..."
+  );
+  Sleep(1);
+
+  // 1 bis 8 Items finden
+  var maxitems := CInt(Max(
+      1,
+      Min(
+        8,
+        GetSkillPergon(who,SKILLID_WILDNISKUNDE)/15
+      )
+  ));
+
+  // im Bereich von 1 bis 10 Felder um Char
+  var range := CInt(Max(
+      1,
+      Min(
+        10,
+        GetSkillPergon(who,SKILLID_WILDNISKUNDE)/13
+      )
+  ));
+
+  If (ListItemsNearLocationOfType(
+      who.x, who.y, who.z, range, DUMMY, who.realm
+    ).size() > 0
+  )
+    SendSysMessagePergon(who,
+      "Die bereits gefundenden Dinge stören Eure Konzentration.",
+      "The things found already distract your concentration."
+    );
+    return;
+  EndIf
+
+  var whox := who.x;
+  var whoy := who.y;
+  var i;
+  var map, layers, type, res;
+  For (i := 1; i <= maxitems; i += 1)
+    var try := 0;
+    Repeat
+      // harter Abbruch bei Disconnect
+      If (!who.connected)
+        exit;
+      EndIf
+
+      // hat sich wegbewegt
+      If ((whox<>who.x) || (whoy<>who.y))
+        SendSysMessagePergon(who,
+          "Ihr brecht eure Suche ab.",
+          "You cancel your search."
+        );
+        return;
+      EndIf
+      var x := RandomIntMinMax(whox-range,whox+range+1);
+      var y := RandomIntMinMax(whoy-range,whoy+range+1);
+      map := GetMapInfo(x, y, who.realm);  // Landtile besorgen
+      // Blockt da was?
+      layers := GetStandingLayers(
+        x, y, MAPDATA_FLAG_MOVESEA+MAPDATA_FLAG_BLOCKING, who.realm
+      );
+      If ((map.landtile) && (layers.size() == 0))
+        type := GetSpawnType(map.landtile);
+        If (type)
+          res := Spawn(who, x, y, map.z, type);
+          If (res)
+            PlaySoundEffectPrivate(who, 491, who);
+            If (i == maxitems) // Damit nicht nochmal die SysMessage kommt
+              break;
+            EndIf
+            try := 0;
+            Sleep(3);
+            SendSysMessagePergon(who,
+              "Ihr sucht weiter.",
+              "Your search continues."
+            );
+            break;
+          EndIf
+        EndIf
+      EndIf
+      try += 1;
+      SleepMS(2);
+    Until ((try>=10) || (!who.connected));
+  EndFor
+
+  SendSysMessagePergon(who,
+    "Ihr beendet eure Suche.",
+    "You finish your search."
+  );
+EndProgram
+
+Function GetSpawnType(landtile)
+  var cfg := ReadConfigFile("camping");
+  If (landtile in GetTileCave())
+    return (cfg["cave"]);
+  ElseIf (landtile in GetTileDirt())
+    return (cfg["dirt"]);
+  ElseIf (landtile in GetTileForest())
+    return (cfg["forest"]);
+  ElseIf (landtile in GetTileFurrows())
+    return (cfg["furrows"]);
+  ElseIf (landtile in GetTileGrass())
+    return (cfg["grass"]);
+  ElseIf (landtile in GetTileJungle())
+    return (cfg["jungle"]);
+  ElseIf (landtile in GetTileSand())
+    return (cfg["sand"]);
+  ElseIf (landtile in GetTileSnow())
+    return (cfg["snow"]);
+  ElseIf (landtile in GetTileSwamp())
+    return (cfg["swamp"]);
+  EndIf
+EndFunction
+
+Function Spawn(who, x, y, z, type)
+  var spawns := GetConfigStringArray(type, "spawn");
+  If (spawns.size() <= 0)
+    return;
+  EndIf
+
+  var skill     := GetSkillPergon(who,SKILLID_WILDNISKUNDE)+20;
+  var tospawn   := array{};
+  var randrange := 0;
+  // Alle theoretisch möglichen Items besorgen
+  ForEach spawnitem in spawns
+    SleepMS(2);
+    var temp := SplitWords(spawnitem);
+    If (skill >= CInt(temp[4]))
+      tospawn.append({
+        CInt(temp[1]), // ID
+        CInt(temp[2]), // Objtype
+        CInt(temp[3]), // Color
+        CInt(temp[4]), // Diff
+        temp[5],       // Name
+        CInt(temp[6])  // Wahrscheinlichkeit
+      });
+      randrange += CInt(temp[6]);
+    EndIf
+  EndForEach
+
+  If (tospawn.size() <= 0)
+    SendSysMessagePergon(who,
+      "Ihr strengt Euch an, aber findet doch nichts.",
+      "You try hard to find something, but you fail."
+      );
+    return(1);
+  EndIf
+
+  var verteilung := 0;
+  var rnd        := RandomInt(randrange)+1;
+  var plant;
+  var i;
+  For (i := 1;i<=tospawn.size();i += 1)
+    verteilung += tospawn[i][6];
+    If (rnd<=verteilung)
+      plant := tospawn[i];
+      break;
+    EndIf
+  EndFor
+
+  If (plant[1])
+    If (CheckSkillPergon(who, SKILLID_WILDNISKUNDE, plant[4], plant[4]*3))
+      DUMMY_desc.Graphic:=plant[2];
+      DUMMY_desc.Color:=plant[3];
+      DUMMY_desc.CProps.insert("ID",plant[1]);
+      var item := CreateItemAtLocationPergon(x, y, z, DUMMY_desc, 1, who.realm);
+      If (item)
+        SetName(item, plant[5]);
+        PrintTextAbovePrivatePergon(
+          item, "Ihr findet "+item.desc, "You find "+item.desc, who
+        );
+        return(1);
+      EndIf
+    Else
+      SendSysMessagePergon(who,
+        "Ihr denkt etwas gefunden zu haben, "+
+        "aber Ihr habt Euch getäuscht.",
+        "You think you found something, but you erred."
+      );
+      return(1);
+    EndIf
+  EndIf
+EndFunction
+
+// vim: sw=2 sts=2

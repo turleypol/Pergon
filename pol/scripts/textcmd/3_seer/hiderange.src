@@ -1,0 +1,64 @@
+///////////////////////////////////////////////////////////////////////
+//
+//   TextCMD Hide - Versteckt NPC (fuer Questgebrauch)
+//
+//     Author: mentholia
+//
+///////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program HideRange(who, text)
+  var params       := SplitWords(text);
+  var range        := CInt(params[1]);
+  var stealthsteps := CInt(params[2]);
+  
+  If (text["help"] or text["?"] or params.size() < 2)
+    SendSysMessagePergon(who, "Benutzung: .hiderange <range> <stealthsteps>", "usage: .hiderange <range> <stealthsteps>");
+    return;
+  EndIf
+  
+  If (!range)
+    range := 0;
+    SendSysMessagePergon(who, "Wählt einen NPC aus!", "Choose an npc!");
+  Else
+    SendSysMessagePergon(who, "Wählt den zentralen NPC für den Umkreis von " + range + " Feldern aus!",
+                              "Choose a central npc for the circumference of " + range + " fields!");
+  EndIf
+
+  var mobiles := Target(who);
+  If (mobiles.isa(POLCLASS_NPC))
+    If (range)
+      ForEach mobile in ListMobilesNearLocationEx(mobiles.x, mobiles.y, mobiles.z, range, LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN, who.realm)
+        If (mobile.isa(POLCLASS_NPC))
+          hide(who, mobile, stealthsteps);
+        EndIf
+        SleepMS(2);
+      EndForEach
+    Else
+      hide(who, mobiles, stealthsteps);
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram
+
+Function hide(who, mobile, stealthsteps)
+  mobile.hidden := 1;
+  mobile.stealthsteps := stealthsteps;
+  PrintTextAbovePrivatePergon(mobile, "versteckt", "hidden", who);
+EndFunction

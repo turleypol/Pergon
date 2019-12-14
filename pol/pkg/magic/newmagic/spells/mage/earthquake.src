@@ -1,0 +1,118 @@
+//**************************************************************************************************
+// Script file earthquake.src
+//
+//    implements spell 131 <Earth Quake> - "Erdbeben"
+//
+//  caster creates an earthquake which deals enormous earth damage
+//    [ Resisted (Elemental - Earth) ]
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 30.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//              22.09.2005 Seppel - grafisch etwas aufgepeppt (Risse im Boden)
+//
+//**************************************************************************************************
+use os;
+use util;
+use vitals;
+
+Include "../magicpergon";
+Include "../resistance";
+Include "../spellattack";
+Include "include/packets";
+Include "include/math";
+
+program cast_earthquake (params)
+
+   Var caster;
+   Var victims;
+
+   Var spells:= ReadConfigFile("::spells");                   // load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_MAGE_EARTHQUAKE);
+   Var resist;
+   Var dmg;
+   Var basedmg:=  spell.primary;
+   Var mindmg:=   spell.primarymin;
+   Var maxdmg:=   spell.primarymax;
+   Var range:=    spell.range;
+   Var minrange:= spell.rangemin;
+   Var maxrange:= spell.rangemax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_MAGE_EARTHQUAKE);
+   endif
+
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   basedmg:= CDbl(power*basedmg/100.0);       // calc spell range and spell damage
+   range:=   CInt(power*range/100.0);         // according to casting power
+   if (minrange and minrange > range)
+      range:= minrange;
+   elseif (maxrange and maxrange < range)
+      range:= maxrange;
+   endif
+
+                                  // get victims in spell range
+   victims:= ListMobilesNearLocationEX(caster.x, caster.y, caster.z, range, LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN,caster.realm);
+
+   PlaySoundEffect(caster, SFX_223);
+   if (victims)
+     foreach victim in victims
+       if (victim <> caster && !victim.dead)             // preserve caster and ghosts
+         PlaySoundEffect(victim, SFX_221);
+         PlayObjectCenteredEffect(victim, FX_SMOKE, 7, 7);
+         if (victim.isa(POLCLASS_NPC))
+           send_attack(victim, caster, 131);
+         endif
+   
+         resist:= 1 - CDbl(GetResistance(victim, "earth"));                  // get victims earth resistance
+         dmg:= basedmg * Pow(0.0625, CDbl((Distance(victim, caster) - 1)) / range); // alter spell damage
+         dmg:= CInt(dmg * resist);
+         if (mindmg and mindmg > dmg)
+           dmg:= mindmg;
+         elseif (maxdmg and maxdmg < dmg)
+           dmg:= maxdmg;
+         endif
+   
+         ApplyRawDamagePergon(victim, dmg);                  // apply altered damage to victim
+       endif
+       SleepMS(2);
+     endforeach
+   endif
+
+            //Rissanimation
+   Var wherex:= caster.x;
+   Var wherey:= caster.y;
+   Var wherez:= caster.z;
+   Var crackrange:= 1.0;
+   Var i;
+   for(i:=1; i < range * 10; i+= 1)
+     Var item;
+     crackrange:= crackrange + (CDbl(range)/(range * 10));
+     case (RandomInt(9))
+       0: item:= 0x1B01;
+       1: item:= 0x1B02;
+       2: item:= 0x1B03;
+       3: item:= 0x1B04;
+       4: item:= 0x1B05;
+       5: item:= 0x1B06;
+       6: item:= 0x1B07;
+       7: item:= 0x1B08;
+     endcase
+     Var x:= wherex - crackrange + RandomInt(2*CInt(crackrange)) + 1;
+     Var y:= wherey - crackrange + RandomInt(2*CInt(crackrange)) + 1;
+     PlayStationaryEffect(CInt(x), CInt(y), wherez, item, 1, (RandomInt(300) +100),0,caster.realm);
+     if (i%10 == 0)        //die Sleepfunktion ist ungenau (SleepMS(9) dauert nicht annähernd so lange wie SleepMS(10))
+        SleepMS(10);
+     endif
+   endfor
+
+endprogram

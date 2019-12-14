@@ -1,0 +1,15 @@
+use uo;
+
+Include "include/msgs";
+
+program textcmd_setlight( who, text )
+    Var tparams := SplitWords( text );
+
+    print( "Regionenname: " + tparams[1] );
+    print( "Lichtlevel: " + tparams[2] );
+
+    Var res := SetRegionLightLevel( tparams[1], CInt(tparams[2]) );
+    if (!res)
+        SendSysMessagePergon( who, "Fehler beim Setzen von Lichtlevel: " + res.errortext );
+    endif
+endprogram

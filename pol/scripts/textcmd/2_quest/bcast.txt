@@ -1,0 +1,6 @@
+<h3 id="bcast">bcast</h3>
+
+<h4>Parameter: keiner oder <kbd>&lt;Text&gt;</kbd></h4>
+
+<p>Sendet den Text an alle eingeloggten Spieler. Falls kein Text angegeben
+wurde, wird eine Eingabe ermöglicht.</p>

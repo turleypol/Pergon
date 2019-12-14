@@ -1,0 +1,289 @@
+/////////////////////////////////////////////////////////
+//
+//   shapeshifter - OverrideFunction KI Hauptkram in main.inc
+//                Main_AI3
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     10.07.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+//
+// Shapeshifter: Klassischer Nahkämpfer mit Grafikwechsel
+//               und abhängig davon Casten bei 1/2MaxHP
+// cfgele graphics: graphic color cancast
+
+include ":main_ai3:include_common/main_ai";
+CONST NATURE:=NATURE_SHAPESHIFTER;
+include ":main_ai3:include_common/main";
+include ":main_ai3:include_common/common";
+include ":main_ai3:include_nature/killernear";
+
+
+
+Function OnStart()
+  OnStartKillernear();
+EndFunction
+
+Function InitNPC()
+  InitNPC_Common();
+EndFunction
+
+Function InitParamsSpezial(byref mytemplate)
+  var graphics:=GetConfigStringArray( mytemplate, "graphics" );
+  ForEach elem in graphics
+    elem:=SplitWords(elem);
+    ForEach e in elem
+      e:=CInt(e);
+    EndForEach
+  EndForEach
+  params.insert(SHAPES,graphics);
+  params.insert(SHAPECOUNTER,0);
+  If (params.exists(SPELLCASTER))  // am Anfang nicht casten
+    params.erase(SPELLCASTER);
+  EndIf
+  If (params.exists(FIRSTCAST))
+    params[FIRSTCAST]:=0;
+  Else
+    params.insert(FIRSTCAST,0);
+  EndIf
+EndFunction
+
+Function Before_Events()
+  Return;
+EndFunction
+
+Function IdleTime()
+  If (params[SHAPECOUNTER]>0)
+    MakeChange(1);  // Bin verwandelt also jetzt zurückwandeln
+  EndIf
+  Return(IdleTime_Common());
+EndFunction
+
+Function Event_DoubleClicked(byref ev)
+  Event_DoubleClicked_Common(ev);
+EndFunction
+
+Function Event_ItemGiven(byref ev)
+  Event_ItemGiven_Common(ev);
+EndFunction
+
+Function Event_Speech(byref ev)
+  Event_Speech_Common(ev);
+EndFunction
+
+Function Can_Speech_Kill()
+  Return(1);
+EndFunction
+
+Function Can_Speech_Guard()
+  Return(1);
+EndFunction
+
+Function Event_Engaged(byref ev)
+  If (Event_Engaged_Common(ev))
+    If( !Me.warmode ) //nur wenn er nicht schon kaempft
+      If (params.exists(SPELLCASTER))
+        If (params[FIRSTCAST])  // Hab noch nicht gecastet also jetzt mal anschmeißen
+          MagicFight(ev.source);
+        EndIf
+      EndIf
+      FightKillerNear( ev.source ); //killer greift an
+    EndIf
+  EndIf
+EndFunction
+
+Function Event_Disengaged(byref ev)
+  Event_Disengaged_Common(ev);
+EndFunction
+
+Function Event_Damaged(byref ev)
+  If (Event_Damaged_Common(ev))
+    // Fixe Variante ohne große Checks
+    If ((GetVital(Me, VITALID_LIFE)-ev.damage*100)<(GetVitalMaximumValue(Me, VITALID_LIFE)/2))
+      MakeChange();
+    EndIf
+    If( !Me.warmode ) //nur wenn er nicht schon kaempft
+      If (params.exists(SPELLCASTER))
+        If (params[FIRSTCAST])  // Hab noch nicht gecastet also jetzt mal anschmeißen
+          MagicFight(ev.source);
+        EndIf
+      EndIf
+      FightKillerNear( ev.source );
+    Else
+      If( !RandomInt(50) ) //2%chance vielleicht renn ich ja trotzdem hin?
+        SetWarmode(0); //neuen gegner setzen ermoeglichen
+        If (params.exists(SPELLCASTER))
+          If (params[FIRSTCAST])  // Hab noch nicht gecastet also jetzt mal anschmeißen
+            MagicFight(ev.source);
+          EndIf
+        EndIf
+        FightKillerNear( ev.source);
+      EndIf
+    EndIf
+  EndIf
+EndFunction
+
+Function Event_EnteredArea(byref ev)
+  If (Event_EnteredArea_Common(ev))
+    If( !Me.warmode ) //nur wenn er nicht schon kaempft
+      If (ValidEnemy_Override(ev.source,1))
+        If (params.exists(SPELLCASTER))
+          If (params[FIRSTCAST])  // Hab noch nicht gecastet also jetzt mal anschmeißen
+            MagicFight(ev.source);
+          EndIf
+        EndIf
+        FightKillerNear( ev.source );
+      EndIf
+    EndIf
+  EndIf
+EndFunction
+
+Function Event_LeftArea(byref ev)
+  Event_LeftArea_Common(ev);
+EndFunction
+
+Function Event_StillRun(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_LookAround(byref ev)
+  ev.source:=Event_LookAround_Common(ev);
+  If (ev.source==-1)
+    MakeMePeaceful(params[RANGESENSE]);
+  ElseIf (ev.source)
+    If (params.exists(SPELLCASTER))
+      If (params[FIRSTCAST])  // Hab noch nicht gecastet also jetzt mal anschmeißen
+        MagicFight(ev.source);
+      EndIf
+    EndIf
+    FightKillerNear(ev.source);
+  EndIf
+EndFunction
+
+Function Event_Follow(byref ev)
+  Event_Follow_Common(ev);
+EndFunction
+
+Function Event_AskJoin(byref ev)
+  Return;
+  ev:=ev;
+  //Event_AskJoin_Common(ev);
+EndFunction
+
+Function Event_GrantJoin(byref ev)
+  Return;
+  ev:=ev;
+  //Event_GrantJoin_Common(ev);
+EndFunction
+
+Function Event_RefuseJoin(byref ev)
+  Return;
+  ev:=ev;
+  //Event_RefuseJoin_Common(ev);
+EndFunction
+
+Function Event_Walk(byref ev)
+  Event_Walk_Common(ev);
+EndFunction
+
+Function Event_Peacemade(byref ev)
+  Event_Peacemade_Common(ev);
+  MakeMePeaceful(params[RANGESENSE]);
+EndFunction
+
+Function Event_Guards_Help(byref ev)
+  Event_Guards_Help_Common(ev);
+EndFunction
+
+Function Event_Cast_Wait(byref ev)
+  If (!Me.warmode)  // Kämpf ich noch?
+    params[FIRSTCAST]:=1;
+    Return;
+  EndIf
+  If (Me.getprop(PROP_OPPONENT))  // Hinkt wegen Lookaround immer hinterher
+    ev.source:=SystemFindObjectBySerial(Me.getprop(PROP_OPPONENT));
+    If (!ev.source)                     // deswegen opp aus cprop holen
+      params[FIRSTCAST]:=1;
+      Return;
+    EndIf
+    Event_Cast_Wait_Common(ev);
+  Else
+    params[FIRSTCAST]:=1;
+  EndIf
+EndFunction
+
+Function Event_Quest_Waypoint(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Quest_Speech(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Self_Kill(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Quest_Nemesis(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Reflection(byref ev)
+	Event_Reflection_Common(ev);
+EndFunction
+
+Function OnIdle()
+  OnIdleKillerNear();
+EndFunction
+
+
+Function ValidEnemy_Override(byref mob,byref hostile)
+  Return(ValidEnemy_Override_Common(mob));
+  hostile:=hostile;
+EndFunction
+
+
+// Shape wechseln und gegebenenfalls Casten anschmeißen
+Function MakeChange(reset:=0)
+  If (reset)
+    params[SHAPECOUNTER]:=0;
+    If (params.exists(SPELLCASTER))
+      params.erase(SPELLCASTER);
+    EndIf
+    Me.graphic:=Me.trueobjtype;
+    Me.color:=Me.truecolor;
+  Else
+    If (params[SHAPECOUNTER]==params[SHAPES].size())
+      TestMessage("Shapecounter am ende",2);
+      Return;
+    EndIf
+    params[SHAPECOUNTER]:=params[SHAPECOUNTER]+1;
+    Me.graphic:=params[SHAPES][params[SHAPECOUNTER]][1];
+    Me.color:=params[SHAPES][params[SHAPECOUNTER]][2];
+    If (params[SHAPES][params[SHAPECOUNTER]][3])
+      If (!params.exists(SPELLCASTER))
+        params.insert(SPELLCASTER,1);
+        Var ev:=struct;  // Casten anschmeißen
+        ev.+type;
+        ev.+source;
+        ev.type:=EVID_CAST_WAIT;
+        ev.source:=Me;
+        SendEvent(Me,ev);
+      EndIf
+    Else
+      If (params.exists(SPELLCASTER))
+        params.erase(SPELLCASTER);
+      EndIf
+    EndIf
+  EndIf
+  SetHPPergon(Me, GetMaxHPPergon(Me));
+EndFunction

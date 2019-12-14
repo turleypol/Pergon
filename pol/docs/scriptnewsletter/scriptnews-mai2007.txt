@@ -1,0 +1,11 @@
+- aktivierter Zauberrollen werden nun auch über das Spellpanel genutzt wenn vorhanden
+- Giftumbau (Formel & Showdamage)
+- NPCs gehen nicht mehr durch Tore
+- Balancing Resis
+- Leichenschändung neu
+
+-Alchemie komplett neu
+-Farming Umsortierung der Produkte, Wachstum in mehr Phasen unterteilt
+-Wildniskunde Anwendung per Skillfenster findet Samen/und andern Kram im Umkreis zum "ernten"
+-Ackerfelder in Playerhäusern:
+Per Schaufel zu erzeugen, verfällt nach einer weile Benutzung

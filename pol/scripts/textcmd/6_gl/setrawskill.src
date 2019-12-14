@@ -1,0 +1,77 @@
+///////////////////////////////////////////////////////////////////////////
+// setrawskill - Rawskill eines Mobiles aendern
+
+use os;
+use uo;
+include "include/logutil";
+include "include/modifyskill";
+include "include/msgs";
+
+Program TextCMD_SetRawSkill(who, params)
+    params := SplitWords(params);
+    // Skill-ID und Wert einlesen
+    var skid  := CInt(params[1]);
+    var value := params[2];
+
+    If (!skid)
+        SendSysMessagePergon(who, "Ungültige Skill-ID: "+skid);
+        SendSysMessagePergon(who, "Parameter: <Skill-ID> <[+/-]Wert>");
+        return;
+    EndIf
+
+    // Herausfinden, ob gesetzt, addiert oder subtrahiert werden soll
+    var op := "=";
+    If (value["+"])
+        op := "+";
+        value["+"] := "";
+    EndIf
+    If (value["-"])
+        op := "-";
+        value["-"] := "";
+    EndIf
+    If (!CInt(value))
+        SendSysMessagePergon(who, "Ungültige Skill-Wert: "+value);
+        return;
+    EndIf
+    value := CInt(value);
+
+    // Ziel waehlen
+    SendSysMessagePergon(who, "Wählt Euer Opfer!");
+    var tgt := Target(who);
+    If (!tgt or !tgt.isa(POLCLASS_MOBILE))
+        SendSysMessagePergon(who, "Kein oder ungültiges Ziel; Abbruch");
+        return;
+    EndIf
+
+    // alten Wert holen fuer Berechung/Logging
+    var oldvalue := GetRawSkillPergon(tgt, skid);
+    If (!oldvalue)
+        SendSysMessagePergon(who,
+            "Skill "+skid+" scheint beim Ziel zu fehlen"
+        );
+        return;
+    EndIf
+
+    // Skill taetsaechlich aendern
+    var newvalue := value;
+    If (op == "+")
+        newvalue := oldvalue + value;
+    EndIf
+    If (op == "-")
+        newvalue := oldvalue - value;
+    EndIf
+    SetRawSkillPergon(tgt, skid, newvalue);
+
+    // Ausgabe/Logging
+    var newvaluereal := GetRawSkillPergon(tgt, skid);
+    If (newvalue <> newvaluereal)
+        // eventuell wurde automatisch gekuerzt
+        newvaluereal := newvalue+" ("+newvaluereal+")";
+    EndIf
+    syslog(
+        CharInfoStr(who)+" aendert Rawskill "+skid+" bei "+
+        CharInfoStr(tgt)+" von "+oldvalue+" auf "+newvaluereal
+    );
+    SendSysMessagePergon(who, "Alter Rawskill: "+oldvalue);
+    SendSysMessagePergon(who, "Neuer Rawskill: "+newvaluereal);
+EndProgram

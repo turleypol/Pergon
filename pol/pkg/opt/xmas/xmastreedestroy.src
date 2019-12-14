@@ -1,0 +1,74 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+// Abbauscript fuer Weihnachtsbaum
+// (wird spaeter mal automatisiert und verallgemeinert. immo ist es erstmal ne Einzelloesung)
+//
+// 03.12.2003 Fraggulus: create
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use uo;
+
+include ":housing:house";
+include "include/set";
+
+Program XmasTreeDestroy(who, deed)
+  If (!ReserveItem(deed))
+    return;
+  EndIf
+
+  // damit die Spieler keinen Unfug treiben...
+  If (who.cmdlevel < CMDLEVEL_SEER)
+    var house := GetHouseContainingObject(who);
+    If (!house)
+      SendSysMessagePergon(who,
+        "Ihr müsst Euch in einem Haus befinden, um den Baum abzubauen."
+      );
+      return;
+    EndIf
+
+    If (!IsHouseOwner(house, who))
+      SendSysMessagePergon(who,
+        "Nur der Eigentümer des Hauses kann den Baum abbauen."
+      );
+      return;
+    EndIf
+  EndIf
+
+  var set_name := GetObjProperty(deed, "Set_Name");
+  var serial   := GetObjProperty(deed, "Set_Serial");
+  var tgt;
+
+  If (!set_name)
+    SendSysMessagePergon(who,
+      "Der Abbauplan ist ungültig! (enthält keinen Set-Namen)"
+    );
+    return;
+  EndIf
+
+  If (!serial)
+    SendSysMessagePergon(who,
+      "Wählt den Baumstamm des zu zerstörenden Weihnachtsbaumes aus."
+    );
+    tgt := Target(who, TGTOPT_NOCHECK_LOS);
+
+    // 0x7034 ersma hardcodet.. nur zur Sicherheit
+    If (!tgt || tgt.objtype != 0x7034)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      Return;
+    Else
+      serial := tgt.serial;
+    EndIf
+  EndIf
+
+  // var set := DestroySet(set_name, CInt(serial));
+  var set := DestroySet(CInt(serial));
+  If (set > 0)
+    SendSysMessagePergon(who, "Der Baum wurde zerstört.");
+    If (who.cmdlevel < CMDLEVEL_SEER)
+      Start_ScriptPergon("::misc/waitdestroyitem", deed);
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Der Baum konnte nicht zerstört werden!");
+  EndIf
+EndProgram

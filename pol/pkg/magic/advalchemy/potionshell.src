@@ -1,0 +1,10 @@
+include "drinkpotion";
+include "include/modifyskill";
+
+Program drink_blue(character, potion)
+    If (is_poison(potion))
+        do_poison(character, potion);
+    Else
+        empty_bottle(character, potion);
+    EndIf
+EndProgram

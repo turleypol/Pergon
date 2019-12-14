@@ -1,0 +1,218 @@
+//**************************************************************************************************
+// Script file activateartefacts.src
+//
+//  Skillscript mit dem man Zauberrollen und Artefakte aktivieren kann
+//
+//  29.09.2005 -  v0.1 - Seppel - bisher nur Zauberrollen aktivierbar
+//  2005-14.10 -  v0.5 - Seppel - jetzt auch Artefakte aktivierbar
+//
+//**************************************************************************************************
+
+use attributes;
+use cfgfile;
+use math;
+use os;
+use polsys;
+use uo;
+use vitals;
+include ":newmagic:spelldefs";
+include ":newspells:magicpergon";
+
+Program skill_activateartefacts(who)
+  If(GetObjProperty(who, "#inscription"));
+    // man kann nicht gleichzeitig Rollenschreiben und aktivieren
+    SendSysMessagepergon(who, "Soviele Arme habt ihr nicht!", "You only have 2 Arms!");
+    Return;
+  EndIf
+
+  SendSysMessagePergon(who, "Was wollt ihr aktivieren?");
+  Var item:= TargetThing(who);
+
+  If(!AccessiblePergon(who, item))
+    // nur erreichbare Rollen aktivierbar
+    SendSysMessagePergon(who, "Da kommt ihr nicht ran", "You cant reach this");
+    Return;
+  EndIf
+
+  If(GetObjProperty(item, "castable") == 0)           // inaktive Zauberrolle
+    SetObjProperty(who, "#inscription",1);
+    SendSysMessagePergon(who, "Ihr beginnt die Rollen zu aktivieren", "You begin to activate the scrolls");
+    Var x:= who.x;                                    // wenn man sich bewegt wird abgebrochen
+    Var y:= who.y;
+    While (ActivateScroll(who, item) && (x == who.x) && (y == who.y) && item);
+      SleepMS(6000);
+    EndWhile
+    SendSysMessagePergon(who, "Ihr beendet das Aktivieren der Zauberrollen", "You stop activating the scrolls");
+    EraseObjProperty(who, "#inscription");
+
+  ElseIf(GetObjProperty(item, "usable") == 0)         // inaktives Artefakt
+    SetObjProperty(who, "#inscription",1);
+    SendSysMessagePergon(who, "Ihr versucht das Artefakt zu aktivieren", "You try to activate the artefact");
+    ActivateArtefact(who, item);
+		EraseObjProperty(who, "#inscription");
+  ElseIf(GetObjProperty(item, "ArtefactBag") >= 1)    // für Artefaktbeutel die man wählen kann wenn man alles dort drin aktivieren will
+    SetObjProperty(who, "#inscription",1);
+    SendSysMessagePergon(who, "Ihr beginnt das Aktivieren der Artefakte", "You begin activating artefacts");
+    ForEach artefact in EnumerateItemsInContainer(item)
+    If(GetObjProperty(artefact, "usable") == 0)       // nur Artefakte können aktiviert werden, der Rest wird ignoriert
+      If(!ActivateArtefact(who, artefact) || (GetObjProperty(item, "ArtefactBag") <= 0))
+         break;
+      EndIf
+    EndIf
+    SetObjProperty(item, "ArtefactBag", GetObjProperty(item, "ArtefactBag") - 1);     // für jedes Item ein Ladung abziehen
+    EndForEach
+    EraseObjProperty(who, "#inscription");
+    SendSysMessagePergon(who, "Ihr beendet das Aktivieren der Artefakte", "You stop activating artefacts");
+  ElseIf(GetObjProperty(item, "ArtefactBag") <= 0)			// verbrauchte Artefaktbeutel sind zu nix mehr gut
+    SendSysMessagePergon(who, "Dieser Artefaktcontainer hat seine Magie für immer verbraucht", "This Artefactcontainer has exhausted ist magic forever");
+  ElseIf(GetObjProperty(item, "usable") == 1 || GetObjProperty(item,"castable") == 1)
+  	SendSysMessagePergon(who, "Das ist doch schon aktiviert", "This is already activated");
+  	
+  //ElseIf(GetObjProperty(item, "charges") <= 0)        // Gegenstand wiederaufladen
+  //  ReChargeArtefact(who, item);
+  
+  Else
+    SendSysMessagePergon(who, "Das könnt ihr nicht aktivieren" , "You can not activate this");
+  EndIf
+EndProgram
+
+
+
+Function ActivateScroll(who, scroll)
+
+  Var spellID:= GetSpellID(scroll);
+  Var scrollobjtype:= scroll.objtype;
+  Var spells:= ReadConfigFile("::spells");           // load spelldata
+  Var spell:=  FindConfigElem(spells, spellID);
+  Var difficulty:= spell.skill;
+  Var mana:= spell.mana;
+
+  Var color;                                         // Farbe der Rolle (Ele, Priester, Necro)
+  If (MIN_MAGE_CAST_ITEM <= scrollobjtype && scrollobjtype <= MAX_MAGE_CAST_ITEM)
+    color:=1818;
+  ElseIf (MIN_CLERIC_CAST_ITEM <= scrollobjtype && scrollobjtype <= MAX_CLERIC_CAST_ITEM)
+    color:=1151;
+  ElseIf (MIN_NECRO_CAST_ITEM <= scrollobjtype && scrollobjtype <= MAX_NECRO_CAST_ITEM)
+    color:=1109;
+  EndIf
+
+  spellID+= 1000;             // artefactID + 1000 damit die CheckReagsPergon weiss das es eine Rolle ist
+
+  If(!CheckReagsPergon(who, spellID))                // Reags checken
+    Return 0;
+  EndIf
+
+  spellID:= spellID - 1000;  // artefactID - 1000 damit die Check und Consumefunktionen auch zwischen Artefakt und Spell unterscheiden können
+
+  mana:= CheckManaPergon(who, spellID);
+  If(!mana)                                          // Mana testen
+    Return 0;
+  EndIf
+
+  ConsumeManaPergon(who, spellID, mana);             // Mana abziehen
+  ConsumeReagsPergon(who, spellID);                  // Reags abziehen
+
+                                                     // skillcheck mit skillgain wie bei der normalen Magie
+  If(!CheckSkillPergon(who, SKILLID_ARTEFAKTE_AKTIV, difficulty, 3*difficulty))
+    SendSysMessagepergon(who, "Ihr schafft es nicht die Rolle zu aktivieren und sie wird zerstört", "You arent able to activate the scroll and it is destroyed");
+    SubtractAmount(scroll,1);
+    PlaySoundEffect(who, SFX_55);
+    PlaySoundEffect(who, 0x1F9);
+    Return 1;
+  EndIf
+
+  Var castscroll:=GetItemDescriptor(CInt(scrollobjtype));
+  castscroll.cprops.insert("castable", 1);                            // Rolle "konfigurieren"
+  castscroll.color:=color;
+  CreateItemInBackpackPergon(who, castscroll, 1);      // neue Rolle erstellen
+
+  SubtractAmount(scroll,1);                                           // eine inaktive Rolle wird natürlich abgezogen
+  SendSysMessagePergon(who, "Ihr aktiviert erfolgreich eine Zauberrolle", "You activated one scroll successfull");
+  PerformAction(who, ANIM_CAST_AREA);
+  PlaySoundEffect(who, 0x216);
+  PlaySoundEffect(who, 0x24A);
+  Return 1;
+EndFunction
+
+
+Function ActivateArtefact(who, artefact)
+
+  Var artefactID:= GetObjProperty(artefact, "ArtefactID");    // ArtefaktID sollte durch Herstellung am Item sein
+  If (!artefactID)
+    SysLog("FEHLER: Artefakt hat keine ArtefactID!");
+    Return 0;
+  EndIf
+  Var i;
+
+  Var artefacts:= ReadConfigFile(":newinscription:artefacts");
+  Var artefactcfg:= FindConfigElem(artefacts, artefactID);
+  Var difficulty:= artefactcfg.skill;
+
+  artefactID+= 10000;             // artefactID + 10000 damit die Check und Consumefunktionen auch zwischen Artefakt und Spell unterscheiden können
+
+  Var artefactStack:= artefact.amount;        // ist es ein Stack?
+  Var whox:= who.x;                           // Position speichern um bei bewegen abbrechen zu können
+  Var whoy:= who.y;
+
+  For (i:= 1 ; i <= artefactStack ; i+= 1)                // bei Stacks mehrmals durchlaufen
+    PerformAction(who, ANIM_CAST_AREA);
+    SleepMS(3000);                                            // Aktivierungsdelay
+
+    If (!artefact || who.x <> whox || who.y <> whoy)          // wenn Stack plötzlich weg oder man sich bewegt wird abgebrochen
+      Return 0;
+    EndIf
+    
+    If (EnumerateItemsInContainer(artefact).size() > 0)
+      SendSysMessagePergon(who,
+        "Ihr könnt nur leere Container aktivieren!",
+        "You can only activate empty containers!"
+      );
+      Return 0;
+    EndIf
+
+    If (!CheckReagsPergon(who, artefactID))                   // Reags checken
+      Return 0;
+    EndIf
+
+    Var mana:= CheckManaPergon(who, artefactID);              // Mana checken
+    If (!mana)
+      Return 0;
+    EndIf
+
+    ConsumeReagsPergon(who, artefactID);                      // Reags verbauchen
+    ConsumeManaPergon(who, artefactID, mana);                 // Mana verbrauchen
+
+    If (CheckSkillPergon(who, SKILLID_ARTEFAKTE_AKTIV, difficulty, 3*difficulty))
+      // Cprops die auf neues Artefakt übernommen werden wenn vorhanden
+      Var supportedProps:= {"ArtefactBag", "Charges", "ArtefactID"};
+      Var activeArtefact:= GetItemDescriptor(CInt(artefact.objtype));
+      activeArtefact.cprops.insert("usable", 1); // Artefakt "konfigurieren"
+
+      Var cProps := GetObjPropertyNames(artefact);
+      ForEach cProp in cProps
+        If (cProp in supportedProps)
+          // cProp an neuen Artefakt festmachen
+          activeArtefact.cprops.insert(cProp, GetObjProperty(artefact, cProp));
+        EndIf
+      EndForEach
+
+      // neues Artefakt erstellen
+      CreateItemInBackpackPergon(who, activeArtefact, 1);
+      SendSysMessagePergon(who,
+        "Ihr aktiviert erfolgreich das Artefakt",
+        "You successfully activate the artefact"
+      );
+      PlaySoundEffect(who, 0x1ec);
+      PlaySoundEffect(who, 0x202);
+    Else
+      SendSysMessagePergon(who, "Ihr versagt beim aktivieren des Artefakts, es wird dabei zerstört!", "You fail to activate the artefact, and ist is destroyed!");
+      PlaySoundEffect(who, 0x201);
+      PlaySoundEffect(who, 0x080);
+    EndIf
+    PerformAction(who, ANIM_CAST_DIR);
+    SubtractAmount(artefact, 1);                              // inaktives Artefakt zerstören, egal ob erfolgreich aktiviert wurde oder nicht
+    SleepMS(3000);
+  EndFor
+
+  Return 1;
+EndFunction

@@ -1,0 +1,56 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Beamblocker
+//
+// sagt die Einstellungen an
+// 2007-05-02    -   Seppel
+
+use uo;
+include "include/effects";
+include "include/msgs";
+include "include/server";
+
+Program Beamblocker(who, block)
+  // nur Götter bekommen Infos
+  If (who.cmdlevel < CMDLEVEL_SEER);
+    return;
+  EndIf
+
+  // Infos ausgeben
+  var range := block.getprop("Range");
+  If (range > 20)
+    SendSysMessagePergon(who,
+      "Meine Reichweite ist zu gross eingestellt, korrigiere ..."
+    );
+    range := 20;
+    block.setprop("Range", range);
+  EndIf
+  SendSysMessagePergon(who, "Ich eine Reichweite von: "+range);
+
+  If (block.getprop("ThisFloorOnly"))
+    SendSysMessagePergon(who,
+      "Ich wirke nur auf dieser Etage"
+    );
+  EndIf
+
+  If (block.getprop("NoRune"))
+    SendSysMessagePergon(who,
+      "Herbeamen, Markieren und Tore stellen ist nicht erlaubt"
+    );
+  EndIf
+  If (block.getprop("NoEscape"))
+    SendSysMessagePergon(who, "Wegbeamen ist nicht erlaubt");
+  EndIf
+
+  // Anzeigen des Bereichs
+  VisualizeRange(struct{
+      // Nordwest-Ecke
+      x := block.x - range, y := block.y - range, z := block.z,
+      realm := block.realm
+    }, struct{
+      // Suedost-Ecke
+      x := block.x + range, y := block.y + range, z := block.z,
+      realm := block.realm
+  });
+EndProgram
+
+// vim: sw=2 sts=2

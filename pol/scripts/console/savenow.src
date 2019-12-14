@@ -1,0 +1,14 @@
+Use uo;
+use uo;
+
+Include "include/msgs";
+
+Program TextCMD_SaveNow()
+  BroadcastPergon("Saving Game State Now");
+  Print("Saving Game State Now");
+
+  SaveWorldState();
+
+  BroadcastPergon("Carry on, then");
+  Print("Carry on, then");
+EndProgram

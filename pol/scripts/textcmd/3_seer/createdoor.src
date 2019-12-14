@@ -1,0 +1,60 @@
+use uo;
+
+Include "include/itemnpc";
+Include "include/msgs";
+
+program textcmd_makedoor(character)
+
+Var metaldoors:={0x0675,0x0677,0x067d,0x067f,0x06c5,0x06c7,0x06cd,0x06cf};
+Var metalnames:={"Short SW out","Short SE out","Short ES Out","Short EN Out","Tall SW Out","Tall SE Out","Tall ES Out","Tall EN Out"};
+Var barreddoors:={0x0685,0x0687,0x068d,0x068f};
+Var barrednames:={"S to W out","S to E out","E to S Out","E to N Out"};
+Var wooddoors:={0x06a5,0x06a7,0x06ad,0x06af,0x06b5,0x06b7,0x06bd,0x06bf,0x06d5,0x06d7,0x06dd,0x06df,0x06e5,0x06e7,0x06ed,0x06ef,0x0695,0x0697,0x069d,0x069f};
+Var woodnames:={"SW out","SE out","ES Out","EN Out","SW Out","SE Out","ES Out","EN Out","SW out","SE out","ES Out","EN Out","SW Out","SE Out","ES Out","EN Out","ES Out","EN Out"};
+Var metalgates:={0x0828};
+Var gatenames:={"S to W Out"};
+Var chosen;
+Var chosennames;
+
+Var doortype:=CreateMenu("Waehle Tuertyp");
+Addmenuitem(doortype,metaldoors[1], "Metalltuer");
+Addmenuitem(doortype,barreddoors[1], "Barred Tueren");
+Addmenuitem(doortype,wooddoors[1], "Holztuer");
+Addmenuitem(doortype,metalgates[1], " Tueren");
+Var nameindex:=0;
+
+Var doorcat:=SelectMenuItem2(character,doortype);
+if (!doorcat)
+    SendSysMessagePergon(character,"Abbruch", "Abort");
+    return 1;
+endif
+
+case (doorcat.index)
+    1: chosen := metaldoors;
+        chosennames:=metalnames;
+    2: chosen := barreddoors;
+        chosennames:=barrednames;
+    3: chosen := wooddoors;
+        chosennames:=woodnames;
+    4: chosen := metalgates;
+        chosennames:=gatenames;
+endcase
+
+Var doormenu := CreateMenu("Waehlt eine Tuer");
+foreach door in chosen
+    nameindex+=1;
+    Addmenuitem(doormenu,door,chosennames[nameindex]);
+endforeach
+
+Var doorchosen:=SelectMenuItem2(character, doormenu);
+if (!doorchosen)
+    SendSysMessagePergon(character,"Abbruch", "Abort");
+    return 1;
+endif
+SendSysMessagePergon(character, "Wo soll die Tür erstellt werden?");
+Var place:=TargetCoordinates(character);
+
+Var created:=CreateItemAtLocationPergon(place.x, place.y, place.z,doorchosen.objtype,1,character.realm);
+created.decayat := 0;
+
+endprogram

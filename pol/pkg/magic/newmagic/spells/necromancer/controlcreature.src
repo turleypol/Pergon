@@ -1,0 +1,109 @@
+//**************************************************************************************************
+// Script file controlcreature.src
+//
+//    implements spell 313 <Control Creature> - "Beherrschung"
+//
+//	controls a creature (if it can be controlled by necro) - especially summoned ones
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use util;
+
+Include "../magicpergon";
+
+program cast_controlcreature (params)
+
+   Var caster;
+   Var caston;
+   Var control;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_NECRO_CONTROLCREATURE);
+   Var dur:=      spell.duration;
+   Var mindur:=   spell.durationmin;
+   Var maxdur:=   spell.durationmax;
+   Var range:=    spell.range;
+   Var minrange:= spell.rangemin;
+   Var maxrange:= spell.rangemax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_NECRO_CONTROLCREATURE);
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   if (caston.objtype in {0x190, 0x191})						// check if casted on human player or npc
+      SendSysMessagePergon(caster, "Menschen könnt Ihr nicht versklaven", "You cannot enslave humans");
+      if (!caston.isa(POLCLASS_NPC))
+         PrintTextAbovePrivatePergon(caston, caster.name + " versuchte gerade Euch magisch zu kontrollieren",
+         				     							caster.name + " just tried to control you by using magic", caston);
+      endif
+      return;
+   endif
+
+   range:= CInt(power*range/100);								// calc spell range according to casting power
+   if (minrange and minrange > range)
+      range:= minrange;
+   elseif (maxrange and maxrange < range)
+      range:= maxrange;
+   endif
+
+   if (Distance(caster, caston) > range)						// check distance to spelltarget
+      SendSysMessagePergon(caster, "Ihr müsst schon etwas näher heran, um etwas zu bewirken",
+      				   				  "You have to get a bit closer, to achieve something");
+      return;
+   endif
+
+   control:= CInt(GetObjProperty(caston, "necrocontrol"));			// check if creature is controllable
+
+   if (!control)
+      SendSysMessagePergon(caster, caston.name + " könnt Ihr Euch nicht unterwerfen",
+      				   				  "You cannot enslave " + caston.name);
+      return;
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+
+   dur:= CInt(power*dur/100.0);									// calc spell duration according to casting power
+   if (mindur and mindur > dur)
+      dur:= mindur;
+   elseif (maxdur and maxdur < dur)
+      dur:= maxdur;
+   endif
+
+   PlayStationaryEffect(caston.x, caston.y, caston.z, FX_CURSE_EFFECT, 10, 10, 0,caston.realm);
+   PlaySoundEffect(caston, SFX_1E5);
+   
+   SendSysMessagePergon(caster, "Ihr versklavt " + caston.name,
+                                 "You enslave " + caston.name);
+   PrintTextAbovePrivatePergon(caston, "Ich gehorche Euren Unterweisungen",
+    					  							"I obey your orders", caster);
+
+   SetObjProperty(caston, "master", caster.serial);						// set caster as master
+   SetObjProperty(caston, "RoamsFreeAt", ReadGameClock() + dur);		// set enticed time to duration
+   caston.script:= "enticedanimal";												// set controlscript
+
+   RestartScript(caston);  														// restart control script   
+
+endprogram

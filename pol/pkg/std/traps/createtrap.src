@@ -1,0 +1,58 @@
+// Autot: 		Peter -pJOTTR- Straube
+// Date:		26.02.2004
+//
+//
+//
+
+
+use os;
+use uo;
+use cfgfile;
+
+Include "include/poison";
+Include "traps";
+
+
+Program bownettrap(trapon)
+	Var cfg:=ReadConfigFile("create");
+	// Var buildersdex:=GetObjProperty(trapon, "buildersdex");
+	// Var buildersserial:=GetObjProperty(trapon, "buildersserial");
+	Var buildersskill:=GetObjProperty(trapon, "buildersskill");
+	// Var trap_strength:=GetObjProperty(trapon, "trap_strength");
+	Var trapid:=GetObjProperty(trapon, "trap");
+	Var trap:=FindConfigElem( cfg, trapid);            //Fallenwerte aus der traps.cfg auslesen
+	Var expiretime:=trapon.decayat;                    //lebensdauer der Fallen auslesen
+	Var traprange:=5;                                  // umkreis um die Falle darf nichts stehen
+	Var sleeptimetocheck:=5;                           //warten bis naechsten Respawn  ??5min (300sec.)??
+	Var where:=0;
+
+        //Bonus auf das grosse Netz
+  If(trapon.desc=="Fischernetz" OR trapon.desc=="zweiklappige_Kastenfalle")
+	 	sleeptimetocheck:=CInt(sleeptimetocheck*2/3);
+   	buildersskill:=CInt(buildersskill+10);
+  EndIf
+
+  // test auf Land- oder Wasserfalle
+  If(trap.type==TRAP_TYPE_SEEFALLEN)                 //wenn Wasserfalle
+  	where:="sea";
+  Else
+   	where:="land";
+  EndIf
+
+	Sleep(sleeptimetocheck); //warten bis zum ersten Viech  5min (300sec.)
+	While(expiretime > ReadGameClock())
+		Var mobiles:=ListMobilesNearLocationEx(trapon.x, trapon.y, trapon.z, traprange, LISTEX_FLAG_NORMAL,trapon.realm);
+		If (mobiles.size()>=1)
+			Sleep(sleeptimetocheck);
+		Else
+			chooseaviech(trapon, "create", buildersskill, where,0);
+		EndIf
+
+		//falls die Falle abgebaut wurde soll auch das Script aufhoeren.
+		If(!trapon)
+			return;
+		EndIf
+		Sleep(sleeptimetocheck);
+	EndWhile
+  DestroyItem(trapon);
+EndProgram

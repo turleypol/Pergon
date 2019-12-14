@@ -1,0 +1,137 @@
+///////////////////////////////////////////////////////////////////////////
+// ServerStatus PacketHook -
+// Support fuer UO Gateway ServerStatus und verwandte Spielereien
+//
+// Author: Shinigami
+//
+// Modifications:
+// 2004/07/13 Shinigami: Los gehts
+// 2004/07/18 Shinigami: Nach ewigen Tests siehts erstmal gut aus
+
+///////////////////////////////////////////////////////////////////////////
+// ToDo:
+// Der Hook von 0x82 ist eigentlich unsauber... mal hoffen, dass die Core
+// keinen Schaden nimmt *g*
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use file;
+use uo;
+include "include/onlinesearch";
+include "include/pergoninfos";
+include "include/server";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program PacketHook()
+  SysLog("ServerStatus PacketHook aktiviert...");
+  return (1);
+EndProgram
+
+Const CORE_IGNORE := 1;
+Const CORE_OK     := 0;
+
+// Normales Einloggen oder UO Gateway ServerStatus-Abfrage
+Const DEBUG_COUNTER := 1;
+Const GPROP_COUNTER1 := "#HookCounter_AccountLoginRequest";
+Exported Function AccountLoginRequest(who, ByRef packet)
+  // Hinweis:
+  //   Der Einloggprozess laeuft vollständig Critical ab, d.h. es können
+  //   sich _nie_ zwei Chars zeitgleich einloggen.
+  //   Deshalb ist keinerlei Abhaengigkeitsbetrachtung noetig!
+  If (DEBUG_COUNTER)
+    var counter := GetGlobalProperty(GPROP_COUNTER1);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER1, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER1, 1);
+    EndIf
+  EndIf
+
+  // Status-Abfrage (Login & Passwort = 0x255 0x0) ?
+  If ((packet.getint16(1)==65280) And (packet.getint16(31)==65280))
+	var pkt:=CreatePacket(0x82,MSGLEN_VARIABLE);
+	var serverinfos := GetServerInfos();
+    pkt.setsize(Len(serverinfos)+4);
+    pkt.setstring(3, serverinfos, 1);
+	pkt.sendpacket(who);
+    return CORE_IGNORE;
+  Else
+
+    var login  := packet.GetString( 1, 30);
+    var passwd := packet.GetString(31, 30);
+
+    var account := FindAccount(login);
+    If (account and !account.checkpassword(passwd))
+      var counter := 1 + CInt(account.getprop(LOG_LOGINFAIL));
+      account.setprop(LOG_LOGINFAIL, counter);
+      // syslog("Failed logins of "+login+" increased to "+counter);
+    EndIf
+  EndIf
+
+  return CORE_OK; // Pol soll weitermachen
+
+  // Compilerwarnung unterdruecken
+  who := who;
+EndFunction
+
+// Normaler Einloggfehler oder UO Gateway ServerStatus-Abfrage
+Const GPROP_COUNTER2 := "#HookCounter_AccountLoginFailed";
+Exported Function AccountLoginFailed(who, ByRef packet)
+  // Hinweis:
+  //   Der Einloggprozess laeuft vollständig Critical ab, d.h. es können
+  //   sich _nie_ zwei Chars zeitgleich einloggen.
+  //   Deshalb ist keinerlei Abhaengigkeitsbetrachtung noetig!
+  If (DEBUG_COUNTER)
+    var counter := GetGlobalProperty(GPROP_COUNTER2);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER2, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER2, 1);
+    EndIf
+  EndIf
+
+  If (GetGlobalProperty("#GetServerStatus")) // Status-Abfrage?
+    var serverinfos := GetServerInfos();
+    packet.setsize(Len(serverinfos)+4);
+    packet.setstring(3, serverinfos, 1);
+
+    SysLog("HINWEIS: Abfrage vom ServerStatus ["+serverinfos+"]");
+  EndIf
+
+  return CORE_OK; // Pol soll weitermachen (ggf. mit veraenderten Daten)
+  // Compilerwarnung unterdruecken
+  who := who;
+EndFunction
+
+
+exported Function UOGateway(connection, ByRef packet)
+	If ((packet.getint8(2)==0x4) And (packet.getint8(3)==0xff))
+		var status_packet := CreatePacket(0x50, MSGLEN_VARIABLE); // 0x50 = 'P'
+		status_packet.SetString(1, GetConnectUOStatus(),1);
+		status_packet.SendPacket(connection);
+		return CORE_IGNORE;
+	EndIf
+	SysLog("FEHLER: ungueltiges uogateway pkt: {}".format(packet));
+	return CORE_IGNORE;
+EndFunction
+
+
+
+// ConnectUO expects: Name Age Clients Items Chars Mem
+function GetConnectUOStatus()
+	var core := PolCore();
+	return "OL, Name=Eine Welt namens Pergon, Age={}, Clients={}, Items={}, Chars={}, Mem={}K".format(
+	          CInt(PolCore().uptime/3600),
+	          (EnumerateOnlineCharacters().Size()+1),
+	          core.itemcount,
+	          core.mobilecount,
+	          core.memory_usage);
+endfunction
+
+
+
+// vim: sw=2 sts=2

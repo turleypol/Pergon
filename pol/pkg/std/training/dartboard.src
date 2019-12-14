@@ -1,0 +1,156 @@
+/////////////////////////////////////////////////////////////////////////
+//
+//   Dartboard - Messerwerfen
+//
+//   Modifications:
+//     17.04.2002 TerraX: First Write
+//     01.09.2003 Fraggulus: Korrektur bzgl. Container-Status, Wurfeffekt u.ae.
+//                           Grafik aendert sich je nach Inhalt des Boards
+//
+/////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+use cfgfile;
+use os;
+use uo;
+use util;
+include "include/modifyskill";
+
+///////////////
+// Konstanten/Vars
+///////////////
+
+Const AR_der_Scheibe := 35;
+Var   UObject_WURFWAFFEN := {0xf51, 0xf52};
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Playing_Dart(who, dartboard)
+  If (!CheckLineOfSight(who, dartboard))
+    SendSysMessagePergon(who, "Ihr habt keine freie Wurfbahn.");
+    Return;
+  EndIf
+
+  Var used_knives:=GetObjProperty(dartboard, "knives");
+  If (!used_knives)
+    used_knives:=0;
+  EndIf
+
+  If (Distance(who, dartboard)<=1)
+    GrabAmmo(who, dartboard, used_knives);
+  Else
+    Var itemdesc:=ReadConfigFile("::itemdesc");
+    If (itemdesc)
+      Var weapondef:=who.weapon.objtype;
+      If (weapondef in UObject_WURFWAFFEN)
+        If (Distance(who, dartboard)<=2)
+          SendSysMessagePergon(who, "Der Mindestwurfabstand beträgt 3 Felder.");
+        Else
+          Der_Wurf(who, dartboard, used_knives, itemdesc[weapondef]);
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Ihr müsst Einen Dolch in die Hand nehmen.");
+      EndIf
+    EndIf
+  EndIf
+EndProgram
+
+///////////////////////////////////////////////////
+// GrabAmmo - Munition aus dem Dartboard ziehen
+///////////////////////////////////////////////////
+
+Function GrabAmmo(who, dartboard, used_knives)
+
+  Var Messer:=0;
+
+  If (used_knives)
+
+    ForEach item in EnumerateItemsInContainer(dartboard)
+      If (GetObjProperty(item, "owner")==who.serial)         // auf diese Weise bekommt jeder NUR seine Waffen zurueck
+        MoveItemToContainer(item, who.backpack);
+        Messer += 1;
+      EndIf
+    EndForEach
+
+    If(Messer)
+      SendSysMessagePergon(who, "Ihr zieht "+Endung(Messer, "Dolch", "Dolche")+" aus der Zielscheibe.");
+      used_knives := used_knives-Messer;
+      SetObjProperty(dartboard, "knives",used_knives);
+    Else
+      SendSysMessagePergon(who, "Es steckt keiner Eurer Dolche in der Zielscheibe.");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Es steckt keine Waffe in der Zielscheibe.");
+  EndIf
+
+  // 'Leeres Board'-Grafik zuruecksetzen
+  If (Len(EnumerateItemsInContainer(dartboard)) == 0)
+    dartboard.graphic := dartboard.objtype;
+    EraseObjProperty(dartboard, "knives");
+  EndIf
+EndFunction
+
+//////////////////////////////////////
+// Der_Wurf - Den Dolch werfen
+//////////////////////////////////////
+
+Function Der_Wurf(who, dartboard, used_knives, weapondef)
+
+  Var Distanz := Distance(who, dartboard);
+  Var AlkLevel := GetObjProperty(who, "level_alcohol");
+
+  Var qual := 1+who.weapon.quality/8.0;
+  Var Waffenschaden := RandomDiceRoll(weapondef.damage) * qual;
+
+  // Berechnung der reverenz Trefferwerts bei Entfernung 10 Felder, DEX=95, STR=80,
+  // Bogenschiessen=80%, Schwertkampf=80%, Fechten=80%, Alkohollevel=4
+
+  Var MaxSchaden:= GetItemDescriptor(who.weapon.objtype).MaxDamage;
+  Var MaxTreffer:=CDbl(((1.5*80+3*95) + (80+80+80/2.0)/10.0)*MaxSchaden/40.0 * 16  - AR_der_Scheibe);
+
+  PerformAction(who, weapondef.anim);
+
+  SetObjProperty(who.weapon, "owner", who.serial);    //soll sicherstellen, das jeder NUR seine Waffen wiederbekommt
+  MoveItemToContainer(who.weapon, dartboard);
+  used_knives += 1;
+  SetObjProperty(dartboard, "knives", used_knives);
+
+  PlayMovingEffectXYZ(who.x, who.y, who.z+9, dartboard.x, dartboard.y, dartboard.z+5, weapondef.graphic, 10, 0,who.realm);
+  SleepMs(650);
+  PlaySoundEffect(who, 0x225);
+
+  // 'Zielscheibe mit Messer'-Grafik setzen
+  If (dartboard.graphic == dartboard.objtype)
+    dartboard.graphic := dartboard.objtype + 4;
+  EndIf
+
+  // Berechnung des aktuellen Trefferwerts
+  Var Schuss  := CDbl(((3*GetDexPergon(who) + 1.5*GetStrPergon(who))+(GetSkillPergon(who, SKILLID_BOGENSCHIESSEN)/2.0 + GetSkillPergon(who, SKILLID_SCHWERTKAMPF) + GetSkillPergon(who, SKILLID_FECHTKUNST))/10.0) * Waffenschaden);
+  Var Treffer := CDbl((Schuss/Distanz/AlkLevel) * 16 - AR_der_Scheibe);
+
+  If (Treffer > 0)
+    PlaySoundEffect(who, weapondef.hitsound);
+  EndIf
+
+  If (Treffer > 108*MaxTreffer/60.0)
+    PrintTextAbovePergon(who, who, "10 Punkte! Glückwunsch!", "10 Points! Congrats!");
+  ElseIf (Treffer > 104*MaxTreffer/60.0) PrintTextAbovePergon(who, who, "9 Punkte", "9 Points");
+  ElseIf (Treffer >  98*MaxTreffer/60.0) PrintTextAbovePergon(who, who, "8 Punkte", "8 Points");
+  ElseIf (Treffer >  90*MaxTreffer/60.0) PrintTextAbovePergon(who, who, "7 Punkte", "7 Points");
+  ElseIf (Treffer >  80*MaxTreffer/60.0) PrintTextAbovePergon(who, who, "6 Punkte", "6 Points");
+  ElseIf (Treffer >  68*MaxTreffer/60.0) PrintTextAbovePergon(who, who, "5 Punkte", "5 Points");
+  ElseIf (Treffer >  54*MaxTreffer/60.0) PrintTextAbovePergon(who, who, "4 Punkte", "4 Points");
+  ElseIf (Treffer >  38*MaxTreffer/60.0) PrintTextAbovePergon(who, who, "3 Punkte", "3 Points");
+  ElseIf (Treffer >  20*MaxTreffer/60.0) PrintTextAbovePergon(who, who, "2 Punkte", "2 Points");
+  ElseIf (Treffer >   0*MaxTreffer/60.0) PrintTextAbovePergon(who, who, "1 Punkt",  "1 Point");
+  Else
+    PrintTextAbovePergon(who, who, "Der ging daneben.", "You missed.");
+    PlaySoundEffect(who, weapondef.misssound);
+  EndIf
+
+EndFunction

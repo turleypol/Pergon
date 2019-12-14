@@ -1,0 +1,104 @@
+//**************************************************************************************************
+// Script file archcure.src
+//
+//    implements spell 206 <Arch Cure> - "Erzgegengift"
+//
+//	cures poison in several spelltargets simultaneously (lowers poison level)
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 01.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//  						20.09.2005 Seppel - Spamm bei nicht vergifteteten entfernt
+//
+//**************************************************************************************************
+
+
+Include "../magicpergon";
+Include "include/poison";
+
+program cast_archcure (params)
+
+   Var caster;
+   Var where;
+   Var beneficiaries;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_ARCHCURE);
+   Var amnt:=     spell.primary;
+   Var minamnt:=  spell.primarymin;
+   Var maxamnt:=  spell.primarymax;
+   Var range:=    spell.range;
+   Var minrange:= spell.rangemin;
+   Var maxrange:= spell.rangemax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      where:=struct{x,y,z,realm};
+      where.x:=params[4].x;
+      where.y:=params[4].y;
+      where.z:=params[4].z;
+      where.realm:=params[4].realm;
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      where:=  TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_ARCHCURE);
+      where:= TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, where);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   amnt:=  CInt(power*amnt/100.0);							// calc spell range and spelleffect
+   range:= CInt(power*range/100.0); 						// according to casting power
+
+   if (minamnt and minamnt > amnt)
+      amnt:= minamnt;
+   elseif (maxamnt and maxamnt < amnt)
+      amnt:= maxamnt;
+   endif
+   if (minrange and minrange > range)
+      range:= minrange;
+   elseif (maxrange and maxrange < range)
+      range:= maxrange;
+   endif
+
+   beneficiaries:= ListMobilesNearLocation(where.x, where.y, where.z, range,where.realm);		// get targets
+
+   Var poisonlevel;
+
+   if (beneficiaries)
+      foreach beneficiary in beneficiaries				// for each spelltarget
+
+         PlaySoundEffect(beneficiary, SFX_SPELL_CURE);
+         PlayObjectCenteredEffect(beneficiary, FX_BLESS_EFFECT, 10, 10);
+					
+				 Var origpoison:= GetPoisonLevel(beneficiary);				 
+         poisonlevel:= AddPoisonLevel(beneficiary, -amnt); 		// decrease poison level					
+					
+         if (poisonlevel > 0)												// check if poison is (not) removed
+            SendSysMessagePergon(caster, "Ihr lindert die Vergiftung von " + beneficiary.name);
+            PrintTextAbovePrivatePergon(beneficiary, caster.name + " hat Eure Vergiftung gelindert",
+           					    								  caster.name + " weakened the poison flowing through you", beneficiary);
+         elseif (origpoison > 0)
+            SendSysMessagePergon(caster, beneficiary.name + " wurde durch Euch vom Gift befreit");
+            PrintTextAbovePrivatePergon(beneficiary, caster.name + " hat Euch vom Gift befreit",
+																	  caster.name + " released you from the poison", beneficiary);
+         endif
+
+      endforeach
+   endif
+
+endprogram

@@ -1,0 +1,88 @@
+// Modification:
+//   2005/06/08 Turley: Scriptpfad passte nicht
+
+//////////////
+// Libraries
+//////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonutil";
+Include "include/msgs";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program WeatherSystem(who, pweather)
+  // Compilerwarnung unterdruecken
+  who := who;
+
+  Var value:=SplitWords(pweather);
+
+  SetGlobalProperty("PresentWeather", CInt(value[1]));
+
+  Case (CInt(value[1]))
+    0: SetSunny();
+    1: SetOvercast();
+    2: SetCloudy();
+    3: SetRain(CInt(value[2]), CInt(value[3]), CInt(value[4]), CInt(value[5]));
+    4: SetThunder();
+  EndCase
+EndProgram
+
+/////////////////////////////////////////////
+// SetSunny - Kein Woelkchen weit und breit
+/////////////////////////////////////////////
+
+Function SetSunny()
+  BroadcastPergon("Kein Wölkchen weit und breit...");
+EndFunction
+
+/////////////////////////////////////////
+// SetOvercast - Der Himmel ist bedeckt
+/////////////////////////////////////////
+
+Function SetOvercast()
+  BroadcastPergon("Der Himmel ist bedeckt...");
+EndFunction
+
+//////////////////////////////////////////////////////////////
+// SetCloudy - Dunkle Wolken am Himmel, aber es regnet nicht
+//////////////////////////////////////////////////////////////
+
+Function SetCloudy()
+  BroadcastPergon("Dunkle Wolken am Himmel, aber es regnet nicht...");
+  SetRegionWeatherLevel("Britannia_Background", 0, 0, 1, -1);
+EndFunction
+
+///////////////////////////////////////////////
+// SetRain - Ein gewaltiger Schauer setzt ein
+///////////////////////////////////////////////
+
+Function SetRain(a, b, c, d)
+  BroadcastPergon("Ein gewaltiger Schauer setzt ein...");
+
+  SysLog(a+" "+b+" "+c+" "+d);
+
+ // SetRegionWeatherLevel("Britannia_Background", 0, b, c, d);
+  SetRegionWeatherLevel("Britannia_Background", 1, 60, 0, -1);
+ // SetRegionWeatherLevel("Britannia_Background", a, b, c, d);
+
+ // Start_ScriptPergon("pkg/opt/daymoonweather/snowrain", 30);
+EndFunction
+
+///////////////////////////////////////////////
+// SetThunder - Ein Sturm ueberzieht das Land
+///////////////////////////////////////////////
+
+Function SetThunder()
+  BroadcastPergon("Ein Sturm überzieht das Land...");
+  Start_ScriptPergon(":daymoonweather:snowrain", 30);
+  Start_ScriptPergon(":daymoonweather:lightning");
+EndFunction

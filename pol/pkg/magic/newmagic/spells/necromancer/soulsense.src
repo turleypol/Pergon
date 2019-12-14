@@ -1,0 +1,64 @@
+//**************************************************************************************************
+// Script file soulsense.src
+//
+//    implements spell 317 <Soul Sense> - "Seelen Spueren"
+//
+//	caster can see ghosts (not hear them)
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use os;
+
+Include "../magicpergon";
+Include "include/spellcheck";
+
+program cast_soulsense (params)
+
+   Var caster;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_NECRO_SOULSENSE);
+   Var dur:=    spell.duration;
+   Var mindur:= spell.durationmin;
+   Var maxdur:= spell.durationmax;
+   Var power;
+
+   if (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_NECRO_SOULSENSE);
+   endif
+
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   dur:= CInt(power*dur/100.0);						// calc spell duration according to casting power
+   if (mindur and mindur > dur)
+      dur:= mindur;
+   elseif (maxdur and maxdur < dur)
+      dur:= maxdur;
+   endif
+
+   PlaySoundEffectPrivate(caster, SFX_SKILL_SPIRITSPEAK, caster);
+   PrintTextAbovePrivatePergon(caster, "Ihr seht die körperlosen Seelen", "You can see the wandering souls", caster);
+
+   GrantPrivilege(caster, "seeghosts");					// grant privilege to caster (to see ghosts)
+   if (!caster.enable("seeghosts"))		        			// activate privilege
+      Syslog("WARNUNG: Spell Soulseek - Cannot activate granted privilege seeghosts");
+   endif
+
+   //MoveObjectToLocation(caster, caster.x, caster.y, caster.z, caster.realm);		  // damit man auch Geister sieht die beim casten in Sichtweite stehen
+
+   Var tag:= array;
+
+   tag[1]:= ReadGameClock() + dur;
+   tag[2]:= ReadMilliSecondClock();
+
+   SetObjProperty(caster, "spell_soulseek", tag);		// tag spelltarget for spellchecker
+   SendSpellWaiter(caster, "spell_soulseek", dur, tag[2], caster);
+
+endprogram

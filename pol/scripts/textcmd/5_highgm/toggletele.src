@@ -1,0 +1,56 @@
+///////////////////////////////////////////////////////////////////////////
+// Zeigt und versteckt Teleporter
+
+// 06.06.2005 Fraggulus:
+// unnuetzen Eintrag und Moeglichkeit, Spawnrunen aufzudecken, entfernt
+//
+// 19.10.2005 Fraggulus: Zusammenlegung von .HideTele und .ShowTele
+// sowie Umbenennung in .ToggleTele
+//
+// 02.07.2006 Fox: die Teleporter haben beim erstellen noch das
+// invisible Flag, da unnötig wird das zurück gesetzt
+
+use uo;
+include "include/msgs";
+
+Program ToggleTele(me, param)
+	If (param["?"])
+		SendSysMessagePergon(me, "Usage: .ToggleTele <range> <invis>");
+		return;
+	EndIf
+	
+  var parms := SplitWords(param);
+  var range := CInt(parms[1]);
+  var invis := CInt(parms[2]);
+  
+  If (!range or range <= 0)
+    range := 5;
+  EndIf
+
+  ForEach thing in ListItemsNearLocation(me.x, me.y, me.z, range, me.realm)
+    SleepMs(2);
+    // nur auf bestimmte Teleporter wirken
+    If (thing.objtype in array{0x6200, 0x6201, 0x6203})
+      If (thing.graphic == 1 or param["show"])
+        // "entstecken"
+        thing.graphic := 0x1fd4;
+        If (!invis)
+          thing.invisible := 0;
+          thing.color := GetObjProperty(thing, "color");
+          thing.eraseprop("color");
+          PrintTextAbovePrivatePergon(thing, "Tor sichtbar aufgedeckt", "", me);
+        Else
+          thing.invisible := 1;
+          thing.setprop("color", thing.color);
+          thing.color := 2306;
+          PrintTextAbovePrivatePergon(thing, "Tor unsichtbar aufgedeckt", "", me);
+        EndIf
+      Else
+        // verstecken
+        thing.graphic := 1;
+      EndIf
+    EndIf
+  EndForEach
+EndProgram
+
+// vim: sw=2 sts=2

@@ -1,0 +1,136 @@
+//**************************************************************************************************
+// Script file resistfire.src
+//
+//    implements spell 123 <Resist Fire> - "Feuerresistenz"
+//
+//	raises spelltargets resistance against fire
+//	slightly lowers spelltargets resistance against water
+//		 [ Resisted (Magic) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 28.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+
+Include "include/spellcheck";
+Include "../magicpergon";
+
+program cast_resistfire (params)
+
+   Var caster;
+   Var caston;
+   Var fireres;
+   Var waterres;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_MAGE_RESISTFIRE);
+   Var difficulty:= spell.skill;
+   Var resist:=  spell.resist;
+   Var resf:=    spell.primary;
+   Var minresf:= spell.primarymin;
+   Var maxresf:= spell.primarymax;
+   Var resw;
+   Var dur:=     spell.duration;
+   Var mindur:=  spell.durationmin;
+   Var maxdur:=  spell.durationmax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_MAGE_RESISTFIRE);
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   PlaySoundEffect(caston, SFX_1EA);
+   PlayObjectCenteredEffect(caston, FX_SPARK_EFFECT, 10, 10);
+
+   if (GetObjProperty(caston, "spell_resist"))		// check if spelltarget already has elemental resistance
+																	// (only one enchantment at a time)
+      Var restypeger;
+      Var restypeeng;
+      case (GetObjProperty(caston, "spell_resist")[2])
+         "fire":	restypeger:= "Feuerangriffe";
+         			restypeeng:= "Fire Attacs";
+         "water":	restypeger:= "Wasserangriffe";
+         			restypeeng:= "Water Attacs";
+         "air":	restypeger:= "Luftangriffe";
+         			restypeeng:= "Air Attacs";
+         "earth":	restypeger:= "Erdangriffe";
+         			restypeeng:= "Earth Attacs";
+         default:	restypeger:= "magische Angriffe";
+         			restypeeng:= "Magical Attacs";
+      endcase
+
+      SendSysMessagePergon(caster, "Euer Ziel ist bereits gegen " + restypeger + " geschützt",
+                                   "Your target is already protected against " + restypeeng);
+      return;
+   endif
+
+   if (resist)					// calc spelleffect according to spelltargets magic resistance and casting power
+      resf:= CInt(Magicresistance(caston, difficulty, resist, power*resf/100.0, 1));
+      dur:=  CInt(Magicresistance(caston, difficulty, resist, power*dur/100.0, 0));
+   else
+      resf:= CInt(power*resf/100.0);
+      dur:=  CInt(power*dur/100.0);
+   endif
+
+   if (minresf and minresf > resf)
+      resf:= minresf;
+   elseif (maxresf and maxresf < resf)
+      resf:= maxresf;
+   endif
+   resw:= CInt(resf / 2);   					// get resulting loss of water resistance
+   if (mindur and mindur > dur)
+      dur:= mindur;
+   elseif (maxdur and maxdur < dur)
+      dur:= maxdur;
+   endif
+
+   Set_Critical(1);
+   fireres:=  CInt(GetObjProperty(caston, "resist_fire"));		// get resistances of spelltarget
+   waterres:= CInt(GetObjProperty(caston, "resist_water"));
+   SetObjProperty(caston, "resist_fire", fireres + resf);		// set new resistances
+   SetObjProperty(caston, "resist_water", waterres - resw);
+   Set_Critical(0);
+   SetCastPowerProperty(caston,"Magie",CInt(resf/2),"","Fire",0);
+   SetCastPowerProperty(caston,"Magie",CInt(resw/4),"","Water",1);
+   RefreshSpellPowerGump(caston);
+
+   var tag:= array;
+
+   tag[1]:= ReadGameClock() + dur;
+   tag[2]:= "fire";
+   tag[3]:= resf;
+   tag[6]:= ReadMilliSecondClock();
+
+   SetObjProperty(caston, "spell_resist", tag);						// tag spelltarget for spellchecker
+   SendSpellWaiter(caston, "spell_resist", dur, tag[6], caston);
+
+   if (!caston.isa(POLCLASS_NPC))											// spell has been casted on Player
+      PrintTextAbovePrivatePergon(caston, "Ihr spürt, wie Ihr unempfindlicher gegen Feuer werdet",
+                                          "You feel yourself becoming less vulnerable to Fire", caston);
+       SendStatus(caston);	 															//Update Statuswindow
+   endif
+
+endprogram

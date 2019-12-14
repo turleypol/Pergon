@@ -1,0 +1,147 @@
+///////////////////////////////////////////////////////////////////////
+//
+//   ACHTUNG!!!   Dieses Teil anpassen und nur bei Bedarf ausfuehren
+//
+///////////////////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+use storage;
+
+Include "include/utility";
+Include ":spawnnet_new:spawnnet";
+Include "include/objtype";
+Include "include/modifyskill";
+include ":sqlmanager:sqlmanager";
+
+Var number:=0;
+Var gl_reich:=0;
+Var gl_arm:=0;
+
+Program npcres(you)
+  //Set_Critical/(0);
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  SysLog("RestartSpecial gestartet von "+you.name);
+
+ // Var x, y, z;
+ // For (x:=6144; x>16; x:=x-32)
+ //   SendSysMessagePergon(you, "Special NPCs, X="+x+" ("+number+")");
+ //   For (y:=16; y<4096; y:=y+32)
+ //     For (z:=-60; z<=60; z:=z+30)
+ //       ForEach npc in ListMobilesNearLocation(x, y, z, 32)
+ //        // RestockMoney(npc, 100000);
+ //        // If (npc.script=="townperson")
+ //        // If (npc.serial<20)
+ //        //   Was_machen(NPC);
+ //        //   SendSysMessagePergon(you, "X="+x+" Y="+y+" Z="+z+" ("+npc.serial+")");
+ //        //   number:=number+1;
+ //        // EndIf
+ //       EndForEach
+ //     EndFor
+ //   EndFor
+ // EndFor
+
+  //Tamed_SpawnNet_Bug();
+  Restart_SQL();
+
+  SysLog("RestartSpecial (von "+you.name+") beendet");
+EndProgram
+
+Function Restart_SQL()
+  Var manager := GetProcess(GetGlobalProperty(PID_SQLMANAGER));
+  If (manager)
+    manager.kill();
+  EndIf
+  Unload_Scripts();
+  Start_ScriptPergon(":sqlmanager:sqlmanager");
+EndFunction
+Function Tamed_SpawnNet_Bug()
+  Var npctest:=CreateNpcFromTemplate("bankerm", 5445, 1153, 0,0,REALM_BRITANNIA);
+  Var endnum:=npctest.serial;
+
+  RevokePrivilege(npctest, "invul");
+  SetObjProperty(npctest, "guardkill", 1);
+  KillMobile(npctest, "TextCMD RestartSpecial");
+
+  SysLog("Max. Anzahl = "+endnum);
+
+  Var getamed:=0;
+  Var respawned:=0;
+  Var i;
+  For (i:=endnum+10; i>=0; i:=i-1)
+    Var npc:=SystemFindObjectBySerial(i, SYSFIND_SEARCH_OFFLINE_MOBILES);
+    If ((npc) And (npc.script in {"enticedanimal", "tamed"}))
+      If (SpawnNet_Clear(npc))
+        respawned:=respawned+1;
+      EndIf
+      getamed:=getamed+1;
+    EndIf
+  EndFor
+
+  SysLog("Respawned = "+respawned+" / Getamed = "+getamed);
+EndFunction
+
+Function RestockMoney(npc, value)
+  Var consume:=value;
+
+  Var storage:=FindStorageArea(STORAGE_MERCHANT);
+  If (storage)
+    Var inv_fs:=Find_or_Create_Item(storage, npc.serial+" 1C", 0xe7c);
+    If (inv_fs)
+      Var item;
+      ForEach item In EnumerateItemsInContainer(inv_fs)
+        If (item.objtype==UOBJ_GOLD_COIN)
+          SysLog("Money "+npc.serial+" = "+GetAmount(item));
+          consume:=consume-GetAmount(item);
+        EndIf
+      EndForEach
+     // CreateItemInInventoryPergon(inv_fs, UOBJ_GOLD_COIN, consume);
+    EndIf
+  EndIf
+EndFunction
+
+Function Was_machen(Me)
+  Var old_title:=SplitWords(Me.name);
+  Var rich;
+
+  If (old_title[2])
+    Case (old_title[3])
+      "Buerger"     : rich:=1;
+      "Buergerin"   : rich:=1;
+      "Bauer"       : rich:=1;
+      "Bauerin"     : rich:=1;
+      "Rumtreiber"  : rich:=0;
+      "Rumtreiberin": rich:=0;
+      "Trinker"     : rich:=0;
+      "Trinkerin"   : rich:=0;
+      "Zigeuner"    : rich:=0;
+      "Zigeunerin"  : rich:=0;
+      "Einwohner"   : rich:=1;
+      "Einwohnerin" : rich:=1;
+      "Umziehende"  : rich:=0;
+      "Umziehende"  : rich:=0;
+      "Vagabund"    : rich:=0;
+      "Vagabundin"  : rich:=0;
+      "Arbeiter"    : rich:=1;
+      "Arbeiterin"  : rich:=1;
+    EndCase
+  Else
+    rich:=0;
+  EndIf
+
+  Var Equipt:=GetObjProperty(Me, "Equipt");
+  Var Pos:=Find(Equipt, "_", 1);
+  If (Pos>0)
+    Equipt:=Equipt[1, Pos-1];
+  EndIf
+
+  If (rich=1)
+    SetObjProperty(Me, "Equipt", Equipt+"_rich");
+    Me.script:="noble";
+    gl_reich:=gl_reich+1;
+  Else
+    SetObjProperty(Me, "Equipt", Equipt+"_poor");
+    gl_arm:=gl_arm+1;
+  EndIf
+EndFunction

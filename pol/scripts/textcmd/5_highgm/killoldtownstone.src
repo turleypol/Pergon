@@ -1,0 +1,91 @@
+use os;
+use uo;
+use util;
+include ":townstone_new:tstone_new_const";
+include "include/clock";
+include "include/modifyskill"; // für CMDLEVEL_SEER
+include "include/msgs";
+
+// TODO:
+// ERLEDIGT:
+// -bei dict nicht () benutzen sondern []
+// -Er createt jetz den StadtStein
+// -Fuegt neue Staedte hinzu
+// -Die Buerger in neuen Stadtstein aufnehmen (in BListe)
+// -Namenszusatz muss entfernt werden und neu hinzugegefuegt werden.
+
+Program TextCMD_KillOldTownstone(who)
+    SysLog("Buergeruebernahme gestartet");
+    Var AnzahlSteine := 0; // Damit die neuen Steine nicht aufeinander erzeugt werden.
+    Var Townlist :=dictionary;
+    ForEach accountname in ListAccounts();
+        // SysLog("Townliste - Anfang " + Townlist + ""); // brauch man nich wirklich zeigt nur die Townlist an
+        Var account:=FindAccount(accountname);
+        If (account)
+            SysLog("Account: '"+accountname+"'");
+            Var charnr;
+            For (charnr:=1; charnr<=5; charnr:=charnr+1) 
+                Var char:=account.getcharacter(charnr);
+                If (char && char.cmdlevel < CMDLEVEL_SEER)
+                    //jetz ma CPROP Town checken
+                    Var Town:=GetObjProperty(char, "Town");
+                    SysLog("  "+char.name+" ("+accountname+") - "+char.cmdlevel+" Stadt: "+Town+ "");   
+                    If (!Town)
+                        SysLog("Char: "  +char.name+" gehhoert zu keiner Stadt");
+                    Else
+                        //wenns  die Stadt in der Townlist noch nich gibt, neuen Stadtstein und uebernahme in Townlist
+                        If (!Townlist[Town]) //Ist dieser Townstone schon vorhanden?
+                            Townlist[Town] :=CreateItemAtLocation(who.x + AnzahlSteine, who.y, who.z, 0x6015, 1);
+                            setobjproperty(Townlist[Town], CPROP_STADT, Town);
+                            SetName(Townlist[Town], "Stein der Stadt " + Town);
+                            AnzahlSteine += 1; // den nächste Stein daneben erstellen
+                            SysLog("Stein angelegt fuer Stadt: '" + Town + "'");  // brauch man nich wirklich
+                        EndIf
+                        // alten Namenszusatz entfernen
+                        var CharName :=char.name; 
+                        Var Stelle := find(lower(CharName), lower(" aus " + Town), 1);
+                        If (!Stelle)
+                            SendSysMessagePergon(who,"Der Char" + CharName + " gehört einer Stadt an hat jedoch kein Stadtnamensuffix!", "", _DEFAULT_TEXT_FONT, 38);
+                            SysLog("Der Char" + CharName + " gehoert einer Stadt an hat jedoch kein Stadtnamensuffix!");  // brauch man nich wirklich
+                        else
+                            CharName := CharName[CharName, Stelle - 1];
+                            char.name := CharName; 
+                            SysLog("Neuer Name ist " + CharName);  // brauch man nich wirklich
+                        EndIf
+                        // Den Bürger in die Stadtliste aufnehmen
+                        var BListe := getObjProperty(Townlist[Town], CPROP_BUERGERLISTE);
+                        if (!BListe)
+                            // Beim ersten Bürger muss die Property noch erstellt werden
+                            BListe := dictionary;
+                        endif
+                        var Eintrag := struct;
+                        // Dies hier ist auch gleich die Definition der Bürgerliste
+                        Eintrag.+Name := char.name;
+                        Eintrag.+Login := char.acctname;
+                        Eintrag.+Datum := GetDateStr();
+                        Eintrag.+SteuernBezahlt := "nein";
+                        Eintrag.+Wahl := false;
+                        Eintrag.+Abstimmung := false;
+                        Eintrag.+WahlRat := false; 
+                        Eintrag.+Grundbesitz := false;
+                        Eintrag.+Grundstueck := "";
+                        Eintrag.+GrundbesitzDatum := "";
+                        BListe.insert(char.serial, Eintrag);
+                        setObjProperty(Townlist[Town], CPROP_BUERGERLISTE, BListe);
+                        SysLog("Der Char" + CharName + " gehoert jetzt der Stadt " + Town + " an."); 
+                        // Cprop Stadt am char setzen                
+                        setObjProperty(char, CPROP_STADT, Town);
+                        // Name der des Chars erweitern um " aus Stadtname" 
+                        char.title_suffix := " aus " + GetObjProperty(Townlist[Town], CPROP_STADT);
+                    Endif
+                Endif
+            EndFor
+        Else
+            SysLog("'"+accountname+"' gibt es nicht !");
+        EndIf
+    EndForEach
+    If (who.isa(POLCLASS_MOBILE)) // Via Client...
+      SendSysMessagePergon(who, "Bürgerübernahme erfolgreich durchgelaufen!", "", _DEFAULT_TEXT_FONT, 38);
+    EndIf
+    SysLog("Buergeruebernahme erfolgreich durchgelaufen!");
+EndProgram

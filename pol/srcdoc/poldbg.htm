@@ -1,0 +1,31 @@
+<title>poldbg </title>
+<table border=0 width="100%">
+  <tr>
+    <td valign="top" width="100%"><strong><big><big><big>poldbg </big></strong></td>
+    <td width="50%" valign="top" align="right" nowrap><a href="index.htm"><small>POL Core Doc<br>Home</small></a></td>
+  </tr>
+</table>
+<pre>
+ </pre><H2><a name="1">1</a> Debugger Commands:</H2><pre>
+      password </pre><H2><a name="pwd">pwd</a>   Authorize with password</H2><pre>
+      quit             exit debugger
+      start </pre><H2><a name="eclfile">eclfile</a>  Start a script</H2><pre>
+      call </pre><H2><a name="eclfile] [params:packed array">eclfile] [params:packed array</a>  call a script</H2><pre>
+      attach </pre><H2><a name="pid">pid</a>     Attach to a running script</H2><pre>
+      detach           Detach from attached script
+      state            State of attached script
+      ins              Show instructions near execution point
+      instrace         Execute next instruction only
+      stepinto         Trace to next statement, into functions if necessary
+      stepover         Trace to next statement, skipping called functions
+      run              Run script full speed (until breakpoint hit if any)
+      break            Break into running script
+      setbp </pre><H2><a name="ins">ins</a>      Set breakpoint at instruction</H2><pre>
+      clrbp </pre><H2><a name="ins">ins</a>      Clear breakpoint at instruction</H2><pre>
+      clrallbp         Clear all breakpoints
+      fileline  {ins}  File # and Line # associated with an instruction
+      files            list the source files used by this script
+      filecont </pre><H2><a name="file">file</a> {firstline} {lastline}  get file contents</H2><pre>
+      localvars        list local variable names
+      inslist </pre><H2><a name="file] [line">file] [line</a>  Return list of instructions assoc with a file/line</H2><pre>
+      pidlist </pre><H2><a name="str">str</a>    list PIDs and scriptnames matching *str*</H2><pre>

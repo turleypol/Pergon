@@ -1,0 +1,1499 @@
+///////////////////////////////////////////////////////////////////////////
+// Boot Steuerungsscript - Steuerung eines Bootes
+//
+// Author: Turley
+
+///////////////////////////////////////////////////////////////////////////
+// CProps:
+// boat:
+// - "state" MOVING/DRIFTING/STATIONARY
+// - "ist_faehre" 0/1
+// - "hp" "maxhp"
+// - "Skillreq" benötigter Kartographie Skill
+// - "BoatMobiles"
+// - "PortOfRegistry"
+// - "Material" material[1]= Bootstyp, material[2]= holzbretter, material[3]=holzmast, material[4]= metall, material[5]= Stoff
+// - "shiptype"
+// - "HoldName"
+// - "AlreadyBuild" (PROP_DRYDROCK)
+//
+// boat.tillerman:
+// - "owner"
+//
+// Global:
+// - "PortGold" - Verwaltung der Hafenkassen der Staedte
+//   (bzw. Regionen mit Stadtrecht)
+
+///////////////////////////////////////////////////////////////////////////
+// TODO: xxx
+//  - wenn Spieler stirbt, was passiert mit dem Inhalt des Backpacks?
+//    (soll das, wie die Kleidung, vernichtet werden?)
+//  - bei 'anker werfen' und 0 Gold im Rucksack wird vorgegeben,
+//    Gold abzuziehen und zu ankern. bei >=1 Gold ist alles ok
+//  - alles mit xxx bereinigen, sowie diverse syslogs rausnehmen
+//  - Drydock nicht mehr über Sprache, sondern über Tillerman gump
+//    mit Cliloc xmfhtmlgump :) (Nur außerhalb vom boot)
+//  - Wegschubsen funzt nicht mehr dank Moveobjttolocation
+
+///////////////////////////////////////////////////////////////////////////
+// Done:
+//  - Wenn kartographieCheck nicht erfolgreich meldungen abgeben
+//    ähnlich wie bei Waffen
+//    (Ihr habt keine Ahnung, Ihr traut euch nicht...)
+//  - Anderer Schaden bei Wrack geschw?
+//    --> andersrum, bei schneller Geschw. gibt es doppelt Schaden
+//  - Konstanten in die Inc verlagern
+//  - DropAnchorRegistry automatisiert
+//    (ueber place.town, den Regionennamen und globale Prop)
+//    = Hafenkassen der Staedte automatisiert
+//    (in Globaler CProp mit dem Staedte-Index als Index)
+//  - Keine Reaktion auf slow/langsam
+//  - Kommando, um interne Propertys vom Tillermann zu erfahren
+//  - was ist mit driften, wenn kein Spieler an Bord?
+//    driftet das Boot dann nicht vom Hafen weg?
+//    --> driftet nicht mehr, wenn es ankert und keiner an Bord ist
+//  - überall, wo 'state' u.ä. verändert wird, eine Funktion
+//    SetShipStats einbauen, die 'state' und gleichzeitig die Schiffs-
+//    CProp 'state' ändert. sonst laufen interne Var und CProp irgendwo
+//    auseinander
+//    gleiches ev. mit hp/maxhp (oder gleich allen Vars, wenn mgl.)
+//    --> Fkt. SetShipStats()
+
+use boat;
+use cfgfile;
+use os;
+use uo;
+use util;
+use vitals;
+include "boat";
+include "include/client";
+include "include/eventid";
+include "include/eventwaiter";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/msgs";
+include "include/npc";
+include "include/pergonutil";
+include "plankutil";
+
+Const DELAY_SLOW            := 1000;
+Const DELAY_WRECK           := 600;
+Const DELAY_FAST            := 200;
+Const ABBRUCH_WEIL_FAEHRE   := 10;
+Const DUR_SOUND             := 10;
+Const DUR_CRITTER           := 20*60;// Wie lange leben die Critter
+Const DUR_ENCOUNTER         := 7*60; // Wie oft erscheinen sie
+// Wie oft entsteht Schaden am Schiff durch reine Existenz
+Const DUR_DAMAGE            := 10;
+// Wie oft wird gecheckt, ob noch Lebende auf dem Boot sind?
+Const DUR_CHECK_GHOST       := 5*60;
+Const DMG_MOVING            := 5;    // Wieviel Schaden durch Moving
+Const DMG_DRIFTING          := 3;    // Wieviel Schaden durch Drifting
+Const DMG_STATIONARY        := 2;    // Wieviel Schaden durch Stationary
+Const DMG_FAST              := 500;  // Kollison bei schneller Fahrt
+Const DMG_SLOW              := 150;  // Kollision bei langsamer Fahrt
+Const DMG_DRIFT             := 100;  // Kollision beim Driften
+Const MAX_DIST_ERTRINKEN   := 300.0; // Immer ertrinken ab wann?
+Const MIN_DIST_ERTRINKEN   := 75.0;  // Kein Einfluß mehr in die Formel
+Const MIN_WEIGHT_ERTRINKEN := 100.0; // Kein Einfluß mehr in die Formel
+// Bei welcher Entfernung zum KartenRand teleportieren
+Const DIST_EDGE_WHEN       := 12;
+// Mit welcher Entfernung zum KartenRand teleportieren
+Const DIST_EDGE_WHERE      := 14;
+Const WORLD_X              := 5119; // Weltgröße
+Const WORLD_Y              := 4096; // Weltgröße
+// hier beginnen die Lostlands, keinen Wraparound in die Welt machen
+Const LOSTLAND_X           := 5132;
+// zu zahlendes Gold, wenn man in fremden Haefen ankert
+Const ANCHOR_PRICE         := 1000;
+
+
+Var Wenn_Faehre_Bootscript_beenden := 0;
+
+Var state, noshiparea := {};
+Var tillerman_damage  := 0; //Hat der Tillerman schon ne Meldung über den Zustand abgegeben?
+Var relative_direction;
+Var ms_delay_between_moves := DELAY_SLOW;
+Var boat;
+Var hp, maxhp;
+Var FollowMap;  // Pins der Karte
+//Var npcfile:= ReadConfigFile("::npcdesc"); //Wird benötigt für die Unterscheidung zwischen Air und Water MoveMode
+
+Var boatprocess:=GetProcess(GetPID());  // nötig für SendEvent
+
+Var route_index; //boat.inc variablen (nicht genutzt)
+
+Var last_cmd_by;
+
+/////////////////////////////////////////////////////////////////////////
+//  Ueberprueft ob Boot und Tillermann vorhanden und startet skript
+//  andernfalls macht er nix oder zerstoert das Boot ohne Bootsmann
+/////////////////////////////////////////////////////////////////////////
+
+Program autostart_boat(param)
+  boat := param;
+  If (!boat)
+    syslog("FEHLER: Aufruf von Boot ohne Parameter");
+    Return;
+  EndIf
+  
+  Var tiles  := GetStandingLayers(boat.x, boat.y, MAPDATA_FLAG_MOVESEA,boat.realm);
+  If (tiles)
+    var z := tiles[1].z+1;
+    If (TypeOfInt(z) == OT_LONG and z != boat.z)
+      MoveObjectToLocation(boat, boat.x,boat.y,z,boat.realm, MOVEOBJECT_FORCELOCATION);
+    EndIf
+  EndIf
+
+  // Bei einem Neustart von einer Faehre wird gleich das skript gestartet
+  // Wenn ein Boot neu erzeugt wird, gibt es die CProp noch nicht, sollte also trotzdem gehen
+  If (GetObjProperty(boat, "ist_faehre") == 1)
+    Start_ScriptPergon("faehre", boat);
+    Return;
+  EndIf
+
+  SetShipStats("ist_faehre", 0);
+
+  If (!boat.tillerman)
+    SysLog("WARNUNG: Das Boot ("+boat.serial+") bei "+boat.x+" "+boat.y+" "+boat.z+" hat keinen Steuermann und wird zerstoert!");
+    DestroyMulti(boat);
+    Return;
+  EndIf
+  // TODO: sollte man ggf. alle Booten anhalten?
+  // Betrifft nur Bau und Serverstart, und beim Start ist es wahrscheinlich,
+  // das man schnell etwas rammt, wenn man nicht rechtzeitig wieder einloggt
+  state := GetObjProperty(boat, "state");
+  If (state == STATE_MOVING)
+    SetShipStats("state", STATE_DRIFTING);
+  EndIf
+  If (!state)
+    SetShipStats("state", STATE_STATIONARY);
+  EndIf
+  noshiparea := NoShippingCfg(); // Lädt die nicht befahrbaren Regionen
+  hp     := GetObjProperty(boat, "hp");
+  maxhp  := GetObjProperty(boat, "maxhp");
+  SetObjProperty(boat,"#pid",GetPID());
+  boat_script();
+EndProgram
+
+///////////////////////////////////////////////////////////////////
+//  Ueberprueft die einzelnen Statis des Bootes
+///////////////////////////////////////////////////////////////////
+
+Function boat_script()
+  DisableEvents(SYSEVENT_SPEECH); // Mal zur Sicherheit
+  // Wie groß ist das Boot, damit nicht unnötig viele Speechevents ankommen
+  var foot_print:=1+CInt(Max(CoordinateDistance(boat.footprint.xmin, boat.footprint.ymin, boat.tillerman.x, boat.tillerman.y),
+                             CoordinateDistance(boat.footprint.xmax, boat.footprint.ymax, boat.tillerman.x, boat.tillerman.y)));
+  RegisterForSpeechEvents(boat.tillerman, foot_print);
+
+  SendEventWaiter(boatprocess, DUR_SOUND, EVID_BOAT_SOUND);   // Alle 10 Sekunden Sound
+  SendEventWaiter(boatprocess, DUR_ENCOUNTER, EVID_BOAT_ENCOUNTER); //Wann kommt das nächste Monster?
+  SendEventWaiter(boatprocess, DUR_DAMAGE, EVID_BOAT_DAMAGE); //Nächster Schaden
+  SendEventWaiter(boatprocess, DUR_CHECK_GHOST, EVID_BOAT_GHOST); //Nächster Check auf Lebende
+  Var driftcounter:= 0;
+  Var x, y, face;
+
+  // Solang das Boot ueberhaupt vorhanden ist
+  While (boat && (Wenn_Faehre_Bootscript_beenden != ABBRUCH_WEIL_FAEHRE))
+    //Push(); //Kollisionsabfrage für NPC's
+    EventCheck();
+    If (!boat)
+      Return;
+    EndIf
+
+    Case (state)              // Status Ueberpruefung
+      STATE_MOVING:
+          // Die Erde ist eine Kugel...
+          If (boat.x < LOSTLAND_X)
+            If (boat.x >= WORLD_X - DIST_EDGE_WHEN)
+              MoveBoatXY(boat, DIST_EDGE_WHERE, boat.y);
+            ElseIf (boat.x <= DIST_EDGE_WHEN)
+              MoveBoatXY(boat, WORLD_X - DIST_EDGE_WHERE, boat.y);
+            EndIf
+          EndIf
+          If (boat.y <= DIST_EDGE_WHEN)
+            MoveBoatXY(boat, boat.x, WORLD_Y - DIST_EDGE_WHERE);
+          ElseIf (boat.y >= WORLD_Y - DIST_EDGE_WHEN)
+            MoveBoatXY(boat, boat.x, DIST_EDGE_WHERE);
+          EndIf
+
+          x := boat.x;
+          y := boat.y;
+
+          If (FollowMap)  // Folge ich einer Karte
+            If (FollowMap.active)
+              If ((boat.x==FollowMap.coords[FollowMap.pin].x) && (boat.y==FollowMap.coords[FollowMap.pin].y))
+                FollowMap.pin+=1;  // Nächster Punkt
+                If (FollowMap.single)
+                  PrintTextAbovePergon(0, boat.tillerman, "Captain wir haben unser Ziel erreicht!","");
+                  FollowMap.active:=0;
+                  FollowMap.single:=0;
+                  SetShipStats("state", STATE_DRIFTING);
+                EndIf
+              EndIf
+              If (FollowMap.pin > FollowMap.coords.Size())
+                PrintTextAbovePergon(0, boat.tillerman, "Captain wir haben unser Ziel erreicht!","");
+                FollowMap.active:=0;
+                SetShipStats("state", STATE_DRIFTING);
+              Else
+                face:=GetFacing(boat.x,boat.y,FollowMap.coords[FollowMap.pin].x,FollowMap.coords[FollowMap.pin].y);
+                relative_direction:=((face-boat.facing) & 0x7);
+                If (relative_direction in {6,5,4})
+                  TurnBoat(boat,3);
+                  relative_direction:=((face-boat.facing) & 0x7);
+                ElseIf (relative_direction in {2,3})
+                  TurnBoat(boat,1);
+                  relative_direction:=((face-boat.facing) & 0x7);
+                EndIf
+              EndIf
+            EndIf
+          EndIf
+
+          MoveBoatRelative(boat, relative_direction); // Bewegt das Boot vorwaerts
+                                                      // Wenn sich das Boot nicht bewegt hat, muss es auf Grund gelaufen sein
+
+          If ((x == boat.x) && (y == boat.y))
+            SetShipStats("state", STATE_DRIFTING);
+            PrintTextAbovePergon(0, boat.tillerman, "Aaargh!  Wir sind auf Grund gelaufen!");
+            SmackEveryone(boat);
+            Kollision();
+            SetShipStats("state", STATE_DRIFTING);    // Verwendung fuer Test auf Planke, ob aufklappbar oder nicht
+          EndIf
+
+          If (!GetGlobalProperty("shipeverywhere"))
+            // Ist das Boot innerhalb der Verbotenen Zonen?
+            // ab Questchar darf überall hin
+            If ((!last_cmd_by) || (last_cmd_by.cmdlevel < CMDLEVEL_QUESTCHAR)
+            )
+              ForEach area in noshiparea
+                If (
+                  (boat.x >= area[2]) && (boat.y >= area[3]) &&
+                  (boat.x <= area[4]) && (boat.y <= area[5])
+                )
+                  TurnBoat(boat, 2);
+                  // Rueckwaertsgang rein und weg..
+                  MoveBoatRelative(boat, relative_direction);
+                  PrintTextAbovePergon(0, boat.tillerman,
+                    "Ein starker Wind bläst aus dieser Richtung, "+
+                    "wir müssen umdrehen!",""
+                  );
+                  Break;
+                EndIf
+                SleepMs(2);
+              EndForEach
+            EndIf
+          EndIf
+
+          // Hier wird etwas gewartet, damit es nicht zu fix geht *fg*
+          SleepMs(ms_delay_between_moves);
+
+
+      STATE_DRIFTING:
+          // Wie oft das Boot driften darf, wenn es still steht
+          If (driftcounter == 15)
+            relative_direction:=RandomInt(8);
+            MoveBoatRelative(boat,relative_direction);
+            driftcounter := 0;
+
+            // Ist das Boot innerhalb der Verbotenen Zonen?
+            // ab Questchar darf überall hin
+            If (!GetGlobalProperty("shipeverywhere"))
+              If ((!last_cmd_by) || (last_cmd_by.cmdlevel<CMDLEVEL_QUESTCHAR))
+                ForEach area in noshiparea
+                  If (
+                    (boat.x>=area[2]) && (boat.y>=area[3]) &&
+                    (boat.x<=area[4]) && (boat.y<=area[5])
+                  )
+                    TurnBoat(boat, 2);
+                    MoveBoatRelative(boat, relative_direction);
+                    PrintTextAbovePergon(0, boat.tillerman,
+                      "Ein starker Wind bläst aus dieser Richtung, "+
+                      "wir müssen umdrehen!","");
+                    Break;
+                  EndIf
+                  SleepMS(5);
+                EndForEach
+              EndIf
+            EndIf
+
+            If (boat.x < LOSTLAND_X)
+              If (boat.x >= (WORLD_X - DIST_EDGE_WHEN))
+                // Die Erde ist eine Kugel... (ja eigentlich Torus ich weiß)
+                MoveBoatXY(boat, DIST_EDGE_WHERE, boat.y);
+              ElseIf (boat.x <= DIST_EDGE_WHEN)
+                MoveBoatXY(boat, (WORLD_X - DIST_EDGE_WHERE), boat.y);
+              EndIf
+            EndIf
+            If (boat.y <= DIST_EDGE_WHEN)
+              MoveBoatXY(boat, boat.x, (WORLD_Y - DIST_EDGE_WHERE));
+            ElseIf (boat.y >= (WORLD_Y - DIST_EDGE_WHEN))
+              MoveBoatXY(boat, boat.x, DIST_EDGE_WHERE);
+            EndIf
+          Else
+            driftcounter+=1;
+          EndIf
+
+          // Ziemlich selten, dass es driftet, aber entweder runtersetzen oder den CounterMax runternehmen
+          Sleep(1);
+
+
+      STATE_STATIONARY:
+          // Wird alles in EventCheck abgehandelt
+          Sleep(2);
+    EndCase
+  EndWhile
+EndFunction
+
+/////////////////////////////////////////////////////////////////////
+//  Sortiert die Befehle um ein Boot oder Schiff zu
+//  Bewegen oder es anzuhalten
+/////////////////////////////////////////////////////////////////////
+
+Function HandleSpeechEvent(event)
+  Var stateold := state, registry := {};
+  Var spruch := "";
+  Var text := lower(event.text);    // prinzipiell nur Kleinbuchstaben
+
+  // TODO:
+  // If (text["hilfe"] || text["help"]) // wichtigste Kommandos listen
+  //   return;
+  // EndIf
+
+  If (text["trockendock"] || text["drydock"]) // Trockendock
+    If (KartographieCheck(event.source))
+      DryDock(boat, event.source);
+      return;
+    EndIf
+  EndIf
+
+  If (text["voraus"] || text["forward"]) // vorwärts fahren
+    If (KartographieCheck(event.source))
+      If (state != STATE_STATIONARY)
+        FollowMap.active:=0;
+        SetShipStats("state", STATE_MOVING);
+        If (text["rechts"] || text["right"] || text["steuerbord"])
+          // schief rechts
+          relative_direction := 1;
+          spruch := " Steuerbord";
+        ElseIf (text["links"] || text["left"] || text["backbord"])
+          // schief links
+          relative_direction := 7;
+          spruch := " Backbord";
+        Else
+          // gerade
+          relative_direction := 0;
+        EndIf
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Aye, Captain."+spruch+" Voraus!", ""
+        );
+      Else
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Ihr müsst erst den Anker lichten!", ""
+        );
+      EndIf
+    EndIf
+  ElseIf (text["zurueck"] || text["zurück"] || text["backward"]) // rückwärts fahren
+    If (KartographieCheck(event.source))
+      If (state != STATE_STATIONARY)
+        FollowMap.active:=0;
+        SetShipStats("state", STATE_MOVING);
+        // nur langsame Fahrt rueckwaerts
+        ms_delay_between_moves := DELAY_SLOW;
+        If (text["rechts"] || text["right"] || text["steuerbord"])
+          // schief rechts
+          spruch := " Steuerbord";
+          relative_direction := 3;
+        ElseIf (text["links"] || text["left"] || text["backbord"])
+          // schief links
+          spruch := " Backbord";
+          relative_direction := 5;
+        Else
+          relative_direction := 4; // gerade
+        EndIf
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Aye, Captain."+spruch+" Zurück!", ""
+        );
+      Else
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Ihr müsst erst den Anker lichten!", ""
+        );
+      EndIf
+    EndIf
+  ElseIf (text["drift"] and (text["steuerbord"] || text["right"]))
+    // seitwärts rechts (zum Einparken im Hafen)
+    If (KartographieCheck(event.source))
+      If (state != STATE_STATIONARY)
+        FollowMap.active:=0;
+        // nur langsame Fahrt seitwaerts
+        ms_delay_between_moves := DELAY_SLOW;
+        SetShipStats("state", STATE_MOVING);
+        relative_direction := 2;
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Aye, Captain. Drift nach Steuerbord!", ""
+        );
+      Else
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Ihr müsst erst den Anker lichten!", ""
+        );
+      EndIf
+    EndIf
+  ElseIf (text["drift"] and (text["backbord"] || text["left"]))
+    // seitwärts links (zum Einparken im Hafen)
+    If (KartographieCheck(event.source))
+      If (state != STATE_STATIONARY)
+        FollowMap.active:=0;
+        // nur langsame Fahrt seitwaerts
+        ms_delay_between_moves := DELAY_SLOW;
+        SetShipStats("state", STATE_MOVING);
+        relative_direction := 6;
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Aye, Captain. Drift nach Backbord!", ""
+        );
+      Else
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Ihr müsst erst den Anker lichten!", ""
+        );
+      EndIf
+    EndIf
+  ElseIf (text["steuerbord"] || text["right"])
+    // Schiff wird 90° rechts gedreht
+    If (KartographieCheck(event.source))
+      If (state != STATE_STATIONARY)
+        FollowMap.active:=0;
+        Drehen(event.source,1, "Ruder Steuerbord");
+      Else
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Ihr müsst erst den Anker lichten!", ""
+        );
+      EndIf
+    EndIf
+  ElseIf (text["backbord"] || text["left"])
+    // Schiff wird 90° links gedreht
+    If (KartographieCheck(event.source))
+      If (state != STATE_STATIONARY)
+        FollowMap.active:=0;
+        Drehen(event.source,3,"Ruder Backbord");
+      Else
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Ihr müsst erst den Anker lichten!", ""
+        );
+      EndIf
+    EndIf
+  ElseIf (text["wenden"] || text["come by"])    // Wende um 180°
+    If (KartographieCheck(event.source))
+      If (state != STATE_STATIONARY)
+        FollowMap.active:=0;
+        Drehen(event.source, 2, "Wenden");
+      Else
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Ihr müsst erst den Anker lichten!", ""
+        );
+      EndIf
+    EndIf
+  ElseIf (text["halt"] || text["stop"]) // anhalten
+    If (KartographieCheck(event.source))
+      If (state != STATE_STATIONARY)
+        FollowMap.active:=0;
+        SetShipStats("state", STATE_DRIFTING);
+        FollowMap.active:=0;
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Aye, Captain. Halt", ""
+        );
+      Else
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Ihr müsst erst den Anker lichten!", ""
+        );
+      EndIf
+    EndIf
+  ElseIf (text["anker lichten"] || text["raise anchor"])
+    // Anker lichten (ziellos driften)
+    If (KartographieCheck(event.source))
+      If (state != STATE_STATIONARY)
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Ihr redet Unsinn!", ""
+        );
+      ElseIf (
+        IsPlankOccupied(boat.portplank) ||
+        IsPlankOccupied(boat.starboardplank)
+      ) // Nix is
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Es befinden sich noch Personen auf den Planken!", ""
+        );
+      Else
+        FollowMap.active:=0;
+        SetShipStats("state", STATE_DRIFTING);
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Aye, Captain. Anker lichten!", ""
+        );
+        AnkerAnim(boat);
+      EndIf
+    EndIf
+  ElseIf (text["ankern"] || text["anker werfen"] || text["drop anchor"])
+    //Anker werfen (stationary)
+    If (KartographieCheck(event.source))
+      If (state == STATE_DRIFTING)
+        registry := DropAnchorRegistry(event.source);
+        FollowMap.active:=0;
+        If ((registry.result) && (registry.preis))
+          SendSysMessagePergon(event.source,
+            "Die Anlegegebühr in Höhe von "+registry.preis+
+            " Goldstücken kommt der Stadt zugute.", ""
+          );
+          SetShipStats("state", STATE_STATIONARY);
+          PrintTextAbovePergon(event.source, boat.tillerman,
+            "Aye, Captain Anker werfen!", ""
+          );
+          AnkerAnim(boat);
+        ElseIf ((registry.result) && (!registry.preis))
+          SetShipStats("state", STATE_STATIONARY);
+          PrintTextAbovePergon(event.source, boat.tillerman,
+            "Aye, Captain Anker werfen!", ""
+          );
+          AnkerAnim(boat);
+        Else
+          SendSysMessagePergon(event.source,
+            "Euch fehlen "+(registry.preis-event.source.gold)+
+            " Goldstücke zum Bezahlen der Anlegegebühr in Hoehe von "+
+            registry.preis, ""
+          );
+        EndIf
+      ElseIf (state == STATE_MOVING)
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Ihr könnt nicht bei voller Fahrt den Anker werfen!", ""
+        );
+      Else
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Ihr redet Unsinn!", ""
+        );
+      EndIf
+    EndIf
+  EndIf
+
+  // TODO:
+  // - volle/full fuer volle/schnelle Fahrt
+  // - halb/half fuer halbe Fahrt
+  // - schneller/faster zum Beschleunigen
+  // - langsamer/slower zum Bremsen
+  // Idee fuer Checks: vorher aktuelle ms sichern, gewuenschte ms setzen
+  // und danach Funktion, die bei Unterschied die neue Geschwindigkeit
+  // prueft und setzt/ablehnt
+  If (text["langsam"] || text["slow"]) // Langsam
+    If (KartographieCheck(event.source))
+      // egal wie schnell, nun wird langsam gefahren
+      ms_delay_between_moves := DELAY_SLOW;
+      PrintTextAbovePergon(event.source, boat.tillerman,
+        "Aye, Captain Langsame Fahrt!", ""
+    );
+    EndIf
+  ElseIf (text["schnell"] || text["fast"]) // Gas geben
+    If (KartographieCheck(event.source))
+      // wenn bis jetzt halbe oder schnelle Fahrt, dann checken, ob
+      // schnellere Fahrt moeglich
+      If (ms_delay_between_moves <= DELAY_WRECK)
+        // wenn Schiff mind. 70% ok, dann volle Fahrt
+        If (CInt((hp * 100.0) / maxhp) > 70)
+          ms_delay_between_moves := DELAY_FAST;
+          PrintTextAbovePergon(event.source, boat.tillerman,
+            "Aye, Captain Schnelle Fahrt!", ""
+          );
+        Else
+          // wenn Schiff angeschlagen, dann nur halbe Fahrt
+          ms_delay_between_moves := DELAY_WRECK;
+          PrintTextAbovePergon(event.source, boat.tillerman,
+            "Das Risiko gehe ich lieber nicht ein! Halbe Fahrt.", ""
+          );
+        EndIf
+      Else // bis jetzt langsame Fahrt, also ab nun halbe Fahrt ...
+        ms_delay_between_moves := DELAY_WRECK;
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Aye, Captain Halbe Fahrt!", ""
+        );
+      EndIf
+    EndIf
+  EndIf
+
+  If (text["status"])
+    // offizieller Teil
+    Schadensmeldung(event.source);
+
+    Case (ms_delay_between_moves)
+    DELAY_WRECK: PrintTextAbovePergon(event.source, boat.tillerman,
+        "Ihr habt Langsame Fahrt befohlen.", ""
+      );
+    DELAY_SLOW:  PrintTextAbovePergon(event.source, boat.tillerman,
+        "Ihr habt Halbe Fahrt befohlen.", ""
+      );
+    DELAY_FAST:  PrintTextAbovePergon(event.source, boat.tillerman,
+      "Ihr habt Schnelle Fahrt befohlen.", ""
+    );
+    EndCase
+
+    Case (state)
+      STATE_STATIONARY: PrintTextAbovePergon(event.source, boat.tillerman,
+        "Wir ankern.", ""
+      );
+      STATE_DRIFTING:   PrintTextAbovePergon(event.source, boat.tillerman,
+        "Wir driften.", ""
+      );
+      STATE_MOVING:     PrintTextAbovePergon(event.source, boat.tillerman,
+        "Wir sind in Bewegung.", ""
+      );
+    EndCase
+
+    If (FollowMap)
+      If (FollowMap.active)
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Ich navigiere zu Punkt "+FollowMap.pin+".", ""
+        );
+      EndIf
+    EndIf
+
+    Var hpproz := CInt(
+      100.0 * GetObjProperty(boat, "hp") / GetObjProperty(boat, "maxhp")
+    );
+
+    If (hpproz >= 90)
+      PrintTextAbovePergon(event.source, boat.tillerman,
+        "Euer Schiff ist in perfektem Zustand!", ""
+      );
+    ElseIf (hpproz >= 70)
+      PrintTextAbovePergon(event.source, boat.tillerman,
+        "Euer Schiff ist in gutem Zustand!", ""
+      );
+    ElseIf (hpproz >= 30)
+      PrintTextAbovePergon(event.source, boat.tillerman,
+        "Euer Schiff ist leicht beschädigt!", ""
+      );
+    ElseIf (hpproz >= 10)
+      PrintTextAbovePergon(event.source, boat.tillerman,
+        "Euer Schiff bedarf einer Wartung!", ""
+      );
+    ElseIf (hpproz >= 5)
+      PrintTextAbovePergon(event.source, boat.tillerman,
+        "Euer Schiff bedarf einer Grundüberholung!", ""
+      );
+    Else
+      PrintTextAbovePergon(event.source, boat.tillerman,
+        "Euer Schiff ist ein Wrack!", ""
+      );
+    EndIf
+
+    // inoffizieller Teil {{{
+    If (event.source.cmdlevel > CMDLEVEL_GM)
+      PrintTextAbovePrivatePergon(boat.tillerman, "Delay_betw_Moves: "+ ms_delay_between_moves, "", event.source);
+      PrintTextAbovePrivatePergon(boat.tillerman, "state: "+GetObjProperty(boat, "state"), "", event.source);
+      PrintTextAbovePrivatePergon(boat.tillerman, "hp: "+GetObjProperty(boat, "hp"), "", event.source);
+      PrintTextAbovePrivatePergon(boat.tillerman, "maxhp: "+GetObjProperty(boat, "maxhp"), "", event.source);
+      PrintTextAbovePrivatePergon(boat.tillerman, "builder: "+GetObjProperty(boat, "builder"), "", event.source);
+      PrintTextAbovePrivatePergon(boat.tillerman, "ist_faehre: "+GetObjProperty(boat, "ist_faehre"), "", event.source);
+      PrintTextAbovePrivatePergon(boat.tillerman, "BoatMobiles: "+GetObjProperty(boat, "BoatMobiles"), "", event.source);
+      PrintTextAbovePrivatePergon(boat.tillerman, "Skillreq: "+GetObjProperty(boat, "Skillreq"), "", event.source);
+      PrintTextAbovePrivatePergon(boat.tillerman, "PortOfRegistry: "+GetObjProperty(boat, "PortOfRegistry"), "", event.source);
+      PrintTextAbovePrivatePergon(boat.tillerman, "Material: "+GetObjProperty(boat, "Material"), "", event.source);
+      PrintTextAbovePrivatePergon(boat.tillerman, "shiptype: "+GetObjProperty(boat, "shiptype"), "", event.source);
+
+      Var place := PlaceInfos(event.source);
+      If (place.town)
+        PrintTextAbovePrivatePergon(boat.tillerman, "Stadtname: " + place.name, "", event.source);
+      Else
+        PrintTextAbovePrivatePergon(boat.tillerman, "ausserhalb der Stadt", "", event.source);
+      EndIf
+    EndIf // }}}
+  EndIf
+
+  If (text["weiter navigieren"])
+    If (KartographieCheck(event.source))
+      If (FollowMap)
+        If (state != STATE_STATIONARY)
+          If (FollowMap.active)
+            PrintTextAbovePergon(event.source, boat.tillerman,
+              "Captain ich folge bereits eurer Karte!", ""
+            );
+          Else
+            PrintTextAbovePergon(event.source, boat.tillerman,
+              "Aye, Captain folge der Karte wieder!", ""
+            );
+            FollowMap.active:=1;
+            FollowMap.single:=0;
+            SetShipStats("state", STATE_MOVING);
+          EndIf
+        Else
+          PrintTextAbovePergon(event.source, boat.tillerman,
+            "Ihr müsst erst den Anker lichten!", ""
+          );
+        EndIf
+      Else
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Nach welcher Karte soll ich navigieren?", ""
+        );
+      EndIf
+    EndIf
+  ElseIf (text["navigieren starten"])
+    If (KartographieCheck(event.source))
+      If (FollowMap)
+        If (state != STATE_STATIONARY)
+          If (FollowMap.active)
+            PrintTextAbovePergon(event.source, boat.tillerman,
+              "Captain ich folge bereits eurer Karte!", ""
+            );
+          Else
+            PrintTextAbovePergon(event.source, boat.tillerman,
+              "Aye, Captain folge der Karte!", ""
+            );
+            FollowMap.active:=1;
+            FollowMap.single:=0;
+            FollowMap.pin:=1;
+            SetShipStats("state", STATE_MOVING);
+          EndIf
+        Else
+          PrintTextAbovePergon(event.source, boat.tillerman,
+            "Ihr müsst erst den Anker lichten!", ""
+          );
+        EndIf
+      Else
+        PrintTextAbovePergon(event.source, boat.tillerman,
+          "Nach welcher Karte soll ich navigieren?", ""
+        );
+      EndIf
+    EndIf
+  ElseIf (text["navigiere "])
+    var temp:=SplitWords(text,"navigiere");
+    If (temp[2]) // Kurspunkt finden
+      temp:=CInt(temp[2]);
+      If (temp)
+        If (KartographieCheck(event.source))
+          If (FollowMap)
+            If (temp<=FollowMap.coords.size())
+              If (state != STATE_STATIONARY)
+                PrintTextAbovePergon(event.source, boat.tillerman,
+                  "Aye, Captain navigiere zu Punkt "+temp+"!", ""
+                );
+                FollowMap.active:=1;
+                FollowMap.pin:=temp;
+                FollowMap.single:=1;
+                SetShipStats("state", STATE_MOVING);
+              Else
+                PrintTextAbovePergon(event.source, boat.tillerman,
+                  "Ihr müsst erst den Anker lichten!", ""
+                );
+              EndIf
+            Else
+              PrintTextAbovePergon(event.source, boat.tillerman,
+                "Ar, Captain diesen Punkt kenne ich nicht!", ""
+              );
+            EndIf
+          Else
+            PrintTextAbovePergon(event.source, boat.tillerman,
+              "Nach welcher Karte soll ich navigieren?", ""
+            );
+          EndIf
+        EndIf
+      EndIf
+    EndIf
+  EndIf
+
+  // Startet das Faehrenskript, wenn es so aufgerufen wird
+  If (event.source.cmdlevel > CMDLEVEL_GM)
+    If (text["faehre yes"])
+      // Planken markieren, damit sie nicht manuell
+      // geoeffnet/geschlossen werden können
+      boat.portplank.setprop(PROP_FERRY_CONTROLS_PLANK, 1);
+      boat.starboardplank.setprop(PROP_FERRY_CONTROLS_PLANK, 1);
+
+      PrintTextAbovePergon(event.source, boat.tillerman,
+        "Ich nehme meinen Fährdienst auf!", ""
+      );
+      DisableEvents(SYSEVENT_SPEECH);
+
+      Start_ScriptPergon("faehre", boat);
+      Wenn_Faehre_Bootscript_beenden := ABBRUCH_WEIL_FAEHRE;
+      Return;
+//    ElseIf (text["sterben"] || text["tot"])
+//      // xxx nur zum Test, sollte dann wieder raus
+//      Ertrinken();
+    EndIf
+  EndIf
+
+  If ((stateold != state) && (state == STATE_MOVING))
+    BoatReg(boat);
+    Retract(boat.portplank); // Planken einziehn
+    Retract(boat.starboardplank);
+  ElseIf ((stateold != state) && (state == STATE_DRIFTING))
+    BoatReg(boat);
+    Retract(boat.portplank); // Planken einziehn
+    Retract(boat.starboardplank);
+  EndIf
+  // Wer hat das cmd gegeben (cmdlevel dürfen in noshippingregions rein)
+  last_cmd_by := event.source;
+  SleepMS(500);
+EndFunction
+
+//////////////////////////////////////////////////////////////////
+//  Ueberprueft ob man nah genug am Bootsmann ist bzw.
+//  ob man ueberhaupt Eigentuemer ist und ihm Befehle
+//  erteilen darf.
+//////////////////////////////////////////////////////////////////
+
+Function CanCommandMe(who)
+  Var whodist;
+  If (who.multi.serial != boat.serial) // Wenn who nicht auf dem Boot ist, dann geht es sowieso nicht
+    Return (0);
+  ElseIf (who.serial == GetObjProperty(boat.tillerman, "owner")) // Wenn Who Eigentuemer, dann Rueckgabewert 1
+    Return (1);
+  EndIf
+
+  // Wenn er der nächste ist, darf er (damit man Schiffe übernehmen kann..)
+  whodist := Distance(who, boat.tillerman);
+  ForEach mob in (boat.mobiles)
+    If (!mob.isa(POLCLASS_NPC))  // Nur Player interessieren
+      If (!mob.dead)
+        // Sollte irgendjemand an Deck naeher am Bootsmann stehen, Abbruch
+        If (Distance(mob, boat.tillerman) < whodist)
+          Return (0);
+        EndIf
+      EndIf
+    EndIf
+  EndForEach
+  Return (1);
+EndFunction
+
+//////////////////////////////////////////////////////////////////////////
+//  DoEncounter - Erschafft ein Vieh in der Naehe des Bootes
+//  Mit Hilfe von getcritter, wird ausgesucht, welches Vieh
+//////////////////////////////////////////////////////////////////////////
+
+Function DoEncounter()
+  Var who,x,y,z,it,ev := struct;
+
+  If (!PlaceTown(boat))  // Nur außerhalb von Städten
+    ForEach mob in (boat.mobiles)
+      // Nur bei lebenden Spielern kommen Critter
+      If ((mob.cmdlevel < CMDLEVEL_SEER) && (!who.dead))
+        who := mob;
+        Break; // Nehmen den erstbesten
+      EndIf
+    EndForEach
+    If (!who)
+      Return;
+    EndIf
+    x := randomint(10)-5;
+    y := randomint(10)-5;
+    x += boat.x;
+    y += boat.y;
+    If (x > boat.x)
+      x += 5;
+    Else
+      x -= 5;
+    EndIf
+    If (y > boat.y)
+      y += 5;
+    Else
+      y -= 5;
+    EndIf
+    z  := GetMapInfo(x, y,who.realm).z;
+    it := CreateNpcFromTemplate(GetCritter(), x, y, z, 0,who.realm);
+    If (it)
+      PrintTextAbovePergon(0, who,
+        "Ein Bewohner des Meeres ist auf euch Aufmerksam geworden!", ""
+      );
+      ev.+type := SYSEVENT_ENGAGED;
+      ev.+source := who;
+      SendEvent(it, ev);
+      Start_ScriptPergon("boatcritter", {it, DUR_CRITTER});
+      it.saveonexit:=0;
+    EndIf
+  EndIf
+EndFunction
+
+//////////////////////////////////////////////////////////////////////////
+//  Sucht zufaellig ein Tier aus, welches erschaffen wird
+//////////////////////////////////////////////////////////////////////////
+Function GetCritter() // {{{
+  Case (randomint(26))
+    0:
+    1:
+    2:
+    3:
+    4:
+    5:  Return "walrus";
+    6:
+    7:
+    8:
+    9:
+    10:
+    11:
+    12:
+    13: Return "lesserwaterelemental";
+    14:
+    15:
+    16:
+    17:
+    18:
+    19:
+    20: Return "lesserairelemental";
+    21:
+    22:
+    23:
+    24:
+    25: Return "seaserpent";
+  EndCase
+EndFunction // }}}
+
+///////////////////////////////////
+// Drehen - Führt Drehbewegung aus
+///////////////////////////////////
+
+Function Drehen(who, richtung, text)
+  If (state != STATE_STATIONARY)
+    If (!TurnBoat(boat, richtung))
+      PrintTextAbovePergon(who, boat.tillerman, "Aaargh!  Wir sind auf Grund gelaufen!", "");
+      SmackEveryone(boat);
+      Kollision();
+      SetShipStats("state", STATE_DRIFTING); // Verwendung fuer Test auf Planke ob aufklappbar oder nicht
+      Return;
+    EndIf
+    PrintTextAbovePergon(who, boat.tillerman, "Aye, Captain " + text + "!", "");
+  EndIf
+EndFunction
+
+
+////////////////////////////////////////
+// Schaden - Fügt dem Schiff konstanten Schaden zu
+////////////////////////////////////////
+
+Function Schaden(state)
+  If (state == STATE_MOVING)
+    hp -= DMG_MOVING;
+    If (ms_delay_between_moves == DELAY_FAST)
+      hp -= DMG_MOVING;
+    EndIf
+  ElseIf (state == STATE_DRIFTING)
+    hp -= DMG_DRIFTING;
+  Else
+    hp -= DMG_STATIONARY;
+  EndIf
+  SetShipStats("hp", hp);
+  Schadensmeldung();
+EndFunction
+
+
+////////////////////////////////////////
+// Kollision - Fügt dem Schiff Schaden zu
+////////////////////////////////////////
+Function Kollision()
+  If (state == STATE_MOVING)
+    If (ms_delay_between_moves == DELAY_SLOW)
+      hp -= DMG_SLOW;
+    ElseIf (ms_delay_between_moves == DELAY_WRECK)
+      hp -= 2*DMG_SLOW;
+    Else
+      hp -= DMG_FAST;
+    EndIf
+  Else
+    hp -= DMG_DRIFT;
+  EndIf
+  SetShipStats("hp", hp);
+  Schadensmeldung();
+EndFunction
+
+////////////////////////////////////////
+// Schadensmeldung - Schaden so groß, dass Folgen entstehen?
+////////////////////////////////////////
+Function Schadensmeldung(who := 0)
+  Var hpproz := CInt((hp * 100.0) / maxhp);
+  If (hp <= 0)
+    PrintTextAbovePergon(who, boat.tillerman, "Alle von Bord wir sinken!", "");
+    Sleep(3);
+    Ertrinken();
+  ElseIf (hpproz <= 5)
+    If (!(tillerman_damage & 1))
+      PrintTextAbovePergon(who, boat.tillerman, "Euer Schiff ist ein Wrack!", "");
+      tillerman_damage:=tillerman_damage | 1;
+    EndIf
+    ms_delay_between_moves := DELAY_WRECK;
+  ElseIf (hpproz <= 10)
+    If (!(tillerman_damage & 2))
+      PrintTextAbovePergon(who, boat.tillerman, "Euer Schiff bedarf einer Grundüberholung!", "");
+      tillerman_damage:=tillerman_damage | 2;
+    EndIf
+    ms_delay_between_moves := DELAY_WRECK;
+  ElseIf (hpproz <= 30)
+    If (!(tillerman_damage & 4))
+      PrintTextAbovePergon(who, boat.tillerman, "Euer Schiff bedarf einer Wartung!", "");
+      tillerman_damage:=tillerman_damage & 4;
+    EndIf
+    ms_delay_between_moves := DELAY_WRECK;
+  ElseIf (hpproz <= 70)
+    tillerman_damage:=0;
+    ms_delay_between_moves := DELAY_WRECK;
+  EndIf
+EndFunction
+
+////////////////////////////////////////
+// Ertrinken
+////////////////////////////////////////
+Function Ertrinken()
+  Var dist := {}, boatmobiles := {}, i, sterben, mob, res;
+  Var ertrinkenkoords := FindErtrinkenKoords(dist);
+
+  // kleine Anim eines sinkenden/sich drehenden Schiffes..
+  For (i := 1; i <= RandomInt(10)+3; i += 1)
+    TurnBoat(boat, 1);
+    SleepMs(800);
+  EndFor
+
+  BoatReg(boat); //Nochmal zur Sicherheit durchlaufen lassen.
+  boatmobiles := GetObjProperty(boat, "BoatMobiles");
+  For (i := 1; i <= boatmobiles.size(); i += 1)
+    mob  := SystemFindObjectBySerial(boatmobiles[i], SYSFIND_SEARCH_OFFLINE_MOBILES);
+    sterben := ErtrinkenBerechnung(mob, dist[1][2]);
+    If (sterben)
+      If (mob.cmdlevel < CMDLEVEL_SEER)
+        ForEach item in (ListEquippedItems(mob))
+          If ((!item.newbie) && (item.objtype != 0xe75) && (item.layer != LAYER_HAIR) && (item.layer != LAYER_BEARD))// Backpack und Behaarung nicht loeschen
+            DestroyItem(item);
+          EndIf
+          SleepMs(5);
+        EndForEach
+        ForEach item in EnumerateItemsInContainer(mob.backpack,ENUMERATE_ROOT_ONLY)
+          If ((!item.newbie) && (item.objtype != UOBJ_SPELLPANEL))
+            DestroyItem(item);
+          EndIf
+          SleepMs(5);
+        EndForEach
+      EndIf
+
+      If (mob.cmdlevel < CMDLEVEL_SEER) // Kein entrinnen :)
+        RevokePrivilege(mob, "invul");
+        KillMobile(mob, "Ertrunken");
+        ApplyRawDamagePergon(mob, GetMaxHPPergon(mob) + 111); // doppelt hält besser
+        SendSysMessagePergon(mob, "Ihr habt es nicht geschafft, an Land zu schwimmen und seid ertrunken.", "");
+      EndIf
+    Else
+      SetStaminaPergon(mob, 0);
+      SetHPPergon(mob, 1);
+      SetManaPergon(mob, 0);
+      SendSysMessagePergon(mob, "Ihr könnt Euch geradeso an Land retten.", "");
+    EndIf
+    MoveObjectToLocation(mob, (ertrinkenkoords[dist[1][1]][1] + RandomInt(2)), (ertrinkenkoords[dist[1][1]][2] + RandomInt(2)), (ertrinkenkoords[dist[1][1]][3]), mob.realm, MOVEOBJECT_FORCELOCATION);
+    SleepMs(10);
+  EndFor
+
+  //Boot zerstören, aber erstmal leer machen
+  ForEach item in (boat.items)
+    If (!item.newbie)
+      res := DestroyItem(item);
+      If (!res) // Dann halt verschieben
+        MoveObjectToLocation(item, (ertrinkenkoords[dist[1][1]][1]), (ertrinkenkoords[dist[1][1]][2]), (ertrinkenkoords[dist[1][1]][3]), boat.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+      EndIf
+    Else
+      MoveObjectToLocation(item, (ertrinkenkoords[dist[1][1]][1]), (ertrinkenkoords[dist[1][1]][2]), (ertrinkenkoords[dist[1][1]][3]), boat.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+    EndIf
+  EndForEach
+
+  // Dasselbe fürs Hold
+  ForEach item in EnumerateItemsInContainer(boat.hold,ENUMERATE_ROOT_ONLY)
+    If (!item.newbie)
+      res := DestroyItem(item);
+      If (!res) // Dann halt verschieben
+        MoveObjectToLocation(item, (ertrinkenkoords[dist[1][1]][1]), (ertrinkenkoords[dist[1][1]][2]), (ertrinkenkoords[dist[1][1]][3]), boat.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+      EndIf
+    Else
+      MoveObjectToLocation(item, (ertrinkenkoords[dist[1][1]][1]), (ertrinkenkoords[dist[1][1]][2]), (ertrinkenkoords[dist[1][1]][3]), boat.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+    EndIf
+  EndForEach
+
+  // kleine Anim eines sinkenden/sich drehenden Schiffes..
+  For (i := 1; i <= RandomInt(10)+3; i += 1)
+    TurnBoat(boat, 1);
+    SleepMs(800);
+  EndFor
+
+  res := DestroyMulti(boat);
+  If (!res)
+    SysLog("Warnung: Konnte Boot "+boat.serial+" nicht löschen: "+res.errortext);
+  EndIf
+
+EndFunction
+
+////////////////////////////////////////
+// FindErtrinkenKoords - Liest Cfg-File aus und gibt Listen zurueck
+////////////////////////////////////////
+
+Function FindErtrinkenKoords(ByRef dist)
+  Var cfg             := ReadConfigFile(":boat:ertrinken");
+  Var element         := cfg["punkte"];
+  Var ertrinkenpunkte := GetConfigStringArray(element, "koords");
+  Var ertrinkenkoords := {}, i, distxy;
+
+  ForEach koord in ertrinkenpunkte
+    Var koords := splitWords(koord);
+    ertrinkenkoords.append({CInt(koords[1]), Cint(koords[2]), CInt(Koords[3])});
+    SleepMs(5);
+  EndForEach
+
+  For (i := 1; i <= ertrinkenkoords.size(); i += 1) // Pythagoras lebe hoch!!....
+    distxy := CInt(CoordinateDistanceEuclidean(boat.x,boat.y,ertrinkenkoords[i][1], ertrinkenkoords[i][2]));
+    dist.append({(i), (distxy)});
+  EndFor
+  dist := SortMultiArrayByIndex(dist, 2);
+
+  Return (ertrinkenkoords);
+EndFunction
+
+////////////////////////////////////////
+// ErtrinkenBerechnung - Kommt man lebend wieder an Land?
+////////////////////////////////////////
+
+Function ErtrinkenBerechnung(mob, dist)
+  Var weightproz := 0, distproz := 0, chance := 0;
+  Var maxweight  := GetStrPergon(mob) * 3.5 + 40;  // Irgendwo gefunden, scheint zu passen
+
+  If ((mob.weight > maxweight) || (dist > MAX_DIST_ERTRINKEN)) // Überladen oder max Entfernung --> tot
+    Return (1);
+  Else  // Spannung..
+    If (mob.weight > MIN_WEIGHT_ERTRINKEN)  // Gewicht hat nur Einfluss, wenn es ueber dem Minimum liegt
+      weightproz := (mob.weight / maxweight)    * 100.0;
+    Else
+      weightproz := 0;
+    EndIf
+    If (dist <= MIN_DIST_ERTRINKEN)         // Entfernung hat nur Einfluss, wenn es ueber dem Minimum liegt
+      distproz   := (dist / MAX_DIST_ERTRINKEN) * 100.0;
+    Else
+      distproz   := 0;
+    EndIf
+
+    chance       := (distproz + weightproz)     /   2.0;
+    If (RandomInt(100) < chance)
+      Return (1); // Pech gehabt...
+    EndIf
+  EndIf
+  Return (0); // Nochmal Glück gehabt
+EndFunction
+
+////////////////////////////////////////
+// GhostMove - Zweckentfremdung der Ertrinkenfunktion, damit die Geister an den nächsten Punkt kommen
+////////////////////////////////////////
+
+Function GhostMove()
+  Var dist := {};
+  Var ertrinkenkoords := FindErtrinkenKoords(dist);
+
+  ForEach mob in (boat.mobiles)
+    If (mob.cmdlevel < CMDLEVEL_SEER)
+      MoveObjectToLocation(mob, (ertrinkenkoords[dist[1][1]][1]+RandomInt(2)-1), (ertrinkenkoords[dist[1][1]][2]+RandomInt(2)-1), (ertrinkenkoords[dist[1][1]][3]), mob.realm, MOVEOBJECT_FORCELOCATION);
+      SendSysMessagePergon(mob, "Euer Geist ist gestrandet...");
+    EndIf
+  EndForEach
+EndFunction
+
+////////////////////////////////////////
+// NoShippingCfg - Lädt die nicht befahrbaren Regionen
+////////////////////////////////////////
+
+Function NoShippingCfg()
+  Var area, noship:={}, edge1:={}, edge2:={};
+  Var cfg := ReadConfigFile(":boat:noshipping");
+  If (cfg)
+    Var keys:= GetConfigStringKeys(cfg);
+    ForEach areas in keys
+      area:=cfg[areas];
+      edge1:=SplitWords(GetConfigStringArray(area, "edge1"));
+      edge2:=SplitWords(GetConfigStringArray(area, "edge2"));
+      noship.append({areas, CInt(edge1[2]), CInt(edge1[3]), CInt(edge2[2]), CInt(edge2[3])});
+      SleepMs(5);
+    EndForEach
+    Return (noship);
+  Else
+    SysLog("WARNUNG: CfgFile noshipping konnte vom Boot "+boat.serial+" nicht geladen werden!");
+  EndIf
+EndFunction
+
+////////////////////////////////////////
+// DropAnchorRegistry (neu) - Anker am Heimathafen geworfen? Wenn nein, dann Gold in Hafenkasse einzahlen
+////////////////////////////////////////
+
+Function DropAnchorRegistry(who)
+  Var ort, portofregistry, result := struct, PortGold;
+  result.+result;
+  result.+preis;
+  result.preis := ANCHOR_PRICE;
+
+  If (who.cmdlevel>CMDLEVEL_GM)  // Überall Heimathafen
+    result.result:= 1;
+    result.preis := 0;
+    Return (result);
+  EndIf
+
+  If (PlaceTown(boat))
+    ort := PlaceName(boat);
+    If (ort["Jhe'lom"])  // notwendig, da die Stadt Jhelom aus 3 versch. Regionen besteht
+      ort := "Jhe'lom";
+    EndIf
+
+    portofregistry := GetObjProperty(boat, "PortOfRegistry");
+    If (ort == portofregistry) // Name der Stadtregion = Heimathafen?
+      result.result:= 1;
+      result.preis := 0;
+      Return (result);
+    Else
+      If (who.gold >= result.preis)
+        who.spendgold(result.preis);
+        PortGold := GetPortGold(ort); // Goldbetrag der HafenKasse erfragen
+        If (!PortGold)
+          PortGold := 0;
+        EndIf
+        SetPortGold(ort, PortGold + result.preis); // Gebuehr der Hafenkasse zugute kommen lassen
+        result.result := 1;
+        Return (result);
+      Else
+        result.result := 0;
+        Return (result);
+      EndIf
+    EndIf
+  EndIf
+  result.result := 1; //Außerhalb einer Stadt
+  result.preis  := 0;
+  Return (result);
+EndFunction
+
+////////////////////////////////////////
+// KartographieCheck - Skill hoch genug für dieses Schiff?
+////////////////////////////////////////
+Function KartographieCheck(who)
+  var skillreq := GetObjProperty(boat, "Skillreq"); // Kartographie hoch genug?
+  var skilldifference;
+
+  If (skillreq == error || skillreq < 0)
+    skillreq := 0;
+  EndIf
+
+  skilldifference := skillreq - GetSkillPergon(who, SKILLID_KARTOGRAPHIE);
+  If (who.cmdlevel < CMDLEVEL_SEER)
+    If (skilldifference > 0)
+      If (skilldifference > 40)
+        PrintTextAbovePergon(who, boat.tillerman, "Ich lasse mir von keiner Landratte Befehle erteilen!", "");
+      ElseIf (skilldifference > 30)
+        SendSysMessagePergon(who, "Ihr habt überhaupt keine Ahnung vom Segeln!");
+      ElseIf (skilldifference > 20)
+        SendSysMessagePergon(who, "Ihr habt nur eine wage Ahnung vom Segeln!");
+      ElseIf (skilldifference > 5)
+        SendSysMessagePergon(who, "Eure Fertigkeiten sind noch nicht gut genug ausgebildet!");
+      Else
+        SendSysMessagePergon(who, "Übt noch ein wenig, dann können wir lossegeln.");
+      EndIf
+
+      return 0;
+    EndIf
+  EndIf
+
+  return 1;
+EndFunction
+
+////////////////////////////////////////
+// AnkerAnim - Platsch Sound und Anim bei Anker werfen
+////////////////////////////////////////
+Function AnkerAnim(byref boat) // {{{
+  var x, y;
+  Case (boat.facing)
+    0:  x := boat.tillerman.x + 1;
+        y := boat.tillerman.y;
+    2:  x := boat.tillerman.x;
+        y := boat.tillerman.y + 1;
+    4:  x := boat.tillerman.x - 1;
+        y := boat.tillerman.y;
+    6:  x := boat.tillerman.x;
+        y := boat.tillerman.y - 1;
+    default:
+        // kann eigentlich nicht passieren
+        return;
+  EndCase
+
+  var tile   := GetMapInfo(x, y, boat.realm);
+  var splash := CreateItemAtLocationPergon(
+    x, y, tile.z, FX_SPLASH, 1, boat.realm
+  );
+  splash.movable := 0;
+  PlaySoundEffect(splash, SFX_27);
+  SleepMs(500);
+  splash.graphic := 0x352e;
+  SleepMs(500);
+  splash.graphic := 0x352f;
+  SleepMs(500);
+  splash.graphic := 0x3530;
+  SleepMs(500);
+  DestroyItem(splash);
+EndFunction // }}}
+
+////////////////////////////////////////
+// Push - "Kollisionsabfrage" für NPC's
+////////////////////////////////////////
+//Function Push()
+//  Var mobs, x1, x2, y1, y2, z1, z2, dir, dirn, tile, movedone;
+//  Var relativedir:={{0,-1}, {1,1}, {1,0}, {1,1}, {0,1}, {-1,1}, {-1,0}, {-1,-1}};
+//
+//  Case (boat.facing)  //Boxgröße bestimmen
+//    0: x1:=boat.hold.x-2;
+//       y1:=boat.hold.y-2;
+//       x2:=boat.tillerman.x+2;
+//       y2:=boat.tillerman.y+2;
+//    2: x1:=boat.tillerman.x-2;
+//       y1:=boat.tillerman.y-2;
+//       x2:=boat.hold.x+2;
+//       y2:=boat.hold.y+2;
+//    4: x1:=boat.tillerman.x-2;
+//       y1:=boat.tillerman.y-2;
+//       x2:=boat.hold.x+2;
+//       y2:=boat.hold.y+2;
+//    6: x1:=boat.hold.x-2;
+//       y1:=boat.hold.y-2;
+//       x2:=boat.tillerman.x+2;
+//       y2:=boat.tillerman.y+2;
+//    default: Return;  //Kann eigentlich nicht passieren
+//  EndCase
+//
+//  z1   := -10;
+//  z2   := 10;
+//  mobs := ListObjectsInBox(x1,y1,z1, x2,y2,z2,boat.realm);
+//  If (mobs.size())
+//    ForEach mob in mobs
+//      If (mob.isa(POLCLASS_NPC)) //Nur NPC's haben was auf dem Wasser zu suchen
+//        tile := GetStandingLayers(mob.x, mob.y, MAPDATA_FLAG_MOVESEA,mob.realm); //Ist das Vieh auch auf dem Wasser
+//        If ((tile) && (tile[1].z == mob.z))  //Staticvergleich gespart deswegen z Vergleich
+//          If (!(npcfile[mob.npctemplate].movemode["A"])) //Luftviecher werden nicht abgedrängt
+//            dir  := GetDirection(mob);
+//            movedone:=MoveObjectToLocation(mob, mob.x+relativedir[dir][1], mob.y+relativedir[dir][2], mob.z, mob.realm);  //Klappts hier?
+//            createitematlocation(mob.x+relativedir[dir][1],mob.y+relativedir[dir][2],tile[1].z,0x2);
+//            If (!movedone)
+//              dirn:=dir-1;
+//              If (dirn<1)
+//                dirn:=8;
+//              ElseIf (dirn>8)
+//                dirn:=1;
+//              EndIf
+//              movedone := MoveObjectToLocation(mob, mob.x+relativedir[dirn][1], mob.y+relativedir[dirn][2], mob.z, mob.realm);  //Oder hier?
+//              If (!movedone)
+//                dirn:=dir+1;
+//                If (dirn>8)
+//                  dirn:=1;
+//                EndIf
+//                MoveObjectToLocation(mob, mob.x+relativedir[dirn][1], mob.y+relativedir[dirn][2], mob.z, mob.realm);  // ...
+//              EndIf
+//            EndIf
+//          EndIf
+//        EndIf
+//      EndIf
+//      SleepMs(10);
+//    EndForEach
+//  EndIf
+//EndFunction
+
+////////////////////////////////////////
+// GetDirection - Relative Position des NPC's
+////////////////////////////////////////
+//Function GetDirection(mob)
+//  Var ret;
+//  If (mob.x > boat.x)
+//    If (mob.y > boat.y)
+//      ret:=4;
+//    ElseIf (mob.y < boat.y)
+//      ret:=2;
+//    Else
+//      ret:=3;
+//    EndIf
+//  ElseIf (mob.x < boat.x)
+//    If (mob.y > boat.y)
+//      ret:=6;
+//    ElseIf (mob.y < boat.y)
+//      ret:=8;
+//    Else
+//      ret:=7;
+//    EndIf
+//  Else
+//    If (mob.y > boat.y)
+//      ret:=5;
+//    Else
+//      ret:=1;
+//    EndIf
+//  EndIf
+//
+//  Return ret;
+//EndFunction
+
+////////////////////////////////////
+// EventCheck - Schickt an EventWaiter den Kram und führt aus
+////////////////////////////////////
+
+Function EventCheck();
+  Var ev, evtime, checkghost;
+  If (state==STATE_STATIONARY)  // Wielange wird auf Events gewartet
+    evtime:=600;
+  Else
+    evtime:=0;
+  EndIf
+
+  While ((boat) && (Events_Waiting() || (state==STATE_STATIONARY)))
+    ev:=Wait_For_Event(evtime);
+    If (ev)
+      Case (ev.type)
+        EVID_BOAT_SOUND1: If (state<>STATE_STATIONARY)
+                            PlayBoatSounds(boat);
+                            SendEventWaiter(boatprocess, DUR_SOUND, EVID_BOAT_SOUND);  // Alle 10 Sekunden Sound
+                          Else
+                            SendEventWaiter(boatprocess, DUR_SOUND*3, EVID_BOAT_SOUND);  // 30s Warte Zeit bei Stationary
+                          EndIf
+
+        EVID_BOAT_DAMAGE: Schaden(state);
+                          SendEventWaiter(boatprocess, DUR_DAMAGE, EVID_BOAT_DAMAGE);
+
+        EVID_BOAT_GHOST:  If (boat.mobiles.size() > 0)
+                            BoatReg(boat); //Kann man ja gleich mal mit aktualisieren
+                            checkghost := 1;
+                            ForEach mob in (boat.mobiles)
+                              If ((!mob.dead))
+                                checkghost := 0;
+                                Break;
+                              EndIf
+                            EndForEach
+                            If (checkghost)
+                              GhostMove();
+                            EndIf
+                          EndIf
+                          If (state != STATE_STATIONARY) // ankernde Schiffe ankern weiter (auch wenn alle von Bord sind)
+                            SetShipStats("state", STATE_DRIFTING);
+                          EndIf
+                          SendEventWaiter(boatprocess, DUR_CHECK_GHOST, EVID_BOAT_GHOST);
+
+        EVID_BOAT_ENCOUNTER: DoEncounter();
+                             SendEventWaiter(boatprocess, DUR_ENCOUNTER, EVID_BOAT_ENCOUNTER);
+
+        SYSEVENT_SPEECH:  If (CanCommandMe(ev.source))
+                            HandleSpeechEvent(ev);
+                            If ((!boat)||(Wenn_Faehre_Bootscript_beenden == ABBRUCH_WEIL_FAEHRE))
+                              Return;
+                            EndIf
+                          EndIf // Speech
+
+        EVID_BOAT_COURSE:  If (FollowMap)
+                             If (FollowMap.active)
+                               PrintTextAbovePergon(ev.source, boat.tillerman, "Captain ich folge bereits eurer Karte!", "");
+                             Else
+                               PrintTextAbovePergon(ev.source, boat.tillerman, "Aye, Captain eine Karte!", "");
+                               FollowMap:=ev.map;
+                             EndIf
+                           Else
+                             PrintTextAbovePergon(ev.source, boat.tillerman, "Aye, Captain eine Karte!", "");
+                             FollowMap:=ev.map;
+                           EndIf
+
+        default:
+      EndCase
+    ElseIf (state==STATE_STATIONARY)  // Stationary schaut nur einmal
+      Break;
+    EndIf
+    SleepMS(2);
+  EndWhile
+EndFunction
+
+// vim: sw=2 sts=2

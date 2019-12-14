@@ -1,0 +1,1595 @@
+///////////////////////////////////////////////////////////////////////////
+// based on Meek Script (1998/April)
+// Author: ENS
+//
+// Author: DeMohn
+
+///////////////////////////////////////////////////////////////////////////
+// Optimierungen
+//   Wait_for_EventLogging(5) -> Wait_for_EventLogging(120)
+//     Reicht, wenn der im Leerlauf nur alle 2 Minuten was macht
+//   HateLove nur einmal zentral in der Haupt-While-Do-Schleife einlesen
+//   Multiplikation ist schneller als Division (schon wegens Fehlercheck...)
+//   Sub-Haupt-Loop aufloesen, weil unsinnig
+//   SetWarMode(1) geht nicht... siehe Fight() -> SetOpponent(opponent)
+//   Case-Statements brauchen kein Break... das dient zum abbrechen von Schleifen
+//   Events komplett ueberarbeitet
+//   EnteredAreas -> max. Range auf 8... ScanRange im Look_Up unbeeinflußt
+//     => Zahl der Events stark reduziert
+//
+//   2002/04/... Domest Script - AI Script fuer domestizierte weibliche Tiere by Pauker
+//   07/2002 Paukerli, Generation am Nest-setzen hatte nicht gefunzt
+//   07/2002 Paukerli, Nachwuchs 10x10 wenn mehr als 12 Tiere drin stehen gesperrt
+/////////
+// wander, look, sound in kleines eventwait
+// nachwuchs, essen, trinken, schlafen in großes
+
+// Events:
+// Main:
+//   Speech->put put put
+//   Engaged->Fight
+//   Damaged->Fight
+// Inactive:
+//   Damaged->Fight
+// PanicEscape:
+//   Disengaged
+// FleeOutOfSenseRange:
+//   Damaged
+//   Disengaged
+// Fight:
+//   Engaged
+//   Damaged
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use cfgfile;
+use file;
+use npc;
+use os;
+use uo;
+use util;
+Include ":drinking:common";
+include "include/animal";
+include "include/animaldomest";
+include "include/clock";
+include "include/eventid";
+include "include/eventwaiter";
+include "include/logutil";
+include "include/modifyskill";
+include "include/names";
+include "include/npc";
+include "include/resources";
+
+///////////////
+// Konstanten
+///////////////
+Const LOOP_MAIN     := 0;    // Hauptschleife
+Const LOOP_INACTIVE := 1;    // Schlafen
+
+Const MAX_EVENTRANGE := 12;  // Wird benutzt fuer EnteredArea
+
+Const DEBUG := 0;               // DebugMessages ein- oder ausschalten
+
+// Um 15minuten gesenkt zwecks Verteilung mit RandomInt
+Const delay_nachwuchs := 6300; // Zeit bis das es Nachwuchs gibt in Sek.
+Const delay_eat       := 9900; // Zeit bis zum naechsten Durchlauf fuer Essen
+Const delay_drink     := 9900; // Zeit bis zum naechsten Durchlauf fuer Trinken
+Const delay_walk      := 300;
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+var me := Self();
+var senserange := MAX_EVENTRANGE; // Reaktionsradius
+var angersound := 0;
+var idlesound  := 0;
+var wakeuptime := 0;
+var sleeptime  := 0;
+
+var looptype;   // Wichtig fuer die Event-Verwaltung
+var eventrange; // EnteredArea-Radius
+
+// Default, wird ueberschrieben mit dem Wert aus der npcdesc.cfg
+var tierzuchtskill := 60;
+
+var LastNachwuchs;
+var LastPoppen;
+var ge_poppt;
+var Generation_Nachwuchs;
+
+var ev;
+
+/////////////////////////////
+// domest - Initialisierung
+/////////////////////////////
+Program domest()
+  // Property wurde beim Domestizieren nicht richtig geloescht
+  If (GetObjProperty(me, "master"))
+    SetObjProperty(me, "ExMaster", GetObjProperty(me, "master"));
+    EraseObjProperty(me, "master");
+  EndIf
+  // Wird aktuell nur in scripts\misc\death.src zwecks Logging benutzt
+  SetObjProperty(me, "#domestiziert", 1);
+
+  If (GetObjProperty(me, "frozen"))
+    me.frozen := 1;
+    IncRevision(me);
+  EndIf
+
+  If (me.name["<random>"])
+    SetName(me, RandomName(me));
+  EndIf
+
+  var mytemplate := GetNPCConfig(me.npctemplate);
+
+  If (mytemplate.senserange)
+      senserange := CInt(mytemplate.senserange);
+  EndIf
+  // Schraenkt den EventRange ein, weil sonst uebelste Performance-Probleme
+  If (senserange>MAX_EVENTRANGE)
+      eventrange := MAX_EVENTRANGE;
+  Else
+      eventrange := senserange;
+  EndIf
+
+  If (mytemplate.angersound)
+    angersound := CInt(mytemplate.angersound);
+  EndIf
+  If (mytemplate.idlesound)
+      idlesound := CInt(mytemplate.idlesound);
+  EndIf
+  If (mytemplate.tierzuchtskill)
+      TierzuchtSkill := CInt(mytemplate.tierzuchtskill);
+  EndIf
+
+  // Bestimmt zu welcher Tagestunde die Viecher in den Grazer_InactiveLoop
+  // gehen, wo sie sich ggf. verstecken und nur wach werden, wenn sie
+  // verletzt werden oder jemand ganz nah an sie rankommt
+  Case (Lower(mytemplate.activetime))
+    "day":       wakeuptime := 8;
+                  sleeptime := 20;
+    "daydawn":   wakeuptime := 6;
+                  sleeptime := 22;
+    "night":     wakeuptime := 22;
+                  sleeptime := 6;
+    "nightdawn": wakeuptime := 20;
+                  sleeptime := 8;
+  EndCase
+
+  // Fuer Voegel gibts mehrere Sounds und damits schoen zwitschert,
+  // kriegt jeder einen zufaelligen
+  If (Lower(me.npctemplate) == "bird")
+    idlesound := 24+RandomInt(9);
+  EndIf
+
+  Stats_korrigieren(me); // Ggf. MegaMonster erzeugen
+  SetWarMode(0);
+
+  If (DEBUG)
+    SysLogFile(CharInfoStr(me)+" SenseRange  = "+senserange);
+    SysLogFile(CharInfoStr(me)+" EventRange  = "+eventrange);
+    If (wakeuptime)
+      SysLogFile(CharInfoStr(me)+" Aufwachen   = "+(wakeuptime-1)+":00 Uhr");
+      SysLogFile(CharInfoStr(me)+" Einschlafen = "+(sleeptime-1)+":00 Uhr");
+    Else
+      SysLogFile(CharInfoStr(me)+" Daueraktiv");
+    EndIf
+  EndIf
+
+  // Propertys am Animal
+  // "Nachwuchs" wann es zuletzt Nachwuchs gab, Gameclock
+  // "LastPoppen" wann zuletzt gepoppt
+  // PROP_HUNGER animaldomest.inc
+  // PROP_THIRST animaldomest.inc
+  // "Generation" integer 0...30
+  // "Young" ReadGameClock()+10800, wird beim Nachwuchs gesetzt fuer
+  // taming.src, leichteres zaehmen fuer Jungtiere
+
+  If (me.gender) // Betrifft nur die weiblichen
+    LastNachwuchs := GetObjProperty(me, "Nachwuchs");
+    If (!LastNachwuchs)
+      SetObjProperty(me, "Nachwuchs", ReadGameClock());
+    EndIf
+
+    LastPoppen := GetObjProperty(me, "LastPoppen");
+    If (!LastPoppen)
+      SetObjProperty(me, "LastPoppen", ReadGameClock());
+    EndIf
+
+    ge_poppt := 0;
+    SetObjProperty(me, "GePoppt", ge_poppt);
+  EndIf
+
+  If (!GetObjProperty(me, PROP_HUNGER))
+    SetObjProperty(me, PROP_HUNGER, 9.0);
+  EndIf
+
+  If (!GetObjProperty(me, PROP_THIRST))
+    SetObjProperty(me, PROP_THIRST, 9.0);
+  EndIf
+
+  Grazer_MainLoop(); // Hauptschleife aufrufen
+EndProgram
+
+////////////////////////////////////
+// Domest_MainLoop - Hauptschleife
+////////////////////////////////////
+
+Function Grazer_MainLoop()
+  looptype := LOOP_MAIN;
+
+  var last_action := 0;
+  var SleepEvent;
+
+  Clear_Event_Queue();
+
+  If (Is_SleepTime())
+    EnableEvents(SYSEVENT_ENGAGED+SYSEVENT_DAMAGED);
+    EnableEvents(SYSEVENT_SPEECH, 12);
+    // relevant?
+    SendEventWaiter(me, RandomInt(241)+180, EVID_LOOKAROUND);
+    // wichtig fuers Aufwachen
+    SendEventWaiter(me,
+      CInt(((Diff_Time()*60*60)+RandomInt(120)*60)/4), EVID_DOMEST_TIME
+    );
+    ev := Grazer_InactiveLoop(); // Schlafen
+    If (ev)
+      SleepEvent := 1;
+    EndIf
+  Else
+    SleepEvent := 0;
+  EndIf
+
+  // Events losschicken um einzusteigen
+  // Eat delay+0 bis 30min
+  // Streuen damit der Event_Queue hoffentlich nicht überläuft.
+  SleepMS(RandomInt(1000));
+  SendEventWaiter(me, delay_eat+RandomInt(31)*60, EVID_DOMEST_EAT);
+  // Drink delay+0 bis 30min
+  // Streuen damit der Event_Queue hoffentlich nicht überläuft.
+  SleepMS(RandomInt(1000));
+  SendEventWaiter(me, delay_drink+RandomInt(31)*60, EVID_DOMEST_DRINK);
+  // Time SleepTime Time_Diff()+0 bis 30min IGZeit (/4)
+  If (wakeuptime)
+    // Streuen damit der Event_Queue hoffentlich nicht überläuft.
+    SleepMS(RandomInt(1000));
+    SendEventWaiter(me,
+      CInt(((Diff_Time()*60*60)+RandomInt(120)*60)/4), EVID_DOMEST_TIME
+    );
+  EndIf
+  // LookAround 3-7min
+  // Streuen damit der Event_Queue hoffentlich nicht überläuft.
+  SleepMS(RandomInt(1000));
+  SendEventWaiter(me, RandomInt(241)+180, EVID_LOOKAROUND);
+  // IdleSound abgeben 3-5min
+  If (idlesound)
+    // Streuen damit der Event_Queue hoffentlich nicht überläuft.
+    SleepMS(RandomInt(1000));
+    SendEventWaiter(me, RandomInt(121)+180, EVID_DOMEST_SOUND);
+  EndIf
+  // Walk 60-150s
+  // Streuen damit der Event_Queue hoffentlich nicht überläuft.
+  SleepMS(RandomInt(1000));
+  SendEventWaiter(me, RandomInt(delay_walk)+60, EVID_WALK);
+
+  If (me.gender)
+    // Nachwuchs (nur so pi mal auge die Hälfte der eigentlich Zeit
+    // damit falls mal die Bedingungen nicht erfüllt sind trotzdem mal
+    // irgendwann Nachwuchs kommt)
+    // Streuen damit der Event_Queue hoffentlich nicht überläuft.
+    SleepMS(RandomInt(1000));
+    SendEventWaiter(me,
+      CInt(delay_nachwuchs/2)+RandomInt(15)*60, EVID_DOMEST_BABY
+    );
+  EndIf
+
+  EnableEvents(SYSEVENT_ENGAGED+SYSEVENT_DAMAGED);
+  EnableEvents(SYSEVENT_SPEECH, 12);
+  TestMessage("Initalisierung beendet", 1);
+  var last_instr := me.process.instr_cycles;
+
+  While (1)
+    SleepMS(20);
+    TestMessage(
+      "round_main instr: " + CStr(me.process.instr_cycles-last_instr), 1
+    );
+    last_instr := Me.process.instr_cycles;
+    If (!SleepEvent) // Da die InaktivLoop verschachtelt ist
+      ev := Wait_for_EventLogging(300);
+    Else
+      SleepEvent := 0;
+    EndIf
+
+    // Event
+    If (!ev)
+      continue;
+    EndIf
+
+    If (DEBUG)
+      SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Main-Event = "+ev);
+    EndIf
+
+    Case (ev.type)
+      SYSEVENT_ENGAGED:
+        TestMessage("SYSEVENT_ENGAGED "+ev.source.serial+" "+ev.source.name, 1);
+        If (Distance(me, ev.source) <= senserange)
+          If (DEBUG)
+            SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Angriff aus "+Distance(me, ev.source));
+          EndIf
+
+          If (CheckOtherMobile(ev.source) == LOVEHATE_FRIGHT)
+            If (DEBUG)
+              SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Hab Angst, hau ab vor Agressor");
+            EndIf
+
+            FleeOutofSenseRange(ev.source);
+          Else // Wenn ich schlau genug bin, die Lage einzuschaetzen, und ich mich haushoch ueberlegen waehne...
+            If ((GetHPPergon(me) >= GetMaxHPPergon(me)*0.8) And (GetHPPergon(me) >= GuessStrength(ev.source)*2))
+              If (DEBUG)
+                SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Bin schlau und stark, greife an.");
+              EndIf
+
+              Fight(ev.source);
+            Else // ansonsten hau ich ab
+              FleeOutOfSenseRange(ev.source);
+            EndIf
+          EndIf
+
+          last_action := ReadGameClock();
+        EndIf
+
+      SYSEVENT_DAMAGED:
+        TestMessage("SYSEVENT_DAMAGED "+ev.source.serial+" "+ev.source.name, 1);
+        If (ev.source)
+          If (DEBUG)
+            SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Aua!");
+          EndIf
+
+          If (CheckOtherMobile(ev.source) == LOVEHATE_FRIGHT)
+            If (GetHPPergon(me)<GetMaxHPPergon(me)*0.5) // Bin schwer verletzt
+              If (DEBUG)
+                SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Bin gleich tot. Ich fliehe soweit, wie ich kann!");
+              EndIf
+
+              PanicEscape(ev.source, 60);
+            Else
+              If (DEBUG)
+                SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Der will mich fressen. Ich renne 10 Sekunden lang weg!");
+              EndIf
+
+              PanicEscape(ev.source, 10);
+            EndIf
+          Else // Wenn ich schlau genug bin, die Lage einzuschaetzen, und ich mich haushoch ueberlegen waehne...
+            If ((GetHPPergon(me) >= GetMaxHPPergon(me)*0.8) And (GetHPPergon(me) >= GuessStrength(ev.source)*2))
+              If (DEBUG)
+                SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Isch bin viel staerka als der, den mach isch alle!");
+              EndIf
+
+              Fight(ev.source);
+            Else
+              If (GetHPPergon(me)<GetMaxHPPergon(me)*0.5) // Bin schwer verletzt
+                If (DEBUG)
+                  SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Ich nehme panisch reissaus.");
+                EndIf
+
+                PanicEscape(ev.source, 60);
+              Else
+                If (DEBUG)
+                  SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Ich renn soweit weg, bis ihn nicht mehr sehen kann.");
+                EndIf
+
+                FleeOutOfSenseRange(ev.source);
+              EndIf
+            EndIf
+          EndIf
+
+          last_action := ReadGameClock();
+        EndIf
+
+//        SYSEVENT_ENTEREDAREA:
+//          If (CheckLineOfSight(me, ev.source))
+//            If (DEBUG)
+//              SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Da kommt was.");
+//            EndIf
+//
+//           // var actiontype := CheckOtherMobile(ev.source);
+//           // If (actiontype == LOVEHATE_FRIGHT)
+//           //   If (DEBUG)
+//           //     SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Den "+(ev.source).name+" fürchte ich und hau ab.");
+//           //   EndIf
+//           //
+//           //   FleeOutOfSenseRange(ev.source);
+//           // ElseIf (actiontype == LOVEHATE_PLAYER)
+//            If (!ev.source.isa(POLCLASS_NPC))
+//              last_action := 0;
+//            EndIf
+//          EndIf
+
+      SYSEVENT_SPEECH:
+        Case (ev.text)
+          "put put put":  var hungrylevel := GetObjProperty(me, PROP_HUNGER);
+                          If (hungrylevel < 10) // ob das Tier uberhaupt hunger hat
+                            Suche_nach_Futter(me, ev.source, TierzuchtSkill, hungrylevel, senserange, DEBUG);
+                          EndIf
+                          SleepMS(RandomInt(20)*100+1000); // Etwas Streuung und dann gleich Durst stillen falls nötig
+                          var level_drink := CDbl(GetObjProperty(me, PROP_THIRST));
+                          If (level_drink < 10.0)
+                            Suche_nach_Wasser(me, ev.source, level_drink, senserange, DEBUG);
+                          EndIf
+                          TestMessage("Level_Drink "+me.getprop(PROP_THIRST), 1);
+                          TestMessage("Hungrylevel "+me.getprop(PROP_HUNGER), 1);
+          default:
+        EndCase // SYSEVENT_SPEECH
+
+      EVID_DOMEST_EAT:
+        TestMessage("EVID_DOMEST_EAT "+ev.time+" Hungrylevel "+me.getprop(PROP_HUNGER), 1);
+        // PROP_HUNGER animaldomest.inc
+        TurnHungryLevelAnimal(me);
+        If (DEBUG)
+          SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] hungrylevel: "+CDbl(GetObjProperty(me, PROP_HUNGER)));
+        EndIf
+        SendEventWaiter(me, delay_eat+RandomInt(31)*60, EVID_DOMEST_EAT);
+
+      EVID_DOMEST_DRINK:
+        TestMessage("EVID_DOMEST_DRINK "+ev.time+" Level_Drink "+me.getprop(PROP_THIRST), 1);
+        // PROP_THIRST animaldomest.inc
+        TurnDrinkingLevelAnimal(me);
+        If (DEBUG)
+          SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] level_drink: "+CDbl(GetObjProperty(me, PROP_THIRST)));
+        EndIf
+        var level_drink := CDbl(GetObjProperty(me, PROP_THIRST));
+        If (level_drink < 10.0)
+          Suche_nach_Wasser(me, ev.source, level_drink, senserange, DEBUG);
+        EndIf
+        SendEventWaiter(me, delay_drink+RandomInt(31)*60, EVID_DOMEST_DRINK);
+
+
+      EVID_WALK:
+        TestMessage("EVID_WALK "+ev.time, 1);
+        If (!me.warmode)
+          WanderPergon();
+        EndIf
+        SendEventWaiter(me, RandomInt(delay_walk)+60, EVID_WALK);
+
+      EVID_DOMEST_TIME:
+        TestMessage("EVID_DOMEST_TIME "+ev.time, 1);
+        If (!me.warmode)
+          // Time SleepTime Time_Diff()+0 bis 30min IGZeit (/4)
+          SendEventWaiter(me, CInt(((Diff_Time()*60*60)+RandomInt(120)*60)/4), EVID_DOMEST_TIME);
+          If (Is_SleepTime())
+            ev := Grazer_InactiveLoop(); // Schlafen
+            If (ev)
+              SleepEvent := 1;
+            EndIf
+          EndIf
+        Else  // In 20min nochmal Probieren
+          SendEventWaiter(me, 1200, EVID_DOMEST_TIME);
+        EndIf
+
+      EVID_LOOKAROUND:
+        TestMessage("EVID_LOOKAROUND "+ev.time, 1);
+        If (!me.warmode)
+          Look_Around();
+        EndIf
+        SendEventWaiter(me, RandomInt(241)+180, EVID_LOOKAROUND);
+
+      EVID_DOMEST_SOUND:
+        TestMessage("EVID_DOMEST_SOUND "+ev.time, 1);
+        If (!me.warmode)
+          PlaySoundEffect(me, idlesound);
+        EndIf
+        SendEventWaiter(me, RandomInt(121)+180, EVID_DOMEST_SOUND);
+
+      EVID_DOMEST_BABY:
+        If (me.gender) // Nochmal zur Sicherheit
+          TestMessage("EVID_DOMEST_BABY "+ev.time, 1);
+          If (DEBUG)
+            SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Zeit seit letztem Nachwuchs "+(readgameclock() - LastNachwuchs));
+          EndIf
+          If (me.name == "Huhn domestiziert")
+            Suche_nach_Nest(me, 0x09b5);
+          ElseIf (me.name == "Waldostardin domestiziert")
+            Suche_nach_Nest(me, 0x6c00);
+          ElseIf (me.name == "Wuestenostardin domestiziert")
+            Suche_nach_Nest(me, 0x6c01);
+          ElseIf (me.name == "Raubostardin domestiziert")
+            Suche_nach_Nest(me, 0x6c02);
+          ElseIf (me.name == "Hoehlenostardin domestiziert")
+            Suche_nach_Nest(me, 0x6c03);
+          ElseIf (me.name == "Eisostardin domestiziert")
+            Suche_nach_Nest(me, 0x6c04);
+          ElseIf (me.name == "Lavaostardin domestiziert")
+            Suche_nach_Nest(me, 0x6c05);
+          Else
+            // Nachwuchs ohne Eier legen
+            Bekomme_Nachwuchs(me);
+          EndIf
+          SendEventWaiter(me, CInt(delay_nachwuchs/2)+RandomInt(15)*60, EVID_DOMEST_BABY);
+        EndIf
+      default:
+    EndCase
+  EndWhile
+EndFunction
+
+/////////////////////////////////////////
+// Grazer_InactiveLoop - Schlafschleife
+/////////////////////////////////////////
+//
+// Tierchen versteckt sich, wenns den Skill dazu hat und reagiert nur noch,
+// wenn es verletzt wird oder ihm eine Gefahr extrem nahe kommt.
+
+Function Grazer_InactiveLoop()
+  var walk := 0, sound := 0;
+  If (DEBUG)
+    SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Zeit zum Schlafen");
+  EndIf
+  TestMessage("Inactive Loop: schlafe ein", 1);
+
+  ForEach critter in ListMobilesInLineOfSight(me, cint(senserange/2))
+    If (!critter.isa(POLCLASS_NPC))
+      If ((!critter.hidden) And (critter.cmdlevel < CMDLEVEL_SEER))
+        If (DEBUG)
+          SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] "+critter.name+" stoert mich beim Einschlafen.");
+        EndIf
+        TestMessage(
+          "Inactive Loop: Kann nicht einschlafen wegen "+
+          CharInfoStr(critter), 3
+        );
+
+        KeepDistanceToOpponent(me, critter, cint(senserange/2), 0, DEBUG);
+        return (0);
+      EndIf
+    EndIf
+  EndForEach
+  // Ich schau mich 10 Sekunden um, ob meine Schlafstaette ruhig bleibt.
+  ev := Wait_for_EventLogging(10);
+  If ((ev.type<>SYSEVENT_ENGAGED) && (ev.type<>SYSEVENT_SPEECH)) // Die einzigen 2 events die hier nicht behandelt werden
+    // If (GetSkillPergon(me, SKILLID_VERSTECKEN))
+    //  If (DEBUG)
+    //    SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Ich verstecke mich.");
+    //  EndIf
+
+    //  me.hidden := 1;
+    // EndIf
+
+    DisableEvents(SYSEVENT_ENGAGED+SYSEVENT_SPEECH);
+//    EnableEvents(SYSEVENT_ENTEREDAREA, CInt(eventrange/4));
+    looptype := LOOP_INACTIVE;
+    var last_instr := me.process.instr_cycles;
+    var wakedup := 0;
+    var last_domest_event := ReadGameClock();
+    While (!wakedup)
+      TestMessage("round_inactive instr: " + CStr(me.process.instr_cycles-last_instr), 1);
+      last_instr := Me.process.instr_cycles;
+      ev := Wait_for_EventLogging(120);
+      If (ev)
+        If (DEBUG)
+          SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Inactive-Event = "+ev);
+        EndIf
+
+        Case (ev.type)
+          SYSEVENT_DAMAGED:
+            TestMessage("Inactive Loop: SYSEVENT_DAMAGED "+ev.source.serial+" "+ev.source.name, 1);
+            If (ev.source)
+              If (DEBUG)
+                SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Ich wache mit Schmerzen auf und fluechte panisch.");
+              EndIf
+
+              PanicEscape(ev.source, 20);
+              wakedup := 1;
+            EndIf
+
+          EVID_DOMEST_TIME:
+            last_domest_event := ReadGameClock();
+            TestMessage("Inactive Loop: EVID_DOMEST_TIME "+ev.time, 1);
+            If (!me.warmode)
+              // Time SleepTime Tume_Diff()+0 bis 30min IGZeit (/4)
+              SendEventWaiter(me, CInt(((Diff_Time()*60*60)+RandomInt(120)*60)/4), EVID_DOMEST_TIME);
+              If (!Is_SleepTime())
+                wakedup := 1;
+              EndIf
+            Else  // In 20min nochmal Probieren
+              SendEventWaiter(me, 1200, EVID_DOMEST_TIME);
+            EndIf
+
+          EVID_LOOKAROUND:
+            TestMessage("Inactive Loop: EVID_LOOKAROUND "+ev.time, 1);
+            If (!me.warmode)
+              If (Look_Around())
+                wakedup := 1;
+                ev := 0;
+              EndIf
+            EndIf
+            SendEventWaiter(me, RandomInt(241)+1800, EVID_LOOKAROUND);
+
+          EVID_DOMEST_EAT:
+            TestMessage("Inactive Loop: EVID_DOMEST_EAT "+ev.time+" Hungrylevel "+me.getprop(PROP_HUNGER), 1);
+            // PROP_HUNGER animaldomest.inc
+            TurnHungryLevelAnimal(me);
+            If (DEBUG)
+              SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] hungrylevel: "+CDbl(GetObjProperty(me, PROP_HUNGER)));
+            EndIf
+            SendEventWaiter(me, delay_eat+RandomInt(30)*60, EVID_DOMEST_EAT);
+
+          EVID_DOMEST_DRINK:
+            TestMessage("EVID_DOMEST_DRINK "+ev.time+" Level_Drink "+me.getprop(PROP_THIRST), 1);
+            // PROP_THIRST animaldomest.inc
+            TurnDrinkingLevelAnimal(me);
+            If (DEBUG)
+              SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] level_drink: "+CDbl(GetObjProperty(me, PROP_THIRST)));
+            EndIf
+            var level_drink := CDbl(GetObjProperty(me, PROP_THIRST));
+            If (level_drink < 10.0)
+              wakedup := 1;
+              ev := 0;
+            EndIf
+            SendEventWaiter(me, delay_drink+RandomInt(31)*60, EVID_DOMEST_DRINK);
+
+          EVID_DOMEST_BABY:
+            TestMessage("Inactive Loop: EVID_DOMEST_BABY "+ev.time, 1);
+            If (me.gender)
+              SendEventWaiter(me, CInt(delay_nachwuchs/2)+RandomInt(15)*60, EVID_DOMEST_BABY);
+            EndIf
+
+          EVID_WALK:
+            TestMessage("Inactive Loop: EVID_WALK "+ev.time, 1);
+            walk := 1; // walk muß neu geschickt werden für die Hauptschleife
+
+          EVID_DOMEST_SOUND:
+            TestMessage("Inactive Loop: EVID_DOMEST_SOUND "+ev.time, 1);
+            sound := 1; // sound muß neu geschickt werden für die Hauptschleife
+
+          default:
+        EndCase
+      EndIf
+
+      If (last_domest_event + 4*3600 < ReadGameClock())
+        // einen Pergon-Tag lang nicht aufgewacht -> Event offenbar verloren
+        syslog("FEHLER: "+CharInfoStr(me)+" wird zwangsgeweckt");
+        SendEventWaiter(me, RandomInt(60), EVID_DOMEST_TIME);
+      EndIf
+      SleepMS(20);
+    EndWhile
+
+    looptype := LOOP_MAIN;
+    EnableEvents(SYSEVENT_ENGAGED);
+//    EnableEvents(SYSEVENT_ENTEREDAREA, eventrange);
+    EnableEvents(SYSEVENT_SPEECH, 12);
+
+    // Sound/Walk wieder anschmeißen
+    If (walk)
+      SendEventWaiter(me, RandomInt(delay_walk)+60, EVID_WALK);
+    EndIf
+    If (sound)
+      SendEventWaiter(me, RandomInt(121)+180, EVID_DOMEST_SOUND);
+    EndIf
+    TestMessage("Beende Inactive Loop", 1);
+    If (me.hidden) // Um unnoetige Events zu sparen...
+      me.hidden := 0;
+    EndIf
+
+    If (DEBUG)
+      SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Zeit zum Aufwachen.");
+    EndIf
+  EndIf
+
+  return (ev);
+EndFunction
+
+/////////////////////////////////////////////////////////
+// Look_Around - Nach Feinden suchen, Umgebung absuchen
+/////////////////////////////////////////////////////////
+//
+// Gibt 1 zurueck, wenn was vorgefallen ist
+
+Function Look_Around()
+  var result := 1;
+
+  If (DEBUG)
+    SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Ich schau mich um ("+me.x+" "+me.y+" "+me.z+")");
+  EndIf
+
+  // Alles in meiner Sichtweite wird in Listen gemerkt und dann je nach
+  // Prioritaet (zuerst Fright, dann Player, dann Love) behandelt
+  // config/hatelove.cfg
+  var fright;
+  var love;
+  var player;
+  var frightabstand := senserange+1;
+  var loveabstand := senserange+1;
+  var playerabstand := senserange+1;
+  var abstand;
+
+  ForEach critter in ListMobilesInLineOfSight(me, senserange)
+    Case (CheckOtherMobile(critter))
+      LOVEHATE_FRIGHT:
+        abstand := Distance(me, critter);
+        If (abstand<frightabstand)
+          fright := critter;
+          frightabstand := abstand;
+        EndIf
+        // If (DEBUG)
+        //   SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Ich sehe und fuerchte "+critter.name);
+        // EndIf
+      LOVEHATE_LOVE:
+        If (looptype == LOOP_MAIN)
+          If ((me.gender) && (critter.gender))
+            Break; //Weibliche fühlen sich nur von männlichen angezogen sonst poppen die mit weiblichen
+          EndIf
+          abstand := Distance(me, critter);
+          If (abstand<loveabstand)
+            love := critter;
+            loveabstand := abstand;
+          EndIf
+        EndIf
+        // If (DEBUG)
+        //   SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Ich sehe und mag "+critter.name);
+        // EndIf
+      LOVEHATE_PLAYER:
+      LOVEHATE_HUMAN:
+        abstand := Distance(me, critter);
+        If (abstand<playerabstand)
+          player := critter;
+          playerabstand := abstand;
+        EndIf
+        // If (DEBUG)
+        //   SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Ich sehe den Menschen "+critter.name);
+        // EndIf
+    EndCase
+    SleepMS(5);
+  EndForEach
+
+  // Wenn einer oder mehrere da sind, vor denen ich Angst habe, dann renn ich
+  // vor dem weg, der mir am naechsten ist
+  If (fright)
+    TestMessage("LOOKAROUND: Habe Angst vor "+CharInfoStr(fright), 3);
+    If (DEBUG)
+      SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Ich renn weg vor "+fright.name+" in "+frightabstand+"m Entfernung.");
+    EndIf
+
+    FleeOutOfSenseRange(fright);
+  ElseIf (player) // Sind Player da und mir kommt einer zu nahe, geh ich weg
+    TestMessage("LOOKAROUND: "+CharInfoStr(player)+" nervt", 3);
+    If (DEBUG)
+      SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] "+player.name+" rueckt mir auf die Pelle.");
+    EndIf
+    KeepDistanceToOpponent(me, player, 2, 0, DEBUG);
+  ElseIf (love) // Sind welche da, die ich mag, dann bleib ich in der Naehe
+    TestMessage("LOOKAROUND: Fickfreund(-in) "+CharInfoStr(love)+" gesichtet", 2);
+    If ((!ge_poppt) && (me.gender)) // Wieder nur speziell für die weibliche Bevölkerung
+      Poppen(love);
+    Else
+      If (me.gender)
+        TestMessage("LOOKAROUND: Bin schwanger, laufe dumm rum", 3);
+        KeepDistanceToOpponent(me, love, CInt(senserange/2.0), cint(senserange-2), DEBUG);
+        If (DEBUG)
+          SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] ich hab keine Lust zu poppen :-)");
+        EndIf
+      Else
+        TestMessage("LOOKAROUND: Laufe dumm rum", 3);
+        KeepDistanceToOpponent(me, love, 2, CInt(senserange-2), DEBUG);
+      EndIf
+    EndIf
+    result := 0;
+  Else
+    TestMessage("LOOKAROUND: Quasi-Sleep, nichts in Sicht", 3);
+    result := 0;
+  EndIf
+
+  return (result);
+EndFunction
+
+// mit Mobile "love" poppen
+Function Poppen(love)
+  LastPoppen := GetObjProperty(me, "LastPoppen");
+  If (ReadGameClock()-LastPoppen <= (Randomint(300)+300))
+    SysLogFile(
+      me.name+" ["+Lower(Hex(me.serial))+"] ist nicht dran mit poppen"
+    );
+    TestMessage("POPPEN: Neulich erst gepoppt, Abbruch", 3);
+    return;
+  EndIf
+
+  If (DEBUG)
+    SysLogFile(
+      me.name+" ["+Lower(Hex(me.serial))+"] Ich bleibe in der Naehe von "+
+      love.name+" ["+Lower(Hex(love.serial))+"], den will ich poppen."
+    );
+  EndIf
+
+  // hinlaufen
+  var versuche := 1;
+  While (
+    // bis nah genug
+    (!(Distance(me, love) < 2)) and
+    // oder zu oft verbockt
+    (versuche <= senserange) and
+    // oder etwas dazwischenkommt
+    (!Events_Waiting())
+  )
+    runtoward(love);
+    versuche := versuche+1;
+  EndWhile
+
+  If (Distance(me, love)<2)
+    // nah genug, loslegen
+    ge_poppt := 1;
+    SetObjProperty(me, "GePoppt", ge_poppt);
+    var Generation_m := GetObjProperty(love, "Generation");
+    If (!Generation_m)
+      Generation_m := 1;
+    EndIf
+    var Generation_w := GetObjProperty(me, "Generation");
+    If (!Generation_w)
+      Generation_w := 1;
+    EndIf
+    Generation_Nachwuchs := cint (((Generation_m + Generation_w)/2)+1);
+    SetObjProperty(me, "LastPoppen", ReadGameClock());
+    TestMessage("POPPEN: Erfolgreich gepoppt", 1);
+    // uff, uff, Erster! Fertig!
+    return;
+  EndIf
+
+  // Fehlversuch, trotzdem Zeit bis zum naechsten Mal setzen
+  SetObjProperty(me, "LastPoppen", ReadGameClock());
+  TestMessage("POPPEN: Opfer zu weit weg, Abbruch", 2);
+  If (DEBUG)
+    SysLogFile(
+      me.name+" ["+Lower(Hex(me.serial))+"] ich muss naeher ran, "+
+      love.name+" ["+Lower(Hex(love.serial))+"] will ich poppen."
+    );
+  EndIf
+EndFunction
+
+////////////////////////////////////////////////////////////////////////
+// FleeOutOfSenseRange - Fliehe solange, bis Feind nicht mehr sichtbar
+////////////////////////////////////////////////////////////////////////
+//
+// Wenn stark genug, dann wird nach 30 Sekunden angegriffen
+
+Function FleeOutOfSenseRange(opponent)
+  If (DEBUG)
+    SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Ich fliehe aaaaaaaaah...");
+  EndIf
+
+  Case (looptype) // SYSEVENT_DAMAGED+SYSEVENT_ENTEREDAREA bleiben aktiv
+    LOOP_MAIN:        DisableEvents(SYSEVENT_ENGAGED+SYSEVENT_SPEECH);
+    LOOP_INACTIVE:    If (me.hidden) // Um unnoetige Events zu sparen...
+                        me.hidden := 0;
+                      EndIf
+  EndCase
+  EnableEvents(SYSEVENT_DISENGAGED);
+
+  While (Events_Waiting())  // Neu schicken der CustomEvents
+    ev := Wait_for_EventLogging(0);
+    SleepMS(2);
+    Case (ev.type)
+      EVID_DOMEST_EAT:   SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_EAT);
+      EVID_DOMEST_DRINK: SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_DRINK);
+      EVID_WALK:         SendEventWaiter(me, RandomInt(10)*60+1, EVID_WALK);
+      EVID_DOMEST_TIME:  SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_TIME);
+      EVID_LOOKAROUND:   SendEventWaiter(me, RandomInt(10)*60+1, EVID_LOOKAROUND);
+      EVID_DOMEST_SOUND: SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_SOUND);
+      EVID_DOMEST_BABY:  SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_BABY);
+      default:
+    EndCase
+  EndWhile
+
+  var attack := 0;
+  var timeout := ReadGameClock()+30;
+  var abstand := Distance(me, opponent);
+  While (opponent And (!opponent.hidden) And (!opponent.concealed) And ((abstand<
+        senserange+1) Or CheckLineOfSight(me, opponent)) And (!Events_Waiting()))
+    If (timeout <= ReadGameClock())
+      If ((GetMaxHPPergon(me) >= 50) And (abstand*2<senserange) And (abstand<8))
+        attack := 1;
+        Break;
+      Else
+        timeout := ReadGameClock()+15;
+      EndIf
+    EndIf
+
+    RunAwayFrom(opponent);
+    SleepMS(100);
+
+    abstand := Distance(me, opponent);
+  EndWhile
+
+  DisableEvents(SYSEVENT_DISENGAGED);
+  Case (looptype)
+    LOOP_MAIN:        EnableEvents(SYSEVENT_ENGAGED);
+                      EnableEvents(SYSEVENT_SPEECH, 12);
+    default:
+  EndCase
+
+  If (attack)
+    If (DEBUG)
+      SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Ich kann ihn nicht abhaengen, also greif ich an.");
+    EndIf
+
+    Fight(opponent);
+  EndIf
+EndFunction
+
+////////////////////////////////////////////////
+// PanicEscape - Fluechte fuer <time> Sekunden
+////////////////////////////////////////////////
+
+Function PanicEscape(opponent, time)
+  If (DEBUG)
+    SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Die naechsten "+time+" Sekunden renne ich erstmal nur wie doof!");
+  EndIf
+
+  Case (looptype) // Alle abgeschaltet
+    LOOP_MAIN:        DisableEvents(SYSEVENT_ENGAGED+SYSEVENT_DAMAGED+SYSEVENT_SPEECH);
+//                      DisableEvents(SYSEVENT_ENTEREDAREA);
+    LOOP_INACTIVE:    // DisableEvents(SYSEVENT_ENTEREDAREA);
+                      DisableEvents(SYSEVENT_DAMAGED);
+                      If (me.hidden) // Um unnoetige Events zu sparen...
+                        me.hidden := 0;
+                      EndIf
+  EndCase
+  EnableEvents(SYSEVENT_DISENGAGED);
+
+  While (Events_Waiting())  // Neu schicken der CustomEvents
+    ev := Wait_for_EventLogging(0);
+    SleepMS(2);
+    Case (ev.type)
+      EVID_DOMEST_EAT:   SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_EAT);
+      EVID_DOMEST_DRINK: SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_DRINK);
+      EVID_WALK:         SendEventWaiter(me, RandomInt(10)*60+1, EVID_WALK);
+      EVID_DOMEST_TIME:  SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_TIME);
+      EVID_LOOKAROUND:   SendEventWaiter(me, RandomInt(10)*60+1, EVID_LOOKAROUND);
+      EVID_DOMEST_SOUND: SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_SOUND);
+      EVID_DOMEST_BABY:  SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_BABY);
+      default:
+    EndCase
+  EndWhile
+
+  var timeout := ReadGameClock()+time;
+  While ((opponent) && (!opponent.hidden) && (!opponent.concealed)
+        && ((Distance(me, opponent)<senserange+1) || (CheckLineOfSight(me, opponent)))
+        && (timeout>ReadGameClock()) && (!Events_Waiting()))
+    RunAwayFrom(opponent);
+    SleepMS(100);
+  EndWhile
+
+  DisableEvents(SYSEVENT_DISENGAGED);
+  Case (looptype)
+    LOOP_MAIN:        EnableEvents(SYSEVENT_ENGAGED+SYSEVENT_DAMAGED);
+//                      EnableEvents(SYSEVENT_ENTEREDAREA, eventrange);
+                      EnableEvents(SYSEVENT_SPEECH, 12);
+    LOOP_INACTIVE:    EnableEvents(SYSEVENT_DAMAGED);
+//                      EnableEvents(SYSEVENT_ENTEREDAREA, CInt(eventrange/4.0));
+  EndCase
+EndFunction
+
+//////////////////////////////
+// Fight - Gegner bekaempfen
+//////////////////////////////
+
+Function Fight(opponent)
+  If ((opponent) And (opponent.cmdlevel < CMDLEVEL_SEER))
+    If (DEBUG)
+      SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Ich greife an.");
+    EndIf
+    Case (looptype) // SYSEVENT_ENGAGED+SYSEVENT_DAMAGED bleiben aktiv
+      LOOP_MAIN:        DisableEvents(SYSEVENT_SPEECH);
+
+      LOOP_INACTIVE:   // DisableEvents(SYSEVENT_ENTEREDAREA);
+                        If (me.hidden) // Um unnoetige Events zu sparen...
+                          me.hidden := 0;
+                        EndIf
+                        EnableEvents(SYSEVENT_ENGAGED);
+    EndCase
+
+    While (Events_Waiting())  // Neu schicken der CustomEvents
+      ev := Wait_for_EventLogging(0);
+      SleepMS(2);
+      Case (ev.type)
+        EVID_DOMEST_EAT:   SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_EAT);
+        EVID_DOMEST_DRINK: SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_DRINK);
+        EVID_WALK:         SendEventWaiter(me, RandomInt(10)*60+1, EVID_WALK);
+        EVID_DOMEST_TIME:  SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_TIME);
+        EVID_LOOKAROUND:   SendEventWaiter(me, RandomInt(10)*60+1, EVID_LOOKAROUND);
+        EVID_DOMEST_SOUND: SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_SOUND);
+        EVID_DOMEST_BABY:  SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_BABY);
+        default:
+      EndCase
+    EndWhile
+
+    If (angersound)
+      PlaySoundEffect(me, angersound);
+    EndIf
+
+    SetOpponent(opponent);
+
+    var abstand := Distance(me, opponent);
+    var oldabstand := -1;
+    var timeout := 0;
+
+    var fleefrom := 0;
+
+    While ((opponent) && (!opponent.dead) && (!opponent.hidden) && (!fleefrom) && (abstand<25))
+      If (CheckLineOfSight(me, opponent))
+        If ((oldabstand<>abstand) Or (abstand <= 1))
+          timeout := ReadGameClock()+15;
+          oldabstand := abstand;
+        EndIf
+
+        ev := Wait_for_EventLogging(CloseDistance(opponent)*5);
+        If (ev)
+          Repeat
+            Case (ev.type)
+              SYSEVENT_ENGAGED:
+              SYSEVENT_DAMAGED: If (!CheckLineOfSight(me, opponent))
+                                  fleefrom := ev.source;
+                                  Break;
+                                EndIf
+              EVID_DOMEST_EAT:   SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_EAT);
+              EVID_DOMEST_DRINK: SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_DRINK);
+              EVID_WALK:         SendEventWaiter(me, RandomInt(10)*60+1, EVID_WALK);
+              EVID_DOMEST_TIME:  SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_TIME);
+              EVID_LOOKAROUND:   SendEventWaiter(me, RandomInt(10)*60+1, EVID_LOOKAROUND);
+              EVID_DOMEST_SOUND: SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_SOUND);
+              EVID_DOMEST_BABY:  SendEventWaiter(me, RandomInt(10)*60+1, EVID_DOMEST_BABY);
+            EndCase
+          Until (!(ev := Wait_for_EventLogging(0)));
+        EndIf
+
+        If (!fleefrom)
+          If ((GetHPPergon(me)<CInt(GetMaxHPPergon(me)*0.6)) Or (timeout <= ReadGameClock()))
+            fleefrom := opponent;
+          EndIf
+        EndIf
+      Else
+        timeout := ReadGameClock()+5;
+        Repeat
+          SleepMS(100);
+        Until ((CheckLineOfSight(me, opponent)) || (Events_Waiting()) || (timeout <= ReadGameClock()));
+
+        If ((Events_Waiting()) || (timeout <= ReadGameClock()))
+          fleefrom := opponent;
+        EndIf
+      EndIf
+
+      abstand := Distance(me, opponent);
+    EndWhile
+
+    Case (looptype)
+      LOOP_MAIN: EnableEvents(SYSEVENT_SPEECH, 12);
+      LOOP_INACTIVE: DisableEvents(SYSEVENT_ENGAGED);
+    EndCase
+
+    If (fleefrom)
+      If (fleefrom == opponent)
+        PanicEscape(opponent, 10);
+      EndIf
+
+      FleeOutOfSenseRange(fleefrom);
+    EndIf
+  EndIf
+
+  SetWarMode(0);
+  Sleep(1);
+EndFunction
+
+//////////////////////////////////////////////
+// Is_SleepTime - Sollte ich jetzt schlafen?
+//////////////////////////////////////////////
+//
+// currenthour - momentane Tageszeit, die aktuelle Stunde
+//    1    = 0001-0100 Geisterstunde
+//    2- 5 = 0101-0500 Nacht
+//    6- 7 = 0501-0700 Morgendaemmerung
+//    8-12 = 0701-1200 Vormittag
+//   13    = 1201-1300 Mittagsstunde
+//   14-19 = 1301-1900 Nachmittag
+//   20-21 = 1901-2100 Abenddaemmerung
+//   22-24 = 2101-2400 Nacht
+
+Function Is_SleepTime()
+  If (wakeuptime)
+    var currenthour := CInt(((GetPergonTime()/15.0)-1)/60.0)+1;
+    var sleepstop := wakeuptime;
+
+    // Umrechnen wegen Ueberlauf bei Tageswechsel (2300->0000)
+    If (sleepstop<sleeptime)
+      If (currenthour<sleepstop)
+        currenthour += 24;
+      EndIf
+      sleepstop += 24;
+    EndIf
+
+    If ((sleeptime <= currenthour) && (currenthour<sleepstop))
+      return (1);
+    EndIf
+  EndIf
+
+  return (0);
+EndFunction
+
+//////////////////////////////////////////////////
+// Diff_Time() - Berechnet Zeit bis Schlafenszeit/Aufwachzeit
+//  etwas ungenau aber reicht
+//////////////////////////////////////////////////
+
+Function Diff_Time()
+  If (wakeuptime)
+    var currenthour := GetPergonHourOfDay(0);
+    var sleepstop := wakeuptime;
+
+    // Umrechnen wegen Ueberlauf bei Tageswechsel (2300->0000)
+    If (sleepstop<sleeptime)
+      If (currenthour<sleepstop)
+        currenthour += 24;
+      Else
+        sleepstop += 24;
+      EndIf
+    EndIf
+
+    If ((sleeptime - currenthour)>0) // Über Schlafenszeit also Aufwachzeit interessant
+      return(sleepstop - currenthour);
+    Else
+      return(currenthour - sleeptime);
+    EndIf
+  EndIf
+EndFunction
+
+//////////////////////////////////////////////////
+// CheckOtherMobile - Ueberprueft das Gegenueber
+//////////////////////////////////////////////////
+Function CheckOtherMobile(mobile) // {{{
+  If (!mobile)
+    // falsch aufgerufen, ignorieren
+    TestMessage("HATELOVE: kaputter Aufruf", 5);
+    return LOVEHATE_IGNORE;
+  EndIf
+
+  var hatelove := CheckHateLove(me, mobile, array{"nohate", "nohunt"});
+
+  // Sonderausnahmen fuer Zuchttiere umsetzen
+  Case (hatelove)
+  LOVEHATE_IGNORE: // wird eh ignoriert, also fertig
+    TestMessage("HATELOVE: Ignoriere "+ItemInfoStr(mobile), 5);
+    return hatelove;
+
+  LOVEHATE_HUMAN: // menschlicher NPC in der Naehe {{{
+    TestMessage("HATELOVE: Human-Check", 8);
+
+    // zusaetzliche werden Stallmeister ignoriert
+    var npctype := Lower(GetObjProperty(mobile, "MerchantType"));
+    If (!npctype)
+      npctype := "";
+    EndIf
+    If (npctype["stable"])
+      // Stallmeister mag ich
+      TestMessage("HATELOVE: Ignoriere Stallmeister", 4);
+      return LOVEHATE_IGNORE;
+    EndIf
+
+    // NPCs des Meisters find ich auch ok
+    var myexmaster := GetObjProperty(me, "ExMaster");
+    var hismaster :=  GetObjProperty(mobile, "master");
+    If (myexmaster and hismaster)
+      If (myexmaster == hismaster)
+        // "Kollegen" und Tiere des Meisters ignorieren wir
+        // (nicht wegrennen, beim Poppen ignorieren)
+        TestMessage("HATELOVE: Ignoriere NPC des Meisters", 4);
+        return LOVEHATE_IGNORE;
+      EndIf
+    EndIf
+
+    TestMessage("HATELOVE: Human-NPC "+CharInfoStr(mobile)+" nervt mich", 4);
+    return hatelove;
+  // }}}
+
+  LOVEHATE_PLAYER: // es sind (sichtbare) Spieler in der Naehe {{{
+    TestMessage("HATELOVE: Player-Check", 8);
+
+    // eigener Meister darf zugucken
+    var myexmaster := GetObjProperty(me, "ExMaster");
+    If (myexmaster)
+      If (mobile.serial == myexmaster)
+        // dem eigenen Meister vertrauen wir
+        // (nicht wegrennen, beim Poppen ignorieren)
+        TestMessage("HATELOVE: Ignoriere Meister", 4);
+        return LOVEHATE_IGNORE;
+      EndIf
+    EndIf
+
+    TestMessage("HATELOVE: Player "+CharInfoStr(mobile)+" stoert mich", 4);
+    return hatelove;
+  // }}}
+  EndCase
+
+  return hatelove;
+EndFunction // }}}
+
+//////////////////////////////////////////////////
+// GuessStrength - Staerke des Gegners schaetzen
+//////////////////////////////////////////////////
+Function GuessStrength(opponent)
+  var guessedhp := GetHPPergon(opponent);
+  If (GetIntPergon(me)<100)
+    guessedhp := CInt((guessedhp*(RandomInt(2*(100-GetIntPergon(me))+1)+GetIntPergon(me)))/100);
+  EndIf
+
+  If (DEBUG)
+    SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Ich schaetze, dass "+Lower(Hex(opponent.serial))+" "+guessedhp+" HP hat.");
+  EndIf
+
+  return (guessedhp);
+EndFunction
+
+Function Create_Ei_In_Nest(who, nest, ei_obj)
+  TestMessage("Create_Ei_In_Nest", 1);
+
+  SleepMS(2000);
+  PerformAction(who, 0x11E6);
+  SleepMS(1600);
+
+  var i;
+  var k := RandomInt(10) + 7;
+  For (i := 0;i <= k;i += 1)
+    PerformAction(who, 0x11E6);
+    Case (RandomInt(3))
+     0: PlaySoundEffect(who, 0x6F);
+     1: PlaySoundEffect(who, 0x71);
+     2: PlaySoundEffect(who, 0x72);
+    EndCase
+    SleepMS(650);
+  EndFor
+
+  SleepMS(1000);
+  PlaySoundEffect(who, 0x73);
+  SleepMS(100);
+
+  If (!Generation_Nachwuchs)
+    Generation_Nachwuchs := 1;
+  EndIf
+  Generation_Nachwuchs := Min(30, Generation_Nachwuchs);
+
+  // ehemaligen Meister ans Ei eintragen
+  // (keine Leichen bei Mord am eigenem Tier)
+  var exmaster := GetObjProperty(who, "ExMaster");
+
+  // Schon ein Ei vorhanden?
+  ForEach item in (ListItemsAtLocation(
+    who.x, who.y, LIST_IGNORE_Z, who.realm
+  ))
+    SleepMS(2);
+    If (Abs(item.z - nest.z) > 5)
+      // Ei zu hoch/tief gegenueber Nest
+      continue;
+    EndIf
+
+    var gen := Max(1, CInt(item.getprop("Generation")));
+
+    If (
+      // Typ passt
+      (item.objtype == ei_obj) and
+      // Generation stimmt ueberein
+      (gen == Generation_Nachwuchs) and
+      (
+        // und kein Meister oder ...
+        (!exmaster and !item.getprop("ExMaster")) or
+        // ... der Meister passt auch
+        (item.getprop("ExMaster") == exmaster)
+      )
+    )
+      AddAmount(item, 1);
+      return;
+    EndIf
+  EndForEach
+
+  var eidesc := GetItemDescriptor(ei_obj);
+  eidesc.cprops["Generation"] := Generation_Nachwuchs;
+  If (exmaster)
+    eidesc.cprops["ExMaster"] := exmaster;
+  EndIf
+
+  var ei := CreateItemAtLocationPergon(
+    nest.x, nest.y, nest.z, eidesc, 1, nest.realm
+  );
+  If (ei)
+    ei.decayat := 0; // Damit die Eier nich verschwinden ...
+  EndIf
+EndFunction
+
+Function Suche_nach_Nest(me, ei_obj)
+  TestMessage("Suche_nach_Nest", 1);
+  var items, halfx, halfy, part := {}, Nest, random;
+
+  If (DEBUG)
+    SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] ich will ein Ei legen ...");
+  EndIf
+  If (CDbl(me.getprop(PROP_THIRST))>9.0)
+    If (CDbl(me.getprop(PROP_HUNGER))>9.0)
+      If (ge_poppt)
+        If (me.multi)
+          halfx := me.multi.footprint.xmin+CInt((me.multi.footprint.xmax-me.multi.footprint.xmin)/2);
+          halfy := me.multi.footprint.ymin+CInt((me.multi.footprint.ymax-me.multi.footprint.ymin)/2);
+
+          If ((me.x <= halfx) && (me.y <= halfy))
+            // NordWest
+            items := ListObjectsInBox(me.multi.footprint.xmin, me.multi.footprint.ymin, me.z-19, halfx, halfy, me.z+19, me.realm);
+            part := {2, 3, 4};
+          ElseIf ((me.x > halfx) && (me.y <= halfy))
+            // NordOst
+            items := ListObjectsInBox(halfx+1, me.multi.footprint.ymin, me.z-19, me.multi.footprint.xmax, halfy, me.z+19, me.realm);
+            part := {1, 3, 4};
+          ElseIf ((me.x <= halfx) && (me.y > halfy))
+            // SuedWest
+            items := ListObjectsInBox(me.multi.footprint.xmin, halfy+1, me.z-19, halfx, me.multi.footprint.ymax, me.z+19, me.realm);
+            part := {1, 2, 4};
+          ElseIf ((me.x > halfx) && (me.y > halfy))
+            // SuedOst
+            items := ListObjectsInBox(halfx+1, halfy+1, me.z-19, me.multi.footprint.xmax, me.multi.footprint.ymax, me.z+19, me.realm);
+            part := {1, 2, 3};
+          EndIf
+
+          Nest := SearchNest(me, items, DEBUG, 6);
+          If (!nest)
+            Repeat
+              // Neuen Quadranten finden
+              random := RandomInt(part.size())+1;
+              Case (part[random])
+                1:  items := ListObjectsInBox(me.multi.footprint.xmin, me.multi.footprint.ymin, me.z-19, halfx, halfy, me.z+19, me.realm);
+                2:  items := ListObjectsInBox(halfx+1, me.multi.footprint.ymin, me.z-19, me.multi.footprint.xmax, halfy, me.z+19, me.realm);
+                3:  items := ListObjectsInBox(me.multi.footprint.xmin, halfy+1, me.z-19, halfx, me.multi.footprint.ymax, me.z+19, me.realm);
+                4:  items := ListObjectsInBox(halfx+1, halfy+1, me.z-19, me.multi.footprint.xmax, me.multi.footprint.ymax, me.z+19, me.realm);
+              EndCase
+              part.erase(random);
+              Nest := SearchNest(me, items, DEBUG, 20);
+            Until ((Nest) || (part.size() == 0));
+          EndIf
+        Else  // !me.multi
+          items := ListItemsNearLocation(me.x, me.y, me.z, senserange, me.realm);
+          Nest := SearchNest(me, items, DEBUG, senserange);
+        EndIf
+        If (Nest)
+          LastNachwuchs := CInt(me.getprop("Nachwuchs")); // wann wurde das letzte Ei gelegt ?
+          If (!LastNachwuchs) // wenn das Tier noch nie ein Ei gelegt hat
+            me.setprop("Nachwuchs", ReadGameClock());
+            Create_Ei_In_Nest(me, Nest, ei_obj);
+            ge_poppt := 0;
+            me.setprop("GePoppt", ge_poppt);
+          Else
+            If ((readgameclock() - LastNachwuchs) > delay_nachwuchs) // ein Ei
+              me.setprop("Nachwuchs", readgameclock());
+              Create_Ei_In_Nest(me, Nest, ei_obj);
+              ge_poppt := 0;
+              me.setprop("GePoppt", ge_poppt);
+            Else
+              SleepMS(2000);
+              PerformAction(me, 0x11E6);
+              SleepMS(1600);
+              PlaySoundEffect(me, 0x70);  // Nest gefunden, aber keine Eier auf Lager
+            EndIf
+          EndIf
+        Else
+          PlaySoundEffect(me, 0x70);
+          me.setprop("Nachwuchs", readgameclock()-cint(delay_nachwuchs/2));
+          If (DEBUG)
+            SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] will ein Ei legen, kann aber kein Nest finden... ");
+            SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] ich probiere es in (delay_nachwuchs/2) noch mal ");
+          EndIf
+        EndIf
+      Else // If (ge_poppt)
+        If (DEBUG)
+          SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] ... kann aber keinen Hahn finden ...");
+        EndIf
+      EndIf
+    Else // hungrylevel <= 10
+      If (DEBUG)
+        SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] ... bin zu hungrig um ein Ei zu legen ... ("+
+        GetObjProperty(me, PROP_HUNGER)+" / "+CDbl(GetObjProperty(me, PROP_HUNGER))+")");
+      EndIf
+    EndIf
+  Else // level_drink <= 10
+    If (DEBUG)
+      SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] ... bin zu durstig um ein Ei zu legen ... ("+
+      GetObjProperty(me, PROP_THIRST)+" / "+CDbl(GetObjProperty(me, PROP_THIRST))+")");
+    EndIf
+  EndIf
+EndFunction
+
+
+Function Bekomme_Nachwuchs(me)
+  TestMessage("Bekomme_Nachwuchs", 1);
+
+  If (DEBUG)
+    SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] ich will Nachwuchs bekommen ...");
+  EndIf
+
+  If (!ge_poppt)
+    If (DEBUG)
+      SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] ... kann aber kein maennliches Tier finden ...");
+    EndIf
+    TestMessage("Nachwuchs: Gar nicht gepoppt", 3);
+    return;
+  EndIf
+
+  If (CDbl(GetObjProperty(me, PROP_THIRST)) <= 9.0)
+    If (DEBUG)
+      SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] ... bin zu durstig um Nachwuchs zu bekommen ... ("+
+        GetObjProperty(me, PROP_THIRST)+" / "+CDbl(GetObjProperty(me, PROP_THIRST))+")");
+    EndIf
+    TestMessage("Nachwuchs: Zu durstig", 3);
+    return;
+  EndIf
+
+  If (CDbl(GetObjProperty(me, PROP_HUNGER)) <= 9.0)
+    If (DEBUG)
+      SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] ... bin zu hungrig um Nachwuchs zu bekommen ... ("+
+        GetObjProperty(me, PROP_HUNGER)+" / "+CDbl(GetObjProperty(me, PROP_HUNGER))+")");
+    EndIf
+    TestMessage("Nachwuchs: Zu hungrig", 3);
+    return;
+  EndIf
+
+  // die Erzeugung von Nachwuchs beschraenken,
+  // wenn zu viele Mobiles drum rum stehen
+  If (
+    ListMobilesNearLocation(me.x, me.y, me.z, MOBILES_RANGE, me.realm).size()
+    >= MOBILES_MAX
+  )
+    SetObjProperty(me, "Nachwuchs", readgameclock()-cint(delay_nachwuchs/2.0));
+    If (DEBUG)
+      SysLogFile(
+        me.name+" ["+Lower(Hex(me.serial))+
+        "] will Nachwuchs bekommen, es stehen aber zu viele Mobiles herum; "+
+        "ich probiere es in ("+CInt(delay_nachwuchs/2.0)+") noch mal"
+      );
+    EndIf
+    TestMessage(
+      "Nachwuchs: Zu voll, nochmal in "+CInt(delay_nachwuchs/2.0), 3
+    );
+    return;
+  EndIf
+
+  var animal := 0;
+  var mytemplate := GetNPCConfig(me.npctemplate);
+  If (randomint(100)<30) // 30% werden zu maennlichen ...
+    If (mytemplate.nachwuchs_m)
+      animal := CreateNpcFromTemplate(
+        mytemplate.nachwuchs_m, me.x, me.y, me.z, 0, me.realm
+      );
+      If (animal) // wegen "multi" templates wie alligator immer setzen
+        animal.gender:=0;
+      EndIf
+    Else
+      syslog(
+        "FEHLER: "+me.npctemplate+
+        " hat kein mytemplate.nachwuchs_m in der cfg"
+      );
+    EndIf
+  Else
+    If (mytemplate.nachwuchs_w)
+      animal := CreateNpcFromTemplate(
+        mytemplate.nachwuchs_w, me.x, me.y, me.z, 0, me.realm
+      );
+      If (animal) // wegen "multi" templates wie alligator immer setzen
+        animal.gender:=1;
+      EndIf
+    Else
+      syslog(
+        "FEHLER: "+me.npctemplate+
+        " hat kein mytemplate.nachwuchs_w in der cfg"
+      );
+    EndIf
+  EndIf
+
+  If (!animal)
+    SetObjProperty(me, "Nachwuchs", readgameclock()-cint(delay_nachwuchs/2.0));
+    If (DEBUG)
+      SysLogFile(
+        me.name+" ["+Lower(Hex(me.serial))+
+        "] konnte keinen Nachwuchs createn, Position "+
+        me.x+" "+me.y+" "+me.z+" ["+animal+"]; "+
+        "probiere es in "+(delay_nachwuchs/2)+" noch mal "
+      );
+    EndIf
+    TestMessage(
+      "Nachwuchs: Fehler, nochmal in "+CInt(delay_nachwuchs/2.0), 3
+    );
+    return;
+  EndIf
+
+  var mytemplate2 := GetNPCConfig(animal.npctemplate);
+  animal.name := animal.name+" domestiziert";
+  // existiert ein animal.scriptdomest in der cfg ...
+  If (!mytemplate2.scriptdomest)
+    syslog(
+      "FEHLER: "+animal.npctemplate+
+      " hat kein mytemplate.scriptdomest in der cfg"
+    );
+    return;
+  EndIf
+
+  ge_poppt := 0;
+  SetObjProperty(me, "GePoppt", ge_poppt);
+  SetObjProperty(me, "Nachwuchs", readgameclock());
+
+  // dem Nachwuchs veraenderte Werte zuweisen
+  animal.script := mytemplate2.scriptdomest;
+  If (DEBUG)
+    SysLogFile(animal.name+" erzeugt ... mit Script: "+animal.script);
+  EndIf
+  TestMessage("Nachwuchs: erfolgreich erzeugt", 3);
+  // zwecks Leichenverschwind-o-matic bei eigenen Tieren
+  var myexmaster := GetObjProperty(me, "ExMaster");
+  If (myexmaster != error)
+    SetObjProperty(animal, "ExMaster", myexmaster);
+  EndIf
+
+  RestartScript(animal);
+
+  If (!Generation_Nachwuchs)
+    Generation_Nachwuchs := 1;
+  EndIf
+  If (Generation_Nachwuchs>30)
+    Generation_Nachwuchs := 30;
+  EndIf
+  SetObjProperty(animal, "Generation", Generation_Nachwuchs);
+  // der Nachwuchs ist für 3 Stunden leichter zu zaehmen (taming.src)
+  SetObjProperty(animal, "Young", ReadGameClock()+10800);
+EndFunction
+
+Function SysLogFile(text)
+  // syslog(text);
+  If (me.x >= 5120) // Nur mal die von GreenAcres loggen
+    If (me.gender)
+      LogToFile("::log/z_w_domest.log", GetDateTimeStr()+"["+me.x+" "+me.y+" "+me.z+"] "+text);
+    Else
+      LogToFile("::log/z_m_domest.log", GetDateTimeStr()+"["+me.x+" "+me.y+" "+me.z+"] "+text);
+    EndIf
+    SleepMS(5);
+  EndIf
+EndFunction
+
+Function SearchNest(me, items, Debug, range);
+  TestMessage("SearchNest", 1);
+  var ErreichVersuche, path, runpath, j;
+  ForEach item in (items)
+    If (item.objtype == 0x1ad4)
+      ErreichVersuche := 1;
+      If (Debug)
+        SysLogFile(me.name+" ["+Lower(Hex(me.serial))+"] Nest ist in der Naehe "+item.x+" "+item.y);
+      EndIf
+      While (((me.x!=item.x) || (me.y!=item.y)) && (ErreichVersuche <= 10)) // animal auf gleiche Pos, mit max. 20 Versuchen
+        If (!item)
+          Break;
+        EndIf
+        If ((!me.frozen) || (!me.paralyzed))
+          path := FindPath(me.x, me.y, me.z, item.x, item.y, item.z, me.realm, 0, range);
+          range := 6;
+          If (path)
+            For (j := 1;j <= path.size();j += 1)
+              runpath := RunTowardLocation(path[j].x, path[j].y);
+              If (!runpath)
+                Sleep(2);
+                Break;
+              EndIf
+            EndFor
+          Else
+            WanderPergon();
+          EndIf
+          ErreichVersuche += 1;
+          If ((me.x == item.x) && (me.y == item.y))
+            return(item);
+          EndIf
+        EndIf
+        Sleep(2);
+      EndWhile
+      If ((me.x == item.x) && (me.y == item.y))
+        return(item);
+      EndIf
+    EndIf
+  EndForEach
+  return(0);
+EndFunction
+
+// vim: sw=2 sts=2

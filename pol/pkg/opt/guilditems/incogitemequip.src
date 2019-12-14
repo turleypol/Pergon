@@ -1,0 +1,67 @@
+//**************************************************************************************************
+//
+//   Anziehen des Inkognitoitems
+//
+//	   Setzt den Namen des Charakters auf den Wert des Items
+//     Lediglich Diebe duerfen solche Items tragen.
+//
+//  18.03.2003 Fraggulus: Erstellung
+//  2003/08/29 Shinigami: ReWrite
+//
+//**************************************************************************************************
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonutil";
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program IncognitoRobe_Equip(who, incogitem, startup)
+  If (!who.isa(POLCLASS_NPC)) // NPCs brauchen die Robe eh nich...
+    If (GetObjProperty(incogitem, "incogused")) // Sollte eigentlich nich aufgerufen werden
+      SendSysMessagePergon(who, "Dieser Gegenstand hat nun keine Funktion mehr.", "This item is no longer usable.");
+      Start_ScriptPergon("::misc/waitdestroyitem", incogitem); // Um einen Crash des Servers zu verhindern...
+    EndIf
+
+    If (GetObjProperty(who, SKBERUF)<>"Dieb")
+      SendSysMessagePergon(who, "Ihr seid nicht befähigt, diesen Gegenstand anzuziehen.", "You're not qualified to wear this item.");
+      Return (0);
+    EndIf
+
+    If (!startup) // Nur beim "frischen" anziehen...
+      // bei Inkognitozauber oder einem anderen Inkognitoitem wird abgeblockt. Es kann immer nur eins aktiv sein.
+      If (GetObjProperty(who, "spell_incognito") Or GetObjProperty(who, "realrname"))
+        SendSysMessagePergon(who, "Ihr steht bereits unter der Einwirkung eines Inkognitos.", "You already are under incognito.");
+        Return (0);
+      EndIf
+
+      Var newname:=GetObjProperty(incogitem, "incogname");
+      If (newname)
+        SetObjProperty(incogitem, "incogmasterserial", who.serial);
+        SetObjProperty(who, "realrname", who.name);
+
+        SetNamePergon(who, newname, "IncognitoRobe - Set");
+        PrintTextAbovePrivatePergon(who, "Euer neuer Name ist nun "+newname, "Your new name is "+newname, who);
+
+        Return (1);
+      Else
+        SendSysMessagePergon(who, incogitem.desc+" wurde kein Inkognitoname zugewiesen.", incogitem.desc+" wasn't attached an incognito name.");
+        Return (0);
+      EndIf
+    EndIf
+  Else
+    Return (0);
+  EndIf
+EndProgram

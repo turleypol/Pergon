@@ -1,0 +1,311 @@
+///////////////////////////////////////////////////////////////////////////
+// Stable Keeper Script v0.18 (1999/11/30)
+//
+// Author: RoTTer
+
+// TODO:
+// - DestroyScript bauen, dass bei Ticketzerstoerung das Tier toetet
+
+use cfgfile;
+use npc;
+use os;
+use polsys;
+use storage;
+use uo;
+include "include/logutil";
+include "include/merchant";
+include "include/resources";
+
+Const PETTICKET := 0x14f0;
+
+///////////////////////////////////
+// StableMaster - Initialisierung
+///////////////////////////////////
+Function SetMerchantType(meprototype)
+  meprototype.merchanttype        := "Stable";
+  meprototype.left_area           := 1;
+  meprototype.item_given_sleeping := 1;
+  meprototype.item_given          := 1;
+  meprototype.speech_open         := 1;
+  meprototype.speech_sleeping     := 1;
+  meprototype.speech_default      := 1;
+
+  return (meprototype);
+EndFunction
+
+/////////////////////
+// Hook_Move_Action
+/////////////////////
+Function Hook_Move_Action(me, medata, ev)
+  return;
+  me     := me;
+  medata := medata;
+  ev     := ev;
+EndFunction
+
+///////////////////////
+// Hook_Merchant_Sold
+///////////////////////
+Function Hook_Merchant_Sold(me, medata, ev)
+  return;
+  me     := me;
+  medata := medata;
+  ev     := ev;
+EndFunction
+
+//////////////////////
+// Hook_Entered_Area
+//////////////////////
+Function Hook_Entered_Area(me, medata, ev)
+  return;
+  me     := me;
+  medata := medata;
+  ev     := ev;
+EndFunction
+
+///////////////////
+// Hook_Left_Area
+///////////////////
+Function Hook_Left_Area(me, medata, ev)
+  NPCSayTextTraditional(me, "Behandelt Tiere immer wie Lebewesen, bis bald", "");
+  return;
+  ev     := 1;
+  medata := 1;
+EndFunction
+
+/////////////////////////////
+// Hook_Item_Given_Sleeping
+/////////////////////////////
+Function Hook_Item_Given_Sleeping(me, medata, ev)
+  If (IsBribedBy(me, ev.source))
+    return (ReturnFromGreenAcres(me, ev.source, ev.item));
+  Else
+    NPCSayTextTraditional(
+      me, "Die Tiere schlafen. Kommt doch gegen "+medata.open+" wieder.", ""
+    );
+  EndIf
+  return;
+  ev     := 1;
+  medata := 1;
+EndFunction
+
+////////////////////
+// Hook_Item_Given
+////////////////////
+Function Hook_Item_Given(me, medata, ev)
+  return (ReturnFromGreenAcres(me, ev.source, ev.item));
+  medata := 1;
+EndFunction
+
+/////////////////////
+// Hook_Speech_Open
+/////////////////////
+Function Hook_Speech_Open(me, medata, ev)
+  var timetext;
+  If (medata.sleeping == 1)
+    timetext := "Jetzt";
+  Else
+    timetext := "Sonst";
+  EndIf
+
+  NPCSayTextTraditional(me,
+    "Zwischen "+medata.open+" und "+medata.close+" habe ich Zeit für Euch. "+
+    timetext+" kümmere ich mich um die Tiere.", ""
+  );
+  return
+  ev := 1;
+EndFunction
+
+/////////////////////////
+// Hook_Speech_Sleeping
+/////////////////////////
+Function Hook_Speech_Sleeping(me, medata, ev)
+  NPCSayTextTraditional(me,
+    "Jetzt kümmere ich mich um die Tiere. Kommt doch gegen "+
+    medata.open+" wieder.", ""
+  );
+  return;
+  ev := 1;
+EndFunction
+
+/////////////////////
+// Hook_Speech_Name
+/////////////////////
+Function Hook_Speech_Name(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+////////////////////////
+// Hook_Speech_Default
+////////////////////////
+Function Hook_Speech_Default(me, medata, ev, sayed)
+  If (sayed["stall"])
+    var player := ev.source;
+    NPCSayTextTraditional(me, "Zeigt mir Euer Tier!", "");
+
+    var pet := Target(player);
+    If (!pet)
+      return 1;
+    EndIf
+
+    If (IsElfOrHuman(pet))
+      NPCSayTextTraditional(me, "Sehe ich aus wie ein Hotelier?!", "");
+      return 1;
+    EndIf
+
+    If (
+      (pet.script in {"tamedanimal", "enticedanimal", "tamed"}) And
+      (!GetObjProperty(pet, PROP_SUMMONED)) And (pet.master == player)
+    )
+      var price := GetMaxHPPergon(pet)*2;
+
+      NPCSayTextTraditional(me,
+        "Die Unterbringung von "+pet.name+" kostet Euch "+price+" Gold.", ""
+      );
+
+      If (!GetPayment(me, player, price))
+        NPCSayTextTraditional(me,
+          "Behaltet dieses Ticket und gebt es mir, wenn Ihr "+pet.name+
+          " abholen wollt.", ""
+        );
+        PlayGiveItem(me, player, PETTICKET);
+        
+        var follow := pet.getprop("follow");
+        var guard  := pet.getprop("guard");
+        If (follow)
+          var who := SystemFindObjectBySerial(follow.serial);
+          who.followers -= 1;
+          If (follow.angry)
+            who.followers_max += 1;
+          EndIf
+        ElseIf (guard)
+          var who := SystemFindObjectBySerial(guard.serial);
+          who.followers -= 1;
+          If (guard.angry)
+            who.followers_max += 1;
+          EndIf
+        EndIf
+        
+        ParkOnGreenAcres(player, pet);
+      EndIf
+    Else
+      NPCSayTextTraditional(me,
+        "Ich kann auf "+pet.name+" aufpassen, aber es ist nicht Euer Tier.",
+        ""
+      );
+    EndIf
+
+    return 1;
+  EndIf
+
+  return;
+  medata := 1;
+EndFunction
+
+//////////////////////////////
+// Hook_Ghost_Speech_Default
+//////////////////////////////
+Function Hook_Ghost_Speech_Default(me, medata, ev, sayed)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+  sayed  := 1;
+EndFunction
+
+// Tiere nach 5384, 1081 schieben (reservierte Zone auf GreenAcres),
+// Ticket fuer Rueckgabe erzeugen (mit Tier-Serial)
+Function ParkOnGreenAcres(player, pet) // {{{
+  syslog(CharInfoStr(player)+" gibt das Tier "+CharInfoStr(pet)+" ab");
+
+  // Ticket erzeugen
+  var descr     := GetItemDescriptor(PETTICKET);
+  descr.desc    := "Tiereigentumsnachweis fuer "+pet.name;
+  descr.+CProps := dictionary;
+  descr.CProps.insert("serial", pet.serial);
+  If (!CreateItemInBackpackPergon(player, descr, 1))
+    return;
+  EndIf
+
+  // damit sie im follow-Modus nicht zurueckkommen, werden sie
+  // eingefroren und die Weglaufenzeiten werden behandelt
+  ParkAnimal(pet);
+
+  // auf GreenAcres parken
+  MoveObjectToLocation(
+    pet, 5384, 1081, RandomInt(127), REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+  );
+
+  // Script merken und Heaven-Script starten
+  pet.setprop("Heaven_OldScript", pet.script);
+  pet.script := "heaven";
+  RestartScript(pet);
+EndFunction // }}}
+
+// Ticket auslesen und passendes Tier holen
+Function ReturnFromGreenAcres(me, player, ticket) // {{{
+  // uebergebenen Gegenstand pruefen
+  If (ticket.objtype <> PETTICKET)
+    NPCSayTextTraditional(me, "Damit kann ich nichts anfangen.", "");
+    // Und zurueck ins Backpack ...
+    MoveItemToContainer(ticket, player.backpack);
+    return 1;
+  EndIf
+
+  NPCSayTextTraditional(me,
+    "Oh, einen Moment bitte. Ich muss Euer Tier erst suchen.", ""
+  );
+  Sleep(3);
+
+  // Ticket auswerten
+  var serial := ticket.getprop("serial");
+  var pet    := SystemFindObjectBySerial(serial);
+  If (!pet)
+    MoveItemToContainer(ticket, player.backpack);
+    NPCSayTextTraditional(me, "Tut mir Leid, ich kann Euer Tier nicht finden.", "");
+    syslog("FEHLER: Stallmeister-Tier mit Serial "+LHex(serial)+" ist weg");
+    return;
+  EndIf
+
+  // Tier zurueckholen
+  MoveObjectToLocation(
+    pet, player.x, player.y, player.z, player.realm, MOVEOBJECT_FORCELOCATION
+  );
+
+  // der Stallmeister hat es schliesslich gefuettert
+  pet.setprop(PROP_HUNGER)    := 15.0;
+  pet.setprop(PROP_HUNGERCHK) := ReadGameClock();
+
+  // wird auf GreenAcres immer eingefroren, daher wieder entparken
+  UnparkAnimal(pet);
+
+  // um diverse CProps kuemmern
+  pet.setprop("master", player.serial);
+  pet.script := pet.getprop("Heaven_OldScript");
+  pet.eraseprop("Heaven_OldScript");
+  // altes Script reaktivieren
+  RestartScript(pet);
+
+  NPCSayTextTraditional(
+    me, "Passt gut auf "+pet.name+" auf und füttert es immer!",
+    ""
+  );
+  // damit das Destroyscript das Tier nicht toetet
+  ticket.eraseprop("serial");
+  DestroyItem(ticket);
+
+  syslog(CharInfoStr(player)+" loest das Tier "+CharInfoStr(pet)+" aus");
+  return 1;
+EndFunction // }}}
+
+Function Hook_Buy(me, medata, who)
+  return;
+  me     := 1;
+  medata := 1;
+  who    := 1;
+EndFunction
+
+// vim: sw=2 sts=2

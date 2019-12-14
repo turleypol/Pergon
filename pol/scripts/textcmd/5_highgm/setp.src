@@ -1,0 +1,95 @@
+use uo;
+include "include/logutil";
+include "include/modifyskill";
+include "include/pergonutil";
+include "include/permissions";
+include "include/server";
+
+Program TextCMD_SetObjProperty(who, params)
+  If (!AllowedToChangeCProps(who))
+    SendSysMessagePergon(who,
+      "Ihr seid nicht befugt, diesen Befehl zu benutzen!",
+      "You are not authorized to use this command!"
+    );
+    return;
+  EndIf
+
+  var prop := SplitWords(params);
+  If (prop.size() < 2)
+    SendSysMessagePergon(who,
+      "Ihr müsst eine Property und ihren Wert angeben!"
+    );
+    return;
+  EndIf
+
+  var changable := 1;
+
+  If (prop[1][1, 3] == SKILLWERTKENNUNG)
+    var propnamepart := prop[1];
+    propnamepart[1, 3] := "";
+    If (IsSkillNameDefinied(propnamepart))
+      changable := 0;
+    EndIf
+  ElseIf (prop[1][1, 5] == SKILLTYPKENNUNG)
+    If (IGNORE_TYPES[" "+GetObjProperty(who, prop[1])+" "])
+      var propnamepart := prop[1];
+      propnamepart[1, 5] := "";
+      If (IsSkillNameDefinied(propnamepart))
+        changable := 0;
+      EndIf
+    EndIf
+  ElseIf (IGNORE_PROPS_MODIFIY[" "+prop[1]+" "])
+    changable := 0;
+  EndIf
+
+  // Ist der Zugriff auf die Properties gestattet?
+  If (!changable)
+    SendSysMessagePergon(who,
+      "Properties dieser Art dürfen nicht direkt geändert werden!"
+    );
+    return;
+  EndIf
+
+  // Zahlen auch als solche speichern
+  If (IsNumeric(prop[2]))
+    prop[2] := CInt(prop[2]);
+  EndIf
+
+  SendSysMessagePergon(who, "Wählt ein Objekt!");
+  var tgt := Target(who, TGTOPT_NOCHECK_LOS);
+  If (!tgt)
+    SendSysMessagePergon(who,
+      "Kein normales Item - Wählt ein Paperdoll-Item!"
+    );
+    tgt := TargetCoordinates(who);
+    If (tgt.item)
+      tgt := tgt.item;
+    EndIf
+  EndIf
+  If (!tgt)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  var value := GetObjProperty(tgt, prop[1]);
+  If (value == error)
+    SendSysMessagePergon(who,
+      "Die Property '"+prop[1]+"' wird mit Wert '"+prop[2]+"' ("+
+      TypeOf(prop[2])+") angelegt!"
+    );
+    value := "uninit";
+  Else
+    SendSysMessagePergon(who,
+      "Die Property '"+prop[1]+"' wird von '"+value+"' ("+TypeOf(value)+
+      ") auf '"+prop[2]+"' ("+TypeOf(prop[2])+") gesetzt"
+    );
+  EndIf
+
+  // Logging
+  syslog(
+    "GMCMD: "+CharInfoStr(who)+" ändert die Property "+prop[1]+" bei "+
+    CharInfoStr(tgt, COORDS_REALM)+" von "+value+" auf "+prop[2]
+  );
+
+  SetObjProperty(tgt, prop[1], prop[2]);
+EndProgram

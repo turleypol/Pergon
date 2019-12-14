@@ -1,0 +1,8 @@
+use uo;
+include "include/clock";
+include "include/msgs";
+
+Program time(who)
+    SendSysMessagePergon(who, "Tageszeit: "+GetPergonTimeOfDay());
+EndProgram
+

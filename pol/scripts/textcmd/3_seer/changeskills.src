@@ -1,0 +1,1085 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD ChangeSkills - Skillstypen von Spielern aendern
+//
+// Author: Shinigami
+
+use file;
+use storage;
+use uo;
+include "include/bank";
+include "include/berufe";
+include "include/clock";
+include "include/modifyskill";
+include "include/objtype";
+include "include/pergonutil";
+include "include/permissions";
+include "include/quests";
+include "include/starteqp";
+
+Const HOEHE_SKILLS            := 32; // Anzahl Zeilen im Skills-Gump
+Const HOEHE_SKILLCHANGE       := 9;  // Anzahl Zeilen im SkillChange-Gump
+Const HOEHE_CLASSCHANGE       := 6;  // Anzahl Zeilen im ClassChange-Gump
+
+Const BUTTON_OK               := 1;
+Const BUTTON_GOLD_ABBUCHEN    := 2;
+Const BUTTON_CHANGEKLASSE     := 10;
+Const BUTTON_BERUFSKILLS      := 100;
+Const BUTTON_HAUPTSKILLS      := 200;
+Const BUTTON_NEBENSKILLS      := 300;
+Const BUTTON_WEITERESKILLS    := 400;
+Const BUTTON_UNBENUTZTESKILLS := 500;
+Const BUTTON_BERUF            := 600;
+Const BUTTON_KLASSE           := 700;
+Const BUTTON_SKILLVORGABE     := 800;
+
+Const RADIO_KONTO             := 900;
+Const RADIO_BAR               := 1000;
+
+Const SKILLTYP_UNBENUTZT      := 0;
+
+Const COLOR_OK                := 40;  // Farbwerte bei der Skillberechnung
+
+Const GOLD_ABBUCHEN           := 1000000;
+
+Program TextCMD_ChangeSkills(who)
+  var guildmaster := 0;
+  // Externer Aufruf von scripts/ai/guildmaster?
+  If (TypeOfInt(who) == OT_STRUCT)
+    // said        := who.said; // womit wurde er angesprochen?
+    guildmaster := who.master; // Referenz auf Gildenmeister
+    who         := who.who;    // Aufrufer
+  EndIf
+
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  If (
+    // QuestChar
+    who.cmdlevel == CMDLEVEL_QUESTCHAR or
+    // Spieler, die den Gildenmeister benutzen
+    guildmaster
+  )
+    // man darf nur eigene Skills aendern
+    ChangeCharacterSkills(who, who, guildmaster);
+    If (who.cmdlevel == CMDLEVEL_QUESTCHAR)
+      QuestCharLog(who, "TextCMD ChangeSkills");
+    EndIf
+    return;
+
+  ElseIf (AllowedToChangeSkills(who))
+    // darf jeden beeinflussen ueber Auswahlgump
+
+    // Anfangsbuchstaben der Accounts ins Gump eintragen
+    Var buchstabendata := FillInAccountBuchstaben();
+    Var buchstabe;
+    Var accountname;
+
+    Repeat
+      // Einen Anfangsbuchstaben auswaehlen
+      buchstabe := ChooseAccountBuchstabe(who, buchstabendata);
+      If (buchstabe != -1)
+        // Einen Account auswaehlen
+        accountname := ChooseAccountName(who, FillInAccountNames(buchstabe));
+        If (accountname)
+          // Einen Character auswaehlen
+          Var char := ChooseCharacter(who, FillInCharacter(accountname));
+          If (char)
+            ChangeCharacterSkills(who, char);
+          EndIf
+        EndIf
+      EndIf
+    Until (buchstabe == -1);
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Ihr seid nicht befugt, diesen Befehl zu benutzen!",
+    "You are not authorized to use this command!"
+  );
+EndProgram
+
+// ChangeCharacterSkills - Fuehrt die Skillaenderungen eines Characters durch
+Function ChangeCharacterSkills(who, char, guildmaster := 0)
+  // Ermittelt die Skills eines Characters
+  var origskills    := GetCharacterSkills(char);
+  // ...und kopiert sie gleich zum spaeteren Differenzvergleich
+  var neueskills    := origskills;
+  var klassenberufe := KlassenBerufe_einlesen();
+
+  // Klassen und Berufe einsammeln
+  var Klassen       := {};
+  var Berufe        := {};
+  ForEach klasse in (klassenberufe.keys())
+    Klassen.append(klasse);
+    ForEach beruf in SplitWords(klassenberufe[klasse])
+      InsertSkillAlphabetic(Berufe, array{beruf, klasse});
+    EndForEach
+  EndForEach
+
+  var button := -1;
+  While ((button != BUTTON_ZURUECK) and (button != BUTTON_OK))
+    // Skills eines Characters ins Gump eintragen
+    var skilldata := FillInSkills(who, char, neueskills, origskills, Berufe);
+
+    // Skillaenderung durchfuehren
+    var ret  := SendDialogGump(who, skilldata[1], skilldata[2]);
+    var gold := struct;
+    button   := ret[0];
+
+    If (skilldata[3])
+      gold.+amount := skilldata[3];
+      If (ret[RADIO_KONTO] or ret[RADIO_BAR])
+        If (ret[RADIO_KONTO])
+          gold.+button := RADIO_KONTO;
+        Else
+          gold.+button := RADIO_BAR;
+        EndIf
+      EndIf
+    EndIf
+
+    If (!button)
+      continue;
+    EndIf
+
+    If (ret[BUTTON_OK])
+      // Setzt die neuen Skills eines Characters
+      SetCharacterSkills(who, char, neueskills, gold, guildmaster);
+      continue;
+    ElseIf (ret[BUTTON_CHANGEKLASSE])
+      var ChangeGump := FillInClassChange(Klassen, neueskills.klasse);
+      // fiese nummer hier wird button umgesetzt deswegen der einzige obere If Teil der die
+      // nachfolgenden button >= X checks abarbeiten muss
+      button         := SendDialogGump(who, ChangeGump[1], ChangeGump[2])[0];
+      
+    ElseIf (ret[BUTTON_GOLD_ABBUCHEN])
+      var result := TryToGetPayment(char, GOLD_ABBUCHEN);
+      If (result)
+        SendSysMessagePergon(who,
+          "Es wurden "+PrettyPrintPrefix(GOLD_ABBUCHEN, "", 1000, 0)+
+          " Gold bei "+char.name+" abgebucht.", "",
+          _DEFAULT_TEXT_FONT, FONTCOLOR_GREEN
+        );
+      Else
+        SendSysMessagePergon(who,
+          " Gold konnte leider nicht bei "+char.name+
+          " abgebucht werden!", "",
+          _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+        );
+      EndIf
+      continue;
+    ElseIf (ret[BUTTON_SKILLVORGABE])
+    	FillInSkillVorgabe(neueskills);
+    	continue;
+    EndIf
+    
+    If (button >= BUTTON_KLASSE)
+      neueskills.klasse := Klassen[button-BUTTON_KLASSE];
+      If (who.cmdlevel < CMDLEVEL_QUESTCHAR)
+        neueskills.beruf := SplitWords(klassenberufe[neueskills.klasse])[1];
+        FillInBerufeAuto(neueskills);
+      EndIf
+    ElseIf (button >= BUTTON_BERUF)
+      neueskills.beruf := Berufe[button-BUTTON_BERUF+1][1];
+      FillInBerufeAuto(neueskills);
+    ElseIf (button >= BUTTON_UNBENUTZTESKILLS)
+      // Skillaenderung durchfuehren
+      MakeSkillChange(who, neueskills, button, SKILLTYP_UNBENUTZT);
+    ElseIf (button >= BUTTON_WEITERESKILLS)
+      // Skillaenderung durchfuehren
+      MakeSkillChange(who, neueskills, button, SKILLTYP_WEITERE);
+    ElseIf (button >= BUTTON_NEBENSKILLS)
+      // Skillaenderung durchfuehren
+      MakeSkillChange(who, neueskills, button, SKILLTYP_NEBEN);
+    ElseIf (button >= BUTTON_HAUPTSKILLS)
+      // Skillaenderung durchfuehren
+      MakeSkillChange(who, neueskills, button, SKILLTYP_HAUPT);
+    ElseIf (button >= BUTTON_BERUFSKILLS)
+      // Skillaenderung durchfuehren
+      MakeSkillChange(who, neueskills, button, SKILLTYP_BERUF);
+    EndIf
+  EndWhile
+EndFunction
+
+// GetCharacterSkills - Ermittelt die Skills eines Characters
+Function GetCharacterSkills(char)
+  // Klassen und Skills einlesen
+  var klassenskills := KlassenSkills_einlesen();
+  var skills        := struct;
+
+  skills.+klasse    := GetObjProperty(char, SKKLASSE);
+  If (skills.klasse)
+    If (!(skills.klasse in klassenskills.klassen))
+      skills.klasse := KLASSE_BERUF_NIX; // Ungueltige Klasse...
+    EndIf
+  Else
+    skills.klasse := KLASSE_BERUF_NIX; // Nicht gesetzte Klasse...
+  EndIf
+
+  skills.+beruf := GetObjProperty(char, SKBERUF);
+  If (!skills.beruf)
+    skills.beruf := KLASSE_BERUF_NIX;
+  EndIf
+
+  // Character nach Skills abgrasen
+  skills.+berufskills   :={};
+  skills.+hauptskills   :={};
+  skills.+nebenskills   :={};
+  skills.+weitereskills :={};
+  skills.+unbenutzt     :={};
+
+  var skillinfos := GetSkillsSorted();
+  For index := 1 To (MAX_SKILLS+1)
+    var skillinfo        := GetSkillInfo(skillinfos[index]);
+    var klassenskillinfo := klassenskills.skills[skillinfo.name];
+
+    // { sichtbarer Name, SkillID (interner Name), Punkte, Klasse,
+    // relevante Punkte/Fehler, Farbe }
+    var skill := array{
+      skillinfo.TrainName,
+      skillinfo.name,
+      klassenskillinfo[1],
+      klassenskillinfo[2],
+      "", 0
+    };
+
+    Case (GetObjProperty(char, SKILLTYPKENNUNG+skillinfo.name))
+      SKILLTYP_BERUF:   skills.berufskills.append(skill);
+      SKILLTYP_HAUPT:   skills.hauptskills.append(skill);
+      SKILLTYP_NEBEN:   skills.nebenskills.append(skill);
+      SKILLTYP_WEITERE: skills.weitereskills.append(skill);
+      default:          skills.unbenutzt.append(skill);
+    EndCase
+  EndFor
+
+  return skills;
+EndFunction
+
+// CalcCharacterSkills - Rechnet die Skills eines Characters durch
+Function CalcCharacterSkills(who, ByRef skills)
+  // Resultat
+  var summen := struct;
+
+  If (skills.klasse == KLASSE_BERUF_NIX)
+    // ...ohne Klasse ist es nicht berechenbar
+    var fehlermeldung := "Klasse";
+
+    ForEach skill in (skills.berufskills) // Berufskills
+      skill[5] := fehlermeldung; skill[6] := FONTCOLOR_RED;
+    EndForEach
+
+    ForEach skill in (skills.hauptskills) // Hauptskills
+      skill[5] := fehlermeldung; skill[6] := FONTCOLOR_RED;
+    EndForEach
+
+    ForEach skill in (skills.nebenskills) // Nebenskills
+      skill[5] := fehlermeldung; skill[6] := FONTCOLOR_RED;
+    EndForEach
+
+    ForEach skill in (skills.weitereskills) // Weitere Skills
+      skill[5] := fehlermeldung; skill[6] := FONTCOLOR_RED;
+    EndForEach
+
+    summen.+hauptsumme   := {0, FONTCOLOR_RED, 0, FONTCOLOR_RED};
+    summen.+nebensumme   := {0, FONTCOLOR_RED, 0, FONTCOLOR_RED};
+    summen.+weiteresumme := {0, FONTCOLOR_RED, 0, FONTCOLOR_RED};
+    summen.+gesamtsumme  := {0, FONTCOLOR_RED};
+
+    summen.+ungueltig := 1; // Fehlerwert hinzufuegen
+
+    return summen;
+  EndIf
+
+  // Gueltige Klasse
+  var gesamtsumme  := 0;               // Gesamtsumme
+  var hauptsumme   := 0;               // Zwischensumme
+  var nebensumme   := 0;               // Zwischensumme
+  var weiteresumme := 0;               // Zwischensumme
+  var gesamtanzahl := 0;               // Gesamtanzahl
+  var teilanzahl   := 0;               // Teilanzahl
+
+  var zwischensummenfarbe;             // Farbe der Zwischensumme
+  var anzahlfarbe;                     // Farbe der Anzahl
+
+  var fehler := 0;                     // Liegt irgendwo ein Fehler vor?
+  If (!CalculateSkillPoints(skills, skills.berufskills, hauptsumme))
+    fehler := 1;
+  EndIf
+
+  If (!CalculateSkillPoints(skills, skills.hauptskills, hauptsumme))
+    fehler := 1;
+  EndIf
+
+  // Punkte setzen
+  gesamtsumme := hauptsumme;
+  var limit   := LP_LIMIT_BERUFHAUPT;
+  If (gesamtsumme <= limit) // Stimmen die Punkte?
+    zwischensummenfarbe := COLOR_OK;
+  Else
+    fehler := 1;
+    zwischensummenfarbe := FONTCOLOR_RED;
+  EndIf
+  teilanzahl   := skills.berufskills.size();
+  gesamtanzahl := teilanzahl+skills.hauptskills.size();
+  If ((teilanzahl <= 2) and (gesamtanzahl <= 4)) // Stimmt die Anzahl?
+    anzahlfarbe := COLOR_OK;
+  Else
+    anzahlfarbe := FONTCOLOR_RED; fehler := 1;
+  EndIf
+  summen.+hauptsumme := {
+    hauptsumme,   zwischensummenfarbe,
+    gesamtanzahl, anzahlfarbe
+  };
+
+  If (!CalculateSkillPoints(skills, skills.nebenskills, nebensumme, 1))
+    fehler := 1;
+  EndIf
+
+  gesamtsumme := gesamtsumme+nebensumme; // Punkte hinzufuegen
+  limit       += LP_LIMIT_NEBEN;
+  If (gesamtsumme <= limit) // Stimmen die Punkte?
+    zwischensummenfarbe := COLOR_OK;
+  Else
+    zwischensummenfarbe := FONTCOLOR_RED; fehler := 1;
+  EndIf
+  teilanzahl   := skills.nebenskills.size();
+  gesamtanzahl := gesamtanzahl+teilanzahl;
+  If (teilanzahl <= 10) // Stimmt die Anzahl?
+    anzahlfarbe := COLOR_OK;
+  Else
+    anzahlfarbe := FONTCOLOR_RED; fehler := 1;
+  EndIf
+  summen.+nebensumme := {
+    nebensumme, zwischensummenfarbe,
+    teilanzahl, anzahlfarbe
+  };
+
+  var punkte; // Akt. zu verrechnende Punkte
+  ForEach skill in (skills.weitereskills) // Weitere Skills
+    punkte := skill[3];
+    skill[5] := punkte;
+    skill[6] := COLOR_OK;
+    weiteresumme := weiteresumme+punkte;
+  EndForEach
+
+  If (who.cmdlevel < CMDLEVEL_QUESTCHAR)
+    var type, iter;
+    var found := 0;
+    ForEach skilltype in {
+      "berufskills", "hauptskills", "nebenskills", "weitereskills"
+    }
+      ForEach skill in (skills[skilltype])
+        If (skill[1] in { "Segnen", "Fluchen"})
+          If (!found)
+            type := skilltype;
+            iter := _skill_iter;
+            found += 1;
+          Else
+            skill[5] := "X";
+            skill[6] := FONTCOLOR_RED;
+            skills[type][iter][5] := "X";
+            skills[type][iter][6] := FONTCOLOR_RED;
+            fehler := 1;
+          EndIf
+        EndIf
+      EndForEach
+    EndForEach
+  EndIf
+
+  gesamtsumme := gesamtsumme+weiteresumme; // Punkte hinzufuegen
+  limit       += LP_LIMIT_WEITERE;
+  If (gesamtsumme <= limit) // Stimmen die Punkte?
+    zwischensummenfarbe := COLOR_OK;
+  Else
+    zwischensummenfarbe := FONTCOLOR_RED;
+    fehler := 1;
+  EndIf
+  teilanzahl   := skills.weitereskills.size();
+  gesamtanzahl := gesamtanzahl+teilanzahl;
+  If (teilanzahl <= 6) // Stimmt die Anzahl?
+    anzahlfarbe := COLOR_OK;
+  Else
+    anzahlfarbe := FONTCOLOR_RED;
+    fehler := 1;
+  EndIf
+  summen.+weiteresumme := {
+    weiteresumme, zwischensummenfarbe,
+    teilanzahl,   anzahlfarbe
+  };
+  summen.+gesamtsumme  := {
+    gesamtsumme, zwischensummenfarbe, gesamtanzahl
+  };
+
+  summen.+ungueltig := fehler; // Fehlerwert hinzufuegen
+  return summen;
+EndFunction
+
+Function CalculateSkillPoints(byref skills, byref what, byref summe, neben := 0)
+  var all_ok := 1;
+  ForEach skill in (what) // Berufskills
+    var faktor := CInt(skill[3]*3/4)*2;
+    If (neben)
+      faktor := skill[3];
+    EndIf
+    var punkte := 0;
+    Case (skill[4]) // Was fuer ein Skill wird mir zugeordnet?
+    KLASSE_HANDWERKER:
+      Case (skills.klasse)  // Was bin ich?
+      KLASSE_HANDWERKER:
+        punkte := skill[3]; // Handwerker wird Handwerkerskill zugeordnet...
+      KLASSE_KRIEGER:
+        punkte := faktor;   // Krieger    wird Handwerkerskill zugeordnet...
+      KLASSE_MAGIER:
+        punkte := faktor;   // Magier     wird Handwerkerskill zugeordnet...
+      EndCase
+    KLASSE_KRIEGER:
+      Case (skills.klasse)  // Was bin ich?
+      KLASSE_HANDWERKER:
+        punkte := faktor;   // Handwerker wird Kriegerskill    zugeordnet...
+      KLASSE_KRIEGER:
+        punkte := skill[3]; // Krieger    wird Kriegerskill    zugeordnet...
+      KLASSE_MAGIER:
+        punkte := 0;        // Magier     wird Kriegerskill    zugeordnet...
+      EndCase
+    KLASSE_MAGIER:
+      Case (skills.klasse)  // Was bin ich?
+      KLASSE_HANDWERKER:
+        punkte := faktor;   // Handwerker wird Magierskill     zugeordnet...
+      KLASSE_KRIEGER:
+        punkte := 0;        // Krieger    wird Magierskill     zugeordnet...
+      KLASSE_MAGIER:
+        punkte := skill[3]; // Magier     wird Magierskill     zugeordnet...
+      EndCase
+    KLASSE_UNRELEVANT:
+      punkte := skill[3];   // Mir wird unrelevanter Skill zugeordnet ...
+    EndCase
+
+    If (punkte) // Gueltiger Skill?
+      skill[5] := punkte;
+      skill[6] := COLOR_OK;
+      summe    += punkte;
+    Else
+      skill[5] := skills.klasse[1];
+      skill[6] := FONTCOLOR_RED;
+      all_ok   := 0;
+    EndIf
+  EndForEach
+
+  return all_ok;
+EndFunction
+
+// SetCharacterSkills - Setzt die neuen Skills eines Characters
+Function SetCharacterSkills(who, char, skills, gold, guildmaster := 0)
+  If (
+    // nur bei Spielern relevant, Staff bucht manuell
+    who.cmdlevel < CMDLEVEL_QUESTCHAR and
+    // Newbies zahlen generell nix
+    !char.getprop(TYPNEWBIE)
+  )
+    // geflohene Spieler blechen lassen
+    If (!GetSkillChangeGold(char, gold))
+      return;
+    EndIf
+  EndIf
+  
+  // Klasse und Beruf setzen
+  char.setprop(SKKLASSE, skills.klasse);
+  char.setprop(SKBERUF,  skills.beruf);
+
+  // Skilltypen speichern
+  var equipskills := array{};
+  ForEach skill in (skills.berufskills)
+    SetSkillLogged(char, skill, SKILLTYP_BERUF);
+    // Skillnamen der Berufsskills fuer eventuelle Startausruestung merken
+    equipskills.append(skill[2]);
+  EndForEach
+  ForEach skill in (skills.hauptskills)
+    SetSkillLogged(char, skill, SKILLTYP_HAUPT);
+  EndForEach
+  ForEach skill in (skills.nebenskills)
+    SetSkillLogged(char, skill, SKILLTYP_NEBEN);
+  EndForEach
+  ForEach skill in (skills.weitereskills)
+    SetSkillLogged(char, skill, SKILLTYP_WEITERE);
+  EndForEach
+  ForEach skill in (skills.unbenutzt)
+    var old_type := char.getprop(SKILLTYPKENNUNG+skill[2]);
+    If (old_type)
+      syslog(
+        "HINWEIS: "+CharInfoStr(char)+" hatte "+old_type+"skill "+skill[1]
+      );
+    EndIf
+    char.eraseprop(SKILLTYPKENNUNG+skill[2]);
+  EndForEach
+
+  // bis wir eine bessere Loesung haben, mal die Startausruestung verteilen
+  If (who.getprop(PROP_NO_START_EQUIP))
+    If (guildmaster)
+      PrintTextAbovePrivatePergon(guildmaster,
+        "Hier noch etwas für den Weg! *in den Rucksack pack*"+
+        "Euch wurde auch ein Bankkonto mit 250000 Goldstücken eingerichtet!",
+        "Here, I'll give you something for your profession "+
+        "*stuffing something in your backpack*"+
+        "You also got a bank account with a 250000 Gold deposit",
+        char
+      );
+    Else
+      SendSysMessagePergon(char,
+        "Ihr findet eine Startausrüstung in eurem Rucksack."+
+        "Euch wurde ein Bankkonto mit einem 250000 Goldguthaben eingerichtet.",
+        "Some helpful items appear in your backpack."+
+        "You also got a bank account with a 250000 Gold deposit"
+      );
+    EndIf
+    var bankbox := FindBankBox(who);
+    SetObjProperty(bankbox, CPROP_GOLD_ACCT, 250000); // 250k Startgold einmalig auf das Konto
+    CreateStartingEquipment(char, equipskills);
+    who.eraseprop(PROP_NO_START_EQUIP);
+  EndIf
+
+  // Prueft das Limit aller Skills sowie Attribute und schnippelt ggf.
+  CheckPlayerLimitsAndCut(char);
+
+  // wegen Klassen- bzw. Skillaenderungen muss ggf.
+  // Fahrerlaubnis neu beantragt werden
+  char.eraseprop(TYPFLIGHT);
+EndFunction
+
+Function SetSkillLogged(char, skill, type)
+  var propname := SKILLTYPKENNUNG+skill[2];
+  var old_type := char.getprop(propname);
+  If (old_type <> type)
+    syslog("HINWEIS: "+CharInfoStr(char)+" hat nun "+type+"skill "+skill[1]);
+    char.setprop(propname, type);
+  EndIf
+EndFunction
+
+Const GOLD_NO := 0;
+Const GOLD_OK := 1;
+Function GetSkillChangeGold(char, gold)
+  If (!gold.amount)
+    // kostet nix, ok
+    return GOLD_OK;
+  EndIf
+
+  Case (gold.button)
+  RADIO_KONTO: // Abbuchung
+    var pay := TryToGetPayment(char, gold.amount*GOLD_ABBUCHEN);
+    If (pay)
+      SendSysMessagePergon(char,
+        "Euch wurden "+gold.amount+" Mio Goldstücke vom Konto abgebucht"
+      );
+      return GOLD_OK;
+    EndIf
+
+    If (pay.errortext == ERR_NO_ENOUGH_MONEY)
+      SendSysMessagePergon(char,
+        "Ihr habt nicht genug Gold auf dem Konto!", "",
+        _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+      );
+    Else
+      SendSysMessagePergon(char,
+        "Abbruch: "+pay.errortext, "Abort: "+pay.errortext, _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+      );
+    EndIf
+
+  RADIO_BAR: // Barzahlung
+    var consume := ConsumeSubstance(
+      char.backpack, UOBJ_GOLD_COIN, gold.amount*GOLD_ABBUCHEN
+    );
+    If (consume)
+      SendSysMessagePergon(char, "Ihr habt "+gold.amount+" Mio Gold ausgegeben");
+      return GOLD_OK;
+    EndIf
+
+    If (consume.errortext == "Not enough of that substance in container")
+      SendSysMessagePergon(char,
+        "Ihr habt nicht genug Gold dabei!", "",
+        _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+      );
+    Else
+      SendSysMessagePergon(char,
+        "Abbruch: "+consume.errortext, "Abort: "+consume.errortext,
+        _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+      );
+    EndIf
+
+  default:
+    SendSysMessagePergon(char,
+      "Es wurde keine Zahlungsart gewählt!", "",
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+  EndCase
+
+  return GOLD_NO;
+EndFunction
+
+// FillInSkills - Skills eines Characters ins Gump eintragen
+Function FillInSkills(who, char, skills, origskills, berufe)
+  var layout := {                                                       // Gump-Layout
+    "Page 0",                                                           //   Seite 0 (Basisseite)
+    "NoDispose",
+    "NoClose",
+
+    "Resizepic 10 10 2620 310 "+(70+HOEHE_SKILLS*20),                   //   linke Seite, Skills des Characters
+    "GumpPic 30 40 2621",
+    "CheckerTrans 15 16 300 "+(58+HOEHE_SKILLS*20),
+    "Text 30 19 40 0",
+
+    "Button 30 "+(38+HOEHE_SKILLS*20)+" 2121 2120 1 0 "+BUTTON_ZURUECK,
+    "Text 108 "+(40+HOEHE_SKILLS*20)+" "+FONTCOLOR_RED+" 1",                           //   Erklaerungen
+    "Text 136 "+(40+HOEHE_SKILLS*20)+" "+FONTCOLOR_GREEN+" 2",
+    "Text 168 "+(40+HOEHE_SKILLS*20)+" "+FONTCOLOR_BLUE+" 3",
+    "Text 198 "+(40+HOEHE_SKILLS*20)+" 23 4",
+
+    "Resizepic 330 10 2620 310 "+(70+HOEHE_SKILLS*20),                  //   rechte Seite, nicht genutzte Skills
+    "GumpPic 350 40 2621",
+    "CheckerTrans 335 16 300 "+(58+HOEHE_SKILLS*20),  
+    "ResizePic 650 10 2620 310 "+(70+HOEHE_SKILLS*20),                  //   ganz rechte Seite, Berufe
+    "GumpPic 670 40 2621",
+    "CheckerTrans 655 16 300 "+(58+HOEHE_SKILLS*20)
+  };
+  
+  var data := {                                                           // Gump-Data
+    "Skills von '"+char.name+"' veraendern",
+    "Ber", "Hau", "Neb", "Wei",
+    KLASSE_HANDWERKER, KLASSE_KRIEGER, KLASSE_MAGIER
+  };
+
+  var pos_y := 60; // Akt. Y-Koordinate
+  var goldamount;
+
+  var hide_skills := array{};
+  If (char.cmdlevel >= CMDLEVEL_SEER and char.cmdlevel < CMDLEVEL_SCRIPTER)
+    // CMDLevel-Character?
+    // (aber ab Scripter wieder erlauben fuer leichteres Testen)
+    layout.append("Text 20 "+pos_y+" "+FONTCOLOR_GREEN+" "+data.size());
+    data.append("CMDLevel-Character haben keine Skills");
+
+    layout.append("Button 244 "+(38+HOEHE_SKILLS*20)+" 2121 2120 1 0 "+BUTTON_ZURUECK);
+  Else
+    If (who.cmdlevel < CMDLEVEL_QUESTCHAR)
+      // fuer Spieler nicht verfuegbare Skills
+      hide_skills := array{
+        "Ruten benutzen", "Schiffbau", "Studieren", "Verzaubern"
+      };
+      If (!char.getprop("TRAPTEST"))
+        hide_skills.append("Fallen legen");
+      EndIf
+    EndIf
+
+    // Rechnet die Skills eines Characters durch
+    var summen := CalcCharacterSkills(char, skills);
+
+    layout.append("Button 30 "+(pos_y-3)+" 2640 2641 1 0 "+BUTTON_CHANGEKLASSE); // Klasse und Beruf eintragen
+    layout.append("Text 65 "+pos_y+" "+FONTCOLOR_GREEN+" "+data.size());
+    data.append(skills.klasse+" - "+skills.beruf);
+    pos_y += 20;
+    
+    layout.append("Button 30 "+(pos_y-3)+" 2640 2641 1 0 "+BUTTON_SKILLVORGABE);
+    layout.append("Text 65 "+pos_y+" "+COLOR_OK+" "+data.size());
+    data.append("Vorschlag fuer Skillverteilung");
+
+    If (!GetObjProperty(char, TYPNEWBIE) and who.cmdlevel >= CMDLEVEL_QUESTCHAR)
+      layout.append("Text 225 "+(pos_y+20)+" "+FONTCOLOR_RED+" "+data.size());
+      data.append("[Festlaender]");
+    EndIf
+    pos_y += 40;
+
+    FillInTypeOfSkills(layout, data, pos_y, skills.berufskills, 0, BUTTON_BERUFSKILLS, FONTCOLOR_RED);                     // Beruf- und Hauptskills
+    FillInTypeOfSkills(layout, data, pos_y, skills.hauptskills, summen.hauptsumme, BUTTON_HAUPTSKILLS, FONTCOLOR_GREEN);
+    FillInTypeOfSkills(layout, data, pos_y, skills.nebenskills, summen.nebensumme, BUTTON_NEBENSKILLS, FONTCOLOR_BLUE);        // Nebenskills
+    FillInTypeOfSkills(layout, data, pos_y, skills.weitereskills, summen.weiteresumme, BUTTON_WEITERESKILLS, 23); // Weitere Skills
+
+    If (summen.gesamtsumme[3]) // Gibts ueberhaupt Skills?
+      layout.append("Text 240 "+(pos_y-20)+" "+summen.gesamtsumme[2]+" "+data.size());                            // Gesamtsumme der Punkte
+      data.append("= "+summen.gesamtsumme[1]);
+    EndIf
+
+    // Verfuegbares Gold und letzte Aenderungen der Skills anzeigen
+    goldamount := 0;
+    If (AllowedToChangeSkills(who))
+      If (!GetObjProperty(char, TYPNEWBIE)) // Ist er kein Newbie mehr?
+        var gold := CDbl(GetAccountBalance(char));
+        If (gold >= GOLD_ABBUCHEN)
+          layout.append("Button 30 "+(-34+HOEHE_SKILLS*20)+" 2640 2641 1 0 "+BUTTON_GOLD_ABBUCHEN);
+          layout.append("Text 65 "+(-31+HOEHE_SKILLS*20)+" "+FONTCOLOR_GREEN+" "+data.size());
+          data.append(
+            PrettyPrintPrefix(GOLD_ABBUCHEN, "", 1000, 0)+" von "+
+            PrettyPrintPrefix(gold, "", 1000, 2)+" Gold abbuchen"
+          );
+        Else
+          layout.append("Text 30 "+(-25+HOEHE_SKILLS*20)+" "+FONTCOLOR_RED+" "+data.size());
+          data.append(
+            "Nur "+PrettyPrintPrefix(gold, "", 1000, 0)+" Gold vorhanden."
+          );
+        EndIf
+      EndIf
+    ElseIf (!GetObjProperty(char, TYPNEWBIE) and who.cmdlevel < CMDLEVEL_QUESTCHAR)
+
+      var found;
+      ForEach origskill in (origskills.unbenutzt)
+        ForEach skill in (skills.unbenutzt)
+          If (origskill[1] == skill[1])
+            found := 1;
+            break;
+          EndIf
+        EndForEach
+        If (!found)
+          goldamount += 1;
+        EndIf
+        found := 0;
+      EndForEach
+
+      If (goldamount and !summen.ungueltig)
+        layout.append("Text 108 "+(-45+HOEHE_SKILLS*20)+" "+FONTCOLOR_RED+" "+data.size());
+        data.append("Kosten: "+goldamount+" Mio Gold");
+        layout += {
+          "Radio 35 "+(-22+HOEHE_SKILLS*20)+" 2104 2224 0 "+RADIO_KONTO,
+          "Text 70 "+(-25+HOEHE_SKILLS*20)+" "+COLOR_OK+" "+data.size(),
+          "Radio 280 "+(-22+HOEHE_SKILLS*20)+" 2104 2223 0 "+RADIO_BAR,
+          "Text 200 "+(-25+HOEHE_SKILLS*20)+" "+COLOR_OK+" "+(data.size()+1)
+        };
+        data += {"Kontoabbuchung", "Barzahlung"};
+      EndIf
+    EndIf
+
+    // Ungueltige Skillkombination? (rein optisch das "Ok" verhindern...)
+    If (summen.ungueltig)
+      If (summen.ungueltig)
+        layout.append("Text 92 "+(15+HOEHE_SKILLS*20)+" "+FONTCOLOR_RED+" "+data.size());
+        data.append("ungueltige Skillkombination");
+      EndIf
+      layout.append("Button 244 "+(38+HOEHE_SKILLS*20)+" 2121 2120 1 0 "+BUTTON_ZURUECK);
+    Else
+      layout.append("Button 244 "+(38+HOEHE_SKILLS*20)+" 2130 2129 1 0 "+BUTTON_OK);
+    EndIf
+
+    // Rechte Seite, nicht genutzte Skills
+    var pagecount    := 1;                       // Akt. Seitenzahl
+    var skillcount   := 0;                       // Zahl des einzutragenden Skills
+    var nextpageswap := 0;                       // Wann erfolgt ein Seitenwechsel?
+    var msgbutton := BUTTON_UNBENUTZTESKILLS;    // Nummer des Buttons
+
+    ForEach skill in (skills.unbenutzt) // Alle unbenutzten Skills eintragen
+      If (skill[1] in (hide_skills))
+        // unbenutzte Skills nicht eintragen
+        msgbutton += 1;
+        continue;
+      EndIf
+
+      If (skillcount == nextpageswap) // Seitenwechsel-Buttons einfuegen?
+        layout.append("Page "+pagecount);
+        layout.append("Text 350 19 40 "+data.size());
+
+        If (skillcount)
+          layout.append("Button 603 19 2650 2651 0 "+(pagecount-1));
+        EndIf
+        If (skills.unbenutzt.size()-hide_skills.size() > skillcount+HOEHE_SKILLS)
+          layout.append("Button 583 19 2648 2647 0 "+(pagecount+1));
+          data.append("Unbenutzte Skills ("+(skillcount+1)+" bis "+(skillcount+HOEHE_SKILLS)+")");
+        Else
+          data.append("Unbenutzte Skills ("+(skillcount+1)+" bis "+skills.unbenutzt.size()+")");
+        EndIf
+
+        pagecount += 1;
+        nextpageswap := nextpageswap+HOEHE_SKILLS;
+        pos_y := 60;
+      EndIf
+
+      layout.append("Button 350 "+(pos_y-3)+" 2640 2641 1 0 "+msgbutton); // Bezeichnung des Skills
+      layout.append("Text 385 "+pos_y+" "+FONTCOLOR_GREEN+" "+data.size());
+      data.append(skill[1]);
+
+      Case (skill[4])
+        KLASSE_HANDWERKER: layout.append("Text 550 "+pos_y+" "+FONTCOLOR_GREEN+" 5");      // Handwerker
+        KLASSE_KRIEGER:    layout.append("Text 550 "+pos_y+" "+FONTCOLOR_RED+" 6");      // Krieger
+        KLASSE_MAGIER:     layout.append("Text 550 "+pos_y+" "+FONTCOLOR_BLUE+" 7");       // Magier
+      EndCase
+
+      skillcount += 1;
+      msgbutton  += 1;
+      pos_y += 20;
+    EndForEach
+
+    // noch ein Stueck weiter rechts - Berufe
+    msgbutton := BUTTON_BERUF;            // Nummer des Buttons
+    pos_y := 60;
+
+    ForEach beruf in berufe // Alle Berufe eintragen
+      layout.append("Page 1");
+      layout.append("Text 670 19 40 "+data.size());
+      data.append("Berufe fuer "+skills.klasse);
+      If (who.cmdlevel < CMDLEVEL_QUESTCHAR and (beruf[1] in { "Thaumaturg", "Bootsbauer" }))
+      	msgbutton += 1;
+      	continue;
+      ElseIf (beruf[2] == skills.klasse)
+        layout.append("Button 670 "+(pos_y-3)+" 2640 2641 1 0 "+msgbutton); // Bezeichnung der Berufe
+        layout.append("Text 705 "+pos_y+" "+FONTCOLOR_GREEN+" "+data.size());
+        data.append(beruf[1]);
+
+        pos_y += 20;
+      EndIf
+      msgbutton += 1;
+    EndForEach
+  EndIf
+
+  Return ({layout, data, goldamount});
+EndFunction
+
+// FillInTypeOfSkills - Skills eines Typs eintragen
+Function FillInTypeOfSkills(ByRef layout, ByRef data, ByRef pos_y, skills, summe, msgbutton, color)
+  Var maxskills;
+  Case (msgbutton)
+    BUTTON_BERUFSKILLS:
+    BUTTON_HAUPTSKILLS:   maxskills := 2;
+    BUTTON_NEBENSKILLS:   maxskills := 10;
+    BUTTON_WEITERESKILLS: maxskills := 6;
+  EndCase
+
+  If (skills.size()) // Gibts irgendwas zum anzeigen?
+    Var akt_msgbutton := msgbutton;
+
+    ForEach skill in skills
+      layout.append("Button 30 "+(pos_y-3)+" 2640 2641 1 0 "+akt_msgbutton); // Bezeichnung des Skills
+      layout.append("Text 65 "+pos_y+" "+color+" "+data.size());
+      data.append(skill[1]);
+
+      layout.append("Text 220 "+pos_y+" "+skill[6]+" "+data.size());         // Relevante Punkte
+      data.append(skill[5]);
+
+      akt_msgbutton += 1;
+      pos_y += 20;
+    EndForEach
+
+    If (skills.size() < maxskills)
+      For i := skills.size() To (maxskills-1)
+        layout.append("Text 65 "+pos_y+" "+color+" "+data.size());       // Bezeichnung des Skills
+        data.append("kein Skill gewaehlt");
+
+        layout.append("Text 220 "+pos_y+" "+40+" "+data.size());         // Kein Skill - keine Punkte
+        data.append("0");
+
+        akt_msgbutton += 1;
+        pos_y += 20;
+      EndFor
+    EndIf
+
+    If (summe) // Summe und Anzahl anzeigen?
+      layout.append("Text 240 "+(pos_y-20)+" "+summe[2]+" "+data.size());    // Summe der Punkte
+      data.append("= "+summe[1]);
+      layout.append("Text 280 "+(pos_y-20)+" "+summe[4]+" "+data.size());    // Anzahl der Skills
+      data.append("["+summe[3]+"]");
+
+      pos_y += 20;
+    EndIf
+  Else
+    For i := 1 To maxskills
+      layout.append("Text 65 "+pos_y+" "+color+" "+data.size());       // Bezeichnung des Skills
+      data.append("kein Skill gewaehlt");
+
+      layout.append("Text 220 "+pos_y+" "+40+" "+data.size());         // Kein Skill - keine Punkte
+      data.append("0");
+
+      pos_y += 20;
+    EndFor
+
+    If (summe) // Summe und Anzahl anzeigen?
+      layout.append("Text 240 "+(pos_y-20)+" "+summe[2]+" "+data.size());    // Summe der Punkte
+      data.append("= 0 [0]");
+      pos_y += 20;
+    EndIf
+  EndIf
+EndFunction
+
+// FillInSkillChange - Skillaenderung ins Gump eintragen
+Function FillInSkillChange(who, skill, skilltyp, skills)
+  Var layout := {                                                             // Gump-Layout
+    "Page 0",                                                               //   Seite 0 (Basisseite)
+    "nodispose",
+    "noclose",
+
+    "ResizePic 10 10 2620 310 "+(70+HOEHE_SKILLCHANGE*20),
+    "GumpPic 30 40 2621",
+    "checkertrans 15 16 300 "+(58+HOEHE_SKILLCHANGE*20),
+    "Text 30 19 40 0",
+
+    "Text 65 80 "+FONTCOLOR_GREEN+" 2",
+    "Text 65 100 "+FONTCOLOR_BLUE+" 3",
+    "Text 65 120 23 4",
+    "Text 65 160 "+FONTCOLOR_GREEN+" 5",
+
+    "Button 30 "+(38+HOEHE_SKILLCHANGE*20)+" 2121 2120 1 0 "+BUTTON_ZURUECK
+  };
+  Var data := {                                                               // Gump-Data
+    "Skill '"+skill[1]+"' veraendern",
+    "Berufskill",
+    "Hauptskill",
+    "Nebenskill",
+    "weiterer Skill",
+    "nicht genutzter Skill"
+  };
+
+  var no;
+  If (who.cmdlevel < CMDLEVEL_QUESTCHAR)
+    Case (skills.klasse)
+      "Krieger": no := "Magier";
+      "Magier":  no := "Krieger";
+    EndCase
+  EndIf
+
+  If (skilltyp != SKILLTYP_BERUF and who.cmdlevel >= CMDLEVEL_QUESTCHAR)
+    layout.append("Text 65 60 "+FONTCOLOR_RED+" 1");
+    layout.append("Button 30 57 2640 2641 1 0 "+BUTTON_BERUFSKILLS);
+  EndIf
+  If (skilltyp != SKILLTYP_HAUPT and skill[4] != no)
+    layout.append("Button 30 77 2640 2641 1 0 "+BUTTON_HAUPTSKILLS);
+  EndIf
+  If (skilltyp != SKILLTYP_NEBEN and skill[4] != no)
+    layout.append("Button 30 97 2640 2641 1 0 "+BUTTON_NEBENSKILLS);
+  EndIf
+  If (skilltyp != SKILLTYP_WEITERE)
+    layout.append("Button 30 117 2640 2641 1 0 "+BUTTON_WEITERESKILLS);
+  EndIf
+  If (skilltyp != SKILLTYP_UNBENUTZT)
+    layout.append("Button 30 157 2640 2641 1 0 "+BUTTON_UNBENUTZTESKILLS);
+  EndIf
+
+  Return ({layout, data});
+EndFunction
+
+// FillInClassChange - Gump zum Klasse veraendern
+Function FillInClassChange(Klassen, Klasse)
+  Var layout := {                                                             // Gump-Layout
+    "Page 0",                                                               //   Seite 0 (Basisseite)
+    "nodispose",
+    "noclose",
+
+    "ResizePic 10 10 2620 310 "+(70+HOEHE_CLASSCHANGE*20),
+    "GumpPic 30 40 2621",
+    "checkertrans 15 16 300 "+(58+HOEHE_CLASSCHANGE*20),
+    "Text 30 19 40 0",
+    "Button 30 "+(38+HOEHE_CLASSCHANGE*20)+" 2121 2120 1 0 2"
+  };
+  Var data := {                                                               // Gump-Data
+    "Klasse veraendern"
+  };
+  Var y_mod := 57;
+  Var i := 1;
+  ForEach Klassenname in Klassen
+    layout.append("Text 65 "+(y_mod+3)+" "+FONTCOLOR_GREEN+" "+i);
+    data.append(Klassenname);
+    If (Klassenname != Klasse)
+      layout.append("Button 30 "+y_mod+" 2640 2641 1 0 "+(BUTTON_KLASSE+i));
+    Endif
+    i += 1;
+    y_mod += 20;
+  EndForEach
+
+  Return ({layout, data});
+EndFunction
+
+// FillInBerufeAuto - Automatisch Berufskills einfügen
+Function FillInBerufeAuto(ByRef skills)
+  var berufskills := Berufskills_einlesen();
+  While (skills.berufskills.size())
+    var skill := skills.berufskills[1];
+    skills.berufskills.erase(1);
+    InsertSkillAlphabetic(skills.unbenutzt, skill);
+  EndWhile
+
+  var type, iter;
+  var found := 0;
+  ForEach skilltype in {"hauptskills", "nebenskills", "weitereskills", "unbenutzt"}
+    ForEach skill in (skills[skilltype])
+      If (skill[2] in berufskills[skills.beruf])
+        InsertSkillAlphabetic(skills.berufskills, skill);
+        If (!found)
+          type := skilltype;
+          iter := _skill_iter;
+          found := 1;
+        Else
+          skills[skilltype].erase(_skill_iter);
+          skills[type].erase(iter);
+          break;
+        EndIf
+      EndIf
+    EndForEach
+  EndForEach
+EndFunction
+
+Function FillInSkillVorgabe(ByRef skills)
+	
+	FillInBerufeAuto(skills);
+	
+	ForEach skilltype in {"hauptskills", "nebenskills", "weitereskills"}
+	  While (skills[skilltype].size())
+		  var skill := skills[skilltype][1];
+		  skills[skilltype].erase(1);
+		  InsertSkillAlphabetic(skills.unbenutzt, skill);
+	  EndWhile
+	EndForEach
+	
+	var delete := array;
+	var skillvorgaben := Skillvorgabe_einlesen(skills.beruf);
+	ForEach skilltype in {"hauptskills", "nebenskills", "weitereskills"}
+		ForEach skillvorgabe in (skillvorgaben[skilltype])
+			ForEach skill in (skills.unbenutzt)
+				If (skillvorgabe == skill[2])
+					InsertSkillAlphabetic(skills[skilltype], skill);
+					delete.append(_skill_iter);
+					break;
+				EndIf
+			EndForEach
+		EndForEach
+	EndForEach
+
+	delete.sort(); delete.reverse();
+	ForEach skill in delete
+		skills.unbenutzt.erase(skill);
+	EndForEach
+EndFunction
+
+// MakeSkillChange - Skillaenderung durchfuehren
+Function MakeSkillChange(who, ByRef skills, skillnummer, skilltyp)
+  Var skillnr;
+  Var skill;
+  Case (skilltyp)
+    SKILLTYP_BERUF:     skillnr := skillnummer-BUTTON_BERUFSKILLS+1;      skill := skills.berufskills[skillnr];
+    SKILLTYP_HAUPT:     skillnr := skillnummer-BUTTON_HAUPTSKILLS+1;      skill := skills.hauptskills[skillnr];
+    SKILLTYP_NEBEN:     skillnr := skillnummer-BUTTON_NEBENSKILLS+1;      skill := skills.nebenskills[skillnr];
+    SKILLTYP_WEITERE:   skillnr := skillnummer-BUTTON_WEITERESKILLS+1;    skill := skills.weitereskills[skillnr];
+    SKILLTYP_UNBENUTZT: skillnr := skillnummer-BUTTON_UNBENUTZTESKILLS+1; skill := skills.unbenutzt[skillnr];
+  EndCase
+
+  Var skillchangedata := FillInSkillChange(who, skill, skilltyp, skills);
+
+  Var nummer := SendDialogGump(who, skillchangedata[1], skillchangedata[2])[0];      // Aenderungsvorschlag eines Skills auswaehlen
+  If (nummer)
+    Case (skilltyp)
+      SKILLTYP_BERUF:     skills.berufskills.erase(skillnr);                       // ...Skill aus der alten Liste rausschmeissen
+      SKILLTYP_HAUPT:     skills.hauptskills.erase(skillnr);
+      SKILLTYP_NEBEN:     skills.nebenskills.erase(skillnr);
+      SKILLTYP_WEITERE:   skills.weitereskills.erase(skillnr);
+      SKILLTYP_UNBENUTZT: skills.unbenutzt.erase(skillnr);
+    EndCase
+
+    Case (nummer)
+      BUTTON_BERUFSKILLS:      InsertSkillAlphabetic(skills.berufskills, skill);   // ...und in die neue eintragen
+      BUTTON_HAUPTSKILLS:      InsertSkillAlphabetic(skills.hauptskills, skill);
+      BUTTON_NEBENSKILLS:      InsertSkillAlphabetic(skills.nebenskills, skill);
+      BUTTON_WEITERESKILLS:    InsertSkillAlphabetic(skills.weitereskills, skill);
+      BUTTON_UNBENUTZTESKILLS: InsertSkillAlphabetic(skills.unbenutzt, skill);
+    EndCase
+  EndIf
+EndFunction
+
+// InsertSkillAlphabetic - Fuegt den Skill alphabetisch in die Liste ein
+Function InsertSkillAlphabetic(ByRef skills, skill)
+  Var indexmax := skills.size();
+  Var index :=1;
+
+  While ((index<=indexmax) and (skills[index][1]<skill[1]))
+    index += 1;
+  EndWhile
+
+  skills.insert(index, skill);
+EndFunction

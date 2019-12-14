@@ -1,0 +1,78 @@
+/////////////////
+// Bibliotheken
+/////////////////
+
+use cfgfile;
+use os;
+use uo;
+Use file;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/packets";
+Include "include/msgs";
+Include "include/spellcheck";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_Update(who)
+  Var weapons:= ReadConfigFile(":combat:itemdesc"); 		
+  Var test:=FindConfigElem(weapons, 0x13fa);							
+  
+  Var waffe, i, text, max_schaden, min_schaden, mean_schaden, vergleichs_schaden, p1, p2, anzahl, augen, konst, wuerfel;
+  for (i:=1; i < 0xFFFF; i:=i+1)
+    text:="";
+	  waffe:=FindConfigElem(weapons, i);
+	  if (waffe)
+	  	if (waffe.Damage)
+		  	SendSysMessagePergon(who, "waffe: "+waffe.Name);
+		  	text:=waffe.Attribute+"; "+waffe.Desc+"; "+waffe.Name+"; "+waffe.Damage+"; "+waffe.Speed+"; ";
+		  	wuerfel:=CStr(waffe.Damage);
+		  	p1:=find(wuerfel, "d", 0);
+		  	anzahl:=CInt(wuerfel[1,p1-1]);
+		  	p2:=find(wuerfel, "+", 0);
+		  	if (p2 > 0)
+			  	augen:=CInt(wuerfel[p1+1,p2-p1-1]);
+			  	konst:=CInt(wuerfel[p2+1,len(wuerfel)-p2]);
+			  else
+			  	augen:=CInt(wuerfel[p1+1,len(wuerfel)-p1]);
+			  	konst:=0;
+			  endif
+			  //SendSysMessagePergon(who,"wuerfel: "+anzahl+"d"+augen+"+"+konst);
+		  	max_schaden:=anzahl*augen+konst;
+		  	min_schaden:=1*augen+konst;
+		  	mean_schaden:=anzahl*(augen+1)/2.0+konst;
+		  	//SendSysMessagePergon(who,"min/max: "+min_schaden+"/"+max_schaden);
+		  	text:=text+min_schaden+"; "+max_schaden+"; "+mean_schaden;
+			  //SendSysMessagePergon(who,test);
+		  	LogToFile("log/ausgabe.log", text);
+		  endif
+	  endif
+	endfor
+  
+  
+EndProgram
+
+function min_diff_modulo(a, b, mod)
+	Var t1:=modulo(a-b, mod);
+	Var t2:=modulo(b-a, mod);
+	if (t1 > t2)
+		return t2;
+	else
+		return t1;
+	endif
+endfunction
+
+function modulo(a,b)
+ while( a < 0 )
+   a:=a+b;
+ endwhile
+
+ var res := a - ((cint(a/b))*b);
+
+ return( res );
+endfunction

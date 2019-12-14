@@ -1,0 +1,86 @@
+use os;
+use uo;
+include "include/logutil";
+include "include/msgs";
+
+Program TeleTo(who, param)
+    SendSysMessagePergon(who,
+        "Wählt einen Gegenstand oder Charakter zum Bewegen!",
+        "Select an item or character to move!"
+    );
+    var what := TargetCoordinates(who);
+    If (!what)
+        SendSysMessagePergon(who, "Abbruch", "Cancelled");
+        return;
+    EndIf
+
+    If (what.mobile)
+        If (
+            // Mobiles erst ab HighGM
+            who.cmdlevel < CMDLEVEL_HIGHGM and
+            // eigener Char ist Ausnahme, .tele ist schliesslich auch erlaubt
+            what.mobile.serial <> who.serial
+        )
+            SendSysMessagePergon(who,
+                "Fremde Charakter dürfen erst High-GM bewegen.",
+                "You must be at least High GM to move other mobiles."
+            );
+            return;
+        EndIf
+        what := what.mobile;
+    ElseIf (what.item)
+        what := what.item;
+    Else
+        SendSysMessagePergon(who,
+            "Nichts zum Bewegen, Abbruch", "Nothing to move, cancelled"
+        );
+        return;
+    EndIf
+
+    var name := what.name;
+    If (!name)
+        name := what.desc;
+    EndIf
+    SendSysMessagePergon(who,
+        name+" wohin bewegen?", "Where to move "+name+"?"
+    );
+    var where := TargetCoordinates(who);
+    If (
+        // kein Ziel
+        !where or
+        // Mobiles in Container stopfen geht nicht
+        (what.isa(POLCLASS_MOBILE) and where.item.container)
+    )
+        SendSysMessagePergon(who, "Abbruch", "Cancelled");
+        return;
+    EndIf
+
+    var result;
+    If (where.item.isa(POLCLASS_CONTAINER))
+        what.movable := 1;
+        result := MoveItemToContainer(what, where.item);
+    ElseIf (where.item.container)
+        what.movable := 1;
+        result := MoveItemToContainer(
+            what, where.item.container, where.item.x, where.item.y
+        );
+    Else
+        var force := MOVEOBJECT_NORMAL;
+        If (param["f"])
+            force := MOVEOBJECT_FORCELOCATION;
+        EndIf
+        result := MoveObjectToLocation(
+            what, where.x, where.y, where.z, what.realm,
+            MOVEITEM_IGNOREMOVABLE+force
+        );
+    EndIf
+    If (!result)
+        SendSysMessagePergon(who,
+            "Fehler: "+result.errortext, "Error: "+result.errortext
+        );
+        return;
+    EndIf
+
+    // Logging
+    syslog(CharInfoStr(who)+" bewegt "+CharInfoStr(what, COORDS_REALM));
+EndProgram

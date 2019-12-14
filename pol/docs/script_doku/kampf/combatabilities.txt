@@ -1,0 +1,101 @@
+Kampffähigkeiten:
+-Besitzergebundenes Buch
+-Wie bei Magie Buch und Spellpanel
+-Manche Fähigkeiten nur mit Pferd manche nur ohne Pferd
+-Nur eine Fähigkeit geht gleichzeitig
+-alle Fähigkeiten verliehren nach einiger Zeit ihre Wirkung (spellchecker) 
+ auch wenn sie nicht verwendet wurden
+-Jede Fähigkeit hat einen Delay bis man die nächste Fähigkeit benutzen kann
+-Jede Fähigkeit benötigt HP, Stam oder bewirkt einen kurzzeitigen ArMalus
+
+Auflistung der Fähigkeiten:
+
+Todesstoss (Armor Ignore)
+Kostet: 70hp
+Zeit:   6s (1Schlag)
+Vor Ausweichen wird der Schaden ohne ARAbzug genommen (im PvP ~130dmg mehr)
+
+Fleischwunde (Bleed Attack)
+Kostet: 50stam
+Zeit:   6s (1Schlag)
+Extra Script macht 5mal alle 2s zusätzlichen Schaden
+Max: 18+14+10+6+2=50dmg
+Min: 10+ 8+ 6+4+2=30dmg
+
+Defensive (Defense Mastery)
+Kostet: 40stam
+Zeit:   10s
+Skillabhängig bekommt man +0..30Armod dafür 50..20dmgMalus (Vorausweichen)
+
+Finte (Feint)
+Kostet: 10hp
+Zeit:   6s (1Schlag)
+Für den aktuellen Gegner bekommt man Skillabhängig 0..50 ArBonus (nach Ausweichen)
+
+Wirbel Attacke (Whirlwind Attack)
+Kostet: 30Stam
+Zeit:   6s (1Schlag)
+Nur ohne Pferd
+Skillabhängig 50%..100% des EndSchadens auf Mobs im Umkreis 1
+
+Schock Angriff (Paralyzing Blow)
+Kostet: 30Stam
+Zeit:   6s (1Schlag)
+Player 3s NPCs 6s gefrozen
+
+Furcht verbreiten (Psychic Attack)
+Kostet: 30Stam
+Zeit:   6s (1Schlag)
+Skillabhängig 50..100 spellpowermalus für 10..20s
+
+Rückzug (Shadow Strike)
+Kostet: 70stam
+Zeit:   6s (1Schlag)
+Nach Attacke verstecken mit 2 Stealthsteps und Warmode aus
+
+Rausch des Krieges (Confidence)
+Kostet: -
+Zeit:   12s
+Pro Schlag eines Gegners bekommt man Skillabhängig 5..15 HP, verliehrt aber genausoviel Stam
+
+Blutiger Zweikampf (Enemy of One)
+Kostet: 30hp, 50Stam
+Zeit:   12s
+Nur gegen NPCs, der erste Schaden den man bekommt definiert die (template).species
+Dieser Species macht man dann 150% Schaden, andere Species machen 125% Schaden bei einem
+
+Schatten Sprung (Shadow Jump)
+Kostet: 80stam
+Zeit:   -
+Nur ohne Pferd
+Falls man versteckt ist und einen -1Skillcheck gegen Verstecken besteht kann man
+max 10Felder versteckt Teleporten
+
+Sturm Angriff (KI Attack)
+Kostet: 30Stam, 30ArMalus(für 6s)
+Zeit:   3s (1Schlag)
+Nur auf einem Pferd, nur mit Nahkampfwaffe
+Wenn man in den 3s mehr als 4Felder zurückgelegt hat macht man 150%Schaden
+
+Fokus (Bladeweave)
+Kostet: 50stam
+Zeit:   12s
+Zufällig Waffenskillbonus 11..19%
+
+Abstieg (Dismount)
+Kostet: 20stam
+Zeit:   6s (1Schlag)
+Lässt den Gegner absteigen
+
+Schildwall (Block)
+Kostet: 60stam
+Zeit:   6s (1Schlag)
+Setzt den Schaden auf 0
+
+
+
+
+
+
+
+

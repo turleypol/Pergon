@@ -1,0 +1,30 @@
+/////////////////////////////////////////////////////////////////
+//
+//   SkillWin Script - Shows the Skill Window for a Player
+//
+//     based on Class/Racc System
+//       Author: Dream Weaver
+//
+//       Thanks to Racalac and Sigismund for scripting support.
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2000/04/30 Shinigami: Complete ReWrite
+//     2000/11/10 Shinigami: An neues Berufesystem anpassen
+//
+/////////////////////////////////////////////////////////////////
+
+/////////////
+// Includes
+/////////////
+
+Include "include/skillwin";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Window_SkillWin(who)
+  SkillWin(who, who);
+EndProgram

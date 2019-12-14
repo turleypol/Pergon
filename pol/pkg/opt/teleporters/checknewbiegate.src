@@ -1,0 +1,176 @@
+///////////////////////////////////////////////////////////////////////////
+// checknewbiegate
+//
+// Abfrage zum Verlassen Jhe'loms, Newbie-Status geht ggf. verloren
+
+include "include/modifyskill";
+include "include/msgs";
+include "include/pergonutil";
+include "include/server";
+include "common";
+use uo;
+
+Program NewbieGate(p)
+    If (p.who.isa(POLCLASS_NPC))
+        return;
+    EndIf
+
+    // CMDLevel-Leute duerfen so durch
+    If (p.cmd)
+        MoveObjectToLocation(p.who,
+            2597, 978, 0, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+        );
+        return;
+    EndIf
+
+    // tot -> keine Flucht
+    If (p.who.dead)
+        return;
+    EndIf
+
+    If (p.who.name["Bewohner"])
+      SendSysMessagePergon(p.who,
+        "Ihr habt noch keinen gültigen Namen. Die Flucht wird euch deshalb verwehrt.",
+        "You doesn't have a valid name yet. Therefore, you cannot escape now."
+      );
+      return;
+    EndIf
+
+    // Pruefung, ob Character halbwegs faehig ist
+    If (GetGlobalProperty(PROP_DISABLE_SKILLCHECK) == error)
+        If (
+            // weniger als 50% in den Berufskill (Mittelwert)
+            (GetSkillAverage(p.who) < 50) and
+            // Ausnahme-CProp auch nicht gesetzt
+            (GetObjProperty(p.who, PROP_DISABLE_SKILLCHECK) == error)
+        )
+            PrintTextAbovePrivatePergon(
+                p.who, "Ihr beherrscht Euren Beruf nicht ansatzweise. "+
+                "Der Durchgang wird verweigert.",
+                "You do not have much experience in your profession. "+
+                "So you will not pass.", p.who
+            );
+            return;
+        EndIf
+    EndIf
+
+    // Attentaeter dürfen nur mit Genehmigung des Staffs flüchten,
+    // damit sie vorher ordentliche PKs werden
+    If (
+        GetObjProperty(p.who, SKBERUF) == "Attentaeter" and
+        // kann per .setattentaeterpassage gesetzt werden
+        GetObjProperty(p.who, "Passierschein") != 1
+    )
+        SendSysMessagePergon(p.who,
+            "Euer Beruf verbietet Euch das passieren. "+
+            "Wendet Euch an die Götter, um einen Passierschein zu erhalten."
+        );
+        return;
+    EndIf
+
+    // herausfinden, ob die wirklich 2x innerhalb 3 Sekunden kommen
+    syslog(
+        "HINWEIS: "+CharInfoStr(p.who)+" betrat um "+ReadGameClock()+
+        " das Fluchttor."
+    );
+
+    // nur Newbies duerfen durch
+    If (!GetObjProperty(p.who, TYPNEWBIE))
+        return;
+    EndIf
+
+    // Status merken, bevor die Leute mehrfach hineinrennen können und
+    // schon vom Tor eingefroren wurden
+    var oldfrozen := p.who.frozen;
+    If (oldfrozen)
+        LogFreezeProblem(p.who);
+        SendSysMessagePergon(p.who,
+            "Wegen eines Bugs wurdet Ihr bei Torbenutzung eingefroren. "+
+            "Bitte wendet Euch an einen GM, wenn das Problem bei einem "+
+            "weiteren Versuch bestehen bleibt."
+        );
+        return;
+    EndIf
+
+    // Krieger muessen zeigen, dass sie ein wenig ueberleben können
+    If (GetObjProperty(p.who, SKKLASSE) == KLASSE_KRIEGER)
+        PrintTextAbovePrivatePergon(
+            p.who, "Verweilt kurz. Gleich geht es los.",
+            "Please wait. You will be served soon.", p.who
+        );
+        Sleep(3);
+    EndIf
+
+    // gucken, ob noch lebendig/da
+    If (p.who.dead)
+        return;
+    EndIf
+    If (Distance(p.who, p.item) >= 1)
+        PrintTextAbovePrivatePergon(
+            p.who, "Wo wollt Ihr denn hin? Dann eben nicht.",
+            "Where are you going to? Forget it!", p.who
+        );
+        return;
+    EndIf
+
+    // nun geht es richtig los
+    p.who.frozen := 1;
+    p.who.hidden := 1;
+    IncRevision(p.who);
+    var antwort := SendTextEntryGump(p.who,
+        "Wollt Ihr Jhe'lom wirklich verlassen? "+
+        "Ihr verliert Euren Newbie-Status!",
+        TE_CANCEL_ENABLE, TE_STYLE_NORMAL, 40, "(Ja/Nein)"
+    );
+
+    If (Lower(antwort) == "ja")
+        PrintTextAbovePrivatePergon(
+            p.who, "Wie Ihr wollt ... Ihr verlasst nun Jhe'lom.",
+            "As you wish ... You will leave Jhe'lom now.", p.who
+        );
+        Sleep(4);
+
+        // Newbie-Status entfernen
+        DeNewbie(p.who);
+
+        Sleep(4);
+
+        // FORCE: eventuell steht jemand im Weg (Gruppenflucht)
+        MoveObjectToLocation(
+            p.who, 2597, 978, 0, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+        );
+        p.who.setfacing(3, FACING_FORCE);
+        PrintTextAbovePrivatePergon(
+            p.who, "Viel Glück auf Euren weiteren Wegen.",
+            "Good luck! Find your way.", p.who
+        );
+        If (p.who.hidden) // Um unnoetige Events zu sparen...
+            p.who.hidden := 0;
+        EndIf
+    Else
+        PrintTextAbovePrivatePergon(
+            p.who, "Eine weise Wahl.", "Wise choice.", p.who
+        );
+    EndIf
+
+    If (p.who.frozen)
+        p.who.frozen := oldfrozen;
+        IncRevision(p.who);
+    EndIf
+EndProgram
+
+Function LogFreezeProblem(who)
+    var name := who.name+" ("+Lower(Hex(who.serial))+")";
+    ForEach prop in (array{
+            "LastDamage", "#Teleportfrozen", "SkKlasse",
+            "spell_statue", "spell_paralyze"
+    })
+        var val := GetObjProperty(who, prop);
+        If (!val)
+            continue;
+        EndIf
+        syslog(
+            "WARNUNG: verhinderter Flucht-Freeze bei "+name+", "+prop+": "+val
+        );
+    EndForEach
+EndFunction

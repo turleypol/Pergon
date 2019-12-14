@@ -1,0 +1,13 @@
+//////////////////////////////////////////////////////////
+// Forum TextCMD - Oeffnet das Pergon-Forum im Browser
+//
+// Author: Shinigami
+
+use uo;
+include "include/msgs";
+include "include/urls";
+
+Program TextCMD_HandBook(who)
+    SendSysMessagePergon(who, "Das Pergon-Forum wird im Browser geöffnet ...");
+    OpenURL(who, URL_FORUM);
+EndProgram

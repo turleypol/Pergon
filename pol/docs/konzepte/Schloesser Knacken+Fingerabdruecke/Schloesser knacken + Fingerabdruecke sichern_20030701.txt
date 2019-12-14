@@ -1,0 +1,29 @@
+so, nun aber...
+
+1. Fingerabdrücke:
+- bei mißerfolgtem Schlösserknacken an Türen wird die Zeit und Serial des Einbrecher-Chars vermerkt
+  (in einem Array, falls mehrere Einbrecher am Werk sind)
+  (bei identischem Einbrecher wird der älteste Eintrag gelöscht und durch einen neueren ersetzt)
+
+2. Fingerabdrücke finden und sichern
+- nur bei nichtverschlossenen Türen (Eigentümer, falls vorhanden, muss anwesend sein)
+- Abdruck verschwindet nach einer zeit auch wieder (klar, Fingerabdrücke halten nicht ewig)
+  (beim nächsten Obduzieren wird das Array nach alten Einträgen durchsucht und gesäubert)
+  (eine UO-Woche)
+
+- der Fingerabdruck wird durch einen geeigneten Skill auf ein Pergament gesichert
+  (im Moment wäre von den vorhandenen Gegenstände Identifizieren am sinnvollsten)
+- für jeden Fingerabdruck gibts ein extra Pergament (es könnten ja mittlerweile mehrere Einbrecher da gewesen sein)
+- Fingerabdruck an der Tür wird danach vernichtet
+
+3. suchen und entlarven des Täters
+- der Inhaber des Pergaments rennt rum und untersucht alle Leute nach Fingerabdrücken.
+  (Distanz <= 1)
+  (Untersuchter wird über die Untersuchung informiert)
+- realname/incognitoname.. ist alles egal, weil fingerabdruck ist eindeutig..
+- wenn er den richtigen Täter gefunden hat, gehts bei 4. weiter, sonst gar nicht
+
+4. "Bestrafung" des Täters
+- Täter grau machen
+- Wachen im Umkreis von X angreifen lassen (X=6?)
+ansonsten fällt alles, was mit freezen, jailen, backpack guggn u.ä. zu tun hat, flach

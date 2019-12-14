@@ -1,0 +1,20 @@
+use uo;
+
+Include "include/client";
+Include "include/msgs";
+
+Program TextCMD_ColorHair(who, color)
+  color:=CInt(color);
+  If (!color)
+    color:=0;
+  EndIf
+
+  SendSysMessagePergon(who, "Wem sollen die Haare umgefaerbt werden ("+color+") ?");
+
+  Var char:=Target(who);
+  If (char)
+    GetEquipmentByLayer(char, LAYER_HAIR).color:=color;
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

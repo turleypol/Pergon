@@ -1,0 +1,67 @@
+//////////////////////////////////////////////////////////
+// Fortune telling script which picks a random fortune
+// used in conjunction with a rune cup.
+//
+// GM Basara - April 22 2001
+
+use os;
+use uo;
+use util;
+include "common";
+include "include/msgs";
+
+Program runecup(who, item)
+  If (GetObjProperty(item, "inuse") == 1)
+    SendSysMessagePergon(who,
+      "Die Geister können nur eine Zukunft auf einmal sehen!",
+      "No spirit can see two futures at once!"
+    );
+    return;
+  EndIf
+
+  var tgt := CheckFortuneTarget(who, item);
+  If (!tgt)
+    return;
+  EndIf
+
+  SetObjProperty(item, "inuse", 1);
+
+  PrintTextAboveLocalizedPergon(who,
+    "*"+who.name+" mischt die Runen*",
+    "*"+who.name+" shuffles the runes*"
+  );
+  PlaySoundEffect(who, 0x243);
+  Sleep(3);
+  If (item.graphic == 0x0fa7)
+    item.graphic := 0x0fa5;
+  EndIf
+  item.name := "Rune Stones";
+  PrintTextAboveLocalizedPergon(item,
+    "*Runen fallen aus dem Becher heraus*",
+    "*runes falls out of the cup*"
+  );
+  PlaySoundEffect(item, 51);
+  Sleep(4);
+  PrintTextAboveLocalizedPergon(who,
+    "*"+who.name+" liest "+tgt.name+"s Zukunft*",
+    "*"+who.name+" reads "+tgt.name+"'s future*"
+  );
+  Sleep(8);
+
+  TellFortune(who);
+
+  Sleep(10);
+  If (item.graphic == 0x0fa5)
+    item.graphic := 0x0fa7;
+  EndIf
+  item.name := "Runenbecher";
+  PrintTextAboveLocalizedPergon(item,
+    "*"+who.name+" legt die Runen zurück in den Becher*",
+    "*"+who.name+" puts the runes back in the cup*"
+  );
+
+  Detach();
+
+  Sleep(60);
+  EraseObjProperty(item, "inuse");
+EndProgram

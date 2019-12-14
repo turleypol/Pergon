@@ -1,0 +1,44 @@
+///////////////////////////////////////////////////////////////////////////
+// AutoJailControl -- schaut von Zeit zu Zeit und entlaesst ggf. Gefangene
+//
+// Author: Fraggulus
+
+use os;
+use uo;
+include "include/client";
+include "include/msgs";
+include "include/pergonutil";
+
+Const DELAY := 60;
+
+Program autojailctrl()
+  syslog("AutoJailControl wird aktiviert ...");
+
+  While (1)
+    Sleep(DELAY);
+
+    var prisoners := GetGlobalProperty("jail");
+    ForEach serial in (prisoners)
+      var who := SystemFindObjectBySerial(serial);
+
+      If (!who or !who.ip)
+        // Strafen können nur online abgesessen werden
+        continue;
+      EndIf
+
+      // neue Restzeit setzen
+      var crit := Is_Critical();
+      Set_Critical(1);
+      var jailtime := GetObjProperty(who, PROP_PUNISH_JAILTIME);
+      jailtime -= DELAY;
+      SetObjProperty(who, PROP_PUNISH_JAILTIME, jailtime);
+      Set_Critical(crit);
+
+      If (jailtime <= 0);
+        AutoForgive(who);
+      EndIf
+    EndForEach
+  EndWhile
+EndProgram
+
+// vim: sw=2 sts=2

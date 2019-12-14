@@ -1,0 +1,120 @@
+//
+//  Autor:    Hotny & Turley
+//  Date:     11.09.2007
+//
+//  Skript für alle Teleporter im DynDungeon
+//      Aufgaben:
+//                - Teleportieren der Player in Dungeonlaufrichtung
+//                - Teleportieren der Player gegen Dungeonlaufrichtung nur als Ghost oder wenn Dungeonfeld leer
+//                - DungeonManager melden, wenn betreten eines neuen Dungeonfeldes (Timeoutrücksetzung)
+//                - Nur Player der gleichen Party durchlassen (schauen ob in CPROP eingetragen, ansonsten eintragen)
+//
+//  Modifikation:
+//
+
+use os;
+use uo;
+
+include ":dyndungeon:dyndungeon"; // Konstanten
+include "include/eventid";
+include "include/msgs";
+include "include/set";
+
+const COLOR_USED := 510;
+
+Program TeleControl(oWho,oItem)
+  If (oWho.isA(POLCLASS_NPC)) // NPCs dürfen nicht
+    Return;
+  EndIf
+
+  If (oWho.dead and oItem.color <> COLOR_USED)
+    // Tote duerfen nur benutzte Teleporter benutzen
+    Return;
+  EndIf
+
+  var is_exit    := oItem.getprop(CPTELE_EXIT);
+  var telefromid := CInt(oItem.getprop(CPTELE_TELEFROM)); // Wo bin ich
+  If (
+    // Einstieg nicht faerben: nur Teleporter im Dungeon haben telefromid
+    telefromid and
+    // Exit nicht faerben
+    !is_exit and
+    // schon gefaerbt
+    oItem.color <> COLOR_USED
+  )
+    // als benutzt markieren
+    var teles := BautoolSelect(oItem);
+    ForEach tele in (teles)
+      SleepMs(2);
+      tele.color := COLOR_USED;
+    EndForEach
+  EndIf
+
+  // TODO: eventuell auf #JustGated umstellen wie die anderen Teleporter?
+  If (oWho.getprop("justgated"))
+    If (oWho.getprop("justgated")>ReadGameClock())
+      Return;
+    EndIf
+  EndIf
+  oWho.eraseprop("justgated");
+
+  Var koords, dungeonid, startTeleporter, manager, Tofieldid;
+  ForEach dungeon in (GetGlobalProperty(CPROPDUNGEONS))  // Gehört er zu ner aktiven DungeonID?
+    If (oWho.serial in dungeon[1])
+      dungeonid:=_dungeon_iter;
+      manager:=GetProcess(dungeon[3]);
+    EndIf
+    SleepMS(2);
+  EndForEach
+
+  If (dungeonid)
+    startTeleporter:=oItem.getprop(CPTELE_PARTY);
+    If (startTeleporter)
+      koords:=startTeleporter[dungeonid];
+      Tofieldid:=koords[4];
+    Else
+      koords:=oItem.getprop(CPTELE_TELETO);
+      Tofieldid:=CInt(oItem.getprop(CPTELE_FIELDID));
+    EndIf
+  Else
+    Return; // Darf nicht
+  EndIf
+
+  // Greift ihn ein NPC an? Dann darf er auch nicht
+  If (ListHostiles( oWho, 10, 0 ).size())
+    Return;
+  EndIf
+
+  // Tele zu Startpos->kein Teleporter an der Pos
+  If ((!is_exit) && (!oItem.getprop(CPTELE_START)))
+    oWho.setprop("justgated",ReadGameClock()+2);
+  EndIf
+
+  MoveObjectToLocation(oWho, koords[1], koords[2], koords[3], REALM_MALAS);
+  var prefix := "";
+  If (oItem.getprop(CPTELE_START))
+    prefix := "Start-";
+  EndIf
+  If (is_exit)
+    prefix := "Exit-";
+  EndIf
+  If (oWho.cmdlevel >= CMDLEVEL_SEER)
+    SendSysMessagePergon(oWho,
+      prefix+"Teleport "+telefromid+" -> "+Tofieldid
+    );
+  EndIf
+
+  If (is_exit)
+    // Belohnung am Ausgang
+    var first := BautoolSelect(oItem)[1];
+    DungeonChestReward(first, oWho, 0, 10);
+  EndIf
+
+  // Manager bescheidgeben
+  manager.sendevent(struct{type:=EVID_DUNGEONTELEPORT,
+                           dungeonid:=dungeonid,
+                           fieldid:=Tofieldid,
+                           telefrom:=telefromid,
+                           serial:=oWho.serial,
+                           exitTele:=CInt(is_exit)});
+EndProgram

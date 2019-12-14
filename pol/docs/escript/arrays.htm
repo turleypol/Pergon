@@ -1,0 +1,90 @@
+<html>
+
+<head>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+<title>Arrays</title>
+</head>
+
+<body>
+
+<h1>Arrays</h1>
+
+<p>Arrays are <strong>one-based</strong>, random access collections of objects.&nbsp; To
+create an array variable, declare:</p>
+
+<table border="1">
+  <tr>
+    <td width="100%"><pre>var a := {}; // empty array
+var b := { 5, 32, &quot;hello&quot;, &quot;world&quot; }; // initialized array
+var c := { {1,2}, {3,4,5} }; // array containing arrays</pre>
+    </td>
+  </tr>
+</table>
+
+<p>An array can be assigned to any other variable, even if that variable was not declared
+an array.&nbsp; Therefore:</p>
+
+<table border="1">
+  <tr>
+    <td width="100%"><pre>var a := { 2, 4, 6, 8 };
+var b;
+b := a;</pre>
+    </td>
+  </tr>
+</table>
+
+<p>is legal.</p>
+
+<p>Similarly, if a function returns an array, no special declaration is needed:</p>
+
+<table border="1">
+  <tr>
+    <td width="100%"><pre>var a;
+a := function_that_returns_an_array();</pre>
+    </td>
+  </tr>
+</table>
+
+<p>Arrays grow automatically:</p>
+
+<table border="1">
+  <tr>
+    <td width="100%"><pre>var a := {};
+a[1] := 4;
+a[4] := 7;</pre>
+    </td>
+  </tr>
+</table>
+
+<p>Arrays elements can be any type of object, including another array:</p>
+
+<table border="1">
+  <tr>
+    <td width="100%"><pre>Local a := {};
+Local b := {};
+a[1] := 5;
+b[1] := a;
+b[2] := 6;</pre>
+    </td>
+  </tr>
+</table>
+
+<p>The following are equivalent methods of looping through an array.&nbsp; The 'foreach'
+method is much more efficient, as well as being more convenient.</p>
+
+<table border="1">
+  <tr>
+    <td width="100%"><pre>Local a := { 2,4,6,8 };
+
+Local i;
+for( i := 1; i &lt;= len(a); i := i + 1 )
+    print( a[i] );
+endfor</pre>
+    <pre>foreach i in a
+    print( i );
+endforeach</pre>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

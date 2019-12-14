@@ -1,0 +1,115 @@
+///////////////////////////////////////////////////////////////////////////
+// SignControl - Hausschildfunktionalitaet von Statischen Haeusern
+//
+// Author: Shinigami
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+include "house";
+include "include/eventid";
+include "include/itemnpc";
+include "include/logutil";
+include "include/msgs";
+include "include/onlinesearch";
+include "include/server";
+use math;
+use uo;
+use util;
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+var houseinfo;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program ControlSign(sign)
+  // Fuer SetStaticsDimensions zwecks ReSet
+  SetObjProperty(sign, "#PID", GetPID());
+
+  // etwas warten, damit CProps von Schilderzeugung bereits gesetzt sind
+  Sleep(RandomInt(30)+30);
+
+  houseinfo := GetObjProperty(sign, PROP_HS_S_DIMENSIONS);
+  If (!houseinfo)
+    syslog(
+      "WARNUNG: Das Schild "+ItemInfoStr(sign, COORDS_REALM)+
+      " scheint keinem Haus zugeordnet zu sein!"
+    );
+    return;
+  EndIf
+
+  If (houseinfo.size()<6)
+    syslog(
+      "WARNUNG: Die Verknuepfung von "+ItemInfoStr(sign, COORDS_REALM)+
+      " zum Haus scheint fehlerhaft zu sein!"
+    );
+    return;
+  EndIf
+
+  Inventur(sign);
+
+  // Auf Kommandos der Spieler warten
+  ControlHouseSign(sign, sign, GetSignListenRange(sign));
+EndProgram
+
+////////////////////////////////////////////////////////////////////////////
+// CheckModZ - Prueft und korrigiert (ggf.) die Veraenderung in Z-Richtung
+////////////////////////////////////////////////////////////////////////////
+Function CheckModZ(itemz, modz)
+  For i := 0 To (houseinfo.size()/6)
+    var z1 := 6*i+3;
+    var z2 := 6*i+6;
+
+    If ((houseinfo[z1]<=itemz) And (houseinfo[z2]>=itemz))
+      If (modz<houseinfo[z1]-itemz)
+        modz := houseinfo[z1]-itemz;
+      EndIf
+      If (modz>houseinfo[z2]-itemz)
+        modz := houseinfo[z2]-itemz;
+      EndIf
+
+      Break;
+    EndIf
+    SleepMS(2);
+  EndFor
+
+  return (modz);
+EndFunction
+
+//////////////////////////////////////////////////////////////
+// GetSignListenRange - Liefert den Range, der alles abdeckt
+//////////////////////////////////////////////////////////////
+Function GetSignListenRange(sign)
+  var range := 0;
+
+  For i := 0 To CInt(houseinfo.size()/6) - 1
+    var x1 := 6*i+1;
+    var y1 := 6*i+2;
+    var x2 := 6*i+4;
+    var y2 := 6*i+5;
+
+    If (range<sign.x-houseinfo[x1])
+      range := sign.x-houseinfo[x1];
+    EndIf
+    If (range<sign.y-houseinfo[y1])
+      range := sign.y-houseinfo[y1];
+    EndIf
+    If (range<houseinfo[x2]-sign.x)
+      range := houseinfo[x2]-sign.x;
+    EndIf
+    If (range<houseinfo[y2]-sign.y)
+      range := houseinfo[y2]-sign.y;
+    EndIf
+    SleepMS(2);
+  EndFor
+
+  If (range > 50)
+    syslog(ItemInfoStr(sign)+" hat gewaltige Ausdehnung ("+range+")");
+  EndIf
+
+  return (range+1);
+EndFunction

@@ -1,0 +1,108 @@
+///////////////////////////////////////////////////////////////////////////
+//   TextCMD SetCMDLevel - CMDLevel eines Characters veraendern
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use uo;
+include "include/logutil";
+include "include/msgs";
+include "include/onlinesearch";
+include "include/server";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_SetCMDLevel(who, level)
+
+  If ((!level) And (level <> 0))
+    SendSysMessagePergon(who,
+      "USAGE: .setcmdlevel <level>", "USAGE: .setcmdlevel <level>"
+    );
+    SendSysMessagePergon(who, "Mögliche CmdLevel:", "Possible Commandlevel:");
+    SendSysMessagePergon(who,
+      "test, scripter, gl, highgm, gm, seer, quest, coun, counselor, player oder 8..0",
+      "test, scripter, gl, highgm, gm, seer, quest, coun, counselor, player or 8..0"
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Wessen Commandlevel ändern?", "Change whose CmdLevel?"
+  );
+
+  var player := Target(who, TGTOPT_NOCHECK_LOS);
+  If (player.isa(POLCLASS_MOBILE) and (!player.isa(POLCLASS_NPC)))
+    Case (CStr(level))
+      "8":
+      "test":     ChangeCMDLevel(who, player, CMDLEVEL_DEVELOPER);
+      "7":
+      "scripter": ChangeCMDLevel(who, player, CMDLEVEL_SCRIPTER);
+      "6":
+      "gl":       ChangeCMDLevel(who, player, CMDLEVEL_GL);
+      "5":
+      "highgm":   ChangeCMDLevel(who, player, CMDLEVEL_HIGHGM);
+      "4":
+      "gm":       ChangeCMDLevel(who, player, CMDLEVEL_GM);
+      "3":
+      "seer":     ChangeCMDLevel(who, player, CMDLEVEL_SEER);
+      "2":
+      "quest":    ChangeCMDLevel(who, player, CMDLEVEL_QUESTCHAR);
+      "1":
+      "counselor":
+      "coun":     ChangeCMDLevel(who, player, CMDLEVEL_COUNSELOR);
+      "0":
+      "player":   ChangeCMDLevel(who, player, CMDLEVEL_PLAYER);
+
+      default: SendSysMessagePergon(who,
+        "Kein gültiges CMDLevel.", "Invalid command level."
+      );
+    EndCase
+  Else
+    SendSysMessagePergon(who , "Kein Player", "Illegal target");
+  EndIf
+EndProgram
+
+//////////////////////////////////////////
+// ChangeCMDLevel - CommandLevel aendern
+//////////////////////////////////////////
+
+Function ChangeCMDLevel(who, player, newlevel)
+  If ((who.cmdlevel == CMDLEVEL_DEVELOPER) or (who.cmdlevel > newlevel))
+    If (player.cmdlevel <> newlevel)
+      var oldlevelname := GetCMDLevelTitle(player.cmdlevel);
+      var newlevelname := GetCMDLevelTitle(newlevel);
+
+      player.cmdlevel := newlevel;
+
+      SendSysMessagePergon(who,
+        "CMDLevel von "+oldlevelname+" auf "+newlevelname+" geändert.",
+        "Changed commandlevel from "+oldlevelname+" to "+newlevelname+"."
+      );
+      If (who.serial <> player.serial)
+        SendSysMessagePergon(player,
+          "Euer CMDLevel wurde auf "+newlevelname+" geändert.",
+          "Your commandlevel was set to "+newlevelname+"."
+        );
+      EndIf
+
+      IncRevision(player);
+
+      // Logging
+      SysLog(
+        CharInfoStr(who)+" gewährt "+CharInfoStr(player)+" das CMDLevel "+
+        newlevelname
+      );
+    Else
+      SendSysMessagePergon(who,
+        "CMDLevel unverändert.", "CMDLevel unchanged."
+      );
+    EndIf
+  Else
+    SendStringAsTipWindow(who,
+      "So viel Frevel wird von den Goettern nicht geduldet!"
+    );
+    (who.acct).ban(1);
+  EndIf
+EndFunction

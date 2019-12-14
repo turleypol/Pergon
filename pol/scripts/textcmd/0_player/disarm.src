@@ -1,0 +1,49 @@
+use uo;
+
+Include "include/client";
+
+Program TextCMD_Disarm(me, text)
+	Var weaponone := GetEquipmentByLayer( me,  LAYER_HAND1 );
+	Var weapontwo := GetEquipmentByLayer( me,  LAYER_HAND2 );
+
+	Var mypack :=  me.backpack;
+
+	if (weaponone)
+		MoveItemToContainer(weaponone, mypack );
+	endif
+	if (weapontwo)
+		MoveItemToContainer(weapontwo, mypack );
+	endif
+
+	var weapon := {};
+	if ( GetObjProperty(me,"weapon") )
+		weapon := GetObjProperty(me,"weapon");
+	else
+		weapon[1] := 0;
+		weapon[2] := 0;
+		weapon[3] := 0;
+		weapon[4] := 0;
+	endif
+
+	if (cint(text)==1)
+		weapon[1] := 0;
+		if (weaponone)
+			weapon[1] := weaponone.serial;
+		endif
+		weapon[2] := 0;
+		if (weapontwo)
+			weapon[2] := weapontwo.serial;
+		endif
+		SetObjProperty(me,"weapon", weapon);
+	elseif (cint(text)==2)
+		weapon[3] := 0;
+		if (weaponone)
+			weapon[3] := weaponone.serial;
+		endif
+		weapon[4] := 0;
+		if (weapontwo)
+			weapon[4] := weapontwo.serial;
+		endif
+		SetObjProperty(me,"weapon", weapon);
+	endif
+EndProgram

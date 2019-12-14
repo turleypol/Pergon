@@ -1,0 +1,87 @@
+// 06.03.2008 Turley: Spawnrunen sind unsichtbar, damit Player sie nicht
+// über 3rd Party Proggis entdecken können
+
+use uo;
+include ":spawnnet_new:spawnnet";
+include "include/msgs";
+include "include/objtype";
+include "include/permissions";
+include "include/server";
+
+Program TextCMD_ShowRune(who, params)
+  If (!AllowedToRune(who))
+    SendSysMessagePergon(who,
+      "Ihr seid nicht befugt, diesen Befehl zu benutzen!",
+      "You are not authorized to use this command!"
+    );
+    return;
+  EndIf
+
+  var range := SplitWords(params)[1];
+  var show := SplitWords(params)[2];
+
+  If (!range)
+    range := 5;
+  EndIf
+  If (!show)
+    show := 0;
+  EndIf
+
+  range := cint(range);
+  If (!range)
+    SendSysMessagePergon(who, "Parameter muss eine Nummer sein");
+    return;
+  EndIf
+  var counter := 0;
+
+  ForEach rune in (ListItemsNearLocationOfType(
+      who.x, who.y, who.z, range, UOBJ_SPAWNRUNE , who.realm
+  ))
+    SleepMS(2);
+    rune.graphic := 0x20f8;
+    If (show)
+      If (rune.invisible)
+        rune.invisible := 0;
+      EndIf
+    Else
+      If (!rune.invisible)
+        rune.invisible := 1;
+      EndIf
+    EndIf
+    counter += 1;
+    PrintTextAbovePrivatePergon(
+      rune, "Huhu, Ich bin eine Spawnrune!", "", who
+    );
+  EndForEach
+
+  ForEach cont in (ListItemsNearLocationWithFlag(
+      who.x, who.y, who.z, range, TILEDATA_FLAG_CONTAINER, who.realm
+  ))
+    ForEach rune in (FindSubstance(
+        cont, UOBJ_SPAWNRUNE, 1, 0, FINDSUBSTANCE_FIND_ALL
+    ))
+      rune.graphic := 0x20f8;
+      If (show)
+        If (rune.invisible)
+          rune.invisible := 0;
+        EndIf
+      Else
+        If (!rune.invisible)
+          rune.invisible := 1;
+        EndIf
+      EndIf
+      counter += 1;
+      PrintTextAbovePrivatePergon(
+        cont, "Huhu, Hier ist eine Spawnrune drin!", "", who
+      );
+    EndForEach
+    SleepMS(2);
+  EndForEach
+
+  SendSysMessagePergon(who, "Insg. "+counter+" Runen aufgedeckt.");
+  If (show)
+    SendSysMessagePergon(who, "Runen sind auch für Player sichtbar!");
+  Else
+    SendSysMessagePergon(who, "Runen bleiben unsichtbar ohne 'seeinvisitems'.");
+  EndIf
+EndProgram

@@ -1,0 +1,133 @@
+//**************************************************************************************************
+// Script file incinerate.src
+//
+//    implements spell 105 <Incinerate Weapon> - "Waffe entflammen"
+//
+//  provides additional fire damage to (equipped) weapon
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 30.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+Include "../magicpergon";
+Include "include/spellcheck";
+
+Program cast_incinerate (params)
+
+  Var caster;
+  Var caston;
+  Var item;
+  Var firedmg;
+
+  Var spells:= ReadConfigFile("::spells");                   // load spelldata
+  Var spell:=  FindConfigElem(spells, SPELLID_MAGE_INCINERATE);
+  Var dmg:=    spell.primary;
+  Var mindmg:= spell.primarymin;
+  Var maxdmg:= spell.primarymax;
+  Var dur:=    spell.duration;
+  Var mindur:= spell.durationmin;
+  Var maxdur:= spell.durationmax;
+  Var power;
+
+  If (params[1] == "#SCROLL")
+    caster:= params[2];
+    power:=  params[3];
+    caston:= TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      Return;
+    EndIf
+  Else
+    caster:= params[1];
+
+    power:= GetCastPowerPergon(caster, SPELLID_MAGE_INCINERATE);
+    caston:= TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      Return;
+    EndIf
+  EndIf
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  If (caston.isa(POLCLASS_MOBILE) && !caston.isa(POLCLASS_NPC))    // spell has been casted on player
+    PlayObjectCenteredEffect(caston, FX_BLESS_EFFECT, 10, 10);
+    item:= caston.weapon;
+    If (!item)
+      SendSysMessagePergon(caster, "Euer Ziel verfügt über keine Waffe", "Your traget does not carry any weapon");
+      Return;
+    EndIf
+  ElseIf (caston.isa(POLCLASS_WEAPON))                   // spell has been casted on item
+    item:= caston;
+    While (caston.container) // Wer trägt es
+      caston:=caston.container;
+    EndWhile
+    PlayStationaryEffect(caston.x, caston.y, caston.z, FX_BLESS_EFFECT, 10, 10,0,caston.realm);
+  Else
+    SendSysMessagePergon(caster, "Das ist keine Waffe", "This is no weapon");
+    Return;
+  EndIf
+
+  If (GetObjProperty(item, "spell_damage"))        // check if weapon already deals elemental damage
+
+    Var dmgtypeger;
+    Var dmgtypeeng;
+    Case (GetObjProperty(item, "spell_damage")[2])
+      "fire":  dmgtypeger:= "brennende";
+               dmgtypeeng:= "burning";
+      "water": dmgtypeger:= "vereiste";
+               dmgtypeeng:= "freezing";
+      "air":   dmgtypeger:= "blitzende";
+               dmgtypeeng:= "lightning";
+      "earth": dmgtypeger:= "steinerne";
+               dmgtypeeng:= "petrified";
+      default: dmgtypeger:= "verzauberte";
+               dmgtypeeng:= "enchanted";
+    EndCase
+
+    SendSysMessagePergon(caster, "Euer Ziel hat oder ist bereits eine " + dmgtypeger + " Waffe",
+                                 "Your target already has or is a " + dmgtypeeng + " weapon");
+    Return;
+  EndIf
+  If (item.getprop("spell_bless"))
+    SendSysMessagePergon(caster, "Die Waffe Eures Ziels ist bereits gesegnet",
+                                 "Your target's weapon is already blessed");
+    Return;
+  EndIf
+
+  PlaySoundEffect(caston, SFX_226);
+
+  dmg:= CInt(power*dmg/100.0);                 // calc spell effects according to casting power
+  dur:= CInt(power*dur/100.0);
+
+  If (mindmg and mindmg > dmg)
+    dmg:= mindmg;
+  ElseIf (maxdmg and maxdmg < dmg)
+    dmg:= maxdmg;
+  EndIf
+  If (mindur and mindur > dur)
+    dur:= mindur;
+  ElseIf (maxdur and maxdur < dur)
+    dur:= maxdur;
+  EndIf
+
+  firedmg:= CInt(GetObjProperty(item, "damage_fire"));   // get fire damage from spelltarget
+  SetObjProperty(item, "damage_fire", firedmg + dmg);    // set new fire damage
+
+  Var tag:= array;
+
+  tag[1]:= ReadGameClock() + dur;
+  tag[2]:= "fire";
+  tag[3]:= dmg;
+  tag[4]:= ReadMilliSecondClock();
+
+  SetObjProperty(item, "spell_damage", tag);         // tag spelltarget for spellchecker
+  SendSpellWaiter(item, "spell_damage", dur, tag[4], caston);
+  IncRevision(item);
+
+  PrintTextAbovePrivatePergon(caston, "Flammen schlagen aus Eurer Waffe und verbrennen Eure Gegner",
+                                      "Flames from your weapon strike out at your enemies, burning them", caston);
+
+EndProgram

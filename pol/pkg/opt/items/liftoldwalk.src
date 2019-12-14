@@ -1,0 +1,100 @@
+///////////////////////////////////////////////////////////////////////////
+// liftoldwalk --
+// Item, dass sich bei Betreten wie ein Fahrstuhl auf oder ab bewegt
+//
+// 21.02.2001 - Fraggulus
+
+// - Die aktuelle Hoehe des Items ist der Ausgangspunkt und wird nach
+//   Verlassen des Lifts wieder zurueckgefahren
+// - Die Hoehe, wo der Lift hinfahren soll, legt man mittels Property
+//   hoehe_neu fest. Die Property und muss _immer_ um 1 groesser sein,
+//   als die tatsaechlich gewuenschte Hoehe!
+
+use os;
+use uo;
+include "include/msgs";
+
+Program lift(who, item)
+  If (GetObjProperty(item, "#in_use"))
+    return;
+  EndIf
+
+  If (who.isa(POLCLASS_NPC))
+    return;
+  EndIf
+
+  // als benutzt markieren, da das Script sonst waehrend des Zurueckfahrens
+  // und dem Aufspringen eines Mobiles durcheinanderkommt
+  SetObjProperty(item, "#in_use", 1);
+
+  // nach 5 Sek. erst 'Liften'
+  Sleep(5);
+
+  // Pruefen, ob der Mobile noch draufsteht
+  If (!who or !who.connected or who.x != item.x or who.y != item.y)
+    EraseObjProperty(item, "#in_use");
+    return;
+  EndIf
+
+  // Starthoehe und Endhoehe ermitteln
+  var old_height := GetObjProperty(item, "hoehe_alt");
+  var new_height := GetObjProperty(item, "hoehe_neu");
+  If (new_height == error or old_height == error)
+    // hoehe_neu nicht gesetzt -> Abbruch
+    SendSysMessagePergon(who,
+      "*knarcks* ... *klapper* ... *defekt*", "*rattles*"
+    );
+    If (who.cmdlevel >= CMDLEVEL_HIGHGM)
+      SendSysMessagePergon(who,
+        "Die Endhöhe 'hoehe_neu' wurde noch nicht festgelegt!",
+        "CProp 'hoehe_neu' not defined!",
+        _DEFAULT_TEXT_FONT, 38
+      );
+    EndIf
+    EraseObjProperty(item, "#in_use");
+    return;
+  EndIf
+
+  // Variable, die die Richtung angibt
+  var auf_ab;
+  If (old_height < new_height)
+    auf_ab := 1; // es geht aufwaerts
+  Else
+    auf_ab := -1; // es geht abwaerts
+  EndIf
+
+  // Lift faehrt neue Position an, Item wird dabei mitgezogen
+  While (
+    // Benutzer noch da?
+    who and who.connected and item.x == who.x and item.y == who.y and
+    // Ziel erreicht?
+    item.z != new_height
+  )
+    MoveObjectToLocation(
+      item, item.x, item.y, item.z + auf_ab, item.realm,
+      MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+    );
+    MoveObjectToLocation(
+      who, who.x, who.y, who.z + auf_ab, who.realm,
+      MOVEOBJECT_FORCELOCATION
+    );
+    SleepMS(500);
+  EndWhile;
+
+  // Warten, bis der Mobile vom Fahrstuhl runter ist
+  While (who and who.connected and item.x == who.x and item.y == who.y)
+    Sleep(5);
+  EndWhile;
+
+  // in Ausgangsposition fahren
+  While (item.z != old_height)
+    MoveObjectToLocation(
+      item, item.x, item.y, item.z - auf_ab, item.realm,
+      MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+    );
+    SleepMS(500);
+  EndWhile;
+
+  // alles zuruecksetzen
+  EraseObjProperty(item, "#in_use");
+EndProgram

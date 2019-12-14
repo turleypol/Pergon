@@ -1,0 +1,101 @@
+//**************************************************************************************************
+// Script file slow.src
+//
+//    implements spell 15 <Slow> - "Hinken"
+//
+//**************************************************************************************************
+
+Include "../magicpergon";
+Include "include/spellcheck";
+Include ":newspells:resistance";
+
+Program cast_slow (params)
+
+   Var caster;
+   Var power;
+   Var caston;
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_COMMON_SLOW);
+   Var amnt:=    spell.primary;
+   Var dur:=     spell.duration;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+   else
+      caster:= params[1];
+      
+	  caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+      power:= GetCastPowerPergon(caster, SPELLID_COMMON_SLOW);
+      
+   endif
+
+   //SendSysMessagePergon(caster, "Die Götter lassen diesen Spruch nicht zu!",
+   //                             "The gods do not permit this spell!");
+   //return;
+   
+   //wenn es kein Mobile ist, abbrechen
+   If (!caston.isa(POLCLASS_MOBILE))
+   	//Es ist kein Mobile -> Abbruch
+   	SendSysMessagePergon(caster,"Auf dieses Ziel könnt ihr den Spruch nicht anwenden","For this target you can't use this spell");
+   	Return;
+   EndIf
+   
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+
+   PlayObjectCenteredEffect(caston, FX_BLESS_EFFECT, 7, 7);
+   PlaySoundEffect(caston, SFX_SPELL_CUNNING);
+   
+   If (caston.getprop("spell_slow"))
+   			//Ziel ist schon beeinflusst
+   			SendSysMessagePergon(caster,"Euer Ziel ist schon magisch verlangsamt","Your target is already magically slowed");
+   			Return;
+   		EndIf
+   		If (caston.getprop("spell_speed"))
+   			//Ziel ist schon beeinflusst
+   			SendSysMessagePergon(caster,"Euer Ziel ist schon magisch beschleunigt und kann nicht verlangsamt werden","Your target is already magically speeded up and can't be slowed down");
+   			Return;
+   		EndIf
+   //Checken ob auf Player oder NPC gecastet
+   If (caston.isa(POLCLASS_NPC))
+   		
+   		var runspeed;
+   		runspeed:=(CDbl(power)/300.0)*0.5; //bei voller caststärke halbieren
+   		//der wert kann nur zwischen 0 und 0.5 liegen
+   		runspeed:=(1-runspeed)*caston.run_speed;
+   		
+   		dur:=dur*power/50; //maximal 60sec -> linear verteilt
+
+   		Var tag:= array;
+   		tag[1]:= ReadGameClock() + dur;
+   		tag[2]:= caston.run_speed;
+   		tag[3]:= ReadMilliSecondClock();
+
+		caston.run_speed:=runspeed;
+   		SetObjProperty(caston, "spell_slow", tag);						// tag spelltarget for spellchecker
+   		SendSpellWaiter(caston, "spell_slow", dur, tag[3], caston);
+   Else
+   		//jetzt kann es nur ein Player sein   		
+   		var stamreg;
+   		stamreg:=amnt*(CDbl(power)/300.0);
+   		dur:=300;
+   		var tag:=array;
+   		tag[1]:=ReadGameClock() + dur;
+   		tag[2]:=-1;
+   		tag[3]:=ReadMilliSecondClock();
+   		
+   		SetStaminaPergon(caston, GetStaminaPergon(caston)-stamreg);
+   		
+   		SetObjProperty(caston,"spell_slow",tag);
+   		SendSpellWaiter(caston,"spell_slow",dur,tag[3],caston);
+   		
+   EndIf          
+EndProgram

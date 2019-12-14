@@ -1,0 +1,274 @@
+///////////////////////////////////////////////////////////////////////////
+// Wandelt ein abgerichtetes Tier in ein Zucht-Tier um
+
+use cfgfile;
+use uo;
+Include ":drinking:common";
+include "include/modifyskill";
+include "include/resources";
+
+Program Tierzucht(who)
+  // gemeinsame Vorbedingungen checken {{{
+  // (zwischendurch wird verzweigt, abhaengig davon, ob das Tier bereits
+  // ein Zuchttier ist (Status anzeigen) oder nicht (zuechten))
+
+  // Abrichter im Kampfmodus?
+  If (who.warmode)
+    SendSysMessagePergon(who,
+      "Ihr seid zur Zeit viel zu aggressiv, das arme Tier!", "",
+      _DEFAULT_TEXT_FONT, 0x22
+    );
+    return;
+  EndIf
+
+  // Tierzucht-Objekt auswaehlen
+  SendSysMessagePergon(who, "Welches Tier möchtet Ihr züchten?", "");
+  var animal := Target(who);
+  If (!animal)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  // Item oder sonstwas gewaehlt?
+  If (!animal.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(who,
+      "Das könnt Ihr nicht züchten.", "", _DEFAULT_TEXT_FONT, 0x22
+    );
+    return;
+  EndIf
+
+  // Sieht der Abrichter das Tier ueberhaupt?
+  If (!CheckLineofSight(who, animal))
+    SendSysMessagePergon(who,
+      "Ihr könnt es nicht sehen!", "", _DEFAULT_TEXT_FONT, 0x58
+    );
+    return;
+  EndIf
+
+  // Ist es ein Mensch oder Elf?
+  If (IsElfOrHuman(animal.objtype))
+    If (animal == who)
+      SendSysMessagePergon(who,
+        "Diese Kreatur ist so dumm, dass sie sich nicht einmal selbst "+
+        "züchten könnte.", "", _DEFAULT_TEXT_FONT, 0x22
+      );
+    Else
+      SendSysMessagePergon(who,
+        "Das hättet Ihr wohl gern?", "", _DEFAULT_TEXT_FONT, 0x58
+      );
+
+      If (!animal.isa(POLCLASS_NPC))
+        SendSysMessagePergon(animal,
+          who.name+" versuchte gerade Euch zu züchten!", "",
+          _DEFAULT_TEXT_FONT, 0x22
+        );
+      EndIf
+    EndIf
+    return;
+  EndIf
+
+  // Daten aus dem Template auslesen
+  var mytemplate := GetNPCConfig(animal.npctemplate);
+  var difficulty := mytemplate.tierzuchtskill;
+
+  // Zu weit weg? (Staff darf ohne Distanztest gucken)
+  If (who.cmdlevel < CMDLEVEL_SEER)
+    If (Distance(who, animal) > 4)
+      SendSysMessagePergon(who,
+        "Ihr solltet noch etwas näher herangehen!", "",
+        _DEFAULT_TEXT_FONT, 0x58
+      );
+      return;
+    EndIf
+  Else
+    // damit man als Staffler alle Tiere ohne Skill begucken kann
+    difficulty := 0;
+  EndIf
+  // }}}
+
+  // Bereits Zuchttier?
+  If (animal.script == ":tierzucht:w_domest")
+    // Status anzeigen
+    ShowAnimalInfo(who, animal, difficulty);
+    return;
+  EndIf
+
+  // Bedingungen nur fuer Zucht {{{
+  // Tier im Kampfmodus?
+  If (animal.warmode)
+    SendSysMessagePergon(who,
+      "Das Tier ist zu nervös, um gezüchtet zu werden.", "",
+      _DEFAULT_TEXT_FONT, 0x22);
+    return;
+  EndIf
+
+  // Kann man das Tier zuechten?
+  If (who.cmdlevel <= CMDLEVEL_SEER)
+    If (!difficulty or !mytemplate.scriptdomest)
+      SendSysMessagePergon(who,
+        "Das ist wohl nicht zur Zucht vorgesehen!", "",
+        _DEFAULT_TEXT_FONT, 0x22
+      );
+      return;
+    EndIf
+  EndIf
+
+  // Tier muss zur Zucht bereits gezaehmt sein
+  If (animal.script <> "enticedanimal")
+    SendSysMessagePergon(who,
+      "Ihr müsst das Tier zuerst zähmen und abrichten!", "",
+      _DEFAULT_TEXT_FONT, 0x22
+    );
+    return;
+  EndIf
+
+  // Tiere, die einem nicht gehoeren, lassen sich nicht zuechten
+  If (who <> animal.master)
+    SendSysMessagePergon(who,
+      "Das Tier gehört Euch doch gar nicht!", "", _DEFAULT_TEXT_FONT, 0x22
+    );
+    return;
+  EndIf
+  
+  If (GetObjProperty(animal, "parking"))
+  	SendSysMessagePergon(who,
+  		"Ihr müsst das Tier zuerst losmachen!", "",
+  		_DEFAULT_TEXT_FONT, 0x22
+  	);
+  	return;
+  EndIf
+
+  // Hat der Abrichter ueberhaupt eine Chance es zu zuechten?
+  If (GetSkillPergon(who, SKILLID_TIERZUCHT) < difficulty - 10)
+      SendSysMessagePergon(who,
+        "Das Züchten dieses Tieres übersteigt noch Eure Fähigkeiten!", "",
+        _DEFAULT_TEXT_FONT, 0x22
+      );
+      return;
+  EndIf
+  // }}}
+
+  // Tier zu Zuchttier machen {{{
+  EraseObjProperty(animal, "RoamsFreeAt");
+  EraseObjProperty(animal, "TameTimer");
+
+  // ehemaligen Meister merken (fuer Leichen-/Beweisgeschichte)
+  var master := GetObjProperty(animal, "master");
+  If (master)
+    SetObjProperty(animal, "ExMaster", master);
+  EndIf
+  EraseObjProperty(animal, "master");
+  animal.setmaster(0);
+
+  // Script fuer "domestiziertes" Tier aktivieren
+  animal.name   := mytemplate.name+" domestiziert";
+  animal.script := mytemplate.scriptdomest;
+  If (animal.script)
+    RestartScript(animal);
+  Else
+    syslog(
+      "Tierzucht.src: "+animal.name+" hat kein Scriptdomest in der cfg!"
+    );
+  EndIf
+
+  If (!GetObjProperty(animal, "Generation"))
+    SetObjProperty(animal, "Generation", 1);
+  EndIf
+
+  SendSysMessagePergon(who, "Das Tier ist nun ein Zuchttier.", "");
+  // }}}
+EndProgram
+
+// Status eines Zuchttieres anzeigen
+Function ShowAnimalInfo(who, animal, difficulty) // {{{
+  // If (!GetObjProperty(animal, PROP_HUNGER))
+  //   return;
+  // EndIf
+
+  If (GetSkillPergon(who, SKILLID_TIERZUCHT) < difficulty - 5)
+    SendSysMessagePergon(who,
+      "Ihr seid noch zu unerfahren im Umgang mit diesen Tieren!", "",
+      _DEFAULT_TEXT_FONT, 0x22
+    );
+    return;
+  EndIf
+
+  text_hungrylevel(animal, who);
+  text_drinklevel(animal, who);
+  var generation := GetObjProperty(animal, "Generation");
+  If (!generation)
+    generation := 1;
+    SetObjProperty(animal, "Generation", generation);
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Das Tier ist die "+generation+". Generation.", "",
+    _DEFAULT_TEXT_FONT, 0x58
+  );
+  If (animal.gender == 0)
+    SendSysMessagePergon(who,
+      "Das Tier ist männlich.", "", _DEFAULT_TEXT_FONT, 0x58
+    );
+  Else
+    var gepoppt := getobjproperty(animal, "GePoppt");
+    If (gepoppt)
+      SendSysMessagePergon(who,
+        "Das Tier ist ein trächtiges Weibchen.", "",
+        _DEFAULT_TEXT_FONT, 0x58
+      );
+    Else
+      SendSysMessagePergon(who,
+        "Das Tier ist weiblich.", "",
+        _DEFAULT_TEXT_FONT, 0x58
+      );
+    EndIf
+  EndIf
+EndFunction // }}}
+
+// Texte passend zum Saettigungsstand
+Function text_hungrylevel(animal, who) // {{{
+  var hungrylevel := CDbl(GetObjProperty(animal, PROP_HUNGER));
+
+  If (hungrylevel > 12.0)
+    SendSysMessagePergon(who,
+      "Ich stehe sehr gut im Futter.", "", _DEFAULT_TEXT_FONT, 0x58
+    );
+  ElseIf (hungrylevel > 9.0)
+    SendSysMessagePergon(who,
+      "Ich bin satt und zufrieden.", "", _DEFAULT_TEXT_FONT, 0x58
+    );
+  ElseIf (hungrylevel > 3.0)
+    SendSysMessagePergon(who,
+      "So langsam könnte ich mal wieder etwas Futter vertragen.", "",
+      _DEFAULT_TEXT_FONT);
+  Else
+    SendSysMessagePergon(who,
+      "Hilfe! Mein Magen knurrt.", "", _DEFAULT_TEXT_FONT, 0x22
+    );
+  EndIf
+EndFunction // }}}
+
+// Texte passend zum Durststand
+Function text_drinklevel(animal, who) // {{{
+  var level_drink := CDbl(GetObjProperty(animal, PROP_THIRST));
+
+  If (level_drink > 12.0)
+    SendSysMessagePergon(who,
+      "Ich habe schon fast einen Wasserbauch.", "",
+      _DEFAULT_TEXT_FONT, 0x58);
+  ElseIf (level_drink > 9.0)
+    SendSysMessagePergon(who,
+      "Ich habe genug getrunken.", "", _DEFAULT_TEXT_FONT, 0x58
+    );
+  ElseIf (level_drink>3.0)
+    SendSysMessagePergon(who,
+      "So langsam könnte ich mal wieder etwas zu Trinken vertragen.", "",
+      _DEFAULT_TEXT_FONT);
+  Else
+    SendSysMessagePergon(who,
+      "Hilfe! Ich verdurste.", "", _DEFAULT_TEXT_FONT, 0x22
+    );
+  EndIf
+EndFunction // }}}
+
+// vim: sw=2 sts=2

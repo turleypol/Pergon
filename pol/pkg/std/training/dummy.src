@@ -1,0 +1,58 @@
+//dummy.src
+//
+//ON dbl-click this finds the current weapon eqipped and
+//checks the skill at a difficulty of 10 (willnot raise over 30)
+//Use objtypes 0x1070 0x1074 for stationary dummies
+//
+//Problems: long sword uses wrong skill id. Not known if this is an isolated
+//	    problem.
+//
+// Author: Racalac, 3/29/99
+// Modified by: The Writer, 4/15/99 Fixed dummy flicker.
+
+use attributes;
+use os;
+use uo;
+
+Include "include/client";
+Include "include/objtype";
+Include "include/modifyskill";
+
+Program Training_Dummy(who, dummy)
+  Var skillid:=who.weapon.attribute;
+  If (!skillid)
+    skillid:=SKILLID_FAUSTKAMPF;
+  EndIf
+
+  Case (skillid)
+    SKILLID_SCHWERTKAMPF: CheckSwing(who, skillid, ANIM_ATTACK_1HAND_WIDE, dummy);
+    SKILLID_HIEBWAFFEN:   CheckSwing(who, skillid, ANIM_ATTACK_1HAND_DOWN, dummy);
+    SKILLID_FECHTKUNST:   CheckSwing(who, skillid, ANIM_ATTACK_1HAND_JAB, dummy);
+    SKILLID_FAUSTKAMPF:   CheckSwing(who, skillid, ANIM_ATTACK_1HAND_WIDE, dummy);
+    SKILLID_AXTKAMPF:     CheckSwing(who, skillid, ANIM_ATTACK_1HAND_DOWN, dummy);
+
+    default: SendSysMessagePergon(who, "Ihr wisst nicht was Ihr macht!");
+  EndCase
+EndProgram
+
+Function CheckSwing(who, skillid, action, dummy)
+  PerformAction(who, action);
+  Sleep(1);
+
+  If (CheckSkillPergon(who, skillid, 10, 40))
+    PlaySoundEffect(who, SFX_13C); // hit sound
+
+    If (dummy.objtype==UOBJ_DUMMYFREEZE_NS)
+      dummy.graphic:=UOBJ_DUMMYSWING_NS;
+      SleepMS(3600);
+      dummy.graphic:=UOBJ_DUMMYFREEZE_NS;
+    ElseIf (dummy.objtype==UOBJ_DUMMYFREEZE_EW)
+      dummy.graphic:=UOBJ_DUMMYSWING_EW;
+      SleepMS(3600);
+      dummy.graphic:=UOBJ_DUMMYFREEZE_EW;
+    EndIf
+  Else
+    PlaySoundEffect(who, SFX_239); // missing sound
+    Sleep(9);
+  EndIf
+EndFunction

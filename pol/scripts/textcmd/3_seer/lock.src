@@ -1,0 +1,20 @@
+Use uo;
+
+Include "include/msgs";
+
+Program TextCMD_Lock(who)
+  SendSysMessagePergon(who, "Was wollt Ihr verschliessen?");
+
+  Var what:=Target(who, TGTOPT_NOCHECK_LOS);
+  If (what)
+    If (what.isa(POLCLASS_LOCKABLE))
+      what.locked:=1;
+      SetObjProperty(what, "gmlocked", 1);
+      SetObjProperty(what, "gmlockedby", {who.serial, who.acctname, who.name});
+    Else
+      SendSysMessagePergon(who, "Dies ist nicht verschliessbar!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

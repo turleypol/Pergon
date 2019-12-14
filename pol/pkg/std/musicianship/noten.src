@@ -1,0 +1,14 @@
+///////////////////////////////////////////////////////////////////////////
+// noten.src
+//
+// Mais Noten für die gefühlvolle Musikerin
+
+include "common";
+use uo;
+
+Program noten(character, item)
+    var noten     := GetObjProperty(item, "noteslist");
+    var musicname := GetObjProperty(item, "musicname");
+
+    PlayMelody(character, musicname, noten);
+EndProgram

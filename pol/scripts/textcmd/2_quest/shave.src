@@ -1,0 +1,18 @@
+use uo;
+Include "include/msgs";
+
+Program TextCMD_Buzz(who)
+  var baldy := who;
+  If (who.cmdlevel >= CMDLEVEL_SEER)
+    // Staff darf auch NPCs rasieren
+    SendSysMessagePergon(who, "Wer soll rasiert werden (NPC oder selber)?");
+    baldy := Target(who);
+  EndIf
+
+  If (baldy == who or baldy.isa(POLCLASS_NPC))
+    DestroyItem(GetEquipmentByLayer(baldy, LAYER_BEARD));
+    SendSysMessagePergon(who, baldy.name+" hat nun keinen Bart mehr.");
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

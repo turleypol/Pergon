@@ -1,0 +1,52 @@
+///////////////////////////////////////////
+//
+//   CMDLevelScan - Sucht nach GM's & Co.
+//
+//     Author: Shinigami
+//
+///////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/client";
+Include "include/msgs";
+Include "include/modifyskill";
+Include "include/onlinesearch";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program CMDLevelScan(who)
+  Var zaehler:=0;
+
+  While (who.ip)
+    ForEach mobile in EnumerateOnlineCharacters()
+      If ((!(mobile.isa(POLCLASS_NPC))) And (mobile.cmdlevel>=CMDLEVEL_QUESTCHAR))
+        Var deltax:=mobile.x-who.x;
+        Var deltay:=mobile.y-who.y;
+
+        If (deltax*deltax+deltay*deltay<400)
+          SendSysMessagePergon(who, GetCMDLevelTitle(mobile.cmdlevel)+" "+mobile.name+" ["+mobile.acctname+"]", "", _DEFAULT_TEXT_FONT, FONTCOLOR_BLUE);
+        EndIf
+      EndIf
+    EndForEach
+
+    zaehler+=1;
+    If (zaehler>18)
+      zaehler:=0;
+      SendSysMessagePergon(who, "CMDLevelScan...", "", _DEFAULT_TEXT_FONT, FONTCOLOR_BLUE);
+    EndIf
+
+    Sleep(10);
+  EndWhile
+Endprogram

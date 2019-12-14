@@ -1,0 +1,46 @@
+
+use os;
+use uo;
+use npc;
+use storage;
+
+Include "include/animal";
+Include "include/modifyskill";
+Include "include/eventid";
+
+Var britvend, inventory, bought;
+
+// Better to use GetProperty here,of course
+britvend := FindStorageArea( "Britain Vendors" );
+if (!britvend)
+	exit;
+endif
+
+inventory := FindRootItemInStorageArea( britvend, "Vendor 1" );
+bought := FindRootItemInStorageArea( britvend, "Vendor 1 Temp" );
+if (!inventory)
+	exit;
+endif
+if (!bought)
+	exit;
+endif
+
+Var me := Self();
+
+	if (getobjproperty(me, "frozen"))
+		me.frozen := 1;
+		IncRevision(me);
+	endif
+
+while (1)
+	Var ev;
+	ev := Wait_for_EventLogging( 10 );
+	if (ev)
+		//print( "Event Type: " + ev.type );
+		//print( "Event Source: " + ev.source );
+		//SayPergon(ev.source, "Someone said: '" + ev.text + "'" );
+		if (ev.text["buy"])
+			SendBuyWindowPergon( ev.source, inventory, self(), bought );
+		endif
+	endif
+endwhile

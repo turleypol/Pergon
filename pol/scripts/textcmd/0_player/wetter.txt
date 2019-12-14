@@ -1,0 +1,4 @@
+<h3 id="wetter">wetter</h3>
+
+<p>Schaltet die Wettereffekte (Vegetation, Niederschläge) ein- oder
+aus, je nach aktuellem Zustand.</p>

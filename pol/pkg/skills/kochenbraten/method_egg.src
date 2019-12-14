@@ -1,0 +1,27 @@
+/////////////////////////////////////////////////////////
+// method_egg - Für Tooltips
+//
+// Author: mehdorn
+
+include ":tooltips:method_include";
+include "include/modifyskill";
+
+Program Install()
+    return 1;
+EndProgram
+
+exported Function HasTooltip(object, who)
+    If (
+        HasPlayerSkill(who, SKILLID_TIERZUCHT) or
+        HasPlayerSkill(who, SKILLID_TIERKUNDE) or
+        (who.cmdlevel >= CMDLEVEL_SEER)
+    )
+        return 1;
+    EndIf
+    return 0;
+    object := object;
+EndFunction
+
+exported Function setTooltip(object,byref packet)
+  setTooltipEgg(object,packet);
+EndFunction

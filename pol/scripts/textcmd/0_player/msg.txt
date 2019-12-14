@@ -1,0 +1,6 @@
+<h3 id="msg">msg</h3>
+
+<h4>Parameter: keiner oder <kbd>&lt;Charactername&gt;</kbd></h4>
+
+<p>Nachricht an den angegebenen Character senden. Ohne Angabe öffnet
+sich ein Dialog zur Auswahl. Der Empfänger muß online sein.</p>

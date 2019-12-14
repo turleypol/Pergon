@@ -1,0 +1,46 @@
+use uo;
+
+Include "include/msgs";
+
+Program Write_Recipe(user,item)
+  Var use_on := Target( user );
+  Var NewRecipe;
+  if (!use_on)
+      SendSysMessagePergon(user, "Zielen abgebrochen");
+      return 0;
+  endif
+
+
+  if ( use_on.objtype==0xA100 )
+    Var PotionID:= GetObjProperty( item, "PotionID");
+    Var Recipes:= GetObjProperty( use_on, "recipes");
+
+    Var potions := SplitWords( recipes);
+    Var i;
+
+    For (i:=1;i<=len(potions);i+=1)
+      If (Cint(Potions[i])==Cint(PotionID))
+        i:=0;
+        break;
+      endif
+    endfor
+    If (!i)
+      SendSysMessagePergon(user, "Dieses Rezept wurde im Buch bereits niedergeschrieben.");
+      return 0;
+      else
+         If (recipes=="blank")
+           NewRecipe:=cstr(potionID);
+           setobjproperty(use_on, "recipes", NewRecipe);
+           else
+             NewRecipe:=Recipes+" "+cstr(PotionID);
+             setobjproperty(use_on, "recipes", NewRecipe);
+         endif
+        SubtractAmount(item, 1);
+        SendSysMessagePergon(user, "Das Rezept wurde ins Buch übernommen.");
+    endif
+
+    else
+      SendSysMessagePergon(user, "Das kann nur auf Rezeptbücher angewandt werden!");
+      return 0;
+  endif
+endprogram

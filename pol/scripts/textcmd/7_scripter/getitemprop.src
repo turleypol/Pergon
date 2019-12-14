@@ -1,0 +1,27 @@
+Use uo;
+Use os;
+
+include "include/modifyskill";
+
+program TextCMD_GetObjProp(character)
+  SendSysMessagePergon(character, "Wählt ein Item!");
+
+  var item:=Target(character, TGTOPT_NOCHECK_LOS);
+  if( item ) 
+  	var props := GetPropertyItem( item );
+	if(props)
+	  SendSysMessagePergon( character, "quality: " + props.quality + " " + "qualityorig: " + props.qualityorig );
+	  SendSysMessagePergon( character, "hp: " + props.hp + " " + "maxhp: " + props.maxhp + " " + "maxhporig: " + props.maxhporig);
+	  SendSysMessagePergon( character, "type: " + props.type + " " + "price: " + props.price );
+	  SendSysMessagePergon( character, "skillid: " + props.skillid + " " + "skillrepair: " + props.skillrepair );
+	endif
+  else
+	SendSysMessagePergon( character, "dann halt nicht");
+  endif
+  SendSysMessagePergon( character,"ar "+item.ar);
+  SendSysMessagePergon( character,"layer "+item.tile_layer);
+  var d:=GetItemDescriptor(item.objtype);
+  
+  SendSysMessagePergon(character,"coverage "+d.coverage);
+
+endprogram

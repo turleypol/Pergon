@@ -1,0 +1,57 @@
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD SwitchLibrarian - Macht einen Spieler zum Bibliothekar, oder aber entzieht ihm das Recht
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_SwitchLibrarian(who)
+  SendSysMessagePergon(who, "Bitte einen Spieler auswählen!", "Please choose a player!");
+
+  Var bibliothekar:=Target(who);
+  If (bibliothekar.isa(POLCLASS_MOBILE) And (!bibliothekar.isa(POLCLASS_NPC)))
+    If (GetObjProperty(bibliothekar, TYPBIBLIOTHEKAR))
+      SendSysMessagePergon(bibliothekar, "Ihr seit nun kein Bibliothekar mehr.", "Your are not a librarian anymore.");
+      SendSysMessagePergon(who, bibliothekar.name+" ist nun kein Bibliothekar mehr.", bibliothekar.name+" is not a librarian anymore.");
+
+      bibliothekar.title_race:="";
+      IncRevision(bibliothekar);
+
+      EraseObjProperty(bibliothekar, TYPBIBLIOTHEKAR);
+    Else
+      SendSysMessagePergon(bibliothekar, "Ihr seit nun Bibliothekar.", "Your are a librarian now.");
+      SendSysMessagePergon(who, bibliothekar.name+" ist nun Bibliothekar.", bibliothekar.name+" is a librarian now.");
+
+      If (bibliothekar.gender)
+        bibliothekar.title_race:="Bibliothekarin";
+      Else
+        bibliothekar.title_race:="Bibliothekar";
+      EndIf
+      IncRevision(bibliothekar);
+
+      SetObjProperty(bibliothekar, TYPBIBLIOTHEKAR, 1);
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

@@ -1,0 +1,39 @@
+//////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   Poisoning - Der Vergiftungsprozess
+//
+//     Author: Fraggle & Shinigami
+//
+//   Dieses Script dient einzig und alleine dazu, die Vergiftung, ausgeloest durch DoPoisoning()
+//   prozesstechnisch vom aufrufenden Script zu entkoppeln... Hier wird lediglich die Funktion
+//   PoisoningProcess() aufgerufen.
+//   Auf diese Weise kann die Vergiftung unabhaengig ablaufen...
+//
+//   Modifications:
+//     28.09.2002 - Shinigami: komplette Ueberarbeitung
+//
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use cfgfile;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/poison";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Poisoning(params)
+  Var mobile:= params[1];
+  Var attacker:= params[2];
+  PoisoningProcess(mobile, attacker);
+EndProgram

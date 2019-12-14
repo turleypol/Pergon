@@ -1,0 +1,143 @@
+///////////////////////////////////////////////////////////////////////////
+// ReadOnly Book Interface
+// Alle Funktionen fuer per Datafile vordefinierter Buecher
+//
+// based on Bookcase Spawning System v0.3 (2000/12/08)
+// Author: Syzygy, Zulu, Bishop Ebonhand
+//
+// Author: Shinigami
+//
+///////////////////////////////////////////////////////////////////////////
+// Benutzte DataFile-Prop's
+// CInt(book.bookid)    - Nummer des Buches im DataFile 'staticbooks'
+// String(data.title)   - Titel des Buches
+// String(data.author)  - Autor des Buches
+// Array(data.contents) - Inhalt des Buches (String-Array)
+
+///////////////////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+// 2002/04/25 Shinigami: ReWrite
+
+/////////////////
+// Bibliotheken
+/////////////////
+use datafile;
+use os;
+use uo;
+
+////////////////////////////////////////////
+// IsWritable - Ist das Buch beschreibbar?
+////////////////////////////////////////////
+Exported Function IsWritable(book)
+  // Compilerwarnung unterdruecken
+  book := book;
+  return 0;
+EndFunction
+
+/////////////////////////////////////////////////////////////////////
+// GetNumLines - Wieviele Zeilen hat das Buch (und damit Seiten...)
+/////////////////////////////////////////////////////////////////////
+Exported Function GetNumLines(book)
+  var data := GetBookData(book); // Statische Daten zum Buch holen
+  If (data)
+    var contents := data.getprop("contents");
+    If (contents)
+      return (contents.size());
+    Else
+      data.setprop("contents", {}); // Hmm, da fehlte wohl was...
+      return (0);
+    EndIf
+  Else
+    return (1); // Nur eine Zeile fuer eine Fehlermeldung...
+  EndIf
+EndFunction
+
+//////////////////////////////////////
+// GetTitle - Titel des Buches holen
+//////////////////////////////////////
+Exported Function GetTitle(book)
+  var data := GetBookData(book); // Statische Daten zum Buch holen
+  If (data)
+    var title := data.getprop("title");
+    If (title)
+      return (title);
+    Else
+      data.setprop("title", ""); // Hmm, da fehlte wohl was...
+      return ("");
+    EndIf
+  Else
+    return (""); // Kein Titel...
+  EndIf
+EndFunction
+
+///////////////////////////////////////
+// GetAuthor - Autor des Buches holen
+///////////////////////////////////////
+Exported Function GetAuthor(book)
+  var data := GetBookData(book); // Statische Daten zum Buch holen
+  If (data)
+    var author := data.getprop("author");
+    If (author)
+      return (author);
+    Else
+      data.setprop("author", ""); // Hmm, da fehlte wohl was...
+      return ("");
+    EndIf
+  Else
+    return (""); // Kein Autor...
+  EndIf
+EndFunction
+
+//////////////////////////////////////////////////////
+// GetLine - Angeforderte Textzeile des Buches holen
+//////////////////////////////////////////////////////
+Exported Function GetLine(book, line)
+  var data := GetBookData(book); // Statische Daten zum Buch holen
+  If (data)
+    var contents := data.getprop("contents");
+    If (contents)
+      If (line<=contents.size()) // Existiert die angeforderte Zeile auch?
+        var text := contents[line];
+        If (text)
+          return (text);
+        Else
+          return ("");
+        EndIf
+      Else
+        return ("");
+      EndIf
+    Else
+      data.setprop("contents", {}); // Hmm, da fehlte wohl was...
+      return ("");
+    EndIf
+  Else
+    SysLog("FEHLER: Buch ("+Lower(Hex(book.serial))+") konnte nicht in 'staticsbooks' ("+
+      GetObjProperty(book, "bookid")+") gefunden werden!");
+    return ("<FEHLER>"); // Nur eine Fehlermeldung...
+  EndIf
+EndFunction
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program ReadOnlyBookInterface()
+  return (1);
+EndProgram
+
+//////////////////////////////////////////////////////////
+// GetBookData - Ermittelt die statischen Daten zum Buch
+//////////////////////////////////////////////////////////
+Function GetBookData(book)
+  var bookid := GetObjProperty(book, "bookid");
+  If (bookid)
+    var staticbooks := OpenDataFile("staticbooks");
+    If (staticbooks)
+      return (staticbooks.findelement(bookid));
+    Else
+      SysLog("FEHLER: DataFile 'staticsbooks' konnte nicht geoeffnet werden!");
+    EndIf
+  Else
+    SysLog("FEHLER: Buch ("+Lower(Hex(book.serial))+") besitzt keine 'bookid'!");
+  EndIf
+EndFunction

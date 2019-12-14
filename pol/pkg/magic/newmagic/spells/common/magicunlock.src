@@ -1,0 +1,134 @@
+//**************************************************************************************************
+// Script file magicunlock.src
+//
+//    implements spell 21 <Magic Unlock> - "Magischer Schluessel"
+//
+//	magically unlocks spelltarget
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//
+//      2003/05/13 Fraggulus: vom GM verschlossene Tueren/Container sowie Hauscontainer sind unknackbar
+//
+//	Vers. 1.1	- 27.06.2003 Sebsatian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+use util;
+use os;
+
+Include "../magicpergon";
+
+program cast_magicunlock (params)
+
+   Var caster;
+   Var caston;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_COMMON_MAGICUNLOCK);
+   Var dur:=    spell.duration;
+   Var mindur:= spell.durationmin;
+   Var maxdur:= spell.durationmax;
+   Var power;
+
+   if (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_COMMON_MAGICUNLOCK);
+      caston:= TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   if (!caston.locked || GetObjProperty(caston, "#LockPicked"))		// open things cannot be unlocked
+      SendSysMessagePergon(caster, "Das ist nicht abgeschlossen", "This has not been locked");
+      return;
+   endif
+																							// houses cannot be magically unlocked
+   if ((caston.multi) or GetObjProperty(caston, PROP_HS_C_SC_HOUSE) or GetObjProperty(caston, PROP_HS_M_HOUSE))
+      SendSysMessagePergon(caster, "Ihr könnt das nicht mittels Magie öffnen",
+                                   "You cannot magically open this");
+      PlayLightningBoltEffect(caster);											// zapp villain ;)
+      return;
+   endif
+
+																// gm-locked doors keep closed, house containers as well
+   if (GetObjProperty(caston, "gmlocked") || caston.usescript["securecont"])
+     SendSysMessagePergon(caster, "So sehr Ihr Euch auch bemüht, es ist vergebens",
+                                  "Although you try hard, everything is in vain");
+     return;
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   if (GetObjProperty(caston, "#U"))				// cannot try too often
+      if (GetObjProperty(caston, "#U") > ReadGameClock())
+         SendSysMessagePergon(caster, "Ihr müsst noch etwas Geduld haben",
+                                      "You have to show some patience");
+         return;
+      else
+      	 EraseObjProperty(caston, "#U");
+      endif
+   endif
+
+   Var difficult:= CInt(GetObjProperty(caston, "LockDifficulty"));		// get lock strength
+   Var skill:= CInt(power/2);															// get caster's skill
+
+   if (!difficult)																		// impossible (or buggy) locks
+      SendSysMessagePergon(caster, "Ihr könnt das nicht öffnen", "You cannot open this");
+      return;
+   endif
+
+   if (!UnLock(skill, difficult))													// checks and eventually unlocks
+      PlaySoundEffect(caster, SFX_11F);											// failure
+      SendSysMessagePergon(caster, "Ihr scheitert beim  Versuch, das magisch zu öffnen",
+                                   "You fail in trying to magically open this");
+      SetObjProperty(caston, "#U", readgameclock() + 30);					// set lockpicking timeout
+      return;
+   endif
+
+   PlaySoundEffect(caster, SFX_SPELL_UNLOCK);
+   PlayObjectCenteredEffect(caston, FX_MARK_EFFECT, 5, 10);
+   SetObjProperty(caston, "L", caster.name);
+
+   If (caston.isa(POLCLASS_DOOR))													// spell casted on door
+      SetObjProperty(caston, "#LockPicked", 1); 								// mark door as lockpicked
+
+      dur:= CInt(power*dur/100.0);													// calc duration according to casting power
+      if (mindur and mindur > dur)
+         dur:= mindur;
+      elseif (maxdur and maxdur < dur)
+         dur:= maxdur;
+      endif
+
+      Detach();
+      Sleep(dur);																			// wait duration
+
+      EraseObjProperty(caston, "#LockPicked");									// door becomes locked again
+   Else																						// spell casted on container
+      caston.locked := 0;																// unlock container
+   EndIf
+
+endprogram
+
+
+
+function UnLock (skill, difficulty)			// determines whether skill unlocks or not
+
+   if (skill - difficulty + 20 >= RandomInt(41))		// skill has to be within range of +/- 20
+      return 1;													// of difficulty
+   else
+      return 0;
+   endif
+
+endfunction

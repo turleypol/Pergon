@@ -1,0 +1,144 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  camping.src: fires when kindling is double-clicked
+//
+//  Modified:
+//    14.04.1999 ENS: Check that kindling is on ground
+//                    Create fire where wood is, not who
+//    20.03.2003 Fraggulus: Rawpoints gedrittelt
+//    22.01.2006 Seppel:    Delay eingebaut & Skillgain nur bis 35%
+//
+//  TODO:
+//    Start timer, tell those around that it's safe to log out
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use attributes;
+use os;
+use uo;
+include "include/client";
+include "include/modifyskill";
+include "include/objtype";
+
+Program UseWood(who, wood)
+  If (who.isa(POLCLASS_MOBILE) and !who.isa(POLCLASS_NPC))
+    If (!AccessiblePergon(who, wood))
+      SendSysMessagePergon(who, "Ihr kommt da nicht ran!");
+      return;
+    EndIf
+    If (!wood.movable)
+      SendSysMessagePergon(
+        who, "Das ist festgemacht und daher nicht geeignet."
+      );
+      return;
+    EndIf
+
+    If (wood.container)
+      PrintTextAbovePrivatePergon(wood,
+        "Legt das erst auf den Boden!", "", who
+      );
+      return;
+    EndIf
+
+    var skill := GetSkillPergon(who, SKILLID_WILDNISKUNDE);
+    If (wood.amount > 2 and 2*wood.amount > skill)
+      PrintTextAbovePrivatePergon(wood,
+        "Mit derart viel Holz könnt Ihr nicht umgehen.", "", who
+      );
+      return;
+    EndIf
+
+    If (GetObjProperty(who, "#UsesSkill") > ReadGameClock())
+      SendSysMessagePergon(who,
+        "Ihr müsst noch ein wenig warten, bevor Ihr wieder ein "+
+        "Feuer machen könnt"
+      );
+      return 0;
+    EndIf
+    // Delay bis zur nächsten Nutzung eines Skills 2 Sekunden
+    SetObjProperty(who, "#UsesSkill", ReadGameClock() + 2);
+
+    who.facing := GetFacing(who.x, who.y, wood.x, wood.y);
+
+    var thepoints := CInt(GetSkillDefaultPoints(SKILLID_WILDNISKUNDE)/3.0);
+    // ab 35% kann man nur noch durch richtiges Wildniskunde besser werden
+    If (skill >= 35)
+      thepoints := 0;
+    EndIf
+
+    If (!CheckSkillPergon(who, SKILLID_WILDNISKUNDE, -1, thepoints))
+      PrintTextAbovePrivatePergon(wood,
+        "Ihr bekommt das Feuer nicht in Gang.", "", who
+      );
+      return;
+    EndIf
+
+    Detach();
+  Else
+    wood := who.wood;
+  EndIf
+
+  If (!ReserveItem(wood))
+    return;
+  EndIf
+  wood.movable := 0;
+
+  // Feuer brennen lassen
+  var campfire := CreateItemAtLocationPergon(
+    wood.x, wood.y, wood.z+1, UOBJ_CAMPFIRE, 1, wood.realm
+  );
+
+  // are there already existing ashes?
+  var ash := ListItemsNearLocationOfType(campfire.x, campfire.y, campfire.z-1, 0, UOBJ_ASHES, campfire.realm)[1];
+  While (campfire and wood)
+    SubtractAmount(wood, 1);
+
+    var time_to_spread := 10+RandomInt(40);
+    Sleep(time_to_spread);
+    Ignite(campfire);
+    Sleep(60-time_to_spread);
+
+    // ash exists and is still on the creationspot?
+    If (ash && !ash.container &&
+        ash.x == campfire.x &&
+        ash.y == campfire.y &&
+        ash.z == campfire.z-1 &&
+        ash.realm == campfire.realm)
+      AddAmount(ash, 1);
+    Else
+      // are there already existing ashes?
+      ash := ListItemsNearLocationOfType(campfire.x, campfire.y, campfire.z-1, 0, UOBJ_ASHES, campfire.realm)[1];
+      If (ash)
+        AddAmount(ash, 1);
+      Else
+        ash := CreateItemAtLocationPergon(
+          campfire.x, campfire.y, campfire.z-1, UOBJ_ASHES, 1, campfire.realm
+        );
+      EndIf
+    EndIf
+    ash.decayat := ReadGameClock()+600;
+  EndWhile
+
+  DestroyItem(campfire);
+EndProgram
+
+// Holz in Umgebung anzuenden
+Function Ignite(fire)
+  var count := 0;
+  ForEach wood in (ListItemsNearLocationOfType(
+      fire.x, fire.y, fire.z, 1, 0xde1, fire.realm
+  ))
+    SleepMs(500);
+    // Feuer ja, aber Grossfeuer meiden
+    If (wood.movable and wood.amount < 100)
+      Start_ScriptPergon(":campingnew:usewood", struct{wood := wood});
+      count += 1;
+    EndIf
+    If (count > 8)
+      // nicht zu schnell ausbreiten
+      break;
+    EndIf
+  EndForEach
+EndFunction
+
+// vim: sw=2 sts=2

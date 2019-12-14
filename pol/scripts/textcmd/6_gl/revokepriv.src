@@ -1,0 +1,47 @@
+
+Include "include/msgs";
+
+Program TextCMD_RevokePriv(who, param)
+  var params := SplitWords(Lower(param));
+  If (!param || params.size() > 2 || param["help"] || param["?"])
+    SendSysMessagePergon(who, "Usage: .revokepriv {priv} [serial]");
+    return;
+  EndIf
+  
+  var priv := param, whom;
+  If (params.size() > 1)
+    priv := params[1];
+    whom := SystemFindObjectBySerial(CInt(params[2]), SYSFIND_SEARCH_OFFLINE_MOBILES);
+  EndIf
+  
+  If (!IsValidPrivilege(priv))
+    SendSysMessagePergon(who, "Unbekanntes Privileg. Vertippt?");
+    return;
+  EndIf
+
+  If (!whom)
+    SendSysMessagePergon(who, "Wem soll das Privileg '"+priv+"' genommen werden?");  
+    whom := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!whom)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+  
+    If (!whom.isa(POLCLASS_MOBILE))
+      SendSysMessagePergon(who, "Privilegen bitte nur an Mobiles vergeben!");
+      return;
+    EndIf
+  EndIf
+  
+  If (whom.privileges()[priv])
+    RevokePrivilege(whom, priv);
+    IncRevision(whom);
+    
+    SendSysMessagePergon(who, "Privileg '"+priv+"' wurde "+whom.name+" genommen!");
+  
+    // Logging
+    SysLog(CharInfoStr(who)+" nimmt "+CharInfoStr(whom)+" das Privileg '"+priv+"'");
+  Else
+    SendSysMessagePergon(who, whom.name+" hat das Privileg '"+priv+"' gar nicht!");
+  EndIf
+EndProgram

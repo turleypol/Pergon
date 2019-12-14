@@ -1,0 +1,100 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD CreateTreasureMap --
+// Normale Schatztkarte fuer klickbarer Position erzeugen
+//
+// Author: Shinigami
+
+use uo;
+include ":treasuremap:treasurechest";
+include "include/itemnpc";
+include "include/msgs";
+include "include/objtype";
+
+Program TextCMD_CreateTreasureMap(who, param)
+  If (!param)
+    SendSysMessagePergon(who,
+      "Ihr müsst das Schatzlevel (1 bis 10) angeben, optional darf danach "+
+      "auch noch 'custom' angegeben werden. Bei 'custom' ist auch Level 0 "+
+      "erlaubt."
+    );
+    return;
+  EndIf
+
+  var params := SplitWords(param);
+  // Staff-Wunsch: Parameterreihenfolge soll egal sein, daher sortieren
+  params.sort();
+
+  var custom := 0;
+  If (params[2] == "custom")
+    custom := 1;
+  EndIf
+  var level := CInt(params[1]);
+
+  If (
+    // ohne Custom Level 1-10
+    ((level < 1 or level > 10) and !custom) or
+    // mit Custom auch Level 0 (keine Monster)
+    ((level < 0 or level > 10) and custom)
+  )
+    SendSysMessagePergon(who, "Unzulässiger Schatzlevel!");
+    return;
+  EndIf
+
+  var content;
+  If (custom)
+    SendSysMessagePergon(who,
+      "Wählt ein Item, das in die Kiste soll! "+
+      "(oder einen Container, dessen Inhalt in die Kiste soll)"
+    );
+    content := Target(who);
+    If (!content or !content.isa(POLCLASS_ITEM))
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Wählt aus, wo die Kiste gefunden werden soll!"
+  );
+  var where := TargetCoordinates(who);
+  If (!where or where.item.container)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  var map := CreateItemInBackpackPergon(who, UOBJ_MAP1, 1);
+  If (!map)
+    SendSysMessagePergon(who, "Die Karte konnte nicht erzeugt werden!");
+    return;
+  EndIf
+
+  SetObjProperty(map, "level", level);
+  SetObjProperty(map, "chestx", where.x);
+  SetObjProperty(map, "chesty", where.y);
+  SetObjProperty(map, "chestz", where.z);
+
+  SetVisibleMap(map, where.x, where.y);
+
+  If (custom)
+    // Sonderfuellung zwischenlagern
+    var contname  := ST_PREF_CHEST+LHex(map.serial);
+    var storage   := FindOrCreateStorage(STORAGE_CHEST);
+    var container := CreateRootItemInStorageArea(
+      storage, contname, UOBJECT_TREASURE_CHEST
+    );
+    SetObjProperty(map, CHEST_CUSTOM_CPROP, contname);
+
+    If (content.isa(POLCLASS_CONTAINER))
+      ForEach item in (EnumerateItemsInContainer(content))
+        SleepMs(2);
+        MoveItemToContainer(item, container);
+      EndForEach
+    Else
+      MoveItemToContainer(content, container);
+    EndIf
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Die entschlüsselte Level-"+level+"-Karte wurde erzeugt."
+  );
+EndProgram

@@ -1,0 +1,207 @@
+/////////////////////////////////////////////////////////
+// Jehova Script v1.0 (2000/10/14)
+//
+// based on NonMerchant-Prototype v1.0 (2000/03/29)
+// Author: Shinigami
+
+use npc;
+use os;
+use uo;
+use util;
+use vitals;
+include "include/animal";
+include "include/client";
+include "include/eventid";
+include "include/names";
+include "include/npc";
+include "include/packets";
+include "include/vetement"; // Random Clothing
+
+///////////////
+// Konstanten
+///////////////
+
+Const MOVING_EFFECT_TELEPORT := 0x371a;
+Const MOVING_EFFECT_STONE    := 0x136c;
+Const HALT_THRESHOLD2        := 7;
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+var me := Self();
+
+var SOUND_EFFECT_STONE := {0x0233, 0x0234, 0x0239, 0x023a, 0x023b};
+var SOUND_EFFECT_DIING := {0x0251, 0x025b};
+
+/////////////////////////////
+// Jehova - Initialisierung
+/////////////////////////////
+
+Program Jehova()
+  SetScriptController(me); // für damage
+  PlayStationaryEffect(
+    me.x, me.y, me.z, MOVING_EFFECT_TELEPORT, 10, 10, 0, me.realm
+  );
+  PlaySoundEffect(me, SFX_SPELL_TELEPORT);
+
+  SetObjProperty(me, "serial", me.serial);
+
+  If (GetObjProperty(me, "frozen"))
+    me.frozen := 1;
+    IncRevision(me);
+  EndIf
+
+  If (me.name["<random>"])
+    var npcname := RandomName(me);
+    SetName(me, npcname);
+    SetName(me, npcname+NPCTitle(me));
+
+    npcname := me.name+" ";
+
+    var pos := Find(npcname, ",", 1);
+    If (pos)
+      npcname := npcname[1, pos-1];
+    EndIf
+
+    SetObjProperty(me, "myname", npcname);
+
+    Habille(me, GetObjProperty(me, "Equipt")); // Random Clothing
+  EndIf
+
+  SetWarMode(0);
+  DropAnchor();
+
+  Jehova_MainLoop(me); // Hauptschleife aufrufen
+EndProgram
+
+////////////////////////////////////
+// Jehova_MainLoop - Hauptschleife
+////////////////////////////////////
+
+Function Jehova_MainLoop(me)
+  Set_Priority(10);
+
+  EnableEvents(EVID_ROBOT_INIT, 10);
+
+  var timeout := ReadGameClock()+10;
+  var ev;
+
+  While (timeout And (timeout >= ReadGameClock()))
+    SleepMS(120);
+    ev := Wait_for_EventLogging(0);
+
+    If (ev.type == EVID_ROBOT_INIT)
+      SleepMs(RandomInt(500));
+      var opponent := ev.opponent;
+      RevokePrivilege(opponent, "invul");
+      opponent.frozen := 1;
+      IncRevision(opponent);
+
+      TurnToward(opponent);
+      SetOpponent(opponent);
+
+      If (!RandomInt(2))
+        If (opponent.gender)
+          NPCSayText(me, "Frevlerin!! Sterbt!", "");
+        Else
+          NPCSayText(me, "Frevler!! Sterbt!", "");
+        EndIf
+      EndIf
+
+      var dmgpoints := CInt(
+        5.0*GetHPPergon(opponent)/GetMaxHPPergon(opponent)
+      );
+      var found := 0;
+      While (opponent and !opponent.dead and opponent.concealed <= me.cmdlevel)
+        If (opponent.hidden) // Um unnoetige Events zu sparen...
+          opponent.hidden := 0;
+        EndIf
+
+        PerformAction(me, ANIM_ATTACK_2HAND_DOWN);
+        PlayMovingEffect(me, opponent, MOVING_EFFECT_STONE, 10, 1);
+        If (RandomInt(2))
+          PlaySoundEffect( opponent,
+            SOUND_EFFECT_STONE.randomentry()
+          );
+        EndIf
+
+        // bei 1 kommt als Random(1) was mit 0 raus -->
+        // Script macht nie Schaden und endet nie -->
+        // deswegen Minimum benutzen
+        dmgpoints := Max(3, RandomInt(dmgpoints));
+        ApplyRawDamagePergon(opponent, dmgpoints);
+        If (!RandomInt(6))
+          PerformAction(opponent, ANIM_HIT);
+          PlaySoundEffect(opponent,
+            SOUND_EFFECT_DIING.randomentry()
+          );
+        EndIf
+
+        // gucken, ob man mal etwas Blut erzeugen sollte
+        If (!found)
+          If (!RandomInt(8))
+            found:=ListItemsNearLocationOfType( opponent.x, opponent.y, opponent.z, 0, 0x1cf3, opponent.realm ).size();
+            If (!found)
+              var blood := CreateItemAtLocationPergon(
+                opponent.x, opponent.y, opponent.z, 0x1cf3, 1, opponent.realm
+              );
+              If (blood)
+                found := 1;
+                blood.name       := "noch warmes Blut";
+                blood.movable    := 0;
+                // blood.decayat := ReadGameClock()+900;
+                blood.saveonexit := 0;
+                Start_ScriptPergon("::items/itemdestroy", {blood, 900});
+              EndIf
+            EndIf
+          EndIf
+        EndIf
+
+        If (!RandomInt(20))
+          var randomtext := array{
+            "Guter Wurf.", "Habt Ihr das gehört?", "Blasphemie!",
+            "Kann es sein, dass Weibsvolk anwesend ist?"
+          };
+          If (opponent.gender)
+            randomtext.append("Sie hat Jehova gesagt!");
+          Else
+            randomtext.append("Er hat Jehova gesagt!");
+          EndIf
+          NPCSayText(me, randomtext.randomentry(), "");
+        EndIf
+
+        var i;
+        For (i := 0; i<10; i+=1)
+          SleepMS(RandomIntMinMax(100,200));
+          Repeat Until (!(ev := Wait_for_EventLogging(0)));
+        EndFor
+      EndWhile
+
+      SetWarMode(0);
+      Sleep(1);
+      timeout := 0;
+    EndIf
+  EndWhile
+
+  PlayStationaryEffect(
+    me.x, me.y, me.z, MOVING_EFFECT_TELEPORT, 10, 10, 0, me.realm
+  );
+  PlaySoundEffect(me, SFX_SPELL_TELEPORT);
+
+  KillNPC(me, "jehova", KILLNPC_NOCORPSE);
+EndFunction
+
+//////////////////////////////////////////////////
+// NPCSayText - Stellt die Sprache des NPC's dar
+//////////////////////////////////////////////////
+Function NPCSayText(npc, text, texteng)
+  ForEach mobile in (ListMobilesNearLocationEx(
+    npc.x, npc.y, npc.z, 2*HALT_THRESHOLD2,
+    LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN, npc.realm
+  ))
+    PrintTextAbovePrivatePergon(npc, text, texteng, mobile);
+  EndForEach
+EndFunction
+
+// vim: sw=2 sts=2

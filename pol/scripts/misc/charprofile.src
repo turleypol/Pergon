@@ -1,0 +1,88 @@
+/////////////////////////////////////////////////////////
+//
+//   charprofile - ...
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     26.02.10 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Use uo;
+Use datafile;
+
+Include "include/modifyskill";
+Include "include/msgs";
+
+Var profiledf:=OpenDataFile("::profiles");
+If (!profiledf)
+  profiledf:=CreateDataFile("::profiles",DF_KEYTYPE_INTEGER);
+EndIf
+  
+Program CharProfile(character, of_who, mode, uctext)
+  If (mode == 0)
+    ProfileRequest(character, of_who);
+  Else
+    ProfileUpdate(character, of_who, uctext);
+  EndIf
+EndProgram
+
+Function ProfileRequest(character, who)
+  Var dfelement:=profiledf.FindElement(who.serial);
+  Var profile;
+  If (dfelement)
+    profile:=dfelement.getprop("profile");
+  EndIf
+	Var footer := {};
+
+	If (!profile)
+		profile := {};
+
+		If (who.isa(POLCLASS_NPC))
+			If (character.cmdlevel >= CMDLEVEL_SEER)
+				footer := CAscZ("NPC vom Template '" + who.npctemplate + "'.");
+			EndIf
+
+			Var npcinfo := GetNPCConfig(who.npctemplate);
+
+			If (!npcinfo)
+				SysLog("FEHLER: NPC-Template '"+who.npctemplate+"' konnte in der npcdesc.cfg nicht gefunden werden!");
+			Else
+				If (npcinfo.profile)
+					profile := CAscZ(npcinfo.profile);
+				EndIf
+			EndIf
+		EndIf
+	EndIf
+
+	If (character==who)
+		footer := CAscZ("Gebt hier Euer Profil ein. Jeder andere Spieler wird dies lesen können.");
+	EndIf
+	
+	SendCharProfile( character, who, who.name, footer, profile );
+EndFunction
+
+Function ProfileUpdate(character, who, uctext)
+  Var dfelement:=profiledf.FindElement(who.serial);
+
+  If (character!=who)
+		SendSysMessagePergon(character, "Ihr könnt nur euer eigenes Profil ändern.");
+		Return;
+	EndIf
+	
+	If (uctext && uctext.size())
+	  If (!dfelement)
+	    dfelement:=profiledf.CreateElement(who.serial);
+	  EndIf
+	  dfelement.setprop("profile",uctext);
+		SendSysMessagePergon(character, "Euer Profil wurde geändert.");
+	Else
+	  If (dfelement)
+	    profiledf.DeleteElement(who.serial);
+	  EndIf  
+		SendSysMessagePergon(character, "Euer Profil wurde gelöscht.");
+	EndIf
+EndFunction

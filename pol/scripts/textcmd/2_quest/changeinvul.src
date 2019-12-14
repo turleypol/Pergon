@@ -1,0 +1,53 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD ChangeInvul - Schaltet zwischen Invul und nicht Invul hin und her
+//
+// Author: Shinigami
+
+use file;
+use uo;
+include "include/msgs";
+include "include/quests";
+
+Program TextCMD_ChangeInvul(who, invul)
+  Case (Lower(invul))
+  "i":
+    GrantPrivilege(who, "invul");
+    who.enable("invul");
+  "u":
+    who.disable("invul");
+    RevokePrivilege(who, "invul");
+
+  default:
+    If (!invul)
+      If (who.enabled("invul"))
+        who.disable("invul");
+        RevokePrivilege(who, "invul");
+      Else
+        GrantPrivilege(who, "invul");
+        who.enable("invul");
+      EndIf
+    Else
+      SendSysMessagePergon(who,
+        "Als Parameter sind nur 'I'nvulnerable oder 'V'ulnerable zulässig!",
+        "You can use 'I'nvulnerable or 'V'ulnerable only as parameter!"
+      );
+      return;
+    EndIf
+  EndCase
+  IncRevision(who);
+
+  var status := "";
+  If (who.enabled("invul"))
+    SendSysMessagePergon(who,
+      "Ihr seid nun unverwundbar.", "You are invulnerable now."
+    );
+    status := "invul";
+  Else
+    SendSysMessagePergon(who,
+      "Ihr seid nun verwundbar.", "You are vulnerable now."
+    );
+    status := "vul";
+  EndIf
+
+  QuestCharLog(who, "TextCMD ChangeInvul ("+status+")");
+EndProgram

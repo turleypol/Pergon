@@ -1,0 +1,33 @@
+///////////////////////////////////////////////////////////////////////////
+// moonstoneunique -- versucht Stacking von Mondsteinen wieder zu ermoeglichen
+
+use os;
+use polsys;
+use uo;
+use util;
+
+Const PROP_UNIQUEID := "unique_id";
+
+Program MoonstoneUnique(stone)
+    // run only once
+    If (!stone.getprop(PROP_UNIQUEID))
+        return;
+    EndIf
+
+    // Stacking wieder erlauben
+    stone.eraseprop(PROP_UNIQUEID);
+
+    // update stone name
+    SetName(stone, stone.getprop("location")+"-Mondstein%e");
+
+    var charges := CInt(stone.getprop("charges"));
+    stone.eraseprop("charges");
+    // nothing to do
+    charges := CInt(charges);
+    If (charges <= 1)
+        return;
+    EndIf
+
+    // we already have one stone
+    AddAmount(stone, charges - 1);
+EndProgram

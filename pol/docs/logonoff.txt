@@ -1,0 +1,58 @@
+Logon/Logoff
+============
+    scripts/misc/logon.src is the login script.  It is executed when a 
+    character that is not currently in the game world is selected by
+    a player.
+    scripts/misc/reconnect.src is the reconnect script.  Is it executed
+    when a character that is currently in the game world is reselected by
+    a player after a disconnect.
+    scripts/misc/logoff.src is the logoff script.  It is executed just before
+    actually removing the character from the game world.
+
+    The sequence of events is:
+        1. (Logged Out)
+        2. Select character.
+        3. Character moved to game world.
+        3. scripts/misc/logon.src runs.
+        4. Character in game world.
+        5. Client disconnects.
+        6. scripts/misc/logofftest.src runs
+        7. Wait until timeout
+        8. on timeout:
+              run scripts/misc/logoff.src
+              remove character from game world.
+              back to (1)
+           on log back in:
+              run scripts/misc/reconnect.src
+              back to (4)
+    
+    The logon, logoff, and reconnect scripts all look like this:
+        program whatever( character )
+            // do stuff with character
+        endprogram
+    They are all run to completion.
+    Their return value is ignored.
+
+  
+Delayed Logout
+==============
+    scripts/misc/logofftest.src is executed when a client disconnects to 
+    determine how long a character must wait to log off.  
+    
+    Here is a simple logofftest script:
+
+        program logofftest( character )
+            if (character.cmdlevel)
+                return 0;           // GMs get to log off immediately.
+            else
+                return 5 * 60;      // Regular players have to wait 5 minutes.
+            endif
+        endprogram;
+
+
+    The logofftest script is run to completion.  It must return the number of
+    seconds until the character should be removed from the game world.  If it
+    returns zero, the character will be removed from the game world immediately.
+
+    The timeout counter starts from the last time the client sent a meaningful
+    packet to the server, so if a player     

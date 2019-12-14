@@ -1,0 +1,111 @@
+<html>
+
+<head>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+<title>POL Object Reference - Item</title>
+</head>
+
+<body>
+
+<table border="0" width="100%">
+  <tr>
+    <td valign="top" width="100%"><strong><big>Item : <a href="objref.htm#UObject">UObject</a>
+    </big></strong></td>
+    <td width="50%" valign="top" align="right" nowrap><a href="objref.htm"><small>POL </small><br>
+    <small>Object Reference</small></a></td>
+  </tr>
+</table>
+
+<p>&nbsp; </p>
+
+<h3>Methods</h3>
+
+<p>none</p>
+
+<h3>Properties</h3>
+
+<table border="1" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="25%"><strong>property</strong></td>
+    <td width="25%"><strong>description</strong></td>
+    <td width="25%"><strong>type</strong></td>
+    <td width="25%"><strong>access</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">amount</td>
+    <td width="25%">stack size</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">layer</td>
+    <td width="25%">equipment layer</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">container</td>
+    <td width="25%">item contained in</td>
+    <td width="25%">itemref</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">usescript</td>
+    <td width="25%">double-click action script</td>
+    <td width="25%">string</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">equipscript</td>
+    <td width="25%">script to be executed to determine if this item can be equipped</td>
+    <td width="25%">string</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">unequipscript</td>
+    <td width="25%">script to be executed to determine if this item can be unequipped</td>
+    <td width="25%">string</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">desc</td>
+    <td width="25%">single-click description</td>
+    <td width="25%">string</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">movable</td>
+    <td width="25%">can the item be moved</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">decayat</td>
+    <td width="25%">gameclock when item should decay (0 if never)</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">sellprice</td>
+    <td width="25%">price a player can sell this item for</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">newbie</td>
+    <td width="25%">if true-item stays with ghost</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+</table>
+
+<p>Notes: 
+
+<ol>
+  <li>A possibly confusing aspect of Items: if an item's &quot;name&quot; member is empty,
+    then data files are used to calculate the single-click description.&nbsp; If an item's
+    &quot;name&quot; member is set, then that will be used for the single-click description
+    instead. </li>
+</ol>
+</body>
+</html>

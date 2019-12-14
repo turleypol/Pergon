@@ -1,0 +1,51 @@
+//
+//  26.02.2003 Fraggulus: Inhalt des Backpacks wird vorher gesichert
+//  30.07.2006 Fox: Funktionalität für schnelleres Testen erweitert
+//
+
+use uo;
+
+Include "include/starteqp";
+
+Program TextCMD_TestNLootGroup(who, params)
+	Set_Script_Option( SCRIPTOPT_NO_RUNAWAY, 1 );
+	params := SplitWords(params);
+
+  Var nr := params[1];
+  Var sichern;
+  Var anzahl;
+
+  if (len(params)>=3)
+      sichern:= CInt(params[2]);
+      anzahl := CInt(params[3]);
+  elseif (len(params)==2)
+      sichern:= CInt(params[2]);
+      anzahl := 1;
+  else
+      sichern:= 1;
+      anzahl := 1;
+  endif
+  If (nr)
+  	If (sichern)
+	    // gesamten Backpackinhalt in einen Rucksack sichern
+	    Var bag := CreateItemInBackpackPergon(who, 0xe75);
+	    If (!bag)
+	      SendSysMessagePergon(who, "Sicherungscontainer konnte nicht im Backpack erstellt werden.");
+	      Return;
+	    Else
+	      ForEach item in EnumerateItemsInContainer(who.backpack)
+	        If ((item.serial != bag.serial) && (item.container == bag.container))
+	          MoveItemToContainer(item, bag);
+	        EndIf
+	      EndForEach
+	    EndIf
+	  EndIf
+    // Loot erzeugen
+    For index:=1 To anzahl
+			MakeLoot(who.backpack, nr);
+    EndFor
+    SendSysMessagePergon(who, "Fertig!");
+  Else
+    SendSysMessagePergon(who, "Ihr müsst eine NLootGroup-Bezeichnung angeben!");
+  EndIf
+EndProgram

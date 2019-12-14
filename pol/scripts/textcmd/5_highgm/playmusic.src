@@ -1,0 +1,47 @@
+/////////////////////////////////////////////////////////////
+// MUSIC.src                                               //
+//                                                         //
+// Author: DC                                              //
+// Date: 1/25/99                                           //
+//                                                         //
+// Description: An admin text command that plays a UO midi //
+//                                                         //
+// program music: takes in the music ID from the user and  //
+//                makes sure it is 1 byte long.            //
+//                                                         //
+// function PlayMusic: a placeholder function that will be //
+//                     removed when a uo.em function is    //
+//                     created to play a midi.             //
+//                     Currently uses SendPacket to start  //
+//                     the music.                          //
+//                                                         //
+/////////////////////////////////////////////////////////////
+//
+//  30.10.2005 Fraggulus: .Music umbenannt in .PlayMusic
+//                        PlayMusic() durch packets.inc::PlayMidiMusic() ersetzt
+//
+
+use uo;
+
+Include "include/msgs";
+Include "include/packets";
+
+Program TextCMD_playmusic(who, musicid)
+
+  Var music_id := CInt(musicid);
+
+  Var id_len := len(music_id);
+
+  If ((musicid == "?") || (id_len > 2))
+    SendSysMessagePergon(who, "USAGE: .playmusic <musicid>", "USAGE: .playmusic <musicid>");
+    SendSysMessagePergon(who, "musicid: zweistellige Midi-Nummer", "musicid: two-digit midi number");
+    Return 0;
+  ElseIf (id_len == 1)
+    music_id := ("0" + music_id);
+  ElseIf (id_len == 0)
+    music_id := "00";
+  EndIf
+
+  PlayMidiMusic(who, music_id);
+
+EndProgram

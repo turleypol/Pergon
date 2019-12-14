@@ -1,0 +1,45 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD CreateTreasureChest -
+// Normale Schatztruhe an klickbarer Position erzeugen
+//
+// Author: Shinigami
+
+// Bibliotheken&Includes
+use uo;
+include ":treasuremap:treasurechest";
+include "include/itemnpc";
+include "include/msgs";
+include "include/starteqp";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_CreateTreasureChest(who, params)
+  If (!params)
+    SendSysMessagePergon(who,
+      "Ihr müsst das Schatzlevel (1 bis 10) angeben!"
+    );
+    return;
+  EndIf
+
+  var level := CInt(params);
+  If (level < 1 or level > 10)
+    SendSysMessagePergon(who, "Nur Level von 1 bis 10 sind zulässig!");
+    return;
+  EndIf
+
+  SendSysMessagePergon(who, "Wählt aus, wo die Kiste stehen soll!");
+
+  var where := TargetCoordinates(who);
+  If (!where or where.item.container)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  CreateTreasureChest(level, where.x, where.y, where.z, where.realm);
+
+  SendSysMessagePergon(who,
+    "Die Grafik der Kiste könnt Ihr noch verändern, falls nötig."
+  );
+EndProgram

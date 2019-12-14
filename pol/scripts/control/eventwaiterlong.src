@@ -1,0 +1,39 @@
+///////////////////////////////////////////////////////////////////////////////
+//
+//   EventWaiterLong - Dient als zentrales Script um alle WaitEvents >=1h
+//                     von einer KI zu verwalten
+//
+//                     Ansteuerung über Sender-Funktionen der eventwaiter.inc
+//
+//     Author: Turley
+//
+//   Modifications
+//     2006/09/22 Shinigami: Verlagerung in eine Include
+//
+///////////////////////////////////////////////////////////////////////////////
+
+/////////////
+// Includes
+/////////////
+
+Include "include/eventwaiter";
+
+///////////////
+// Konstanten
+///////////////
+
+Const SIZE:=720;        // ArraySize (1h<=t<=60h)
+Const WAIT:=LONG_RANGE; // 5 min
+
+Const PID_EVENTWAITER:=PID_EVENTWAITERLONG;
+
+Const LOGFILE_IN:= "log/eventlongin.log";
+Const LOGFILE_OUT:="log/eventlongout.log";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program EventWaiterLong()
+  EventWaiter(1);
+EndProgram

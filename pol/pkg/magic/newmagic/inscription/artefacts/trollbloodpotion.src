@@ -1,0 +1,70 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Artefakt-Trollbluttrank
+//
+// Trollbluttrank heilt in zufaelligen Abstaenden
+
+//////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.3  2008/08/31 20:29:10  mehdorn
+// - leicht ueberarbeitet
+// - Tippfehler raus
+// - teilweise Uebersetzungen vervollstaendigt/verbessert
+// - diverse unnoetige Includes entfernt
+//
+// 2007-02-14    -   Seppel
+// gebaut
+
+include ":newspells:magicpergon";
+include "common";
+include "include/msgs";
+use cfgfile;
+use os;
+use uo;
+use util;
+
+Program TrollBloodPotion(who, item)
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var delay := artefact.delay;
+  var times := artefact.times;
+  var interval := SplitWords(GetConfigString(artefact, "Interval"));
+  var minInterval := CInt(interval[1]);
+  var maxInterval := CInt(interval[3]);
+  var heal := SplitWords(GetConfigString(artefact, "Heal"));
+  var minHeal := CInt(heal[1]);
+  var maxHeal := CInt(heal[3]);
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", (ReadGameClock() + delay));
+
+  PerformAction(who, ANIM_EAT);
+  SubtractAmount(item, 1);
+
+  If (RandomInt(2) == 1)
+      PlaySoundEffect(who, SFX_31);
+  Else
+      PlaySoundEffect(who, SFX_32);
+  EndIf
+
+  SendSysMessagePergon(who, "Ihr trink den Trank", "You drink the potion");
+
+  Detach();
+
+  var i;
+  For (i := 1; i <= times; i += 1)
+      HealDamage(who, RandomIntMinMax(minHeal, 1+maxHeal));
+      Sleep(RandomIntMinMax(minInterval, 1+maxInterval));
+  EndFor
+
+  SendSysMessagePergon(who,
+    "Der Trank verliert seine Wirkung",
+    "The potions loses ist effect"
+  );
+EndProgram
+
+// vim: sw=2 sts=2

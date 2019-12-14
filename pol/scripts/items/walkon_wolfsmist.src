@@ -1,0 +1,12 @@
+//WalkOn_Wolfsmist
+//By Eddy
+use os;
+use uo;
+include "include/client";
+include "include/msgs";
+
+Program walkon_wolfsmist(who)
+  PrintTextAbovePergon(who, who, "Wahh! In was bin ich denn da getreten!");
+  PrintTextAbovePergon(who, who, "*nach Wolfsmist stinkt*");
+EndProgram
+

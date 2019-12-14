@@ -1,0 +1,24 @@
+////////////////////////////////////////////////////////////
+//
+//  14.01.2002 Fraggulus: Script, um Items sich selbst zerstoeren zu lassen, wo das durchs eigene laufende Script nicht funktioniert
+//  20.10.2003 Fraggulus: 'params' eingebaut
+//
+////////////////////////////////////////////////////////////
+
+
+Use uo;
+Use os;
+
+//                params = {item, decay}
+Program itemdecay(params)
+
+  If (params[2])
+    sleep(params[2]);
+  EndIf
+
+  If (params[1])
+    DestroyItem(params[1]);
+  Endif
+
+EndProgram
+

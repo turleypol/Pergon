@@ -1,0 +1,23 @@
+ [1] Debugger Commands:
+      password [pwd]   Authorize with password
+      quit             exit debugger
+      start [eclfile]  Start a script
+      call [eclfile] [params:packed array]  call a script
+      attach [pid]     Attach to a running script
+      detach           Detach from attached script
+      state            State of attached script
+      ins              Show instructions near execution point
+      instrace         Execute next instruction only
+      stepinto         Trace to next statement, into functions if necessary
+      stepover         Trace to next statement, skipping called functions
+      run              Run script full speed (until breakpoint hit if any)
+      break            Break into running script
+      setbp [ins]      Set breakpoint at instruction
+      clrbp [ins]      Clear breakpoint at instruction
+      clrallbp         Clear all breakpoints
+      fileline  {ins}  File # and Line # associated with an instruction
+      files            list the source files used by this script
+      filecont [file] {firstline} {lastline}  get file contents
+      localvars        list local variable names
+      inslist [file] [line]  Return list of instructions assoc with a file/line
+      pidlist [str]    list PIDs and scriptnames matching *str*

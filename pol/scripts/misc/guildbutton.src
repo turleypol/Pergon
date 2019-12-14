@@ -1,0 +1,27 @@
+//////////////////////////////////
+//
+//   Guild-Button in der Paperdoll
+//
+//     Author: Turley
+//
+//////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+include "include/pergonutil";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program GuildButton(who)
+  Start_ScriptPergon("textcmd/0_player/guild",who);
+EndProgram

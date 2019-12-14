@@ -1,0 +1,89 @@
+//**************************************************************************************************
+// Script file mindblast.src
+//
+//    implements spell 224 <Mind Blast> - "Geisteskampf"
+//
+//	difference between casters and spelltargets intelligence is calculated and
+//	dealt as damage to the inferior
+//		 [ Resisted (Magic) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 03.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use vitals;
+
+Include "../magicpergon";
+Include "../resistance";
+Include "../spellattack";
+Include "include/packets";
+
+program cast_mindblast (params)
+
+   Var caster;
+   Var caston;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_MINDBLAST);
+   Var difficulty:= spell.skill;
+   Var resist:= spell.resist;
+   Var dmg;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+      send_attack(caston, caster, 224);
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_MINDBLAST);
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+
+   Var casterint:= power;									// get casting power
+   Var castonint:= GetIntPergon(caston);				// get targets intelligence
+   Var spelltarget;
+
+   if (casterint > castonint)								// get final spelltargets
+      spelltarget:= caston;
+      SendSysMessagePergon(caster, "Euer überlegener Intellekt martert das Hirn Eures Gegners",
+      				   				  "Your superior intellect torments the brain of your enemy");
+   elseif (casterint < castonint)
+      spelltarget:= caster;
+      SendSysMessagePergon(caster, "Euer Gegner ist Euch überlegen und Schmerzen wühlen durch Euren Kopf",
+      				   				  "Your enemy outmatches you and pain sears your brain");
+   else
+      PlaySoundEffect(caster, SFX_2C);
+      SendSysMessagePergon(caster, "Euer Gegner ist Euch ebenbürtig und der Zauber verflüchtigt sich",
+      				   				  "Your enemy equals you and the spell vanishes");
+      return;
+   endif
+
+   if (resist)		 					// calc spell damage according to spelltargets magic resistance
+      dmg:= CInt(MagicResistance(spelltarget, difficulty, resist, Abs(casterint - castonint), 1));
+   else
+      dmg:= CInt(Abs(casterint - castonint));
+   endif
+
+   PlaySoundEffect(spelltarget, SFX_SPELL_MIND_BLAST);
+   PlayObjectCenteredEffect(spelltarget, FX_CURSE_EFFECT, 10, 15);
+   ApplyRawDamagePergon(spelltarget, dmg);					// apply damage to spelltarget
+
+endprogram

@@ -1,0 +1,85 @@
+/////////////////////////////////////////////////////////
+//
+//   onCreate - Baut die Platform auf und setzt die CProps
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     04.07.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+use uo;
+
+program Setup(altar)
+  var x, y;
+  var item;
+  var platform:={},pentagram:={};
+  For ( x := -1; x <= 1; x+=1 )
+    For ( y := -1; y <= 1; y+=1 )
+      item :=CreateItemAtLocation( altar.x+x, altar.y+y, altar.z,0x6673,1,altar.realm);
+      item.Deactivate();
+      platform.append(item.serial);
+    EndFor
+  EndFor
+  For ( x := -1; x <= 1; x+=1 )
+    item :=CreateItemAtLocation( altar.x+x, altar.y+2, altar.z,0x6673,1,altar.realm);
+    item.graphic:=0x751; item.Deactivate();
+    platform.append(item.serial);
+    item :=CreateItemAtLocation( altar.x+2, altar.y+x, altar.z,0x6673,1,altar.realm);
+    item.graphic:=0x752; item.Deactivate();
+    platform.append(item.serial);
+    item :=CreateItemAtLocation( altar.x+x, altar.y-2, altar.z,0x6673,1,altar.realm);
+    item.graphic:=0x753; item.Deactivate();
+    platform.append(item.serial);
+    item :=CreateItemAtLocation( altar.x-2, altar.y+x, altar.z,0x6673,1,altar.realm);
+    item.graphic:=0x754; item.Deactivate();
+    platform.append(item.serial);
+  EndFor
+  item :=CreateItemAtLocation( altar.x-2, altar.y-2, altar.z,0x6673,1,altar.realm);
+  item.graphic:=0x759; item.Deactivate();
+  platform.append(item.serial);
+  item :=CreateItemAtLocation( altar.x+2, altar.y+2, altar.z,0x6673,1,altar.realm);
+  item.graphic:=0x75A; item.Deactivate();
+  platform.append(item.serial);
+  item :=CreateItemAtLocation( altar.x-2, altar.y+2, altar.z,0x6673,1,altar.realm);
+  item.graphic:=0x75B; item.Deactivate();
+  platform.append(item.serial);
+  item :=CreateItemAtLocation( altar.x+2, altar.y-2, altar.z,0x6673,1,altar.realm);
+  item.graphic:=0x75C; item.Deactivate();
+  platform.append(item.serial);
+
+  item :=CreateItemAtLocation( altar.x, altar.y, altar.z+5,0x6674,1,altar.realm);
+  item.graphic := 0xfea;
+  pentagram.append(item.serial);
+  item :=CreateItemAtLocation( altar.x, altar.y-1, altar.z+5,0x6674,1,altar.realm);
+  item.graphic := 0xfe8;
+  pentagram.append(item.serial);
+  item :=CreateItemAtLocation( altar.x, altar.y+1, altar.z+5,0x6674,1,altar.realm);
+  item.graphic := 0xfec;
+  pentagram.append(item.serial);
+  item :=CreateItemAtLocation( altar.x-1, altar.y, altar.z+5,0x6674,1,altar.realm);
+  item.graphic := 0xfe6;
+  pentagram.append(item.serial);
+  item :=CreateItemAtLocation( altar.x-1, altar.y-1, altar.z+5,0x6674,1,altar.realm);
+  item.graphic := 0xfe7;
+  pentagram.append(item.serial);
+  item :=CreateItemAtLocation( altar.x-1, altar.y+1, altar.z+5,0x6674,1,altar.realm);
+  item.graphic := 0xfe9;
+  pentagram.append(item.serial);
+  item :=CreateItemAtLocation( altar.x+1, altar.y, altar.z+5,0x6674,1,altar.realm);
+  item.graphic := 0xfee;
+  pentagram.append(item.serial);
+  item :=CreateItemAtLocation( altar.x+1, altar.y-1, altar.z+5,0x6674,1,altar.realm);
+  item.graphic := 0xfeb;
+  pentagram.append(item.serial);
+  item :=CreateItemAtLocation( altar.x+1, altar.y+1, altar.z+5,0x6674,1,altar.realm);
+  item.graphic := 0xfed;
+  pentagram.append(item.serial);
+
+  item :=CreateItemAtLocation( altar.x, altar.y, altar.z+5,0x6672,1,altar.realm);
+  item.setprop("pentagram",pentagram);
+  item.setprop("platform",platform);
+endprogram

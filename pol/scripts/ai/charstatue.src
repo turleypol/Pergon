@@ -1,0 +1,171 @@
+/////////////////////////////////////////////////////////
+//
+//   charstatue - MiniKI steht nur dumm rum
+//                kann Posen wechseln
+//                anziehen + ausziehen
+//                Funzt irgendwo zwischen 5.0.4e & 5.0.2b
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     11.07.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+use npc;
+use polsys;
+use uo;
+use os;
+
+Include "include/animal";
+Include "include/eventid";
+Include "include/modifyskill";
+
+Var Me:=Self();
+Var Poses:={{4,0}, //Stand
+            {6,1}, //HandsOnHips
+            {7,0}, //Fighting1
+            {16,2},//Casting
+            {17,4},//PraiseMe
+            {21,5},//Lie backward
+            {22,5},//Lie forward
+            {31,5},//Fighting2
+            {32,2},//Bow
+            {33,1} //Salute
+           };
+Var master:=CInt(Me.getprop("master"));
+
+Program CharacterStatueKI()
+  Var ev;
+  Var packet:=CreatePacket(0xBF,17);
+  Var pose:=CInt(Me.getprop("pose"));
+  If (!pose)
+    pose:=1;
+  EndIf
+  CreatePosePacket(packet,pose);
+  Me.frozen:=1;
+  Me.cmdlevel:=8;  // Damit ich alle sehe
+  Me.concealed:=0;
+  GrantPrivilege(Me,"invul");
+  GrantPrivilege(Me,"seeghosts");
+  GrantPrivilege(Me,"seehidden");
+
+  EnableEvents(SYSEVENT_ENTEREDAREA, 15);
+  EnableEvents(SYSEVENT_DOUBLECLICKED,2);
+  EnableEvents(SYSEVENT_SPEECH,2);
+
+  // Endlosschleife
+  While (1)
+    SleepMs(1);
+    ev:=Wait_for_EventLogging(999);
+    If (ev)
+      Case (ev.type)
+        SYSEVENT_ENTEREDAREA:
+          If (!ev.source.isA(POLCLASS_NPC))
+            packet.sendpacket(ev.source);
+          EndIf
+
+        SYSEVENT_DOUBLECLICKED:
+          If (ev.source.serial==master)
+            pose+=1;
+            If (pose>Poses.size())
+              pose:=1;
+            EndIf
+            Me.setprop("pose",pose);
+            CreatePosePacket(packet,pose);
+            ForEach mob in (ListMobilesNearLocationEx(Me.x,Me.y,LIST_IGNORE_Z,12,
+                                                      LISTEX_FLAG_NORMAL+
+                                                      LISTEX_FLAG_HIDDEN+
+                                                      LISTEX_FLAG_GHOST+
+                                                      LISTEX_FLAG_CONCEALED,Me.realm))
+              If (!mob.isA(POLCLASS_NPC))
+                packet.sendpacket(mob);
+              EndIf
+              SleepMS(2);
+            EndForEach
+          EndIf
+
+        SYSEVENT_SPEECH:
+          If ((ev.source.serial==master) || (ev.source.cmdlevel>=CMDLEVEL_HIGHGM))
+            If (ev.text=="ausziehen")
+              UnEquip_Items(ev.source);
+            ElseIf (ev.text=="anziehen")
+              Equip_Items(ev.source);
+            ElseIf (ev.text=="master")
+              SetMaster(ev.source);
+            EndIf
+          EndIf
+
+        default:
+          Break;
+      EndCase
+    EndIf
+  EndWhile
+EndProgram
+
+Function CreatePosePacket(byref packet,byref pose)
+  packet.setint16(1,0x11);
+  packet.setint16(3,0x19);
+  packet.setint8(5,0x5);
+  packet.setint32(6,Me.serial);
+  packet.setint8(10,0);
+  packet.setint8(11,0xff);
+  packet.setint8(12,1); //status
+  packet.setint8(13,0);
+  packet.setint8(14,Poses[pose][1]);
+  packet.setint8(15,0);
+  packet.setint8(16,Poses[pose][2]); //frames
+EndFunction
+
+Function UnEquip_Items(player)
+  Var vendorequip:=CreateItemInContainerPergon(player.backpack, 0xe75);
+  If (vendorequip)
+    vendorequip.name:="Equipment vom Statue "+Me.name;
+
+    ForEach item in ListEquippedItems(Me)
+      If ((item.layer<>LAYER_HAIR) And (item.layer<>LAYER_BEARD))
+        If (!MoveItemToContainer(item, vendorequip))
+          SendSysMessagePergon(player, "Konnte '"+item.desc+"' nicht ausziehen!", "");
+        EndIf
+      EndIf
+    EndForEach
+
+    SendSysMessagePergon(player, "Schaut in Euren Rucksack nach 'Equipment vom Händler "+Me.name+"'.", "");
+  Else
+    SendSysMessagePergon(player, "Euer Rucksack ist voll!", "");
+  EndIf
+EndFunction
+
+Function Equip_Items(player)
+  SendSysMessagePergon(player, "In welchem Container befindet sich das Equipment?", "");
+
+  Var vendorequip:=Target(player);
+  If (vendorequip.isa(POLCLASS_CONTAINER))
+    ForEach item in EnumerateItemsInContainer(vendorequip)
+      If (!EquipItem(Me, item))
+        SendSysMessagePergon(player, "Konnte '"+item.desc+"' nicht anziehen!", "");
+      EndIf
+    EndForEach
+
+    SendSysMessagePergon(player, Me.name+" wurde eingekleidet.", "");
+  Else
+    SendSysMessagePergon(player, "Dies ist kein Container!", "");
+  EndIf
+EndFunction
+
+Function SetMaster(player)
+  SendSysMessagePergon(player,"Wer soll neuer Master sein?","");
+  var tar:=Target(player);
+  If (tar)
+    If (tar.isA(POLCLASS_MOBILE))
+      If (!tar.isA(POLCLASS_NPC))
+        master:=tar.serial;
+        Me.setprop("master",master);
+        Return;
+      EndIf
+    EndIf
+  EndIf
+  SendSysMessagePergon(player,"Abbruch","Abort");
+EndFunction

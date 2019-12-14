@@ -1,0 +1,21 @@
+
+ [1] Item Decay Criteria
+     An Item is allowed to decay if ALL of the following are true:
+        - it is not In Use
+        - it is Movable, OR it is a Corpse
+        - its 'decayat' member is nonzero 
+            AND the Game Clock has passed this 'decayat' time
+        - it is not supported by a multi,
+            OR its itemdesc.cfg entry specifies 'DecaysOnMultis 1'
+        - it itemdesc.cfg entry specifies no 'DestroyScript', 
+            OR its 'DestroyScript' returns nonzero.
+
+ [2] Decay Action
+     Container contents are moved to the ground at the Container's location
+     before destroying the container.
+
+
+ [3] Decay Sweep
+     Each 64x64 tile World Zone is checked for decay approximately
+     once every 10 minutes
+

@@ -1,0 +1,27 @@
+//
+//  16.10.2003 Fraggulus: 0x7043 nur aufbauen, wenn vorher 0x7045 zerstoert wurde
+//  09.08.2005 Turley: West-Ost Richtung eingefügt
+//  20.12.2005 Turley: Sleep am Anfang damit das Gegenstück auch wirklich existiert
+//
+
+use uo;
+use os;
+
+Include "include/itemnpc";
+Include "tierzucht";
+
+
+program control_WasserTrog_leer(Trog)
+  Sleep(5);
+  If (Trog.objtype==0x7042)
+  	If ((DestroyItemAtLocation(trog.x, trog.y - 1, trog.z, 0x7045)) || (!GetObjProperty(trog, "built")))
+    	CreateItemAtLocationPergon(trog.x, trog.y - 1, trog.z, 0x7043, 1,trog.realm);
+    	SetObjProperty(Trog, "built", 1);
+  	EndIf
+  Else
+		If ((DestroyItemAtLocation(trog.x+1, trog.y, trog.z, 0x7049)) || (!GetObjProperty(trog, "built")))
+    	CreateItemAtLocationPergon(trog.x+1, trog.y, trog.z, 0x7047, 1,trog.realm);
+    	SetObjProperty(Trog, "built", 1);
+  	EndIf
+ 	EndIf
+endprogram

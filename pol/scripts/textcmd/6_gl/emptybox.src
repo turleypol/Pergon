@@ -1,0 +1,51 @@
+///////////////////////////////////////////////////////////////////
+//
+//   TextCMD EmptyBox - Leert einen Container, bis auf SpawnRunen
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+///////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/objtype";
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_EmptyBox(who)
+  Var undestroyable:=0;
+  Var runen:=0;
+
+  SendSysMessagePergon(who, "Wählt den Container, den ihr leeren wollt.", "Choose container to empty.");
+
+  Var container:=Target(who, TGTOPT_NOCHECK_LOS);
+  If (container.isa(POLCLASS_CONTAINER))
+    ForEach item in EnumerateItemsInContainer(container)
+      If (item.objtype<>UOBJ_SPAWNRUNE) // SpawnRunen verschonen
+        If (!DestroyItem(item))
+          undestroyable:=undestroyable+1;
+        EndIf
+      Else
+        runen:=runen+1;
+      EndIf
+    EndForEach
+
+    SendSysMessagePergon(who, "Der Container wurde geleert. "+undestroyable+
+      " konnten nicht zerstört werden und "+runen+" Runen wurden verschont.", "");
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

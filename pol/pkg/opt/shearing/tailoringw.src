@@ -1,0 +1,73 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  tailoringw.src - Serve per creare un thread da 5 wool
+//
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use os;
+use uo;
+
+Include "include/client";
+Include "include/objtype";
+Include "include/itemnpc";
+Include "include/msgs";
+Include "include/modifyskill";
+
+function MakeThread( character, wool )
+
+  // Test to see if the player can reach the targed wool.
+  if (!AccessiblePergon( character, wool ))
+    SendSysMessagePergon( character, "Ihr habt keine Wolle!" );
+    return;
+  endif
+
+  if( wool.amount >= 5 )    //
+                              //
+    //set_critical/( 1 );        //  These lines combat a moved-materials exploit.
+                              //
+    if( wool.amount >= 5 )  //
+       // Create one thread in the players backpack
+       Var thread := CreateItemInBackpackPergon( character, UOBJ_THREAD_START, 1 );
+       if (thread)
+          // if the creation of the thread item was successfull.
+          // Subtract five wool from the players inventory
+          SubtractAmount( wool, 5 );
+          SendSysMessagePergon( character, "Ihr webt etwas Wolle und fertigt eine Garnspule" );
+       endif
+    else
+       SendSysMessagePergon( character, "Ihr habt nicht genug Wolle für das Garn.");
+    endif
+  else
+       SendSysMessagePergon( character, "Ihr habt nicht genug Wolle für das Garn.");
+  endif
+
+endfunction
+
+
+program use_wool( character, wool )
+  SendSysMessagePergon( character, "Wählt das Spinnrad aus" );
+
+  // Ask the player what they wish to use the wool on.
+  Var use_on := Target(character);
+
+  // If they cancel, quit.
+  if (!use_on)
+    return;
+  endif
+
+  // Get the type of object.
+  Var obj_type := GetObjType(use_on);
+
+  if     ( (obj_type == UOBJ_WHEEL1 ) )
+    MakeThread( character, wool);
+  elseif ( (obj_type == UOBJ_WHEEL2 ) )
+    MakeThread( character, wool);
+  elseif ( (obj_type == UOBJ_WHEEL3 ) )
+    MakeThread( character, wool);
+  elseif ( (obj_type == UOBJ_WHEEL4 ) )
+    MakeThread( character, wool);
+  else
+    SendSysMessagePergon( character, "Ihr könnt Wolle nur auf ein Spinnrad anwenden." );
+  endif
+endprogram

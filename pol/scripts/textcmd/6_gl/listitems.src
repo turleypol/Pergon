@@ -1,0 +1,96 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+//   ListItems - List all Items with Scripts in small Range to detect Problems
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+////////////////////////////////////////////////////////////////////////////////
+//
+// Needs:
+//   statics/itemlist_X_Y.cfg
+//
+///////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+use cfgfile;
+use uo;
+use polsys;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/modifyskill";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_ListItems(who)
+  If (!who.isa(POLCLASS_MOBILE) Or who.cmdlevel>=CMDLEVEL_DEVELOPER) // Via Console oder Client
+    Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+    SendSysMessagePergon(who, "ListItems aktiviert...", "ListItems started...");
+    ListArea(who, who.x-10, who.y-10, who.x+10, who.y+10, "itemlist_"+who.x+"_"+who.y);
+    SendSysMessagePergon(who, "ListItems beendet.", "ListItems done.");
+  EndIf
+EndProgram
+
+////////////////////////////////////////
+// ListArea - Durchsucht einen Bereich
+////////////////////////////////////////
+
+Function ListArea(who, x1, y1, x2, y2, cfgname)
+  Var counter:=0;
+
+  Var datafile:=ReadConfigFile("statics/"+cfgname);
+  If (datafile)
+    counter:=GetNextCounterNumber(datafile);
+
+    UnloadConfigFile("statics/"+cfgname);
+  EndIf
+
+  ForEach item in ListObjectsInBox(x1, y1, -128, x2, y2, 127,who.realm)
+    If (item.isa(POLCLASS_ITEM))
+      Var itemdesc:=GetItemDescriptor(item.objtype);
+      If (itemdesc)
+        If ((itemdesc.script) Or (itemdesc.walkonscript) Or (itemdesc.controlscript))
+          Var elem:={};
+          elem.append({"Desc",          item.desc});
+          elem.append({"ObjType",       Lower(Hex(item.objtype))});
+          elem.append({"X",             item.x});
+          elem.append({"Y",             item.y});
+          elem.append({"Z",             item.z});
+          elem.append({"Script",        itemdesc.script});
+          elem.append({"WalkOnScript",  itemdesc.walkonscript});
+          elem.append({"ControlScript", itemdesc.controlscript});
+
+          AppendConfigFileElem("statics/"+cfgname, "SECTION", "ITEM "+counter, elem);
+
+          counter+=1;
+        EndIf
+      EndIf
+    EndIf
+  EndForEach
+
+  SendSysMessagePergon(who, "Die Ergebnisse befinden sich in der 'Pol/config/statics/"+cfgname+".cfg'.",
+    "The results were written into 'Pol/config/statics/"+cfgname+".cfg'.");
+EndFunction
+
+/////////////////////////////////////////////////////////
+// GetNextCounterNumber - Die naechste Nummer ermitteln
+/////////////////////////////////////////////////////////
+
+Function GetNextCounterNumber(datafile)
+  Var counter:=GetConfigStringKeys(datafile);
+  If (Len(counter))
+    Return (Len(counter));
+  Else
+    Return (0);
+  EndIf
+EndFunction

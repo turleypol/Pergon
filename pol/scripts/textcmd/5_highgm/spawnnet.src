@@ -1,0 +1,1644 @@
+/////////////////////////////////////////////////////////
+// spawnnet - TxtCmd für Regionendef vom Spawnnet
+//
+// Author: Turley
+
+Use datafile;
+Use math;
+Use os;
+Use polsys;
+Use uo;
+Use util;
+Include ":spawnnet_new:spawnnet";
+Include "include/msgs";
+Include "include/npc";
+Include "include/objtype";
+Include "include/place";
+Include "include/permissions";
+
+Enum InputRangeStuff
+  REALM_START   := 0x1000,
+  REGION_START  := 0x2000,
+  GROUP_START   := 0x3000,
+  TYPE_START    := 0x4000,
+  ENTRY_START   := 0x5000,
+  ENABLED_START := 0x6000
+EndEnum
+
+Enum Buttons
+  CLOSE_BTN:=0xA4,
+  ADD_REALM_BTN,
+  ADD_REGION_BTN,
+  ADD_GROUP_BTN,
+  DELETE_BTN,
+  SHOW_REALMS_BTN,
+  SHOW_REGIONS_BTN,
+  SHOW_THIS_REGION,
+  SHOW_GROUPS_BTN,
+  SHOW_THIS_GROUP,
+  SEARCH_BTN,
+  VISIT_REGION_BTN,
+  APPLY_BTN,
+  REFRESH_BTN,
+  RESPAWN_BTN,
+  GROUPING_BTN,
+  SAVE_OLD_BTN,
+  CNT_FLUSH_BTN,
+  CNT_TRAP_BTN,
+  CNT_SAVE_OLD_BTN,
+  SHOW_COORDS,
+  SHOW_REGION,
+  SHOW_RUNE
+EndEnum
+
+Enum TextEntries
+  X1_TEXT_POS:=0xF00,
+  Y1_TEXT_POS,
+  X2_TEXT_POS,
+  Y2_TEXT_POS,
+  NAME_TEXT_POS,
+  MINTIME_TEXT_POS,
+  MAXTIME_TEXT_POS,
+  GROUPING_POS,
+  STACK_POS,
+  CONT_POS,
+  GENER_TEXT_START:=0xC000,
+  GENER_TEXT2_START:=0xF000
+EndEnum
+
+Var layout:={};
+Var data:={};
+
+Var RegionData:= OpenDataFile(FILE_REGIONUSER);
+If (!RegionData)
+  RegionData:=CreateDataFile(FILE_REGIONUSER,DF_KEYTYPE_STRING);
+EndIf
+If (!RegionData.FindElement("Realms"))
+  RegionData.CreateElement("Realms");
+EndIf
+Var GroupData:= OpenDataFile(FILE_REGIONGROUPS);
+If (!GroupData)
+  GroupData:=CreateDataFile(FILE_REGIONGROUPS,DF_KEYTYPE_STRING);
+EndIf
+Var RunePosData:= OpenDataFile(FILE_RUNEPOS);
+If (!RunePosData)
+  RunePosData:=CreateDataFile(FILE_RUNEPOS,DF_KEYTYPE_STRING);
+EndIf
+
+Program SpawnerCMD(who)
+  Var input := SHOW_REALMS_BTN;
+  Var cur_menu := SHOW_REALMS_BTN;
+  Var cur_realm, cur_region, cur_group;
+  Var list;
+
+  If (!AllowedToRune(who))
+    SendSysMessagePergon(who,
+      struct{uc_text:=CAscz("Keine Erlaubnis!"),lang:="DEU"},
+      struct{uc_text:=CAscz("No permission!"),lang:="ENU"}
+    );
+    return;
+  EndIf
+
+  If (GetGlobalProperty("#SpawnNetGump"))
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("SpawnNetGump bereits geöffnet"),lang:="DEU"},
+                              struct{uc_text:=CAscz("SpawnNetGump already open."),lang:="ENU"});
+    Return;
+  EndIf
+  SetGlobalProperty("#SpawnNetGump",1);
+
+
+  While ( who.connected )
+    If ( input )
+      If ( cur_menu == SHOW_REALMS_BTN )  // Aufrufen der passenden Fkt
+        input := BuildRealmListGump(who);
+      ElseIf ( cur_menu == SHOW_REGIONS_BTN )
+        input := BuildRegionListGump(who, cur_realm);
+      ElseIf ( cur_menu == SHOW_THIS_REGION )
+        input := BuildRegionGump(who, cur_realm, cur_region);
+      ElseIf ( cur_menu == ADD_REALM_BTN )
+        input := BuildAddRealmGump(who);
+      ElseIf ( cur_menu == ADD_REGION_BTN )
+        input := BuildRegionGump(who, cur_realm);
+      ElseIf ( cur_menu == SHOW_GROUPS_BTN )
+        input := BuildGroupsListGump(who);
+      ElseIf ( cur_menu == ADD_GROUP_BTN )
+        input := BuildGroupGump(who);
+      ElseIf ( cur_menu == SHOW_THIS_GROUP )
+        input := BuildGroupGump(who, cur_group);
+      EndIf
+    EndIf
+
+    // Abhängig vom Return anderes Menü anzeigen
+    If ( (!input) || (input == CLOSE_BTN) )  // winke
+      Break;
+    ElseIf ( input == VISIT_REGION_BTN )
+      VisitRegionCenter(who, cur_region, cur_realm);
+    ElseIf ( input == SHOW_REALMS_BTN )
+      cur_menu := SHOW_REALMS_BTN;
+    ElseIf ( input == ADD_REALM_BTN )
+      cur_menu := ADD_REALM_BTN;
+    ElseIf ( input == ADD_REGION_BTN )
+      cur_menu := ADD_REGION_BTN;
+    ElseIf ( input == SHOW_REGIONS_BTN )
+      cur_menu := SHOW_REGIONS_BTN;
+    ElseIf ( input == SHOW_GROUPS_BTN )
+      cur_menu := SHOW_GROUPS_BTN;
+    ElseIf ( input == ADD_GROUP_BTN )
+      cur_menu := ADD_GROUP_BTN;
+
+    ElseIf ( input == SHOW_RUNE )  // Wechseln zu den Runen
+      If (SpawnRune(who))
+        input := SHOW_REALMS_BTN;
+        cur_menu := SHOW_REALMS_BTN;
+      Else
+        Break;
+      EndIf
+
+    ElseIf ( input >= GROUP_START ) // Der Ganze Button Range Kram...
+      cur_menu := SHOW_THIS_GROUP;
+      list := GroupData.Keys();
+      cur_group := list[input-GROUP_START];
+    ElseIf ( input >= REGION_START )
+      cur_menu := SHOW_THIS_REGION;
+      list:=RegionData.FindElement("Realms").getprop(cur_realm);
+      cur_region := list[input-REGION_START];
+    ElseIf ( input >= REALM_START )
+      cur_menu := SHOW_REGIONS_BTN;
+      list:=RegionData.FindElement("Realms").PropNames();
+      cur_realm := list[input-REALM_START];
+    EndIf
+    SleepMS(2);
+  EndWhile
+  EraseGlobalProperty("#SpawnNetGump");
+EndProgram
+
+///////////////////////////////////////////////
+// BuildGumpTemplate - Basis Gump zusammenbasteln
+///////////////////////////////////////////////
+
+Function BuildGumpTemplate(byref layout, byref data, realm_name:="")
+  layout:={"nodispose",
+           "noclose",
+           "page 0",
+           "resizepic 0 0 3600 840 480",
+           "resizepic 15 15 5054 125 450",
+           "resizepic 145 15 5054 680 450",
+           "button 20 23 2117 2118 1 0 "+SHOW_REALMS_BTN,
+           "text 40 20 2100 0",
+           "button 20 43 2117 2118 1 0 "+ADD_REALM_BTN,
+           "text 40 40 2100 1",
+           "button 20 83 2117 2118 1 0 "+SHOW_GROUPS_BTN,
+           "text 40 80 2100 2",
+           "button 20 103 2117 2118 1 0 "+ADD_GROUP_BTN,
+           "text 40 100 2100 3",
+           "button 20 403 2117 2118 1 0 "+SHOW_RUNE,
+           "text 40 400 1000 4",
+           "button 20 443 2117 2118 1 0 "+CLOSE_BTN,
+           "text 40 440 2100 5"
+          };
+  data:={"Realm Liste","Realm Hinzu","Gruppen Liste","Gruppe Hinzu","SpawnRunen","Schließen"};
+
+  If (realm_name)
+    layout+={"button 20 143 2117 2118 1 0 "+SHOW_REGIONS_BTN,
+             "text 40 140 2100 6",
+             "button 20 163 2117 2118 1 0 "+ADD_REGION_BTN,
+             "text 40 160 2100 7"};
+    data+={"Regionen Liste","Region Hinzu"};
+  EndIf
+EndFunction
+
+///////////////////////////////////////////////
+// BuildRealmListGump - Alle benutzen Realms anzeigen
+///////////////////////////////////////////////
+
+Function BuildRealmListGump(who)
+  Var y_pos := 50;
+  BuildGumpTemplate(layout, data);
+
+  layout.append("htmlgump 145 20 680 20 "+data.size()+" 0 0");
+  data.append("<center>Realm Liste</center>");
+  ForEach realm_name in ( RegionData.FindElement("Realms").PropNames() )
+    layout.append("button 155 "+(y_pos+3)+" 2117 2118 1 0 "+(REALM_START+_realm_name_iter));
+    layout.append("text 175 "+y_pos+" 2100 "+data.size());
+    data.append(Upper(realm_name[1])+realm_name[2,Len(realm_name)-1]);
+    y_pos += 20;
+    SleepMS(2);
+  EndForEach
+
+  Return(SendDialogGump(who,layout,data,50,50)[0]);
+EndFunction
+
+///////////////////////////////////////////////
+// BuildGroupsListGump - Alle Gruppen
+///////////////////////////////////////////////
+
+Function BuildGroupsListGump(who, realm_name:="")
+  Var y_pos := 50;
+  Var counter:=0, page:=1;
+  Var group_list := GroupData.Keys();
+  BuildGumpTemplate(layout,data,realm_name);
+
+  layout.append("htmlgump 145 20 680 20 "+data.size()+" 0 0");
+  data.append("<center>Gruppen Liste</center>");
+  layout.append("page 1");
+  ForEach group_name in ( group_list )
+    If (counter==20)
+      counter:=0;
+      y_pos:=50;
+      page+=1;
+      layout+={"button 796 440 2224 2224 0 "+page+" 0",
+               "page "+page,
+               "button 776 440 2223 2223 0 "+(page-1)+" 0"};
+    EndIf
+    layout.append("button 155 "+(y_pos+3)+" 2117 2118 1 0 "+(GROUP_START+_group_name_iter));
+    layout.append("text 175 "+y_pos+" 2100 "+data.size());
+    data.append(group_name);
+    y_pos += 20;
+    counter+=1;
+    SleepMS(2);
+  EndForEach
+
+  Return(SendDialogGump(who, layout,data,50,50)[0]);
+EndFunction
+
+///////////////////////////////////////////////
+// BuildRegionListGump - Alle Regionen einer Realm
+///////////////////////////////////////////////
+
+Function BuildRegionListGump(who, realm_name)
+  Var y_pos := 50;
+  Var counter:=0, page:=1;
+  Var regionref, userdata;
+  Var color:=1000;
+  Var region_list := RegionData.FindElement("Realms").getprop(realm_name);
+  BuildGumpTemplate(layout,data,realm_name);
+
+  layout.append("htmlgump 145 20 680 20 "+data.size()+" 0 0");
+  data.append("<center>Regionen Liste ["+realm_name+"]</center>");
+  layout.append("page 1");
+
+  ForEach region_name in ( region_list )
+    If (counter==20)
+      counter:=0;
+      y_pos:=50;
+      page+=1;
+      layout+={"button 796 440 2224 2224 0 "+page+" 0",
+               "page "+page,
+               "button 776 440 2223 2223 0 "+(page-1)+" 0"};
+    EndIf
+    regionref:=RegionData.FindElement(region_name);
+    userdata:=regionref.getprop(CPROP_USER);
+
+    color:=1000;  // inaktive Grau aktive Weiss
+    ForEach group in (userdata.groups)
+      If (group.enabled)
+        color:=2100;
+        Break;
+      EndIf
+      SleepMS(2);
+    EndForEach
+    layout.append("button 155 "+(y_pos+3)+" 2117 2118 1 0 "+(REGION_START+_region_name_iter));
+    layout.append("text 175 "+y_pos+" "+color+" "+data.size());
+    data.append(region_name);
+    y_pos += 20;
+    counter+=1;
+    SleepMS(2);
+  EndForEach
+
+  Return(SendDialogGump(who, layout,data,50,50)[0]);
+EndFunction
+
+///////////////////////////////////////////////
+// BuildAddRealmGump - Neue Realm erzeugen
+///////////////////////////////////////////////
+
+Function BuildAddRealmGump(who)
+  Var used_realms := RegionData.FindElement("Realms").PropNames();
+  Var realm_names := Realms().Keys();
+  Var y_pos := 50;
+  Var input,new_realm;
+
+  BuildGumpTemplate(layout,data);
+  layout.append("htmlgump 145 20 680 20 "+data.size()+" 0 0");
+  data.append("<center>Realm Hinzufügen</center>");
+
+  ForEach realm_name in ( realm_names )
+    If ( !(realm_name in used_realms) )  // Nur unbenutzte
+      layout.append("button 155 "+(y_pos+3)+" 2117 2118 1 0 "+_realm_name_iter);
+      layout.append("text 175 "+y_pos+" 2100 "+data.size());
+      data.append(Upper(realm_name[1])+realm_name[2,Len(realm_name)-1]);
+      y_pos += 20;
+    EndIf
+    SleepMS(2);
+  EndForEach
+
+  input := SendDialogGump(who, layout,data,50,50)[0];
+  new_realm := realm_names[input];
+  If ( new_realm )
+    If (new_realm in RegionData.FindElement("Realms").PropNames())
+      GumpPrompt(who, "Realm exisitert bereits.");
+    Else
+      RegionData.FindElement("Realms").setprop(new_realm,{});
+    EndIf
+  EndIf
+
+  Return(input);
+EndFunction
+
+///////////////////////////////////////////////
+// BuildRegionGump - Region anzeigen/ändern
+///////////////////////////////////////////////
+
+Function BuildRegionGump(who, realm_name, region_name:="")
+  Var new_region := (region_name == "");
+  Var regionref:=RegionData.FindElement(region_name);
+  Var userdata:=regionref.getprop(CPROP_USER);
+  Var spawndata:=regionref.getprop(CPROP_DATA);
+  Var group_list, group_names, data_size;
+  Var y_pos, lines, maxlines, page;
+  Var name, group, input, realm;
+  Var position, group_name, maxamt,enable,spawnfactor;
+  Var x1, y1, x2 ,y2, minTime, maxTime;
+  Var temp, todorefresh:={};
+
+  BuildGumpTemplate(layout,data,realm_name);
+
+  If (!userdata)
+    userdata:=struct{koords:={},
+                     mintime:=0,
+                     maxtime:=0,
+                     groups:=dictionary};
+  EndIf
+
+  group_list := userdata.groups;
+  If (!group_list)
+    group_list:=dictionary;
+  EndIf
+  group_names := group_list.Keys();
+
+  data_size:=data.size();
+  layout+={"htmlgump 145 20 680 20 "+data_size+" 0 0",
+           "text 155 50 2100 "+(data_size+1),
+           "resizepic 230 46 2620 245 28"};
+  data+={"<center>Regionen Information ["+realm_name+"]</center>",
+         "Region Name"};
+  If ( new_region )
+    layout.append("textentry 236 50 235 20 2100 "+NAME_TEXT_POS+" "+data.size());
+    data.append("");
+  Else
+    layout.append("text 236 50 1000 "+data.size());
+    data.append(region_name);
+  EndIf
+
+  data_size:=data.size();
+  layout+={"text 155 80 2100 "+data_size,
+           "text 245 80 2100 "+(data_size+1),
+           "resizepic 230 100 2620 45 28",
+           "textentry 236 104 35 20 2100 "+X1_TEXT_POS+" "+(data_size+2),
+           "text 285 80 2100 "+(data_size+3),
+           "resizepic 270 100 2620 45 28",
+           "textentry 276 104 35 20 2100 "+Y1_TEXT_POS+" "+(data_size+4),
+           "text 335 80 2100 "+(data_size+5),
+           "resizepic 320 100 2620 45 28",
+           "textentry 326 104 35 20 2100 "+X2_TEXT_POS+" "+(data_size+6),
+           "text 375 80 2100 "+(data_size+7),
+           "resizepic 360 100 2620 45 28",
+           "textentry 366 104 35 20 2100 "+Y2_TEXT_POS+" "+(data_size+8)};
+  data+={"Koordinaten",
+         "X1",CInt(userdata.koords[1]),
+         "Y1",CInt(userdata.koords[2]),
+         "X2",CInt(userdata.koords[3]),
+         "Y2",CInt(userdata.koords[4])};
+
+  data_size:=data.size();
+  layout+={"text 458 80 2100 "+data_size,
+           "resizepic 465 100 2620 65 28",
+           "textentry 471 104 55 20 2100 "+MINTIME_TEXT_POS+" "+(data_size+1),
+           "resizepic 525 100 2620 65 28",
+           "textentry 531 104 55 20 2100 "+MAXTIME_TEXT_POS+" "+(data_size+2)};
+  data+={"MinZeit/MaxZeit (Min.)",CInt(userdata.mintime),CInt(userdata.maxtime)};
+
+  layout+={"gumppic 165 175 95",
+           "gumppictiled 174 184 622 3 96",
+           "gumppic 796 175 97",
+           "button 425 174 2124 2123 1 0 "+APPLY_BTN,
+           "button 485 175 2722 2723 1 0 "+REFRESH_BTN};
+
+  If ( !new_region )
+    data_size:=data.size();
+    layout+={"page 1",
+             "button 185 153 2117 2118 0 200 0",
+             "text 205 150 2100 "+data_size,
+             "button 340 153 2117 2118 0 300 0",
+             "text 360 150 2100 "+(data_size+1),
+             "text 175 200 2100 "+(data_size+2),
+             "button 155 223 2117 2118 1 0 "+VISIT_REGION_BTN,
+             "text 175 220 2100 "+(data_size+3),
+             "button 155 273 2117 2118 1 0 "+RESPAWN_BTN,
+             "text 175 270 32 "+(data_size+4),
+             "button 155 293 2117 2118 1 0 "+DELETE_BTN,
+             "text 175 290 32 "+(data_size+5)};
+    data+={"Gruppen Einstellungen",
+           "Gruppen Details",
+           "Region Funktionen:",
+           "Gehe zu Regionenzentrum",
+           "ReSpawn Region",
+           "Lösche Region"};
+
+    If (realm_name==REALM_BRITANNIA)  // Nur auf Britannia funzen Karten
+      layout+={"button 155 243 2117 2118 1 0 "+SHOW_COORDS,
+               "text 175 240 2100 "+(data.size())};
+      data+={"Regionenkarte zeichnen"};
+    EndIf
+
+    For (page:=200;page<=201;page+=1) // 2 Seiten a 24 Gruppen = 48
+      data_size:=data.size();
+      layout+={"page "+page,
+               "button 185 153 2117 2118 0 1 0",
+               "text 205 150 2100 "+data_size,
+               "button 340 153 2117 2118 0 300 0",
+               "text 360 150 2100 "+(data_size+1),
+               "text 150 200 2100 "+(data_size+2),
+               "text 225 200 2100 "+(data_size+3),
+               "text 410 200 2100 "+(data_size+4),
+               "text 460 200 2100 "+(data_size+5),
+               "text 530 200 2100 "+(data_size+6),
+               "text 590 200 1000 "+(data_size+7),
+               "text 660 200 1000 "+(data_size+8),
+               "text 750 200 1000 "+(data_size+9),
+               "text 520 150 1000 "+(data_size+10)
+               };
+      data+={"Regionen Funktionen",
+             "Gruppen Details",
+             "Hinzu/Lösch",
+             "Gruppen Name",
+             "Anzahl",
+             "Zeitfaktor",
+             "Aktiviert",
+             "Spawn",
+             "NextSpawn",
+             "LastSpawn",
+             "Momentane Zeit: "+ReadGameClock()};
+      If (page==200)
+        layout.append("button 696 179 2224 2224 0 201 0");
+      Else
+        layout.append("button 690 179 2223 2223 0 200 0");
+      EndIf
+
+      y_pos := 220;
+      If (page==200)
+        lines:=1;
+        maxlines:=12;
+      Else
+        lines:=13;
+        maxlines:=24;
+      EndIf
+      For ( lines; lines<=maxlines; lines+=1 )
+        layout.append("button 170 "+(y_pos+3)+" 2117 2118 1 0 "+(GROUP_START+lines));
+        name := group_names[lines];
+        If ( group_names[lines] )
+          temp:=spawndata.groups[name].serials;
+          If (GroupData.FindElement(name).getprop(D_GROUP_TYPE)==TYPE_CONTAINER)
+            If (spawndata.groups[name].container)
+              temp:=1;
+            Else
+              temp:=0;
+            EndIf
+          ElseIf (temp)
+            temp:=CInt(spawndata.groups[name].serials.size());
+          Else
+            temp:=0;
+          EndIf
+          group := group_list[name];
+          data_size:=data.size();
+          layout+={"text 225 "+y_pos+" 2100 "+data_size,
+                   "textentry 420 "+y_pos+" 40 20 2100 "+(GENER_TEXT_START+lines)+" "+(data_size+1),
+                   "textentry 470 "+y_pos+" 40 20 2100 "+(GENER_TEXT2_START+lines)+" "+(data_size+2),
+                   "checkbox 540 "+y_pos+" 210 211 "+group.enabled+" "+(ENABLED_START+lines),
+                   "text 600 "+y_pos+" 1000 "+(data_size+3),
+                   "text 660 "+y_pos+" 1000 "+(data_size+4),
+                   "text 750 "+y_pos+" 1000 "+(data_size+5)
+                   };
+          spawnfactor:=CStr(CDbl(group.spawn_factor));
+          If (!spawnfactor["."])
+            spawnfactor+=".0";
+          EndIf
+          data+={name,
+                 group.max_amt,
+                 spawnfactor,
+                 temp,  // Current Spawns
+                 CInt(spawndata.groups[name].nextspawn),
+                 CInt(spawndata.groups[name].lastspawn)
+                 };
+        Else
+          layout.append("text 225 "+y_pos+" 2100 "+data.size());
+          data.append("----");
+        EndIf
+
+        y_pos += 20;
+        SleepMS(2);
+      EndFor
+    EndFor
+
+    // Group Details
+    data_size:=data.size();
+    layout+={"page 300",
+             "button 185 153 2117 2118 0 1 0",
+             "text 205 150 2100 "+data_size,
+             "button 340 153 2117 2118 0 200 0",
+             "text 360 150 2100 "+(data_size+1),
+             "htmlgump 170 200 545 250 "+(data_size+2)+" 1 1"};
+    data+={"Regionen Funktionen",
+           "Gruppen Einstellungen",
+           ""};
+    data_size:=data.size();
+
+    ForEach group in (spawndata.groups)
+      data[data_size]+="<basefont size=6 color=#000080><center>"+_group_iter+"</center><basefont size=4 color=#404040>";
+      ForEach obj in (group.serials)
+        temp:=SystemFindObjectBySerial(obj);
+        If (temp.isA(POLCLASS_NPC))
+          data[data_size]+=temp.npctemplate+":<br> "+Hex(temp.serial)+" ("+temp.x+","+temp.y+","+temp.z+")<br>";
+        Else
+          data[data_size]+=temp.desc+" / "+temp.name+":<br> "+Hex(temp.objtype)+" ("+temp.x+","+temp.y+","+temp.z+")<br>";
+        EndIf
+        SleepMS(2);
+      EndForEach
+      If (group.container)
+        temp:=SystemFindObjectBySerial(group.container);
+        If (temp)
+          data[data_size]+=temp.desc+" / "+temp.name+":<br> "+Hex(temp.objtype)+" ("+temp.x+","+temp.y+","+temp.z+")<br>";
+        EndIf
+      EndIf
+    EndForEach
+  EndIf
+
+  input := SendDialogGump(who, layout,data,50,50);  // Na endlich kommt der interessante Kram
+
+  realm:=RegionData.FindElement("Realms").getprop(realm_name);
+
+  If ( input[APPLY_BTN] )  // Speichern
+    If ( new_region )  // Frisch erzeugte also eigentlich nur Name speichern
+      region_name := SplitWords(input[NAME_TEXT_POS],": ")[2];
+
+      If (!realm)
+        GumpPrompt(who, "Fehler Regionerzeugung: Realm nicht gefunden.");
+        Return(SHOW_REGIONS_BTN);
+      EndIf
+      If ((region_name in realm) || (RegionData.FindElement(region_name)))
+        GumpPrompt(who, "Fehler Regionerzeugung: Region existiert bereits.");
+        Return(SHOW_REGIONS_BTN);
+      EndIf
+      realm.append(region_name);
+      RegionData.FindElement("Realms").setprop(realm_name,realm);
+      regionref:=RegionData.CreateElement(region_name);
+      regionref.setprop(CPROP_USER,userdata);
+      regionref.setprop("realm",realm_name);
+      SendSpawnNet(who, region_name, EVID_SPAWNPOINT_ADD);
+
+    Else  // Existente Region also alle Daten auslesen und speichern
+      ForEach key in ( input.keys )
+        If (key>=GENER_TEXT2_START)
+          position:=key-GENER_TEXT2_START;
+          group_name:=group_names[position];
+          If (group_name)
+            spawnfactor:=CDbl(SplitWords(input[key],": ")[2]);
+            If (spawnfactor>0)
+              userdata.groups[group_name].spawn_factor:=spawnfactor;
+            EndIf
+          EndIf
+        ElseIf ( key >= GENER_TEXT_START )
+          position := key-GENER_TEXT_START;
+          group_name := group_names[position];
+          maxamt := CInt(SplitWords(input[key],": ")[2]);
+          If (GroupData.FindElement(group_name).getprop(D_GROUP_TYPE)==TYPE_CONTAINER)
+            If (maxamt>1)  // Max 1 Container
+              maxamt:=1;
+            EndIf
+          EndIf
+          enable := CInt(input[ENABLED_START+position]);
+          If (group_name)
+            If ((userdata.groups[group_name].max_amt<maxamt)
+               || (userdata.groups[group_name].enabled<>enable))
+              // maxamt wurde größer also könnte jetzt was zu spawnen sein
+              // enable hat sich geändert
+              todorefresh.append(group_name);  // Todoliste erweitern
+            EndIf
+            userdata.groups[group_name].max_amt:=maxamt;
+            userdata.groups[group_name].enabled:=enable;
+          EndIf
+        EndIf
+        SleepMS(2);
+      EndForEach
+    EndIf
+    x1 := CInt(SplitWords(input[X1_TEXT_POS],": ")[2]);
+    y1 := CInt(SplitWords(input[Y1_TEXT_POS],": ")[2]);
+    x2 := CInt(SplitWords(input[X2_TEXT_POS],": ")[2]);
+    y2 := CInt(SplitWords(input[Y2_TEXT_POS],": ")[2]);
+    MinMaxSwap(x1,x2);
+    MinMaxSwap(y1,y2);
+    minTime := CInt(SplitWords(input[MINTIME_TEXT_POS],": ")[2]);
+    maxTime := CInt(SplitWords(input[MAXTIME_TEXT_POS],": ")[2]);
+    MinMaxSwap(mintime,maxtime);
+    If (TestNumbers(who,x1,x2,y1,y2,mintime,maxtime))
+      userdata.koords:={x1,y1,x2,y2};
+      userdata.mintime:=mintime;
+      userdata.maxtime:=maxtime;
+      regionref.setprop(CPROP_USER,userdata);
+      ForEach todo in todorefresh // Für alle geänderten Gruppen jetzt nach dem Speichern bescheidgeben
+        SendSpawnNet(who, region_name, EVID_SPAWNPOINT_REFRESH, todo);
+        SleepMS(2);
+      EndForEach
+      GumpPrompt(who, "Regionen setup komplett.");
+    EndIf
+
+  ElseIf (input[REFRESH_BTN] )  // Nix machen nur neuanzeigen
+    Return(SHOW_THIS_REGION);
+
+  ElseIf (input[SHOW_COORDS] )
+    x1 := CInt(SplitWords(input[X1_TEXT_POS],": ")[2]);
+    y1 := CInt(SplitWords(input[Y1_TEXT_POS],": ")[2]);
+    x2 := CInt(SplitWords(input[X2_TEXT_POS],": ")[2]);
+    y2 := CInt(SplitWords(input[Y2_TEXT_POS],": ")[2]);
+    MinMaxSwap(x1,x2);
+    MinMaxSwap(y1,y2);
+    If ((x2==0) || (y2==0))
+      GumpPrompt(who, "Koordinaten ungültig.");
+    Else
+      ShowCoordinates(who,x1,y1,x2,y2,realm_name);
+    EndIf
+    Return(SHOW_THIS_REGION);
+
+  ElseIf ( input[RESPAWN_BTN] )
+    If ( YesNo(who, "Sicher diese Region neu spawnen?") )
+      SendSpawnNet(who,region_name,EVID_SPAWNPOINT_RESPAWN,1);
+      GumpPrompt(who, "Region wird neu gespawned.");
+    EndIf
+
+  ElseIf ( input[DELETE_BTN] )
+    If ( YesNo(who, "Sicher diese Region löschen?") )
+      // Erstmal alles Killen/Löschen
+      ForEach gr in (RegionData.FindElement(region_name).getprop(CPROP_DATA).groups)
+        If (gr.container)  // Container Spawn
+          temp:=SystemFindObjectBySerial(gr.container);
+          If ((temp.getprop(CPROP_NR)[1]==region_name) && (temp.getprop(CPROP_NR)[2]==_gr_iter))
+            DestroyItem(temp);
+          EndIf
+        Else
+          ForEach obj in (gr.serials)
+            obj:=SystemFindObjectBySerial(obj);
+            If (obj)
+              If (obj.isA(POLCLASS_NPC))
+                If ((obj.getprop(CPROP_NR)[1][1]==region_name) && (obj.getprop(CPROP_NR)[1][2]==_gr_iter))
+                  RevokePrivilege(obj, "invul");
+                  obj.setprop("guardkill", 1);
+                  KillMobile(obj, "spawnnet-destroyregion");
+                EndIf
+              Else
+                If ((obj.getprop(CPROP_NR)[1]==region_name) && (obj.getprop(CPROP_NR)[2]==_gr_iter))
+                  DestroyItem(obj);
+                EndIf
+              EndIf
+            EndIf
+            SleepMS(2);
+          EndForEach
+        EndIf
+      EndForEach
+      SendSpawnNet(who, region_name, EVID_SPAWNPOINT_DEL,1,RegionData.FindElement(region_name).getprop(CPROP_DATA).groups);
+      RegionData.DeleteElement(region_name);
+      realm:=RegionData.FindElement("Realms").getprop(realm_name);
+      ForEach r in realm
+        If (r==region_name)
+          realm.erase(_r_iter);
+          Break;
+        EndIf
+        SleepMS(2);
+      EndForEach
+      RegionData.FindElement("Realms").setprop(realm_name,realm);
+      Return(SHOW_REGIONS_BTN);
+    EndIf
+
+  ElseIf ( input[0] >= GROUP_START && input[0] < TYPE_START )
+    position := input[0]-GROUP_START;
+    group_name := group_names[position];
+    If ( group_name )  // Zum Button gibt es schon nen Namen ergo Del
+      If ( YesNo(who, "Sicher diese Gruppe löschen?") )
+        If (RegionData.FindElement(region_name).getprop(CPROP_DATA).groups[group_name].container)  // Container Spawn
+          temp:=SystemFindObjectBySerial(RegionData.FindElement(region_name).getprop(CPROP_DATA).groups[group_name].container);
+          If ((temp.getprop(CPROP_NR)[1]==region_name) && (temp.getprop(CPROP_NR)[2]==group_name))
+            DestroyItem(temp);
+          EndIf
+        Else
+          ForEach obj in (RegionData.FindElement(region_name).getprop(CPROP_DATA).groups[group_name].serials)
+            obj:=SystemFindObjectBySerial(obj);
+            If (obj)
+              If (obj.isA(POLCLASS_NPC))
+                If ((obj.getprop(CPROP_NR)[1][1]==region_name) && (obj.getprop(CPROP_NR)[1][2]==group_name))
+                  RevokePrivilege(obj, "invul");
+                  obj.setprop("guardkill", 1);
+                  KillMobile(obj, "spawnnet-destroyregiongroup");
+                EndIf
+              Else
+                If ((obj.getprop(CPROP_NR)[1]==region_name) && (obj.getprop(CPROP_NR)[2]==group_name))
+                  DestroyItem(obj);
+                EndIf
+              EndIf
+            EndIf
+            SleepMS(2);
+          EndForEach
+        EndIf
+        SendSpawnNet(who, region_name, EVID_SPAWNPOINT_DEL,0,dictionary{group_name->RegionData.FindElement(region_name).getprop(CPROP_DATA).groups[group_name]});
+        userdata.groups.erase(group_name);
+        regionref.setprop(CPROP_USER,userdata);
+      EndIf
+    Else  // Noch kein Name für den Button also Add
+      group := BuildGroupsListGump(who, realm_name);
+      If ( group >= GROUP_START && group < TYPE_START )
+        group := group-GROUP_START;
+        group := GroupData.Keys()[group];
+        If (userdata.groups[group])
+          GumpPrompt(who, "Gruppe existiert bereits.");
+        Else
+          temp:=struct{max_amt:=0,enabled:=0,spawn_factor:=1.0};
+          userdata.groups[group]:=struct;
+          userdata.groups[group]:=temp;
+          regionref.setprop(CPROP_USER,userdata);
+        EndIf
+      EndIf
+    EndIf
+
+    Return(SHOW_THIS_REGION);
+  EndIf
+
+  If ((new_region) && (input[APPLY_BTN]))  // Frisch Erzeugt Region direkt hinwechseln
+    Return(realm.size()+REGION_START);
+  Else
+    Return(input[0]);
+  EndIf
+EndFunction
+
+///////////////////////////////////////////////
+// BuildGroupGump - Gruppe bearbeiten
+///////////////////////////////////////////////
+
+Function BuildGroupGump(who, group_name:="")
+  Var new_group := (group_name == "");
+  Var temp, data_size;
+  Var spawntype_n, spawntype;
+  Var cur_type, y_pos, lines, counter, page;
+  Var cur_entries, cur_flags;
+  Var input, entries, type, entry, result;
+  Var grouping_amnt, stack_amnt, cnt_objtype;
+  Var proz_pos;
+  Var wahrscheinlichkeit;
+
+  BuildGumpTemplate(layout,data);
+  data_size:=data.size();
+  layout+={"htmlgump 145 20 680 20 "+data_size+" 0 0",
+           "text 155 50 2100 "+(data_size+1),
+           "resizepic 230 46 2620 254 28"};
+  data+={"<center>Gruppen Information</center>",
+         "Group Name"};
+
+  If ( !new_group )
+    layout.append("text 236 50 1000 "+data.size());
+    data.append(group_name);
+  Else
+    layout.append("textentry 236 50 235 20 2100 "+NAME_TEXT_POS+" "+data.size());
+    data.append(group_name);
+  EndIf
+
+  data_size:=data.size();
+  layout+={"button 555 50 2124 2123 1 0 "+APPLY_BTN,
+           "text 175 80 2100 "+data_size,
+           "text 375 80 2100 "+(data_size+1),
+           "page 1",
+           "button 155 82 2710 2711 0 200 0",
+           "button 355 82 2710 2711 0 300 0",
+           "button 155 203 2117 2118 1 0 "+DELETE_BTN,
+           "text 175 200 2100 "+(data_size+2),
+           "page 200",
+           "button 155 82 2710 2711 0 1 0",
+           "button 355 82 2710 2711 0 300 0"};
+  data+={"Spawn Typus",
+         "Gruppen Enträge",
+         "Gruppe Löschen"};
+
+  spawntype_n := {"NPC","ITEM","CONTAINER"};
+  spawntype   := {TYPE_NPC,TYPE_ITEM,TYPE_CONTAINER};
+  temp:=GroupData.FindElement(group_name);
+  cur_type := temp.getprop(D_GROUP_TYPE);
+  If (!cur_type)
+    cur_type:=TYPE_NPC;
+  EndIf
+  cur_flags:= temp.getprop(D_GROUP_FLAGS);
+  If (TypeOfInt(cur_flags)==OT_UNINIT)
+    cur_flags:=0x0;
+    cur_flags:=cur_flags | CONTAINER_FLUSH; // Container leeren als Standart
+    cur_flags:=cur_flags | CONTAINER_TRAP;  // Containerfalle als Standart
+  EndIf
+  grouping_amnt:=temp.getprop(D_GROUP_GROUPING);
+  If (TypeOfInt(grouping_amnt)==OT_UNINIT)
+    grouping_amnt:=1;
+  EndIf
+  stack_amnt:=temp.getprop(D_GROUP_STACK);
+  If (TypeOfInt(stack_amnt)==OT_UNINIT)
+    stack_amnt:=1;
+  EndIf
+  cnt_objtype:=temp.getprop(D_CONTAINER_TYPE);
+  If (TypeOfInt(cnt_objtype)==OT_UNINIT)
+    cnt_objtype:=0x0;
+  EndIf
+  y_pos := 110;
+
+  ForEach type in ( spawntype )
+    layout+={"radio 185 "+y_pos+" 210 211 "+(type==cur_type)+" "+(TYPE_START+_type_iter),
+             "text 215 "+y_pos+" 2100 "+data.size()};
+    data.append(spawntype_n[_type_iter]);
+    y_pos += 20;
+    SleepMS(2);
+  EndForEach
+  y_pos+=20;
+  data_size:=data.size();
+  layout+={"text 155 "+y_pos+" 1000 "+data_size,
+           "text 160 "+(y_pos+20)+" 2100 "+(data_size+1),
+           "checkbox 230 "+(y_pos+20)+" 210 211 "+(cur_flags&GROUPING)+" "+GROUPING_BTN,
+           "resizepic 250 "+(y_pos+16)+" 2620 45 28",
+           "textentry 256 "+(y_pos+20)+" 35 20 2100 "+(GROUPING_POS)+" "+(data_size+2)
+           };
+  data+={"Allgemein:","Gruppieren:",grouping_amnt};
+  y_pos+=55;
+  data_size:=data.size();
+  layout+={"text 155 "+y_pos+" 1000 "+data_size,
+           "text 160 "+(y_pos+20)+" 2100 "+(data_size+1),
+           "resizepic 250 "+(y_pos+16)+" 2620 45 28",
+           "textentry 256 "+(y_pos+20)+" 35 20 2100 "+(STACK_POS)+" "+(data_size+2),
+           "text 160 "+(y_pos+45)+" 2100 "+(data_size+3),
+           "checkbox 290 "+(y_pos+45)+" 210 211 "+(cur_flags&SAVE_OLD_ITEMS)+" "+SAVE_OLD_BTN
+           };
+  data+={"Item:", "Stackamount:",stack_amnt,"Alte Items behalten:"};
+  y_pos+=80;
+  data_size:=data.size();
+  layout+={"text 155 "+y_pos+" 1000 "+data_size,
+           "text 160 "+(y_pos+20)+" 2100 "+(data_size+1),
+           "resizepic 260 "+(y_pos+16)+" 2620 65 28",
+           "textentry 266 "+(y_pos+20)+" 55 20 2100 "+(CONT_POS)+" "+(data_size+2),
+           "text 160 "+(y_pos+45)+" 2100 "+(data_size+3),
+           "checkbox 290 "+(y_pos+45)+" 210 211 "+(cur_flags&CONTAINER_FLUSH)+" "+CNT_FLUSH_BTN,
+           "text 160 "+(y_pos+65)+" 2100 "+(data_size+4),
+           "checkbox 290 "+(y_pos+65)+" 210 211 "+(cur_flags&CONTAINER_TRAP)+" "+CNT_TRAP_BTN};
+  data+={"Container:", "Containerobjtype:",Hex(cnt_objtype),
+         "Container leeren:","Containerfalle:"};
+
+  data_size:=data.size();
+  y_pos+=95;
+  layout+={"text 155 "+y_pos+" 1000 "+data_size,
+           "text 160 "+(y_pos+20)+" 2100 "+(data_size+1),
+           "checkbox 230 "+(y_pos+20)+" 210 211 "+(cur_flags&NPC_ANCHOR)+" "+NPC_ANCHOR};
+  data+={"NPC:","Anker:"};
+
+  cur_entries := GroupData.FindElement(group_name);
+  cur_entries:=cur_entries.getprop("EntryList");
+  If (!cur_entries)
+    cur_entries:=dictionary;
+  EndIf
+  counter := 1;
+  proz_pos:=data.size();
+  data.append("%");
+  For (page:=300;page<=301;page+=1)  // 2*16 Templates
+    layout+={"page "+page,
+             "button 155 82 2710 2711 0 200 0",
+             "button 355 82 2711 2710 0 1 0"};
+    If (page==300)
+      layout.append("button 726 440 2224 2224 0 301 0");
+    Else
+      layout.append("button 720 440 2223 2223 0 300 0");
+    EndIf
+    layout.append("text 600 80 1000 "+data.size());
+    data.append("(-1% Templates gleichverteilt)");
+    y_pos := 120;
+
+    For ( lines:=16; lines>0; lines-=1 )  // 16 Templates anzeigen
+      layout+={"resizepic 155 "+(y_pos-4)+" 2620 210 28",
+               "textentry 161 "+y_pos+" 200 20 2100 "+(ENTRY_START+counter)+" "+data.size(),
+               "resizepic 370 "+(y_pos-4)+" 2620 50 28",
+               "textentry 376 "+y_pos+" 40 20 2100 "+(ENABLED_START+counter)+" "+(data.size()+1),
+               "text 422 "+y_pos+" 1000 "+proz_pos};
+      temp:=cur_entries.Keys()[counter];
+      If (temp)
+        If (CStr(CInt(temp))==CStr(temp))  // Nummerisch?
+          data.append(Hex(temp));
+        Else
+          data.append(temp);
+        EndIf
+        data.append(cur_entries[cur_entries.Keys()[counter]]);
+      Else
+        data.append("");
+        data.append("");
+      EndIf
+      counter += 1;
+      layout+={"resizepic 440 "+(y_pos-4)+" 2620 210 28",
+               "textentry 446 "+y_pos+" 200 20 2100 "+(ENTRY_START+counter)+" "+data.size(),
+               "resizepic 655 "+(y_pos-4)+" 2620 50 28",
+               "textentry 661 "+y_pos+" 40 20 2100 "+(ENABLED_START+counter)+" "+(data.size()+1),
+               "text 707 "+y_pos+" 1000 "+proz_pos};
+      temp:=cur_entries.Keys()[counter];
+      If (temp)
+        If (CStr(CInt(temp))==CStr(temp))  // Nummerisch?
+          data.append(Hex(temp));
+        Else
+          data.append(temp);
+        EndIf
+        data.append(cur_entries[cur_entries.Keys()[counter]]);
+      Else
+        data.append("");
+        data.append("");
+      EndIf
+      counter += 1;
+      y_pos += 21;
+      SleepMS(2);
+    EndFor
+  EndFor
+
+  input := SendDialogGump(who,layout,data,50,50);
+
+  If ( input[APPLY_BTN] )
+    If ( new_group )  // Namen speichern
+      group_name := SplitWords(input[NAME_TEXT_POS],": ")[2];
+    EndIf
+
+    type:=0;
+    entries := dictionary;
+    ForEach key in ( input.keys )  // Was wurde denn alles gemacht?
+      If ( key >= TYPE_START && key < ENTRY_START )  // Spawntype
+        type := spawntype[key-TYPE_START];
+      ElseIf ( key >= ENABLED_START )
+        entry:=CInt(SplitWords(input[key],": ")[2]);
+        If (entry)
+          entries[entries.keys()[key-ENABLED_START]]:=entry;
+        Endif
+      ElseIf ( key >= ENTRY_START )  // Template
+        entry := SplitWords(input[key],": ")[2];
+        If ( entry )
+          If (CStr(CInt(entry))==CStr(entry))  // Nummerisch?
+            entries.insert(CInt(entry),-1);
+          ElseIf (Lower(CStr(Hex(entry)))==Lower(CStr(entry)))  // Hex?
+            entries.insert(CInt(entry),-1);
+          Else
+            entries.insert(entry,-1);
+          EndIf
+        EndIf
+      EndIf
+      SleepMS(2);
+    EndForEach
+
+    cur_flags:=0x0;  // Flags setzen
+    If (input[GROUPING_BTN])
+      cur_flags:=cur_flags | GROUPING;
+    EndIf
+    If (input[SAVE_OLD_BTN])
+      cur_flags:=cur_flags | SAVE_OLD_ITEMS;
+    EndIf
+    If (input[CNT_FLUSH_BTN])
+      cur_flags:=cur_flags | CONTAINER_FLUSH;
+    EndIf
+    If (input[CNT_TRAP_BTN])
+      cur_flags:=cur_flags | CONTAINER_TRAP;
+    EndIf
+    If (input[NPC_ANCHOR])
+      cur_flags:=cur_flags | NPC_ANCHOR;
+    EndIf
+
+    grouping_amnt:=CInt(SplitWords(input[GROUPING_POS],": ")[2]);
+    stack_amnt:=CInt(SplitWords(input[STACK_POS],": ")[2]);
+    cnt_objtype:=CInt(SplitWords(input[CONT_POS],": ")[2]);
+    If ( !type )
+      GumpPrompt(who, "Fehler Gruppenerzeugung: Kein Spawntype ausgewählt.");
+      Return(SHOW_GROUPS_BTN);
+    EndIf
+    // Und alles speichern
+    If ( new_group )
+      If (GroupData.FindElement(group_name))
+        GumpPrompt(who, "Fehler Gruppenerzeugung: Gruppe existiert bereits.");
+        Return(input[0]);
+      EndIf
+      If (TestFlags(who, type,grouping_amnt,stack_amnt,cnt_objtype))
+        result:=GroupData.CreateElement(group_name);
+        result.setprop(D_GROUP_TYPE, type);
+        result.setprop(D_GROUP_FLAGS,cur_flags);
+        result.setprop(D_GROUP_GROUPING,grouping_amnt);
+        result.setprop(D_GROUP_STACK,stack_amnt);
+        result.setprop(D_CONTAINER_TYPE,cnt_objtype);
+      Else
+        result:=error;
+      EndIf
+    Else
+      If (TestFlags(who, type,grouping_amnt,stack_amnt,cnt_objtype))
+        result:=GroupData.FindElement(group_name);
+        result.setprop(D_GROUP_TYPE, type);
+        result.setprop(D_GROUP_FLAGS,cur_flags);
+        result.setprop(D_GROUP_GROUPING,grouping_amnt);
+        result.setprop(D_GROUP_STACK,stack_amnt);
+        result.setprop(D_CONTAINER_TYPE,cnt_objtype);
+      Else
+        result:=error;
+      EndIf
+    EndIf
+
+    If ( result != error )
+      result:=GroupData.FindElement(group_name);
+      temp:=0;
+      wahrscheinlichkeit:=0;
+      ForEach entry in entries  // Testen der Wahrscheinlichkeiten
+        If (entry==-1)
+          temp:=temp | 2;
+        Else
+          temp:=temp | 4;
+          wahrscheinlichkeit+=entry;
+        EndIf
+      EndForEach
+      If ((temp & 2) && (temp & 4))
+        GumpPrompt(who,"Kombination aus Gleichverteilt und definierte Wahrscheinlichkeit.");
+      Else
+        If (temp & 4)
+          If (wahrscheinlichkeit <>100)
+            GumpPrompt(who,"Warnung Wahrscheinlichkeit ungleich 100.");
+          EndIf
+        EndIf
+        If (TestGroup(who, entries,type))
+          result.setprop(D_GROUP_ENTRIES,entries);
+          GumpPrompt(who, "Gruppen setup komplett.");
+        EndIf
+      EndIf
+    EndIf
+  ElseIf ( input[DELETE_BTN] )
+    If ( YesNo(who, "Sicher diese Gruppe löschen?") )
+      temp:=0;
+      ForEach region in (RegionData.Keys())  // Aber erstmal testen ob sie nicht noch verwendet wird
+        If (region=="Realms")
+          continue;
+        EndIf
+        If (group_name in RegionData.FindElement(region).getprop(CPROP_USER).groups.Keys())
+          temp:=region;
+        Endif
+        SleepMS(2);
+      EndForEach
+      If (!temp)
+        GroupData.DeleteElement(group_name);
+      Else
+        GumpPrompt(who,"Gruppe noch benutzt von: "+temp);
+      EndIf
+      Return(SHOW_GROUPS_BTN);
+    EndIf
+  EndIf
+  Return(input[0]);
+EndFunction
+
+
+///////////////////////////////////////////////
+// VisitRegionCenter - Mitte einer Region besuchen
+///////////////////////////////////////////////
+
+Function VisitRegionCenter(who, region_name, realm_name)
+  Var region:=(RegionData.FindElement(region_name)).getprop(CPROP_USER);
+  If (!region)
+    GumpPrompt(who, "["+region_name+"] ["+realm_name+"] -> "+region.errortext);
+    Return(0);
+  EndIf
+
+  Var x := ((region.koords[3] - region.koords[1]) / 2) + region.koords[1];
+  Var y := ((region.koords[4] - region.koords[2]) / 2) + region.koords[2];
+  Var z := CInt(GetMapInfo(x, y, realm_name).z);
+
+  Var result := MoveObjectToLocation(who, x, y, z, realm_name, MOVEOBJECT_FORCELOCATION);
+  If ( result.errortext )
+    GumpPrompt(who, "["+region_name+"] ["+x+"] ["+y+"] ["+z+"] ["+realm_name+"] -> "+result.errortext);
+    Return(0);
+  Else
+    GumpPrompt(who, "Tele zu "+realm_name+" X("+x+") Y("+y+") Z("+z+")");
+  EndIf
+
+  Return(1);
+EndFunction
+
+///////////////////////////////////////////////
+// ShowCoordinates - Zeigt ne Karte der Region
+///////////////////////////////////////////////
+
+Function ShowCoordinates(who,x1,y1,x2,y2,realm)
+  If (realm<>REALM_BRITANNIA)
+    GumpPrompt(who,"Nur auf Britannia funktionieren die Karten.");
+    Return;
+  EndIf
+  Var map;
+  var diffx:=x2-x1;
+  var diffy:=y2-y1;
+  var width,height;
+  var radius;
+
+  // minRadius bestimmen
+  radius:=Min(Realms(realm).width-x2,Realms(realm).height-y2);
+  radius:=Min(radius,x1);
+  radius:=Min(radius,y1);
+  radius:=Min(radius,200);
+  radius:=CInt(radius);
+
+  If (diffx>diffy)  // Gumpbreite verzerrungsfrei machen Base 400
+    width:=400;
+    height:=CInt(400.0/(diffx+2*radius)*(diffy+2*radius));
+  Else
+    width:=CInt(400.0/(diffy+2*radius)*(diffx+2*radius));;
+    height:=400;
+  EndIf
+
+  map:=CreateItemInContainer(who.backpack,UOBJ_MAP1,1);
+  map.xwest      := x1-radius;
+  map.ynorth     := y1-radius;
+  map.xeast      := x2+radius;
+  map.ysouth     := y2+radius;
+  map.gumpwidth  := width;
+  map.gumpheight := height;
+  map.editable   := 0;
+  map.appendpin(x1,y1); // Region einzeichnen
+  map.appendpin(x2,y1);
+  map.appendpin(x2,y2);
+  map.appendpin(x1,y2);
+  map.appendpin(x1,y1);
+
+  UseItem(map,who);
+EndFunction
+
+
+///////////////////////////////////////////////
+// GumpPromt - Standart Gumpmeldung
+///////////////////////////////////////////////
+
+Function GumpPrompt(who, text)
+  SendDialogGump(who,{"nodispose",
+                      "noclose",
+                      "page 0",
+                      "resizepic 0 0 3600 300 160",
+                      "resizepic 15 15 5054 270 130",
+                      "htmlgump 20 25 260 120 0 0 0",
+                      "button 120 120 2128 2129 1 0 1"},
+                     {"<center>"+text+"</center>"},180,100);
+EndFunction
+
+///////////////////////////////////////////////
+// YesNo - Standart Ja/Nein Gump
+///////////////////////////////////////////////
+
+Function YesNo(who,promt)
+  Return(SendDialogGump(who,{"nodispose",
+                             "noclose",
+                             "page 0",
+                             "resizepic 0 0 3600 400 150",
+                             "resizepic 15 15 5054 370 120",
+                             "htmlgump 20 20 360 135 0 0 0",
+                             "button 180 93 2117 2118 1 0 1",
+                             "text 200 90 1153 1",
+                             "button 180 113 2117 2118 1 0 0",
+                             "text 200 110 1153 2"},
+                            {"<center>"+promt+"</center>","Ja","Nein"},
+                            140,100)[0]);
+EndFunction
+
+
+///////////////////////////////////////////////
+// TestNumbers - Passen die Zahlen?
+///////////////////////////////////////////////
+
+Function TestNumbers(who,x1,x2,y1,y2,minTime,maxTime)
+  If ((x1<0) || (x2<0) || (y1<0) || (y2<0))
+    GumpPrompt(who,"Ungültiger Koordinatenbereich");
+    Return(0);
+  ElseIf ((minTime<=0) || (maxTime<=0))
+    GumpPrompt(who,"Ungültiger Zeitbereich");
+    Return(0);
+  EndIf
+  Return(1);
+EndFunction
+
+///////////////////////////////////////////////
+// TestFlags - Passen die Flags?
+///////////////////////////////////////////////
+
+Function TestFlags(who, byref type,byref grouping_amnt,byref stack_amnt, byref cnt_objtype)
+  Var spawn;
+  Case (type)
+    TYPE_NPC:
+      If (grouping_amnt<0)
+        GumpPrompt(who,"GroupAmount negativ");
+        Return(0);
+      EndIf
+    TYPE_ITEM:
+      If (grouping_amnt<0)
+        GumpPrompt(who,"GroupAmount negativ");
+        Return(0);
+      EndIf
+      If (stack_amnt<0)
+        GumpPrompt(who,"StackAmount negativ");
+        Return(0);
+      EndIf
+    TYPE_CONTAINER:
+      spawn:=CreateItemAtLocationPergon(5273+RandomInt(16), 1181+RandomInt(7), 0, cnt_objtype, 1, REALM_BRITANNIA);
+      If ((!spawn) || (!spawn.isA(POLCLASS_CONTAINER)))
+        If (spawn)
+          DestroyItem(spawn);
+        EndIf
+        GumpPrompt(who,"Container ungültig");
+        Return(0);
+      EndIf
+      DestroyItem(spawn);
+  EndCase
+  Return(1);
+EndFunction
+
+
+///////////////////////////////////////////////
+// TestGroup - Templates ausprobieren
+///////////////////////////////////////////////
+
+Function TestGroup(who,templates,type)
+  Var spawn;
+  ForEach temp in templates
+    If ((temp>100) || (temp==0))
+      GumpPrompt(who,"Ungültige Wahrscheinlichkeit bei Template: "+_temp_iter);
+      Return(0);
+    EndIf
+    Case (type)
+      TYPE_NPC:
+        spawn:=CreateNpcFromTemplatePergon(_temp_iter, 5280+RandomInt(9), 1182+RandomInt(5), 0);
+        If (!spawn)
+          // auf Wasser-NPC noch testen, falls das createn im Knast nicht geklappt hat
+          spawn:=CreateNpcFromTemplatePergon(_temp_iter, 5273+RandomInt(6), 1181+RandomInt(9), -5);
+        EndIf
+        If (!spawn)
+          GumpPrompt(who,"Ungültiges Template: "+_temp_iter);
+          Return(0);
+        EndIf
+        RevokePrivilege(spawn, "invul");
+        SetObjProperty(spawn, "guardkill", 1);
+        KillMobile(spawn, "spawnnet-test");
+      TYPE_ITEM:
+        spawn:=CreateItemAtLocationPergon(5273+RandomInt(16), 1181+RandomInt(7), 0, _temp_iter, 1, REALM_BRITANNIA);
+        If (!spawn)
+          GumpPrompt(who,"Ungültiger Objtype: "+_temp_iter);
+          Return(0);
+        EndIf
+        DestroyItem(spawn);
+      TYPE_CONTAINER:
+        If (!FindConfigElem(ReadConfigFile("::nlootgroup"), CInt(_temp_iter)))
+          GumpPrompt(who,"Ungültige Lootgruppe: "+_temp_iter);
+          Return(0);
+        EndIf
+    EndCase
+    SleepMS(2);
+  EndForEach
+  Return(1);
+EndFunction
+
+Function SpawnRune(who)
+  Var input := SHOW_REALMS_BTN;
+  Var cur_menu := SHOW_REALMS_BTN;
+  Var cur_realm, cur_region, cur_group;
+  Var list;
+
+  While ( who.connected )
+    If ( input )
+      If ( cur_menu == SHOW_REALMS_BTN )  // Aufrufen der passenden Fkt
+        input := BuildRealmListGumpRune(who);
+      ElseIf ( cur_menu == SHOW_REGIONS_BTN )
+        input := BuildRegionListGumpRune(who, cur_realm);
+      ElseIf ( cur_menu == SHOW_THIS_REGION )
+        input := BuildRegionGumpRune(who, cur_realm, cur_region);
+      ElseIf ( cur_menu == SHOW_THIS_GROUP )
+        input := BuildGroupGumpRune(who, cur_group);
+      EndIf
+    EndIf
+
+    // Abhängig vom Return anderes Menü anzeigen
+    If ( (!input) || (input == CLOSE_BTN) )  // winke
+      Break;
+    ElseIf ( input == SHOW_REALMS_BTN )
+      cur_menu := SHOW_REALMS_BTN;
+    ElseIf ( input == SHOW_REGIONS_BTN )
+      cur_menu := SHOW_REGIONS_BTN;
+    ElseIf ( input == SHOW_GROUPS_BTN )
+      cur_menu := SHOW_GROUPS_BTN;
+
+    ElseIf ( input == SHOW_REGION )  // Wechseln zu den Regionen
+      Return(1);
+
+    ElseIf ( input >= TYPE_START )  // Der Ganze Button Range Kram...
+      list:=RunePosData.FindElement(cur_realm).getprop(cur_region);
+      VisitRune(who,list[input-TYPE_START]);
+    ElseIf ( input >= GROUP_START )
+      cur_menu := SHOW_THIS_GROUP;
+      list := RunePosData.FindElement(cur_realm).getprop(cur_region);
+      cur_group := list[input-GROUP_START];
+    ElseIf ( input >= REGION_START )
+      cur_menu := SHOW_THIS_REGION;
+      list:=RunePosData.FindElement(cur_realm).PropNames();
+      cur_region := list[input-REGION_START];
+    ElseIf ( input >= REALM_START )
+      cur_menu := SHOW_REGIONS_BTN;
+      list:=RunePosData.Keys();
+      cur_realm := list[input-REALM_START];
+    EndIf
+    SleepMS(2);
+  EndWhile
+  Return(0);
+EndFunction
+
+
+///////////////////////////////////////////////
+// BuildGumpTemplateRune - Basis Gump zusammenbasteln ( für SpawnRunen)
+///////////////////////////////////////////////
+
+Function BuildGumpTemplateRune(byref layout, byref data, realm_name:="")
+  layout:={"nodispose",
+           "noclose",
+           "page 0",
+           "resizepic 0 0 3600 760 480",
+           "resizepic 15 15 5054 125 450",
+           "resizepic 145 15 5054 600 450",
+           "button 20 23 2117 2118 1 0 "+SHOW_REALMS_BTN,
+           "text 40 20 2100 0",
+           "button 20 403 2117 2118 1 0 "+SHOW_REGION,
+           "text 40 400 1000 1",
+           "button 20 443 2117 2118 1 0 "+CLOSE_BTN,
+           "text 40 440 2100 2"
+          };
+  data:={"Realm Liste","SpawnRegionen","Schließen"};
+
+  If (realm_name)
+    layout+={"button 20 63 2117 2118 1 0 "+SHOW_REGIONS_BTN,
+             "text 40 60 2100 3"};
+    data+={"Regionen Liste"};
+  EndIf
+EndFunction
+
+
+///////////////////////////////////////////////
+// BuildRealmListGump - Alle benutzen Realms anzeigen
+///////////////////////////////////////////////
+
+Function BuildRealmListGumpRune(who)
+  Var y_pos := 50;
+  BuildGumpTemplateRune(layout, data);
+
+  layout.append("htmlgump 145 20 600 20 "+data.size()+" 0 0");
+  data.append("<center>Realm Liste</center>");
+  ForEach realm_name in ( RunePosData.Keys() )
+    layout.append("button 155 "+(y_pos+3)+" 2117 2118 1 0 "+(REALM_START+_realm_name_iter));
+    layout.append("text 175 "+y_pos+" 2100 "+data.size());
+    data.append(Upper(realm_name[1])+realm_name[2,Len(realm_name)-1]);
+    y_pos += 20;
+    SleepMS(2);
+  EndForEach
+
+  Return(SendDialogGump(who,layout,data,50,50)[0]);
+EndFunction
+
+///////////////////////////////////////////////
+// BuildRegionListGumpRune - Alle Regionen einer Realm (Spawnrunen)
+///////////////////////////////////////////////
+
+Function BuildRegionListGumpRune(who, realm_name)
+  Var y_pos := 50;
+  Var counter:=0, page:=1;
+  Var region_list := RunePosData.FindElement(realm_name).PropNames();
+  BuildGumpTemplateRune(layout,data,realm_name);
+
+  layout.append("htmlgump 145 20 600 20 "+data.size()+" 0 0");
+  data.append("<center>Regionen Liste ["+realm_name+"]</center>");
+  layout.append("page 1");
+
+  ForEach region_name in ( region_list )
+    If (counter==20)
+      counter:=0;
+      y_pos:=50;
+      page+=1;
+      layout+={"button 716 440 2224 2224 0 "+page+" 0",
+               "page "+page,
+               "button 696 440 2223 2223 0 "+(page-1)+" 0"};
+    EndIf
+
+    layout.append("button 155 "+(y_pos+3)+" 2117 2118 1 0 "+(REGION_START+_region_name_iter));
+    layout.append("text 175 "+y_pos+" 2100 "+data.size());
+    data.append(StrReplace(region_name,"_"," "));
+    y_pos += 20;
+    counter+=1;
+    SleepMS(2);
+  EndForEach
+
+  Return(SendDialogGump(who, layout,data,50,50)[0]);
+EndFunction
+
+
+///////////////////////////////////////////////
+// BuildRegionGump - Region anzeigen/ändern
+///////////////////////////////////////////////
+
+Function BuildRegionGumpRune(who, realm_name, region_name)
+  Var y_pos := 80;
+  Var counter:=0, page:=1;
+  Var region_list := RunePosData.FindElement(realm_name).getprop(region_name);
+  Var runeref, data_size;
+  BuildGumpTemplateRune(layout,data,realm_name);
+
+  layout.append("htmlgump 145 20 600 20 "+data.size()+" 0 0");
+  data.append("<center>Runen Liste ["+realm_name+" - "+region_name+"]</center>");
+
+  data_size:=data.size();
+  layout+={"text 150 50 1000 "+(data_size),
+           "text 190 50 1000 "+(data_size+1)};
+  data+={"Goto",
+         "Details"};
+
+  layout.append("page 1");
+
+  ForEach region_name in ( region_list )
+    If (counter==19)
+      counter:=0;
+      y_pos:=80;
+      page+=1;
+      layout+={"button 716 440 2224 2224 0 "+page+" 0",
+               "page "+page,
+               "button 696 440 2223 2223 0 "+(page-1)+" 0"};
+    EndIf
+
+    layout.append("button 155 "+(y_pos+3)+" 2117 2118 1 0 "+(TYPE_START+_region_name_iter));
+    layout.append("button 190 "+(y_pos+3)+" 2117 2118 1 0 "+(GROUP_START+_region_name_iter));
+    layout.append("text 210 "+y_pos+" 2100 "+data.size());
+    runeref:=SystemFindObjectBySerial(region_name);
+    data.append("["+runeref.x+" "+runeref.y+" "+runeref.z+"] "+runeref.name);
+    y_pos += 20;
+    counter+=1;
+    SleepMS(2);
+  EndForEach
+
+  Return(SendDialogGump(who, layout,data,50,50)[0]);
+EndFunction
+
+
+///////////////////////////////////////////////
+// VisitRune - Zu ner Rune gehen
+///////////////////////////////////////////////
+
+Function VisitRune(who, rune)
+  Var runeref:=SystemFindObjectBySerial(rune);
+  If (!runeref)
+    GumpPrompt(who, "["+Hex(rune)+"] -> "+runeref.errortext);
+    Return(0);
+  EndIf
+
+  Var result := MoveObjectToLocation(who, runeref.x, runeref.y, runeref.z, runeref.realm, MOVEOBJECT_FORCELOCATION);
+  If ( result.errortext )
+    GumpPrompt(who, "["+Hex(rune)+"] ["+runeref.x+"] ["+runeref.y+"] ["+runeref.z+"] ["+runeref.realm+"] -> "+result.errortext);
+    Return(0);
+  Else
+    GumpPrompt(who, "Tele zu "+Hex(rune)+" X("+runeref.x+") Y("+runeref.y+") Z("+runeref.z+")");
+  EndIf
+
+  Return(1);
+EndFunction
+
+
+///////////////////////////////////////////////
+// BuildGroupGumpRune - Details der Rune anzeigen
+///////////////////////////////////////////////
+
+Function BuildGroupGumpRune(who, rune)
+  Var data_size;
+  Var userdata,spawndata;
+  Var runeref:=SystemFindObjectBySerial(rune);
+  If (!runeref)
+    GumpPrompt(who, "["+Hex(rune)+"] -> "+runeref.errortext);
+    Return(0);
+  EndIf
+
+  BuildGumpTemplateRune(layout,data,runeref.realm);
+  userdata:=runeref.getprop(CPROP_USER);
+  spawndata:=runeref.getprop(CPROP_DATA);
+
+  layout.append("htmlgump 145 20 600 20 "+data.size()+" 0 0");
+  data.append("<center>Spawnrunen Details ["+Hex(runeref.serial)+"]</center>");
+
+  data_size:=data.size();
+  layout+={"text 150 50 2100 "+data_size,
+           "text 150 70 2100 "+(data_size+1),
+           "text 150 90 2100 "+(data_size+2),
+           "text 150 110 2100 "+(data_size+3),
+           "text 150 130 2100 "+(data_size+4),
+           "text 150 150 2100 "+(data_size+5),
+           "text 150 170 2100 "+(data_size+6),
+           "text 150 190 2100 "+(data_size+7),
+           "text 150 210 2100 "+(data_size+8),
+           "text 150 230 2100 "+(data_size+9),
+           "text 150 250 2100 "+(data_size+10),
+           "text 150 270 2100 "+(data_size+11),
+           "text 150 290 2100 "+(data_size+12),
+           "text 150 320 2100 "+(data_size+13),
+           "text 150 340 2100 "+(data_size+14),
+           "text 150 360 2100 "+(data_size+15)};
+
+  data+={"Min. SpawnZeit:",
+         "Max. SpawnZeit:",
+         "Spawnbereich:",
+         "GesamtZahl:",
+         "GruppenAnzahl:",
+         "Stack Menge:",
+         "SpawnTypus:",
+         "Template:",
+         "TemplateArray:",
+         "Container:",
+         "Notiz:",
+         "Flags:",
+         "QuestNr:",
+         "LastSpawn:",
+         "NextSpawn:",
+         "Verknüpft:"};
+
+  data_size:=data.size();
+  layout+={"text 250 50 1000 "+data_size,
+           "text 250 70 1000 "+(data_size+1),
+           "text 250 90 1000 "+(data_size+2),
+           "text 250 110 1000 "+(data_size+3),
+           "text 250 130 1000 "+(data_size+4),
+           "text 250 150 1000 "+(data_size+5),
+           "text 250 170 1000 "+(data_size+6),
+           "text 250 190 1000 "+(data_size+7),
+           "text 250 210 1000 "+(data_size+8),
+           "text 250 230 1000 "+(data_size+9),
+           "text 250 250 1000 "+(data_size+10),
+           "text 250 270 1000 "+(data_size+11),
+           "text 250 290 1000 "+(data_size+12),
+           "text 250 320 1000 "+(data_size+13),
+           "text 250 340 1000 "+(data_size+14),
+           "text 250 360 1000 "+(data_size+15)};
+
+  data+={userdata.mintime,
+         userdata.maxtime,
+         userdata.range,
+         userdata.amount,
+         userdata.group,
+         userdata.stackamount,
+         "",
+         userdata.template,
+         spawndata.templatearray,
+         userdata.container,
+         userdata.note,
+         "",
+         CInt(userdata.questnr),
+         spawndata.lastspawn,
+         spawndata.nextspawn,
+         Hex(CInt(spawndata.linked))};
+
+  data_size+=7;
+  If (userdata.spawntype==TYPE_NPC)
+    data[data_size]:="NPC";
+  ElseIf (userdata.spawntype==TYPE_ITEM)
+    data[data_size]:="ITEM";
+  Else
+    data[data_size]:="CONTAINER";
+  EndIf
+
+  data_size+=5;
+  If (userdata.flags & GROUPING)
+    data[data_size]+="Gruppieren,";
+  EndIf
+  If (userdata.flags & SAVE_OLD_ITEMS)
+    data[data_size]+="Alte Items behalten,";
+  EndIf
+  If (userdata.flags & NPC_ANCHOR)
+    data[data_size]+="Anker,";
+  EndIf
+  If (userdata.flags & NPC_FROZEN)
+    data[data_size]+="Frozen,";
+  EndIf
+  If (userdata.flags & ITEM_IN_CONTAINER_SPAWN)
+    data[data_size]+="Im Container,";
+  EndIf
+  If (userdata.flags & CONTAINER_MOVING_SPAWN)
+    data[data_size]+="Beweglicher Container,";
+  EndIf
+  If (userdata.flags & CONTAINER_FLUSH)
+    data[data_size]+="Container leeren,";
+  EndIf
+  If (userdata.flags & CONTAINER_TRAP)
+    data[data_size]+="Container Falle,";
+  EndIf
+  data[data_size][Len(data[data_size]),1]:="";
+
+  Return(SendDialogGump(who, layout,data,50,50)[0]);
+EndFunction
+
+Function MinMaxSwap(byref x,byref y)
+  If (x>y)
+    var temp:=y;
+    y:=x;
+    x:=temp;
+  EndIf
+EndFunction

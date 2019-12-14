@@ -1,0 +1,343 @@
+///////////////////////////////////////////////////////////////////////////
+// SysHook - Alle benutzten SysHooks (außer Magiebuch)
+//
+// Author: Shinigami
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use attributes;
+use cfgfile;
+use os;
+use uo;
+use vitals;
+include ":combatabilities:combatabilities";
+include ":musicianship:common";
+include "include/balancing";
+include "include/hitscriptinc";
+include "include/modifyskill";
+include "include/npc";
+
+
+///////////////
+// Konstanten
+///////////////
+
+// Also inkl. AdvancementHooks, HitScript, Animationen etc.pp.
+Const COMBAT_DEFAULT := 0;
+// ... tja, das ganze halt ohne (hmm, wohl 'n externes Script starten ...)
+Const COMBAT_CUSTOM  := 1;
+
+////////////////////////////////////////////////////
+// HookCheckSkillPergon - Prueft und erhoeht Skill
+////////////////////////////////////////////////////
+Exported Function HookCheckSkillPergon(mobile, skillid, difficulty, points)
+  If (skillid==25) // Wurde der Hook direkt vom Zauberbuch aufgerufen?
+    skillid := SKILLID_MAGIE;
+
+   // If (difficulty>50) // Shinigami -> Blockieren
+      return;
+   // EndIf
+  Else // Zauberbuch nicht mitloggen, da bekannt
+    If (DEBUG_CHECKSKILL)
+      If ((!mobile.isa(POLCLASS_NPC)) Or DEBUG_NPC)
+        SysLog("HookCheckSkillPergon("+skillid+")");
+      EndIf
+    EndIf
+  EndIf
+
+  return (CheckSkillPergon(mobile, skillid, difficulty, points));
+EndFunction
+
+//////////////////////////////////////////////////////////
+// HookCombatAdvancementPergon - Angreifer hat getroffen
+//////////////////////////////////////////////////////////
+Exported Function HookCombatAdvancementPergon(attacker, weapon, defender)
+ // SysLog("COMBATDEBUG: HookCombatAdvancementPergon "+attacker.name+" "+GetHPPergon(attacker)+
+ //   " ("+Lower(Hex(weapon.serial))+") -> "+defender.name+" "+GetHPPergon(defender));
+ // If (!attacker.isa(POLCLASS_NPC))
+ //   SendSysMessagePergon(attacker, "Combat: "+attacker.name+"  -> "+defender.name, "", _DEFAULT_TEXT_FONT, 38);
+ // EndIf
+ // If (!defender.isa(POLCLASS_NPC))
+ //   SendSysMessagePergon(defender, "Combat: "+attacker.name+"  -> "+defender.name, "", _DEFAULT_TEXT_FONT, 38);
+ // EndIf
+ // Set_Debug(1);
+
+  If (!attacker.isa(POLCLASS_NPC))
+    MakeAttackSkill(weapon, attacker);
+  EndIf
+
+  If (!defender.isa(POLCLASS_NPC))
+    MakeDefenderSkill(attacker, defender);
+  EndIf
+EndFunction
+
+/////////////////////////////////////////////////////////////
+// HookParryAdvancementPergon - Verteidiger wurde getroffen
+/////////////////////////////////////////////////////////////
+
+Exported Function HookParryAdvancementPergon(attacker, weapon, defender, shield)
+ // SysLog("COMBATDEBUG: HookParryAdvancementPergon "+attacker.name+" "+GetHPPergon(attacker)+
+ //   " ("+Lower(Hex(weapon.serial))+") -> "+defender.name+" "+GetHPPergon(defender)+" ("+Lower(Hex(shield.serial))+")");
+ // If (!attacker.isa(POLCLASS_NPC))
+ //   SendSysMessagePergon(attacker, "Parry: "+attacker.name+"  -> "+defender.name, "", _DEFAULT_TEXT_FONT, 38);
+ // EndIf
+ // If (!defender.isa(POLCLASS_NPC))
+ //   SendSysMessagePergon(defender, "Parry: "+attacker.name+"  -> "+defender.name, "", _DEFAULT_TEXT_FONT, 38);
+ // EndIf
+ // Set_Debug(1);
+
+  If (!attacker.isa(POLCLASS_NPC))
+    If (attacker.cmdlevel >= CMDLEVEL_SEER)
+      SendSysMessagePergon(attacker, "Parry: "+attacker.name+" "+GetHPPergon(attacker)+
+        " -> "+defender.name+" "+GetHPPergon(defender), "", _DEFAULT_TEXT_FONT, 40);
+    EndIf
+  EndIf
+
+  If (!defender.isa(POLCLASS_NPC))
+    MakeParrySkill(attacker, defender);
+  EndIf
+  return;
+  weapon := weapon;
+  shield := shield;
+EndFunction
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+// HookAttackPergon - Standard oder eigene Combat-Routinen benutzen? Sowie Combat initiieren
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+Exported Function HookAttackPergon(attacker, defender)
+  // If (!attacker.isa(POLCLASS_NPC))
+  //   If (attacker.cmdlevel >= CMDLEVEL_SEER)
+  //     SendSysMessagePergon(attacker,
+  //       "Attack: "+attacker.name+" -> "+defender.name, "",
+  //       _DEFAULT_TEXT_FONT, 38
+  //     );
+  //   EndIf
+  // EndIf
+  // If (!defender.isa(POLCLASS_NPC))
+  //   If (defender.cmdlevel >= CMDLEVEL_SEER)
+  //     SendSysMessagePergon(defender,
+  //       "Attack: "+attacker.name+" -> "+defender.name, "",
+  //       _DEFAULT_TEXT_FONT, 38
+  //     );
+  //   EndIf
+  // EndIf
+
+  If (Distance(defender, attacker) <= 2)
+    If (defender.getprop(PROP_AUTOWAR) and !defender.warmode)
+      // Spieler, der noch nicht im Warmode ist, wird angegriffen:
+      // Warmode aktivieren
+      If (!defender.getprop(PROP_MUSIC_BARDING))
+        // nur, wenn man das Lied dadurch nicht kaputtmacht
+        defender.setwarmode(1);
+      EndIf
+    EndIf
+  EndIf
+
+  If (attacker.isA(POLCLASS_NPC))
+    FaceObject(attacker, defender);
+  EndIf
+
+  // Mal eigenen Combat-Code probieren?
+  If (GetObjProperty(attacker, "TESTCOMBAT"))
+    // CombatPergon(attacker, defender);
+    If (GetObjProperty(attacker, "TESTCOMBAT")==1)
+      // Core-Nachbau
+      Start_ScriptPergon("combat", {attacker, defender});
+    Else
+      // Neues "HitScript"
+      Start_ScriptPergon("combatnew", {attacker, defender});
+    EndIf
+
+    return (COMBAT_CUSTOM);
+  Else // Noe, lieber nich...
+    return (COMBAT_DEFAULT);
+  EndIf
+EndFunction
+
+////////////////////////////////////////////////////////////////
+// HookPushthroughPergon - Jemand ist gegen wen anders gerannt
+////////////////////////////////////////////////////////////////
+Const WALK_ALLOW := 1;
+Const WALK_DENY  := 0;
+Exported Function HookPushthroughPergon(walker, obstructors)
+  If (obstructors.size() <= 0)
+    // keine Hindernisse in Sicht
+    return WALK_ALLOW;
+  EndIf
+
+  If (!walker.isa(POLCLASS_NPC) and walker.cmdlevel >= CMDLEVEL_SCRIPTER)
+    SendSysMessagePergon(walker,
+      "Pushthrough: "+walker.name+" -> "+obstructors[1].name+
+      " ("+obstructors.size()+")", "", _DEFAULT_TEXT_FONT, 38
+    );
+  EndIf
+
+  If (walker.dead)
+    // Tote duerfen fast ueberall durch
+    return WALK_ALLOW;
+  EndIf
+
+
+  var i;
+  For (i := 1; i <= obstructors.size(); i += 1)
+    If (
+      // Versteckte ...
+      obstructors[i].hidden or obstructors[i].concealed or
+      // ... oder magische Lichter sind kein Hindernis
+      obstructors[i].npctemplate["magilite"]
+    )
+      obstructors.erase(i);
+      i -= 1;
+    EndIf
+  EndFor
+
+  If (walker.isa(POLCLASS_NPC))
+    // sonst wird man dauernd von Gardisten etc. umgerannt
+    return WALK_DENY;
+  EndIf
+
+  If (obstructors.size() <= 0)
+    // kein Hindernis mehr da
+    return WALK_ALLOW;
+  EndIf
+
+  var nowalk := 0;
+  ForEach mob in (obstructors)
+    If (mob.frozen or mob.paralyzed)
+      // festgetackert ist festgetackert
+      nowalk := 1;
+      break;
+    EndIf
+    var obshp := GetHPPergon(mob);
+    If (GetHPPergon(walker) < obshp)
+      // unser Gegenueber ist stärker
+      nowalk := 1;
+      break;
+    EndIf
+
+    var stamina  := GetStaminaPergon(walker);
+    var stammax  := GetMaxStaminaPergon(walker);
+    // keine kuenstliche Erschoepfung, der boese Client
+    // blockiert Pushtrough im Default-Realm ohnehin, wenn
+    // Stamina nicht voll ist
+    If (stamina < stammax)
+      // da verwendet wohl jemand einen alternativen Client
+      // ohne die Beschraenkung, nicht Uebervorteilen durch
+      // Staminaverlust
+
+      var stamloss := CInt(obshp*0.05);
+      If (stamina - stamloss < 0)
+        // wir sind zu erschöpft
+        nowalk := 1;
+        break;
+      EndIf
+
+      // nicht zu erschöpft, Erschöpfung abziehen
+      SetStaminaPergon(walker, Max(0, stamina - stamloss));
+    EndIf
+  EndForEach
+
+  If (nowalk)
+    // also ist noch jemand im Weg, den wir nicht weggeschubst haben
+    return WALK_DENY;
+  EndIf
+
+  // sonst Schubsanimation und durch
+  ForEach mob in (obstructors)
+    PerformAction(mob, ANIM_DIE_FOR);
+  EndForEach
+  return WALK_ALLOW;
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////////
+// HookSpeechMulPergon - Faengt die Tokens der Speech.mul ab und wandelt sie um
+/////////////////////////////////////////////////////////////////////////////////
+
+Exported Function HookSpeechMulPergon(who, speechtokens, rest)
+  If (speechtokens.size())
+    var text := who.name+": Speech.mul Token ->";
+
+    ForEach token in speechtokens
+      text+=" "+token;
+    EndForEach
+
+    SysLog(rest+"--"+text);
+  EndIf
+EndFunction
+
+/////////////////////////////////////////////////////////////
+// HookHitMissPergon - Angreifer hat daneben geschlagen
+/////////////////////////////////////////////////////////////
+
+Exported Function HookHitMissPergon(attacker, defender)
+//  If (!attacker.isA(POLCLASS_NPC))
+//    If (attacker.getprop(AB_CPROP))
+//      HitMissAttacker(attacker,defender);
+//    EndIf
+//  EndIf
+  If (!defender.isA(POLCLASS_NPC))
+    If (defender.getprop(AB_CPROP))
+      HitMissDefender(attacker,defender);
+    EndIf
+  EndIf
+EndFunction
+
+Function FaceObject(who, ziel)
+  If ((who.x==ziel.x) && (who.y==ziel.y))
+    return;
+  EndIf
+  who.setfacing(GetFacing(who.x, who.y, ziel.x, ziel.y), FACING_FORCE);
+EndFunction
+
+// ab welcher Falltiefe gibt es maximalen Schaden? (3 Etagen)
+Const MAX_DAMAGE_DEPTH  := 60.0;
+// ab welchem Rucksackgewicht gibt es maximalen Schaden?
+Const MAX_DAMAGE_WEIGHT := 500.0;
+// client-seitige Mindestfallhoehe
+Const MIN_FALL_DEPTH    := 22.0;
+Exported Function HookOuch(who, lastx, lasty, lastz)
+  If (who.cmdlevel >= CMDLEVEL_SEER)
+    // dem Staff passiert nix
+    return;
+  EndIf
+
+  var falldepth := lastz - who.z;
+  If (falldepth < MIN_FALL_DEPTH)
+    // der Hook sollte erst ab 22 greifen
+    syslog(
+      "FEHLER: "+CharInfoStr(who, COORDS_REALM)+" ist bei ("+
+      lastx+", "+lasty+") um "+falldepth+" gefallen"
+    );
+    return;
+  EndIf
+
+  // zwischen 0.1 und 0.9 bleiben
+  var factor := Min(
+    Max(array{
+        0.1,
+        CDBl(falldepth - MIN_FALL_DEPTH) / (MAX_DAMAGE_DEPTH - MIN_FALL_DEPTH),
+        CDBl(who.weight) / MAX_DAMAGE_WEIGHT
+    }),
+    0.9
+  );
+
+  // da wir critical sind, Script fuer verzoegerten Schaden starten
+  var params := struct;
+  params.+damage := factor;
+  params.+depth  := falldepth;
+  params.+who    := who;
+
+  Start_ScriptPergon(":attribute:droppage", params);
+  return;
+EndFunction
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program Hook()
+  return (1);
+EndProgram
+
+// vim: sw=2 sts=2

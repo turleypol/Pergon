@@ -1,0 +1,208 @@
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   Archery_Butte - Trainings-Zielscheibe v1.0
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     1999/04/23 TheWriter: First Write
+//     1999/04/25 Racalac:   Projectile Anims added, get some Ammo back
+//     2000/09/19 Shinigami: ReWrite
+//     2002/03/14 TerraX:    Punktevergabe
+//     04.06.2002 Fraggulus: RawPoint-Begrenzung
+//     02.05.2003 Fraggulus: Verzögerung je nach Waffe
+//     13.05.2003 Fraggulus: Ab 100% Skill gibts keine Rawpoints mehr
+//     2004/11/15 Shinigami: Pfeilabzug und -rueckgewinnung in Critical Section verpackt
+//     2004/12/22 Shinigami: Ab 60% Skill gibts keine Rawpoints mehr (Beschluss von PeSt/Jerry - Attentaeter wachsen zu schnell)
+//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+use attributes;
+use cfgfile;
+use os;
+use uo;
+use util;
+
+/////////////
+// Includes
+/////////////
+include "include/modifyskill";
+
+///////////////
+// Konstanten
+///////////////
+
+Const UOBJECT_ARROW:=0xf3f;
+Const UOBJECT_BOLT:=0x1bfb;
+Const AR_der_Scheibe := 2500;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Training_Archery(who, butte)
+  If (!CheckLineOfSight(who, butte))
+    SendSysMessagePergon(who, "Ihr habt kein freies Schussfeld darauf.", "");
+    Return;
+  EndIf
+
+  If (Distance(who, butte)<=2)
+    GrabAmmo(who, butte);
+  Else
+    If (who.weapon.attribute==SKILLID_BOGENSCHIESSEN)
+      Var itemdesc:=ReadConfigFile("::itemdesc");
+      If (itemdesc)
+        Var weapondef:=itemdesc[who.weapon.objtype];
+        If (weapondef.projectiletype in {UOBJECT_ARROW, UOBJECT_BOLT})
+          Var projectile:=CheckForAmmunition(who, weapondef.projectiletype);
+          If (projectile)
+            who.setfacing(GetFacing(who.x, who.y, butte.x, butte.y));
+            TheShot(who, butte, projectile, weapondef);
+          Else
+            SendSysMessagePergon(who, "Ihr habt keine Munition im Rucksack.", "");
+          EndIf
+        Else
+          SendSysMessagePergon(who, "Mit dieser Waffe könnt ihr nicht auf die Zielscheibe schiessen!", "");
+        EndIf
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Ihr müsst einen Bogen oder eine Armbrust in die Hand nehmen.", "");
+    EndIf
+  EndIf
+EndProgram
+
+///////////////////////////////////////////////////
+// GrabAmmo - Munition aus der zielscheibe ziehen
+///////////////////////////////////////////////////
+
+Function GrabAmmo(who, butte)
+  Set_Critical(1); // Damit niemand den Prozess stoert :o)
+
+  Var used_arrows:=GetObjProperty(butte, "arrows");
+  If (!used_arrows)
+    used_arrows:=0;
+  EndIf
+  EraseObjProperty(butte, "arrows");
+
+  Var used_bolts:=GetObjProperty(butte, "bolts");
+  If (!used_bolts)
+    used_bolts:=0;
+  EndIf
+  EraseObjProperty(butte, "bolts");
+
+  Set_Critical(0);
+
+  used_arrows:=CInt(Randomint(CInt(used_arrows/2))+used_arrows/2);
+  used_bolts:=CInt(Randomint(CInt(used_bolts/2))+used_bolts/2);
+
+  CreateItemInBackpackPergon(who, UOBJECT_ARROW, used_arrows);
+  CreateItemInBackpackPergon(who, UOBJECT_BOLT, used_bolts);
+
+  If (used_arrows And used_bolts)
+    SendSysMessagePergon(who, "Ihr zieht "+Endung(used_arrows, "Pfeil", "Pfeile")+" und "+
+      used_bolts+" Bolzen aus der Zielscheibe.", "");
+  ElseIf (used_arrows)
+    SendSysMessagePergon(who, "Ihr zieht "+Endung(used_arrows, "Pfeil", "Pfeile")+" aus der Zielscheibe.", "");
+  ElseIf (used_bolts)
+    SendSysMessagePergon(who, "Ihr zieht "+used_bolts+" Bolzen aus der Zielscheibe.", "");
+  Else
+    SendSysMessagePergon(who, "Ihr findet weder Pfeile noch Bolzen in der Zielscheibe.", "");
+  EndIf
+EndFunction
+
+/////////////////////////////////////////////////////
+// CheckForAmmunition - Munition im Backpack suchen
+/////////////////////////////////////////////////////
+
+Function CheckForAmmunition(who, ammotype)
+  Return(FindObjtypeInContainer(who.backpack,ammotype));
+EndFunction
+
+
+//////////////////////////////////////
+// TheShot - Den Schuss durchfuehren
+//////////////////////////////////////
+
+Function TheShot(who, butte, projectile, weapondef)
+
+  Var Distanz := Distance(who, butte);
+
+  Var qual := 1+(who.weapon.quality)/8.0;
+  Var Waffenschaden := RandomDiceRoll(weapondef.damage) * qual;
+
+  // Berechnung der Referenz des Trefferwerts bei Entfernung 10 Felder,
+  // Bogenschiessen=80%, Taktik=90%, DEX=95, STR=80 pro Waffe
+  Var MaxSchaden:= GetItemDescriptor(who.weapon.objtype).MaxDamage;
+  Var WeaponDelay := weapondef.delay;
+  Var MaxTreffer:=CDbl(((2*80+90)/3.0*MaxSchaden*(3*95+80)/81.0) - AR_der_Scheibe);
+
+  PerformAction(who, weapondef.anim);
+
+  PlayMovingEffectXYZ(who.x, who.y, who.z+9, butte.x, butte.y, butte.z+5, weapondef.projectileanim, 10, 0, 0,who.realm);
+  PlaySoundEffect(who, weapondef.projectilesound);
+  sleep(1);
+
+  // Berechnung der aktuellen Trefferwerts
+  Var Schuss := (2* GetSkillPergon(who, SKILLID_BOGENSCHIESSEN) + GetSkillPergon(who, SKILLID_TAKTIK))/3 * Waffenschaden * (3*GetDexPergon(who) + GetStrPergon(who));
+  Var Treffer := CDbl((Schuss/(Distanz-1)/(Distanz-1)) - AR_der_Scheibe);
+
+  Var Points;
+  Var cheat:=1;  // wurde eingeführt um Skillpuschen auf kurzer Entfernung zu verhindern.
+
+  If (Treffer > 108*MaxTreffer/60)
+      PrintTextAbovePergon(who, who, "10 Punkte! Glückwunsch", "", 3, 0x13);
+      Points:=10;
+        If (Treffer > 2*MaxTreffer)
+            SendSysMessagePergon(who, "Ihr habt das Gefühl, die Scheibe sei viel zu nah.", "", 3, 0x13);
+            cheat:=Treffer/MaxTreffer; Points:=CDbl(Points/cheat);
+        EndIf
+    elseif ((Treffer > 104*MaxTreffer/60) && (Treffer <= 108*MaxTreffer/60)) PrintTextAbovePergon(who, who, "9 Punkte", "", 3, 0xe); Points:=9;
+    elseif ((Treffer >  98*MaxTreffer/60) && (Treffer <= 104*MaxTreffer/60)) PrintTextAbovePergon(who, who, "8 Punkte", "", 3, 0xe); Points:=8;
+    elseif ((Treffer >  90*MaxTreffer/60) && (Treffer <=  98*MaxTreffer/60)) PrintTextAbovePergon(who, who, "7 Punkte", "", 3, 0xe); Points:=7;
+    elseif ((Treffer >  80*MaxTreffer/60) && (Treffer <=  90*MaxTreffer/60)) PrintTextAbovePergon(who, who, "6 Punkte", "", 3, 0xe); Points:=6;
+    elseif ((Treffer >  68*MaxTreffer/60) && (Treffer <=  80*MaxTreffer/60)) PrintTextAbovePergon(who, who, "5 Punkte", "", 3, 0xe); Points:=5;
+    elseif ((Treffer >  54*MaxTreffer/60) && (Treffer <=  68*MaxTreffer/60)) PrintTextAbovePergon(who, who, "4 Punkte", "", 3, 0xe); Points:=4;
+    elseif ((Treffer >  38*MaxTreffer/60) && (Treffer <=  54*MaxTreffer/60)) PrintTextAbovePergon(who, who, "3 Punkte", "", 3, 0xe); Points:=3;
+    elseif ((Treffer >  20*MaxTreffer/60) && (Treffer <=  38*MaxTreffer/60)) PrintTextAbovePergon(who, who, "2 Punkte", "", 3, 0xe); Points:=2;
+    elseif ((Treffer >   0*MaxTreffer/60) && (Treffer <=  20*MaxTreffer/60)) PrintTextAbovePergon(who, who, "1 Punkt",  "", 3, 0xe); Points:=1;
+
+    elseIf (Treffer <= 0); PrintTextAbovePergon(who, who, "Der ging daneben.", ""); Points:=0; PlaySoundEffect(who, weapondef.misssound);
+
+  EndIf
+
+  SubtractAmount(projectile, 1);
+
+  // Vorbereitung der Pfeilrueckgabe bei Treffern
+  If (Treffer>0)
+    Set_Critical(1); // Damit niemand den Prozess stoert :o)
+
+    Case (weapondef.projectiletype)
+      UOBJECT_ARROW: Var used_arrows:=GetObjProperty(butte, "arrows");
+                     If (!used_arrows)
+                       used_arrows:=0;
+                     EndIf
+                     SetObjProperty(butte, "arrows", used_arrows+1);
+
+      UOBJECT_BOLT:  Var used_bolts:=GetObjProperty(butte, "bolts");
+                     If (!used_bolts)
+                       used_bolts:=0;
+                     EndIf
+                     SetObjProperty(butte, "bolts", used_bolts+1);
+    EndCase
+
+    Set_Critical(0);
+  EndIf
+
+  Var Rawpoints := CInt(Points * Points * Distanz * Distanz * 10 / qual / GetSkillPergon(who, SKILLID_BOGENSCHIESSEN) / 3.0);
+  If (GetSkillPergon(who, SKILLID_BOGENSCHIESSEN) >= 80) // war mal 100, die Attentaeter wachsen zu schnell
+      RawPoints := 0;
+  ElseIf (RawPoints > 60)
+    RawPoints := 60 + CInt(WeaponDelay);
+  EndIf
+
+  CheckSkillPergon(who, SKILLID_BOGENSCHIESSEN, -1, Rawpoints);
+  SleepMs(100 + CInt(WeaponDelay*200));
+EndFunction

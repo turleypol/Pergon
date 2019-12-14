@@ -1,0 +1,3 @@
+Mit .move kannst du schnell und einfach alle Gegenstaende aus einem Behaelter in einen anderen Behaelter bewegen (beide muessen im Rucksack sein). Mit .movetype kannst du das auf Gegenstaende eines bestimmtes Typs einschraenken.
+
+Mit .share kannst du den Inhalt eines Beutels gleichmaessig auf andere Beutel aufteilen. Dazu brauchst du hinreichend viele Zielbeutel und eine zusaetzlichen Beutel fuer unteilbare Reste.

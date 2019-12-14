@@ -1,0 +1,255 @@
+///////////////////////////////////////////////////////////////////////////
+// liftnewctrl -- steuert den Lift abhaengig von Signalen
+
+use math;
+use os;
+use uo;
+include "include/eventid";
+include "include/logutil";
+include "include/msgs";
+include "include/properties";
+include "lift";
+
+Program LiftControl(lift)
+    lift.setprop(PROP_LIFT_PID,  GetPid());
+    lift.setprop(PROP_LIFT_MAIN, lift.serial);
+
+    // die Teile, die mitbewegt werden
+    var components  := SerialsToComponents(lift);
+    // bereinigte Liste gleich wieder wegsichern
+    ComponentsToSerials(lift, components);
+    // Serials der Rufsteine auf den Etagen
+    var storeys    := GetObjPropOrDefault(lift, PROP_LIFT_FLOORS, array{});
+    // anzufahrende Zieletage
+    var destz      := lift.z;
+
+    While (lift)
+        SleepMs(2);
+        var moving := 0;
+        var wait   := 300;
+
+        If (destz <> lift.z)
+            // Lift bewegt sich gerade, nicht ewig warten
+            moving := 1;
+            wait   := 0;
+        EndIf
+
+        var ev := Wait_For_Event(wait);
+
+        // gegebenenfalls Lift fahren lassen
+        If (moving)
+            LiftMoveStep(lift, components, destz);
+            // If (destz == lift.z)
+            //     DoorsUnlock(components);
+            // EndIf
+        EndIf
+
+        // Events nur auswerten, wenn auch welche da sind
+        If (!ev or !ev.type)
+            continue;
+        EndIf
+
+        Case (ev.type)
+        EVID_LIFT_CALL: // jemand hat einen Rufstein betreten
+            If (moving)
+                // Ruf unterdruecken, falls Lift gerade unterwegs
+                continue;
+            EndIf
+
+            // zur Etage des Rufsteins fahren
+            If (destz <> ev.storey.z)
+                destz := ev.storey.z;
+                // DoorsCloseAndLock(components, ev.source);
+            EndIf
+
+            // ggf. Rufstein in Etagenliste aufnehmen
+            If (!ev.storey.serial)
+                continue;
+            EndIf
+            If (ev.storey.serial in (storeys))
+                continue;
+            EndIf
+            storeys.append(ev.storey.serial);
+            lift.setprop(PROP_LIFT_FLOORS, storeys);
+
+        EVID_LIFT_MODIFY: // Komponenten soll hinzugefuegt/entfernt werden
+            LiftModify(lift, components, storeys, ev);
+        EndCase
+    EndWhile
+EndProgram
+
+// Faehrt einen Schritt in Richtung Ziel
+Function LiftMoveStep(lift, byref components, dest) // {{{
+    // nach oben oder nach unten fahren?
+    var dir := 1;
+    If (lift.z > dest)
+        dir := -1;
+    EndIf
+
+    // guckt, ob jemand im Aufzug ist
+    var mobfound := 0;
+
+    // alle Liftteile durchgehen
+    ForEach comp in (array{lift}+components)
+        SleepMs(2);
+
+        // Komponenten des Lifts verschieben
+        MoveObjectToLocation(
+            comp, comp.x, comp.y, comp.z + dir, comp.realm,
+            MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+        );
+
+        If (!(comp.objtype in (array{0x70d3, 0x70d4})))
+            // man kann nur auf Addons und dem Lift stehen
+            continue;
+        EndIf
+
+        // auf Leute durchsuchen
+        ForEach mob in (ListMobilesNearLocationEx(
+            comp.x, comp.y, LIST_IGNORE_Z, 0,
+            LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN+
+            LISTEX_FLAG_GHOST+LISTEX_FLAG_CONCEALED, comp.realm
+        ))
+            // nur falls hoehenmaessig in der Naehe
+            If (Abs(mob.z - comp.z) <= 2)
+                mobfound := 1;
+                MoveObjectToLocation(
+                    mob, comp.x, comp.y, comp.z, comp.realm,
+                    MOVEOBJECT_FORCELOCATION
+                );
+            EndIf
+        EndForEach
+    EndForEach
+
+    // ohne Benutzer schneller fahren
+    If (mobfound)
+        SleepMs(500);
+    Else
+        SleepMs(250);
+    EndIf
+EndFunction // }}}
+
+// Rufsteine hinzufuegen, Komponenten hinzufuegen/entfernen
+Function LiftModify(lift, byref components, byref storeys, event) // {{{
+    var item := event["item"];
+    var who  := event["source"];
+
+    If (event[EVTYPE_MODIFY] == EV_MOD_CALLER)
+        // Rufstein hinzufuegen
+
+        // Stein auf Lift verweisen lassen
+        item.setprop(PROP_LIFT_MAIN, lift.serial);
+        // in Etagenliste aufnehmen
+        If (!(item in (storeys)))
+            storeys.append(item.serial);
+            lift.setprop(PROP_LIFT_FLOORS, storeys);
+        EndIf
+        SendSysMessagePergon(who,
+            "Rufstein hinzugefügt", "Caller stone added"
+        );
+        return;
+
+    ElseIf (event[EVTYPE_MODIFY] == EV_MOD_COMPONENT)
+        // Komponenten hinzufuegen/entfernen
+        var remove := item.getprop(PROP_LIFT_MAIN);
+        If (remove)
+            If (remove <> lift.serial)
+                SendSysMessagePergon(who,
+                    "Das gehört zu einem anderen Lift.",
+                    "That belongs to another lift."
+                );
+                return;
+            EndIf
+
+            // Komponente entfernen
+            item.eraseprop(PROP_LIFT_MAIN);
+            var i;
+            For (i := components.size(); i >= 1; i -= 1)
+                If (components[i] == item)
+                    components.erase(i);
+                EndIf
+            EndFor
+
+            // geaenderte Komponentenliste sichern
+            ComponentsToSerials(lift, components);
+
+            SendSysMessagePergon(who,
+                "Komponente entfernt", "Component removed"
+            );
+            return;
+        EndIf
+
+        // Komponente hinzufuegen
+        item.setprop(PROP_LIFT_MAIN, lift.serial);
+        If (!(item in (components)))
+            components.append(item);
+            ComponentsToSerials(lift, components);
+        EndIf
+
+        SendSysMessagePergon(who,
+            "Komponente hinzugefügt", "Component added"
+        );
+        return;
+    EndIf
+
+    syslog(
+        "FEHLER: Unbekanntes Modify-Event bei "+
+        ItemInfoStr(lift, COORDS_REALM)+": "+event
+    );
+EndFunction // }}}
+
+// sucht alle (noch existierenden) Komponenten
+Function SerialsToComponents(lift) // {{{
+    // Serials der Komponenten (Teile, die mitbewegt werden)
+    var compserials := GetObjPropOrDefault(lift, PROP_LIFT_COMP, array{});
+
+    var components := array{};
+
+    ForEach serial in (compserials)
+        SleepMs(2);
+        var  comp := SystemFindObjectBySerial(serial);
+        If (comp)
+            components.append(comp);
+        EndIf
+    EndForEach
+
+    return components;
+EndFunction // }}}
+
+// Serials noch existierender Komponenten sichern
+Function ComponentsToSerials(lift, byref components) // {{{
+    var compserials := array{};
+
+    ForEach comp in (components)
+        If (comp.isa(POLCLASS_UOBJECT))
+            compserials.append(comp.serial);
+        EndIf
+    EndForEach
+
+    lift.setprop(PROP_LIFT_COMP, compserials);
+
+    return compserials;
+EndFunction // }}}
+
+// Tueren des Fahrstuhls schliessen und abschliessen (so er welche hat)
+Function DoorsCloseAndLock(byref components, who) // {{{
+    ForEach comp in (components)
+        SleepMs(2);
+        If (comp.isa(POLCLASS_DOOR))
+            If (comp.isopen())
+                UseItem(comp, who);
+            EndIf
+            comp.locked := 1;
+        EndIf
+    EndForEach
+EndFunction // }}}
+
+// Tueren des Fahrstuhls aufschliessen (so er welche hat)
+Function DoorsUnlock(byref components) // {{{
+    ForEach comp in (components)
+        SleepMs(2);
+        If (comp.isa(POLCLASS_DOOR))
+            comp.locked := 0;
+        EndIf
+    EndForEach
+EndFunction // }}}

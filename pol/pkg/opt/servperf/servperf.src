@@ -1,0 +1,159 @@
+//////////////////////////////////////////////////////////////
+//
+//   ServPerf - Zeichnet verschiedenste Server-Parameter auf
+//
+//     based on ServPerf
+//       Author: louds
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2002/01/09 Shinigami: ReWrite + Bandbreite
+//
+//////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+use os;
+use uo;
+
+///////////////
+// Konstanten
+///////////////
+
+Const HISTORY_HOURS:=     240; //  240 Stunden aufzeichnen
+Const HISTORY_MINUTES:=   300; //  300 Minuten aufzeichnen
+Const HISTORY_BANDWIDTH:=2000; // 2000 Bandbreitenmessungen aufzeichnen
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+Var globalhours;     // "SysServPerfHours"
+Var globalminutes;   // "SysServPerfMinutes"
+Var globalbandwidth; // "SysBandWidth"
+
+Var core:=PolCore();
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Record_Serv_Perf()
+  Var cur_record:={0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  Var last_record;
+
+  // Stunden-Vektor laden
+  globalhours:=GetGlobalProperty("SysServPerfHours");
+  If (!globalhours)
+    globalhours:={};
+  EndIf
+
+  // Minuten-Vektor laden
+  globalminutes:=GetGlobalProperty("SysServPerfMinutes");
+  If (!globalminutes)
+    globalminutes:={1};
+  EndIf
+
+  // Bandbreiten-Vektor laden
+  globalbandwidth:=GetGlobalProperty("SysBandWidth");
+  If (!globalbandwidth)
+    globalbandwidth:={};
+  EndIf
+
+  // Vektor der zuletzt angebrochenen Stunde aufzeichnen?
+  If (globalminutes[1]<>1)
+    Record_Hour();
+    SetGlobalProperty("SysServPerfMinutes", globalminutes);
+  EndIf
+
+  // Endlosschleife
+  While (1)
+    Sleep(60); // 1 Minute warten
+
+    // Letzten Vektor sichern und aktuellen aufzeichnen
+    last_record:=cur_record;
+    cur_record[1]:=core.bytes_sent;                  // bytes sent
+    cur_record[2]:=core.bytes_received;              // bytes received
+    cur_record[3]:=Len(EnumerateOnlineCharacters()); // online players
+    cur_record[4]:=core.skill_checks_per_min;        // skill checks
+    cur_record[5]:=core.events_per_min;              // events per minute
+    cur_record[6]:=core.combat_operations_per_min;   // combat operation per minute
+    cur_record[7]:=core.instr_per_min;               // script instruction per minute
+    cur_record[8]:=core.mobilecount;                 // mobiles
+    cur_record[9]:=core.itemcount;                   // TLI
+    cur_record[10]:=core.sysload;                    // sysload
+    cur_record[11]:=core.sysload_severity;           // sysload severity
+    cur_record[12]:=core.systime;                    // time
+
+    // Inzwischen entstandenes Uebertragungsvolumen ermitteln
+    Var save_data:=cur_record;
+    save_data[1]:=cur_record[1]-last_record[1];      // bytes sent
+    save_data[2]:=cur_record[2]-last_record[2];      // bytes received
+
+    // Bandbreiten-Vektor aktualisieren und sichern
+    globalbandwidth.insert(1, {0, 0, 0, 0, 0, core.systime, 0});
+    globalbandwidth[1][1]:=save_data[1];             // bytes sent
+    globalbandwidth[1][2]:=save_data[2];             // bytes received
+    If (cur_record[3])
+      // bytes sent pro Spieler
+      globalbandwidth[1][3]+=CInt(save_data[1]/cur_record[3]);
+      // bytes received pro Spieler
+      globalbandwidth[1][4]+=CInt(save_data[2]/cur_record[3]);
+    EndIf
+    globalbandwidth[1][5]:=core.uptime;              // uptime
+    globalbandwidth[1][7]:=cur_record[3];            // Spieleranzahl
+    // Bandbreiten-Vektor erweitern
+    globalbandwidth.shrink(HISTORY_BANDWIDTH);
+    SetGlobalProperty("SysBandWidth", globalbandwidth);
+
+    // Minuten-Vektor sichern
+    globalminutes.insert(2, save_data);
+    globalminutes.shrink(HISTORY_MINUTES+1);
+
+    // Vektor einer vollen Stunde aufzeichnen?
+    If (globalminutes[1]==60)
+      Record_Hour();
+    EndIf
+
+    // Minuten-Vektor speichern
+    SetGlobalProperty("SysServPerfMinutes", globalminutes);
+
+    // Minuten-Zaehler weiterzaehlen
+    globalminutes[1]:=globalminutes[1]+1;
+  EndWhile
+EndProgram
+
+/////////////////////////////////////////////////////////
+// Record_Hour - Vektor einer vollen Stunde aufzeichnen
+/////////////////////////////////////////////////////////
+
+Function Record_Hour()
+  Var save_data:={0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, core.systime};
+
+  // Werte der vollen Stunde aufaddieren
+  For minute:=1 To globalminutes[1]
+    For param:=1 To 11
+      save_data[param]+=globalminutes[minute][param];
+    EndFor
+  EndFor
+
+  // Durchschnittswerte pro Minute bilden (ohne Uebertragungsvolumen und Zeit)
+  Var divisor:=globalminutes[1]*1.0;
+  For param:=3 To 11
+    save_data[param]:=CDbl(CDbl(save_data[param])/divisor);
+  EndFor
+
+  // Stunden-Vektor speichern
+  globalhours.insert(1, save_data);
+  globalhours.shrink(HISTORY_HOURS);
+  SetGlobalProperty("SysServPerfHours", globalhours);
+
+  // Uebertragungsvolumen dieser Sitzung protokolieren
+  SysLog("Bandbreite... IN = "+globalbandwidth[1][2]+" OUT = "+globalbandwidth[1][1]);
+
+  // Minuten-Zaehler zuruecksetzen
+  globalminutes[1]:=1;
+EndFunction

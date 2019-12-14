@@ -1,0 +1,74 @@
+//**************************************************************************************************
+// Script file lightning.src
+//
+//    implements spell 112 <Lightning> - "Blitz"
+//
+//	fires lightning bolt on spelltarget - deals more air(lightning) damage
+//		 [ Reflected / Resisted (Elemental - Air) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 30.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use vitals;
+
+Include "../magicpergon";
+Include "../resistance";
+Include "../spellattack";
+Include "include/packets";
+
+program cast_lightning (params)
+
+   Var caster;
+   Var caston;
+   Var spelltarget;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_MAGE_LIGHTNING);
+   Var resist;
+   Var dmg:=    spell.primary;
+   Var mindmg:= spell.primarymin;
+   Var maxdmg:= spell.primarymax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+      send_attack(caston, caster, 112);
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_MAGE_LIGHTNING);      
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+																	// get spelltarget -> possible spell reflection
+   spelltarget:= ReflectSpell(caster, caston, dmg, 2, 0, 0, 0, 0, SFX_29);
+
+   if (spelltarget)
+      resist:= 1 - CDbl(GetResistance(spelltarget, "air"));		// get air resistance of spelltarget
+      dmg:= CInt(power*resist*dmg/100.0);								// calc and alter spell damage
+      if (mindmg and mindmg > dmg)
+         dmg:= mindmg;
+      elseif (maxdmg and maxdmg < dmg)
+         dmg:= maxdmg;
+      endif
+      ApplyRawDamagePergon(spelltarget, dmg);								// apply damage to spelltarget
+   endif
+
+endprogram

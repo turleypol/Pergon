@@ -1,0 +1,52 @@
+///////////////////////////////////////////////////////////////////////////
+// mushroomcreate -- Pilzen beim Erzeugen einen zufaelligen Giftwert geben
+
+use os;
+use uo;
+include "include/logutil";
+include "include/poison";
+
+Const PROP_POSSIBILITY := "poison_poss";
+Const ALLOW_CREATE     := 1;
+
+Program MushroomCreate(mushroom)
+  // Wahrscheinlichkeit, dass der Pilz vergiftet ist
+  var possible := mushroom.getprop(PROP_POSSIBILITY);
+
+  If (!possible or CInt(possible) == 0)
+    syslog(
+      "FEHLER: "+ItemInfoStr(mushroom)+" fehlt die CProp "+
+      PROP_POSSIBILITY+" oder hat keinen sinnvollen Wert ("+possible+")"
+    );
+    // Property loeschen, da nicht mehr benoetigt/ausgewertet
+    mushroom.eraseprop(PROP_POSSIBILITY);
+
+    // trotzdem erzeugen, aber eben ohne Gift
+    return ALLOW_CREATE;
+  EndIf
+
+  // nur ab gewisser Wahrscheinlichkeit wird wirklich vergiftet
+  If (possible >= RandomInt(100))
+    // Giftlevel (1 .. 10) berechnen
+    var poisonlevel := Max(1, Min(10, CInt(
+            (
+              // Haelfte immer setzen
+              (possible/2.0) +
+              // andere Haelfte Zufall
+              RandomInt(possible/2)
+            // Giftwert etwas reduzieren
+            ) /10
+    )));
+
+    // Benutzbarkeits-Flag fuer Vergiften-Skill setzen
+    mushroom.setprop(PROP_IS_POISON, 1);
+
+    // Wahrscheinlichkeit durch Giftwert ersetzen
+    mushroom.setprop(PROP_POIS_LVL, poisonlevel);
+  EndIf
+  mushroom.eraseprop(PROP_POSSIBILITY);
+
+  return ALLOW_CREATE;
+EndProgram
+
+// vim: sw=2 sts=2

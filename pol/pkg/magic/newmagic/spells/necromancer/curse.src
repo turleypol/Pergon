@@ -1,0 +1,119 @@
+//**************************************************************************************************
+// Script file curse.src
+//
+//    implements spell 303 <Curse> - "Verfluchen"
+//
+//  lowers all attributes (INT, DEX, STR) of spelltarget
+//    [ Reflected / Resisted (Magic) ]
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+Include "include/spellcheck";
+Include "../magicpergon";
+Include "../spellattack";
+
+program cast_curse (params)
+
+   Var caster;
+   Var caston;
+   Var spelltarget;
+
+   Var spells:= ReadConfigFile("::spells");                 // load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_NECRO_CURSE);
+   Var difficulty:= spell.skill;
+   Var resist:= spell.resist;
+   Var dmg:=    spell.primary;
+   Var mindmg:= spell.primarymin;
+   Var maxdmg:= spell.primarymax;
+   Var dur:=    spell.duration;
+   Var mindur:= spell.durationmin;
+   Var maxdur:= spell.durationmax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+      dur:=spell.npcduration;
+      send_attack(caston, caster, 303);
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_NECRO_CURSE);
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+                                  // get spelltarget -> possible spell reflection
+   spelltarget:= ReflectSpell(caster, caston, dmg, 1, FX_CURSE_EFFECT, 5, 15, 0, SFX_SPELL_CURSE);
+
+   if (GetObjProperty(spelltarget, "spell_curse"))        // check if spelltarget can be cursed
+      SendSysMessagePergon(caster, "Euer Ziel ist bereits verflucht", "Your target already has been cursed");
+      return;
+   endif
+
+   if (spelltarget)
+      if (resist)   // calc spelleffects according to spelltargets magic resistance and casting power
+         dmg:= CInt(MagicResistance(spelltarget, difficulty, resist, power*dmg/100.0, 1));
+         dur:= CInt(MagicResistance(spelltarget, difficulty, resist, power*dur/100.0, 0));
+      else
+         dmg:= CInt(power*dmg/100.0);
+         dur:= CInt(power*dur/100.0);
+      endif
+
+      if (mindmg and mindmg > dmg)
+         dmg:= mindmg;
+      elseif (maxdmg and maxdmg < dmg)
+         dmg:= maxdmg;
+      endif
+      if (mindur and mindur > dur)
+         dur:= mindur;
+      elseif (maxdur and maxdur < dur)
+         dur:= maxdur;
+      endif
+              // get average amount of attribute change
+      If (caster.isa(POLCLASS_NPC))
+        dmg:=CInt((GetIntBasePergon(spelltarget)+GetDexBasePergon(spelltarget)+GetStrBasePergon(spelltarget))*dmg/300);
+      Else
+        dmg:= CInt((GetIntPergon(spelltarget) + GetDexPergon(spelltarget) + GetStrPergon(spelltarget)) * dmg / 300);
+      EndIf
+      var modifystruct:=struct{spelltarget:=0,
+                               int:=0,
+                               dex:=0,
+                               str:=0,
+                               cprop:=struct{name:="",value:={}},
+                               CastPower:={}};
+      modifystruct.spelltarget:=spelltarget;
+      modifystruct.int:=-dmg;
+      modifystruct.dex:=-dmg;
+      modifystruct.str:=-dmg;
+      modifystruct.cprop.value:={};
+      modifystruct.cprop.value[1]:= ReadGameClock() + dur;
+      modifystruct.cprop.value[2]:= dmg;
+      modifystruct.cprop.value[3]:= "curse";
+      modifystruct.cprop.value[6]:= ReadMilliSecondClock();
+      modifystruct.cprop.value[7]:= GetSkillPergon(caster, SKILLID_FLUCHEN);
+      modifystruct.cprop.value[8]:= power;
+      modifystruct.cprop.name:="spell_curse";
+      modifystruct.CastPower:={{spelltarget,"Magie",dmg,"","",1}};
+
+      SendSpellWaiter(spelltarget, "spell_curse", dur, modifystruct.cprop.value[6], spelltarget,modifystruct);
+   endif
+
+endprogram

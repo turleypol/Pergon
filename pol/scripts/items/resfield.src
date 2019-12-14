@@ -1,0 +1,38 @@
+// Shinigami
+
+use uo;
+use os;
+
+Include "include/modifyskill";
+Include "include/poison";
+Include "include/vitals";
+
+Const EFFECT_SPARKLE:=0x373a;
+Const SOUND_EFFECT_RES:=0x215;
+
+Program ResField(mobile)
+  //Set_Critical/(1);
+
+  If (mobile.dead)
+    If (ResNow(mobile)==1)
+      PlaySoundEffect(mobile, SOUND_EFFECT_RES); // was already here
+
+      SetPoisonLevel(mobile, 0);
+
+      ResurrectPergon(mobile); // same
+      ResPenalties(mobile);
+
+      PlayObjectCenteredEffect(mobile, EFFECT_SPARKLE, 10, 10); // same
+
+      If (!GetObjProperty(mobile, "toadmode"))
+        mobile.graphic:=mobile.trueobjtype;
+        mobile.color:=mobile.truecolor;
+      Else
+        mobile.graphic:=0x51;
+        mobile.color:=1425;
+      EndIf
+    EndIf
+  Else
+    SendSysMessagePergon(mobile, "Ihr seid eins mit dem Universum ...");
+  EndIf
+EndProgram

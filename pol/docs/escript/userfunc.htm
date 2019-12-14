@@ -1,0 +1,141 @@
+<html>
+
+<head>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+<title>User-defined functions</title>
+</head>
+
+<body>
+
+<h1>User-defined functions</h1>
+
+<h2>General Form</h2>
+
+<table border="1" width="100%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="50%"><pre>
+FUNCTION function-name(parameters)
+    statement-block
+ENDFUNCTION
+</pre>
+    </td>
+    <td width="50%">0 or more parameters can be defined.</td>
+  </tr>
+</table>
+
+<p>A <em>statement-block</em> is zero or more statements.&nbsp; Variables can be declared
+here, and will go out of scope when the <em>statement-block</em> is exited.</p>
+
+<p>Note, this construct uses <a href="fbracket.htm">fully bracketed syntax</a>. </p>
+
+<p>Parameters can have default values specified, by adding &quot;<strong>:= [default_value</strong>]&quot;.
+&nbsp; See below for examples.&nbsp; Default parameter values must be single scalar values
+- an integer, a real, or a string.</p>
+
+<p>Parameters may also be passed by name.&nbsp; Once a parameter has been passed by name,
+remaining parameters must all be passed by name, or have default values and not be
+specified.</p>
+
+<p>Examples</p>
+
+<table border="1" width="100%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="50%"><pre>function foo()
+    print( &quot;foo&quot; );
+endfunction
+foo();</pre>
+    </td>
+    <td width="50%"><pre>foo
+</pre>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>function foo()
+    print( &quot;foo&quot; );
+    print( &quot;bar&quot; );
+endfunction
+foo();</pre>
+    </td>
+    <td width="50%"><pre>foo
+bar
+</pre>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>function foo( a )
+    print( &quot;hello &quot; + a );
+    print( &quot;bar&quot; );
+endfunction
+foo( 5 )
+foo( &quot;world&quot; );</pre>
+    </td>
+    <td width="50%"><pre>hello 5
+bar
+hello world
+bar</pre>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>function foo( a := &quot;world&quot; )
+    print( &quot;hello &quot; + a );
+endfunction
+foo( 5 );
+foo();</pre>
+    </td>
+    <td width="50%"><pre>hello 5
+hello world
+</pre>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>function foo( a := &quot;hello&quot;, b := &quot;world&quot; )
+    print( a + &quot; &quot; + b );
+endfunction
+foo();
+foo( b := &quot;sailor&quot;);
+foo( &quot;so long&quot; );
+foo( a := &quot;so long&quot; );
+foo( &quot;goodbye&quot;, b := &quot;all&quot; );</pre>
+    </td>
+    <td width="50%"><pre>hello world
+hello sailor
+so long world
+so long world
+goodbye all
+</pre>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>function foo( a := &quot;hello&quot;, b := &quot;world&quot; )
+    print( a + &quot; &quot; + b );
+endfunction
+foo( a := &quot;stuff&quot; , &quot;it&quot;);
+</pre>
+    </td>
+    <td width="50%">An error! Since <strong><font face="Courier New">a</font></strong> was
+    passed by name, <font face="Courier New"><strong>b</strong></font> must be passed by name
+    or by default. </td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>function foo( a := 6 / 3, b := &quot;blah&quot; )
+    print( a + &quot; &quot; + b );
+endfunction
+foo()
+</pre>
+    </td>
+    <td width="50%"><pre>2 blah
+
+</pre>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">&nbsp;</td>
+    <td width="50%">&nbsp;</td>
+  </tr>
+  <tr>
+    <td width="50%">&nbsp;</td>
+    <td width="50%">&nbsp;</td>
+  </tr>
+</table>
+</body>
+</html>

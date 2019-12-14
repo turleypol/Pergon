@@ -1,0 +1,56 @@
+// Mehdorns Spuckscript
+// basiert auf Fischwurfscript
+//
+// Modifications:
+// 2008-04-21 mehdorn       erstellt
+
+// TODO:
+//      - danebenspucken?
+
+use os;
+use uo;
+use util;
+include "include/client";
+include "include/mobile";
+include "include/msgs";
+
+Const SPIT_FEMALE := 0x335;
+Const SPIT_MALE   := 0x447;
+
+/////////////////
+// Main Program
+/////////////////
+
+Program Spit(char, item)
+    If (item.objtype != 0x1003)
+        SendSysMessagePergon(char, "Das ist nicht zum Spucken gedacht.");
+        Return;
+    EndIf
+
+    If (!CheckLineOfSight(char, item))
+        SendSysMessagePergon(char, "Das ist was im Weg.");
+        Return;
+    EndIf
+
+    If (Distance(char, item) > 5)
+        SendSysMessagePergon(char, "Das ist zu weit weg.");
+        Return;
+    EndIf
+        
+    Detach();
+    PrintTextAbovePergon(char, char, "*spuck*");
+    If (char.gender == GENDER_MALE)
+        PlaySoundEffect(char, SPIT_MALE);
+    Else
+        PlaySoundEffect(char, SPIT_FEMALE);
+    EndIf
+
+    PlayMovingEffectXYZ(
+        char.x, char.y, char.z+15,
+        item.x, item.y, item.z,
+        0x09ea, 4, 0, 0, char.realm
+    );
+
+    Sleep(1);
+    PrintTextAbovePergon(char, item, "*flatsch*");
+EndProgram

@@ -1,0 +1,45 @@
+//
+// Zeigt oder versteckt global alle Spawnrunen
+//
+//
+// 03.11.2005 Fraggulus: .GlobalHide und .GlobalShow in .ToggleShowRunes vereint
+//
+
+Use uo;
+Use polsys;
+
+Include "include/msgs";
+Include "include/objtype";
+
+program TextCmd_ToggleShowRunes(who, toggle)
+
+  If (toggle == "?")
+    SendSysMessagePergon(who, "USAGE: .toggleshowrune <0|1>", "USAGE: .toggleshowrune <0|1>");
+    Return;
+  EndIf
+
+  Var counter := 0;
+  toggle:=CInt(toggle);
+
+
+  ForEach rune in (ListObjectsInBox(0,0,-128,Realms(who.realm).width,Realms(who.realm).height,127,who.realm))
+  	If (rune.isa(POLCLASS_ITEM)) // Ist es ein Item?
+			If (rune.objtype==UOBJ_SPAWNRUNE)
+        If (toggle)
+          rune.graphic := 0x1;
+        Else
+          rune.graphic := 0x20f8;
+        EndIf
+        counter += 1;
+      EndIf
+    EndIf
+    SleepMS(2);
+  EndForEach
+
+
+  If (toggle)
+    SendSysMessagePergon(who,"Insg. " + counter + " Runen versteckt.", counter + " runes hided.");
+  Else
+    SendSysMessagePergon(who,"Insg. " + counter + " Runen aufgedeckt.", counter + " runes revealed.");
+  EndIf
+endprogram

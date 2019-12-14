@@ -1,0 +1,87 @@
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//  poisoncontrol.src - Control Script for PoisonFields
+//
+//  Modifications:
+//
+//  21.01.2002 - Bihinos - Rewrite for new Magic
+//  09.02.2004 - Bihinos - removed creator as scriptcontroller (misused by players)
+//                         minor changes
+//   01.09.2004 - Seppel - maxpoisonlevel added
+//  16.03.2005 - Seppel  - creator als scriptcontroller wieder angeschaltet (wurde ausgenutzt bei Playern)
+//  2005/06/03 Shinigami: Bugfix gegen Endlosschleife, falls das Item schon zerstoert wurde
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+use uo;
+use os;
+use cfgfile;
+
+Include "include/pergonutil";
+Include "include/client";
+Include "include/poison";
+
+Program PoisonControl (item)
+
+  Var fields:= ReadConfigFile("magicfields");     // read Config-File for magic fields
+
+  if (fields)
+
+    SleepMS(50);                        // wait 50 ms to get CProps set on item
+
+    Var boss:= SystemFindObjectBySerial(CInt(GetObjProperty(item, "creator"))); // get creator of field
+    if (boss) // make creator attacker
+      SetScriptController(boss);
+    endif
+
+    Var fielddata:= FindConfigElem(fields, "poison");                 // get field data from Config
+    Var dmg:= CInt(GetObjProperty(item, "f") * fielddata.dmg / 100);        // read and calc fields base damage
+    Var maxlevel:= CInt(GetObjProperty(item, "f") * fielddata.maxlevel / 100);  //read an calc fields max damage
+    Var int:= CInt(fielddata.int);                                // read interval of attack
+    item.setprop("maxlevel",maxlevel);
+    item.setprop("dmg",dmg);  // Speichern für nächstesmal
+    item.setprop("int",int);
+
+    Set_Priority(1);
+
+    if (dmg < 1)    // min damage
+      dmg:= 1;
+    endif
+
+    If (!item)
+      Return;
+    EndIf
+    Var mobiles:=ListMobilesNearLocation(item.x, item.y, item.z, 0,item.realm);   // get possible victims
+    while (mobiles.size() And item)
+      foreach mobile in mobiles
+        If (mobile.getprop("ignorefields"))  // DynDungeon Vieh ignoriert alle Felder
+          continue;
+        EndIf
+        if (!mobile.dead)                             // no damage to ghosts
+          PlayObjectCenteredEffect(mobile, FX_CURSE_EFFECT, 10, 5);
+          PrintTextAbovePrivatePergon(mobile, "Ihr wurdet vergiftet", "You have been poisoned", mobile);
+
+          if (GetPoisonLevel(mobile) < maxlevel)          // check if poisonlevel is below maxlevel
+            if ((GetPoisonLevel(mobile) + dmg) > maxlevel)  // check if poisonlevel would be raised above maxlevel
+              SetPoisonLevel(mobile, maxlevel, boss);     // set poisonlevel to maxlevel
+            else
+              AddPoisonLevel(mobile, dmg, boss);            // poison mobile
+            endif
+          endif
+
+        endif
+      endforeach
+
+      SleepMS(int);             // sleep interval
+
+      If (!item)
+        Return;
+      EndIf
+      mobiles:= ListMobilesNearLocation(item.x, item.y, item.z, 0,item.realm);  // get possible victims again
+    endwhile
+
+  else
+    SysLog("FEHLER: MagicFields-ConfigFile nicht gefunden!");
+  endif
+
+EndProgram

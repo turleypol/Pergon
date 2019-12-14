@@ -1,0 +1,214 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file push.src
+//
+// implements spell 304 <Push> - "Wegstossen"
+//
+// moves spelltarget randomly (hopefully away from caster)
+// [ Resisted (Magic) ]
+
+include "../magicpergon";
+include "../resistance";
+use util;
+Const ENOROOM := "No room to push victim";
+//Const ESTATUE := "Statues cannot be pushed";
+
+Program CastPush(params)
+  var caster;
+  var caston;
+  var power;
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  := params[3];
+    caston := params[4];
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_NECRO_PUSH);
+    caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  // waehrend Zielauswahl verstorben?
+  If (!caster or caster.dead)
+    return;
+  EndIf
+
+  // load spelldata
+  var spells := ReadConfigFile("::spells");
+  var spell  := FindConfigElem(spells, SPELLID_NECRO_PUSH);
+
+  // calc range
+  var range := CInt(power*spell.range/100.0);
+  If (spell.rangemin and spell.rangemin > range)
+    range := spell.rangemin;
+  ElseIf (spell.rangemax and spell.rangemax < range)
+    range := spell.rangemax;
+  EndIf
+
+  If (caston == caster)
+    // alle um sich herum wegschubsen
+    PerformAction(caster, ANIM_CAST_AREA);
+    RoundPushing(caster, range, spell.resist, spell.diff);
+    return;
+  EndIf
+
+  //If (GetObjProperty(caston, "spell_statue"))
+  //  SendSysMessagePergon(caster,
+  //    "Die Statue ist zu schwer, um sie wegzustossen.",
+  //    "The statue is to heavy to be pushed away."
+  //  );
+  //  return;
+  //EndIf
+
+  // einzelnen Mobile schubsen {{{
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_DIR);
+
+  If (Distance(caster, caston) > range)
+    SendSysMessagePergon(caster,
+      "Euer Ziel ist außerhalb Eures Machtbereiches",
+      "Your target is beyond the reach of your power"
+    );
+    return;
+  EndIf
+
+  // reduce range via magic resistance of mobile
+  range := ReduceRange(caston, range, spell.diff, spell.resist);
+  If (range == 0)
+    SendSysMessagePergon(caster,
+      "Der Willen Eures Opfers ist zu stark!",
+      "The mind of your enemy is too strong!"
+    );
+    return;
+  EndIf
+
+  // calc current movement of spelltarget
+  var coords := GetPushDirection(caster, caston, range);
+  var result := SetToLandingPoint(caster, caston, coords);
+  If (result == error)
+    SendSysMessagePergon(caster,
+      "Ihr konntet Euer Ziel nicht wegstossen.",
+      "You were unable to push away your target."
+    );
+  EndIf
+  // }}}
+EndProgram
+
+Function RoundPushing(caster, roundrange, resist, diff) // {{{
+  Sleep(5);
+  If (!caster or caster.dead)
+    return;
+  EndIf
+
+  var mobiles := ListMobilesInLineOfSight(caster, roundrange);
+  ForEach mobile in mobiles
+    SleepMS(2);
+    If (!mobile or mobile.dead)
+      continue;
+    EndIf
+
+    // reduce range via magic resistance of mobile
+    var range := ReduceRange(mobile, roundrange, diff, resist);
+    If (range == 0)
+      continue;
+    EndIf
+
+    // calc current movement of spelltarget
+    var coords := GetPushDirection(caster, mobile, range);
+    SetToLandingPoint(caster, mobile, coords);
+  EndForEach
+EndFunction // }}}
+
+// Abhaengig von Magieresistenz Wirkungsbereich des Zaubers kuerzen
+Function ReduceRange(caston, range, diff, resist) // {{{
+  If (!resist)
+    return range;
+  EndIf
+
+  range := MagicResistance(caston, diff, resist, range, 1);
+  If (!range)
+    return 0;
+  EndIf
+  return CInt(range);
+EndFunction // }}}
+
+// Pushpfad passender Maximallaenge vom Caster weg besorgen
+Function GetPushDirection(caster, caston, range) // {{{
+  var delta_x := caston.x - caster.x;
+  var delta_y := caston.y - caster.y;
+  var ratio;
+  If (abs(delta_x) >= abs(delta_y))
+    ratio := abs(delta_x)*1.0 / range;
+  Else
+    ratio := abs(delta_y)*1.0 / range;
+  EndIf
+  var x_mod := CInt(delta_x / ratio);
+  var y_mod := CInt(delta_y / ratio);
+
+  return GetCoordsInLine(
+    caston.x, caston.y,
+    caston.x+x_mod, caston.y+y_mod
+  );
+EndFunction // }}}
+
+// herausfinden, wie weit der Push-Pfad benutzbar ist, und Mobile plazieren
+Function SetToLandingPoint(caster, mobile, coords) // {{{
+  //If (GetObjProperty(mobile, "spell_statue"))
+    // Statuen sind zu schwer zum Schubsen
+  //  return error{errortext := ESTATUE};
+  //EndIf
+
+  // gucken, wie weit mobile schubsbar ist in der Richtung
+  var firstcantmove := coords.size();
+  var i;
+  // Position, auf der NPC steht, ueberspringen -> i := 2
+  var lastz := mobile.z;
+  For (i := 2; i <= coords.size(); i += 1)
+    SleepMS(2);
+    var z := CanWalk(
+      mobile.movemode,
+      coords[i-1].x, coords[i-1].y, lastz,
+      coords[i].x, coords[i].y, mobile.realm
+    );
+    If (z == error)
+      firstcantmove := i;
+      break;
+    EndIf
+    lastz := z;
+  EndFor
+
+  If (firstcantmove <= 2)
+    // effektiv keine Bewegung, Abbruch
+    return error{errortext := ENOROOM};
+  EndIf
+
+  // verschieben
+  var result := MoveObjectToLocation(mobile,
+    coords[firstcantmove-1].x, coords[firstcantmove-1].y,
+    lastz, mobile.realm, MOVEOBJECT_NORMAL
+  );
+  If (result == error)
+    // unerwarteter Fehler
+    syslog(
+      "FEHLER: Zielberechnung fehlerhaft: "+result.errortext+" - "+
+      CharInfoStr(caster, COORDS_REALM)+" auf "+
+      CharInfoStr(mobile, COORDS_REALM)+
+      " - Ziel ["+coords[firstcantmove-1].x+", "+coords[firstcantmove-1].y+
+      ", "+lastz+"; "+mobile.realm+"]"
+    );
+  EndIf
+
+  return result;
+EndFunction // }}}
+
+// vim: sw=2 sts=2

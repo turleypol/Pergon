@@ -1,0 +1,78 @@
+// kleines Programm fuer Scheckvergabe, aufgerufen vom Baenker
+
+use math;
+use uo;
+use util;
+include "include/bank";
+include "include/msgs";
+include "include/stringcalc";
+
+Program Scheck(param)
+  
+  var acct := GetAccountBalance(param.bankbox);
+  If (acct == "0")
+    PrintTextAbovePrivatePergon(
+      param.banker,
+      "Euer Konto ist leider leer.", "",
+      param.customer
+    );
+    return;
+  EndIf
+ 
+  var betrag := SendTransactionGump(param.customer, "Wieviel Gold wollt Ihr auf einen Scheck buchen?", 
+     acct, "(Maximal "+acct+" Goldstücke möglich)"
+  );
+  If (!betrag)
+    return;
+  EndIf
+  
+    If (GetObjProperty(param.customer, CPROP_GOLD_TRANS))
+        PrintTextAbovePrivatePergon(
+            param.banker,
+            "Es läuft doch bereits eine Transaktion!", "",
+            param.customer
+        );
+        return;
+    EndIf
+    SetObjProperty(param.customer, CPROP_GOLD_TRANS, 1);
+
+    var cheqdesc := GetItemDescriptor(0x66b2);
+    cheqdesc.+cprops := dictionary{};
+    cheqdesc.cprops[CPROP_GOLD_ACCT] := betrag;
+    var cheque := CreateItemInBackpackPergon(param.customer, cheqdesc, 1);
+    If (!cheque)
+        PrintTextAbovePrivatePergon(
+            param.banker,
+            "Entschuldigt, da ging etwas schief.",
+            "",
+            param.customer
+        );
+        syslog("FEHLER: "+cheque.errortext);
+        StopTransaction(param.customer, cheque);
+        return;
+    EndIf
+
+    // nur bei Erfolg, vielleicht ist auch Container voll
+    acct := StrSubtraktion(acct, betrag);
+    cheque.name := "Scheck ueber "+betrag+" Goldstuecke";
+    SetObjProperty(param.bankbox, CPROP_GOLD_ACCT, acct);
+
+    PrintTextAbovePrivatePergon(
+        param.banker,
+        "Ihr habt einen Scheck über "+betrag+" Goldstücke erhalten.",
+        "",
+        param.customer
+    );
+    PrintTextAbovePrivatePergon(
+        param.banker,
+        "Euer Kontostand beträgt nun "+acct+" Goldstücke.", "",
+        param.customer
+    );
+    syslog(
+        "GOLDKONTO: Stand "+acct+" (ausgezahlt (Scheck): "+betrag+
+        ") durch "+param.customer.name+" ("+Hex(param.customer.serial)+")"
+    );
+    // Result ist ein Dummy
+    StopTransaction(param.customer, cheque);
+    return;
+EndProgram

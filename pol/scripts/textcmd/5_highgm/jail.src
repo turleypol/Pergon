@@ -1,0 +1,54 @@
+/*
+*****************************************************************
+*              jail.src                                         *
+*                Simple Jail System 1.01                        *
+*                by bzagh                                       *
+*                                                               *
+*****************************************************************
+*/
+//
+//  28.04.2002 Fraggulus: Umstellung auf AutoJail()
+//  28.04.2003 Fraggulus: es kann eine Zeit bestimmt werden, die der Proband im Knast zu verbringen hat.
+//                        loggt er sich nach dieser Zeit ein, wird er dann automatisch entlassen
+//
+
+Use uo;
+Use os;
+Use util;
+
+Include "include/pergonutil";
+Include "include/msgs";
+Include "include/modifyskill";
+
+Program TextCMD_Jail(who, param)
+ // If (who.cmdlevel >= CMDLEVEL_HIGHGM)
+    If ((param!=0) && (!IsNumeric(param) || !param))
+      SendSysMessagePergon(who, "USAGE: .jail [Knastzeit]", "USAGE: .jail [JailTime]");
+      SendSysMessagePergon(who, "Knastzeit = 0: unbegrenzter Aufenthalt", "JailTime = 0: Stay in jail for an unlimited time");
+      SendSysMessagePergon(who, "Knastzeit > 0: Aufenthalt im Knast in Minuten", "JailTime > 0: Stay in jail in minutes");
+      Return;
+    EndIf
+    param := CInt(param);
+
+    SendSysMessagePergon(who, "Wer soll eingebuchtet werden?", "Who's gonna be jailed?");
+    Var player := Target(who, TGTOPT_NOCHECK_LOS);
+
+    If (!GetObjProperty(player, "lifetime"))     //ignore NPCs
+      SendSysMessagePergon(who, "Das funktioniert nur bei Spielern.", "That only works on players.");
+      Return;
+    EndIf
+
+    If (who.cmdlevel < player.cmdlevel)
+      SendSysMessagePergon(who, "Der CmdLevel des Ziels ist nicht niedriger als Euer eigener!",
+                                "Target players commandlevel isn't lower than yours!");
+      Return;
+    EndIf
+
+    SendSysMessagePergon(player, "Ihr wurdet ins Gefängnis geworfen!", "You were jailed!");
+    SendSysMessagePergon(who, "Der Spieler muss mit '.forgive' aus dem Gefängnis entlassen werden!",
+                              "The player must be dismissed from prison with .forgive!");
+    AutoJail(player, param);
+ // Else
+ //   SendSysMessagePergon(who, "Ihr seid nicht befugt, diesen Befehl zu benutzen!", "You are not authorizied to use this command!");
+ // EndIf
+EndProgram

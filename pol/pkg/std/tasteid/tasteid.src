@@ -1,0 +1,639 @@
+////////////////////////////////////////////////////////////
+// tasteid -- Vorschmecken
+//
+// Es gibt zwei Hauptzweige
+//  - Ermitteln von Trankwirkungen (Alchemie)
+//  - Finden von Gift in Lebensmitteln
+
+use uo;
+include "include/client";
+include "include/modifyskill";
+include "include/objtype";
+include "include/poison";
+
+Const UOBJECT_FLASK_EMPTY  := 0x1832;
+Const UOBJECT_FLASK_FULL   := 0x1834;
+Const UOBJECT_FLASK_HEATED := 0x1833;
+
+Program TasteId(who)
+  If (GetObjProperty(who, "#UsesSkill") > ReadGameClock())
+    SendSysMessagePergon(who,
+      "Ihr müsst noch etwas warten, bevor Ihr wieder vorschmecken könnt"
+    );
+    return 0;
+  EndIf
+  // Delay bis zur nächsten Nutzung eines Skills 2 Sekunden
+  SetObjProperty(who, "#UsesSkill", ReadGameClock() + 2);
+
+  SendSysMessagePergon(who, "Wählt ein Objekt zum Probieren aus.");
+  var totaste := target(who, TGTOPT_CHECK_LOS);
+  If (!totaste)
+    SendSysMessagePergon(who, "Zielen abgebrochen");
+    return;
+  EndIf
+
+  If (totaste.getprop("AllDetected") == 1)
+    SendSysMessagePergon(who,
+      "Ihr konntet keine weiteren Wirkungen feststellen."
+    );
+    return;
+  EndIf
+
+  // Ausgewähltes Item reservieren
+  If (!ReserveItem(totaste))
+    SendSysMessagePergon(who,
+      "Diesen Gegenstand könnt Ihr derzeit nicht benutzen."
+    );
+    return;
+  EndIf
+
+  If (totaste.objtype == UOBJ_ALCHYPOTION)
+    NewAlchemyTaste(who, totaste);
+    return;
+  EndIf
+
+  // benoetigter Skill (wird bei giftfreiem Item auf -1 gelassen)
+  var diff        := -1;
+  var points      := GetSkillDefaultPoints(SKILLID_VORSCHMECKEN);
+  var poisonlevel := totaste.getprop(PROP_POIS_LVL);
+  If (poisonlevel)
+    points += poisonlevel * 5; // Erfahrungspunkte raufsetzen
+    diff   := poisonlevel * 5; // Skill-Anforderung setzen
+  EndIf
+
+  If (!CheckSkillPergon(who, SKILLID_VORSCHMECKEN, diff, points))
+    // Check fehlgeschlagen ...
+    // Vorschmecker wird nicht ueber wahren Giftgehalt informiert
+    SendSysMessagePergon(who,
+      "Ihr seid Euch nicht sicher, ob das Objekt vergiftet ist."
+    );
+    If (who.cmdlevel >= CMDLEVEL_SEER)
+      SendSysMessagePergon(who, "Versuch fehlgeschlagen.");
+    EndIf
+
+    // fertig
+    return;
+  EndIf
+
+  var descr := "nicht vergiftet.";
+  If (poisonlevel)
+    // wenn vergiftet, passende Beschreibung holen
+    descr := NewAlchemyFilter("vergiftend", poisonlevel);
+    // etwas umformulieren
+    descr["vergiftend"] := "vergiftet";
+
+    // Flag setzen, damit man das Tooltip sieht
+    totaste.setprop("AllDetected", 1);
+    IncRevision(totaste);
+  EndIf
+
+  // Vorschmecker informieren
+  SendSysMessagePergon(who, "Das Objekt ist "+descr+".");
+EndProgram
+
+// Vorschmecken neuer Alchemietraenke
+Function NewAlchemyTaste(oWho, oItem) // {{{
+  var potiondesc := oItem.getprop("potion");
+  // Skallierung der Max Diff von Trank auf die Höhe von Vorschmecken
+  // (80 + max skillweite von 20-1)
+  // durch Waage kommt man statt 139 auf bis zu 149
+  var skilldiff := Min(99,CInt((99.0/139.0)*potiondesc.difficulty));
+
+  // Jetzt mal den 20% check mit sondermeldung
+  If ((skilldiff - GetSkillPergon(oWho, SKILLID_VORSCHMECKEN)) > 20)
+    SendSysMessagePergon(oWho,
+      "Die Wirkung dieses Trankes könnt Ihr nicht einmal erraten."
+    );
+    return;
+  EndIf
+
+  var NotMoved := 1;
+  var x := oWho.x;
+  var y := oWho.y;
+  // Das Ganze läuft jetzt für einen kompletten Stack durch
+  While ((oItem) && (oWho.connected) && (!oWho.dead)&&NotMoved)
+    Sleep(1); // Warten
+    If (CheckSkillPergon(oWho, SKILLID_VORSCHMECKEN, skilldiff, skilldiff*2))
+      var description := "";
+      var NotAllDetected := 0;
+      ForEach wirk in (potiondesc.posWirk + potiondesc.negWirk)
+        If (RandomInt(100) > (skilldiff - GetSkillPergon(oWho, SKILLID_VORSCHMECKEN)))
+          // Gut, also diese Wirkung wurde erkannt
+          description += NewAlchemyFilter(wirk[1], wirk[2]) + "<br>";
+        Else
+          NotAllDetected := 1;
+        EndIf
+      EndForEach
+      If (description<>"")  // letztes <br> entfernen
+        description[Len(description)-3, 4] := "";
+      EndIf
+      BuildIdentifiedPotion(oWho, oItem, Description, NotAllDetected);
+      If (NotAllDetected)
+        // mmh nicht alles rausgefunden
+        SendSysMessagePergon(oWho,
+          "Ihr konntet nicht alle Wirkungen des Trankes bestimmen."
+        );
+      Else
+        // Nur um die Player etwas zu verwirren
+        If (RandomInt(2))
+          SendSysMessagePergon(oWho,
+            "Ihr habt alle Wirkungen des Trankes erkannt."
+          );
+        Else
+          SendSysMessagePergon(oWho,
+            "Ihr schätzt, dass Ihr alle Wirkungen des Trankes erkannt habt."
+          );
+        EndIf
+      EndIf
+    Else
+      SendSysMessagePergon(oWho,
+        "Ihr könnt die Wirkung des Trankes nicht sicher bestimmen."
+      );
+    EndIf
+    If ((x<>oWho.x)||(y<>oWho.y))
+      NotMoved := 0;
+    EndIf
+  EndWhile
+EndFunction // }}}
+
+// Beschriftung im Tooltip zusammenstellen
+Function BuildIdentifiedPotion(oWho, oItem, Description, NotAllDetected) // {{{
+  // Item neu erzeugen und CProps dranpacken
+  var temp;
+
+  // Trank zusammenbauen
+  var potiondesc := GetItemDescriptor(UOBJ_ALCHYPOTION);
+  potiondesc.cprops.insert("potion", oItem.getprop("potion"));
+  potiondesc.color := oItem.color;
+  potiondesc.VendorBuysFor := oItem.VendorBuysFor;
+  If (NotAllDetected == 0)
+    potiondesc.cprops.insert("AllDetected", 1);
+  EndIf
+  potiondesc.cprops.insert("Description", Description);
+  var oPotion := CreateItemInBackpackPergon(oWho, potiondesc, 1);
+
+  If (oItem.getprop("potion").name)
+    SetName(oPotion, "'"+oItem.getprop("potion").name+"' Tr%aenke/unk");
+  Else
+    temp := SplitWords(oItem.desc, "'");
+    SetName(oPotion, "'"+temp[2]+"' Tr%aenke/unk");
+  EndIf
+
+  SubtractAmount(oItem, 1);
+EndFunction // }}}
+
+// Wirkungsstaerken (numerisch) in Textbeschreibung konvertieren
+Function NewAlchemyFilter(sWirkung, lStaerke) // {{{
+  Case (sWirkung)
+    "heilend":
+      If (lStaerke >= 150)
+        return "sehr stark heilend";
+      ElseIf (lStaerke >= 80)
+        return "stark heilend";
+      ElseIf (lStaerke >= 50)
+        return "gut heilend";
+      ElseIf (lStaerke >= 30)
+        return "heilend";
+      ElseIf (lStaerke >= 20)
+        return "schwach heilend";
+      ElseIf (lStaerke >= 10)
+        return "sehr schwach heilend";
+      ElseIf (lStaerke >= 0)
+        return "minimal heilend";
+      ElseIf (lStaerke >= -10)
+        return "minimal verwundend";
+      ElseIf (lStaerke >= -20)
+        return "sehr schwach verwundend";
+      ElseIf (lStaerke >= -30)
+        return "schwach verwundend";
+      ElseIf (lStaerke >= -50)
+        return "verwundend";
+      ElseIf (lStaerke >= -80)
+        return "gut verwundend";
+      ElseIf (lStaerke >= -120)
+        return "stark verwundend";
+      Else
+        return "sehr stark verwundend";
+      EndIf
+    "erfrischend":
+      If (lStaerke >= 150)
+        return "sehr stark erfrischend";
+      ElseIf (lStaerke >= 80)
+        return "stark erfrischend";
+      ElseIf (lStaerke >= 50)
+        return "gut erfrischend";
+      ElseIf (lStaerke >= 30)
+        return "erfrischend";
+      ElseIf (lStaerke >= 20)
+        return "schwach erfrischend";
+      ElseIf (lStaerke >= 10)
+        return "sehr schwach erfrischend";
+      ElseIf (lStaerke >= 0)
+        return "minimal erfrischend";
+      ElseIf (lStaerke >= -10)
+        return "minimal erschoepfend";
+      ElseIf (lStaerke >= -20)
+        return "sehr schwach erschoepfend";
+      ElseIf (lStaerke >= -30)
+        return "schwach erschoepfend";
+      ElseIf (lStaerke >= -50)
+        return "erschoepfend";
+      ElseIf (lStaerke >= -80)
+        return "gut erschoepfend";
+      ElseIf (lStaerke >= -120)
+        return "stark erschoepfend";
+      Else
+        return "sehr stark erschoepfend";
+      EndIf
+    "astralenergetisch":
+      If (lStaerke >= 150)
+        return "sehr stark astralisch";
+      ElseIf (lStaerke >= 80)
+        return "stark astralisch";
+      ElseIf (lStaerke >= 50)
+        return "gut astralisch";
+      ElseIf (lStaerke >= 30)
+        return "astralisch";
+      ElseIf (lStaerke >= 20)
+        return "schwach astralisch";
+      ElseIf (lStaerke >= 10)
+        return "sehr schwach astralisch";
+      ElseIf (lStaerke >= 0)
+        return "minimal astralisch";
+      ElseIf (lStaerke >= -10)
+        return "minimal aufbrauchend";
+      ElseIf (lStaerke >= -20)
+        return "sehr schwach aufbrauchend";
+      ElseIf (lStaerke >= -30)
+        return "schwach aufbrauchend";
+      ElseIf (lStaerke >= -50)
+        return "aufbrauchend";
+      ElseIf (lStaerke >= -80)
+        return "gut aufbrauchend";
+      ElseIf (lStaerke >= -120)
+        return "stark aufbrauchend";
+      Else
+        return "sehr stark aufbrauchend";
+      EndIf
+    "staerkend":
+      If (lStaerke >= 15)
+        return "sehr stark kraeftigend";
+      ElseIf (lStaerke >= 8)
+        return "stark kraeftigend";
+      ElseIf (lStaerke >= 5)
+        return "gut kraeftigend";
+      ElseIf (lStaerke >= 3)
+        return "kraeftigend";
+      ElseIf (lStaerke >= 2)
+        return "schwach kraeftigend";
+      ElseIf (lStaerke >= 1)
+        return "sehr schwach kraeftigend";
+      ElseIf (lStaerke >= 0)
+        return "minimal kraeftigend";
+      ElseIf (lStaerke >= -1)
+        return "minimal schwaechend";
+      ElseIf (lStaerke >= -2)
+        return "sehr schwach schwaechend";
+      ElseIf (lStaerke >= -3)
+        return "schwach schwaechend";
+      ElseIf (lStaerke >= -5)
+        return "schwaechend";
+      ElseIf (lStaerke >= -8)
+        return "gut schwaechend";
+      ElseIf (lStaerke >= -12)
+        return "stark schwaechend";
+      Else
+        return "sehr stark schwaechend";
+      EndIf
+    "beweglich":
+      If (lStaerke >= 15)
+        return "sehr stark vitalisierend";
+      ElseIf (lStaerke >= 8)
+        return "stark vitalisierend";
+      ElseIf (lStaerke >= 5)
+        return "gut vitalisierend";
+      ElseIf (lStaerke >= 3)
+        return "vitalisierend";
+      ElseIf (lStaerke >= 2)
+        return "schwach vitalisierend";
+      ElseIf (lStaerke >= 1)
+        return "sehr schwach vitalisierend";
+      ElseIf (lStaerke >= 0)
+        return "minimal vitalisierend";
+      ElseIf (lStaerke >= -1)
+        return "minimal ermuedend";
+      ElseIf (lStaerke >= -2)
+        return "sehr schwach ermuedend";
+      ElseIf (lStaerke >= -3)
+        return "schwach ermuedend";
+      ElseIf (lStaerke >= -5)
+        return "ermuedend";
+      ElseIf (lStaerke >= -8)
+        return "gut ermuedend";
+      ElseIf (lStaerke >= -12)
+        return "stark ermuedend";
+      Else
+        return "sehr stark ermuedend";
+      EndIf
+    "erhellend":
+      If (lStaerke >= 15)
+        return "sehr stark erleuchtend";
+      ElseIf (lStaerke >= 8)
+        return "stark erleuchtend";
+      ElseIf (lStaerke >= 5)
+        return "gut erleuchtend";
+      ElseIf (lStaerke >= 3)
+        return "erleuchtend";
+      ElseIf (lStaerke >= 2)
+        return "schwach erleuchtend";
+      ElseIf (lStaerke >= 1)
+        return "sehr schwach erleuchtend";
+      ElseIf (lStaerke >= 0)
+        return "minimal erleuchtend";
+      ElseIf (lStaerke >= -1)
+        return "minimal verwirrend";
+      ElseIf (lStaerke >= -2)
+        return "sehr schwach verwirrend";
+      ElseIf (lStaerke >= -3)
+        return "schwach verwirrend";
+      ElseIf (lStaerke >= -5)
+        return "verwirrend";
+      ElseIf (lStaerke >= -8)
+        return "gut verwirrend";
+      ElseIf (lStaerke >= -12)
+        return "stark verwirrend";
+      Else
+        return "sehr stark verwirrend";
+      EndIf
+    "explodierend":
+      If (lStaerke >= 150)
+        return "sehr stark explodierend";
+      ElseIf (lStaerke >= 80)
+        return "stark explodierend";
+      ElseIf (lStaerke >= 50)
+        return "gut explodierend";
+      ElseIf (lStaerke >= 30)
+        return "explodierend";
+      ElseIf (lStaerke >= 20)
+        return "schwach explodierend";
+      ElseIf (lStaerke >= 10)
+        return "sehr schwach explodierend";
+      Else
+        return "minimal explodierend";
+      EndIf
+    "leuchtend":
+      If (lStaerke >= 20)
+        return "sehr stark erhellend";
+      ElseIf (lStaerke >= 15)
+        return "stark erhellend";
+      ElseIf (lStaerke >= 10)
+        return "gut erhellend";
+      ElseIf (lStaerke >= 8)
+        return "erhellend";
+      ElseIf (lStaerke >= 5)
+        return "schwach erhellend";
+      ElseIf (lStaerke >= 2)
+        return "sehr schwach erhellend";
+      Else
+        return "minimal erhellend";
+      EndIf
+    "vergiftend":
+      If (lStaerke >= 30)
+        return "sehr stark vergiftend";
+      ElseIf (lStaerke >= 25)
+        return "stark vergiftend";
+      ElseIf (lStaerke >= 20)
+        return "gut vergiftend";
+      ElseIf (lStaerke >= 15)
+        return "vergiftend";
+      ElseIf (lStaerke >= 10)
+        return "schwach vergiftend";
+      ElseIf (lStaerke >= 5)
+        return "sehr schwach vergiftend";
+      Else
+        return "minimal vergiftend";
+      EndIf
+    "entgiftend":
+      If (lStaerke >= 30)
+        return "sehr stark entgiftend";
+      ElseIf (lStaerke >= 25)
+        return "stark entgiftend";
+      ElseIf (lStaerke >= 20)
+        return "gut entgiftend";
+      ElseIf (lStaerke >= 15)
+        return "entgiftend";
+      ElseIf (lStaerke >= 10)
+        return "schwach entgiftend";
+      ElseIf (lStaerke >= 5)
+        return "sehr schwach entgiftend";
+      Else
+        return "minimal entgiftend";
+      EndIf
+    "feuerresistent":
+      If (lStaerke >= 100)
+        return "sehr stark feuerresistent";
+      ElseIf (lStaerke >= 80)
+        return "stark feuerresistent";
+      ElseIf (lStaerke >= 50)
+        return "gut feuerresistent";
+      ElseIf (lStaerke >= 30)
+        return "feuerresistent";
+      ElseIf (lStaerke >= 20)
+        return "schwach feuerresistent";
+      ElseIf (lStaerke >= 10)
+        return "sehr schwach feuerresistent";
+      ElseIf (lStaerke >= 0)
+        return "minimal feuerresistent";
+      ElseIf (lStaerke >= -10)
+        return "minimal feuerallergisch";
+      ElseIf (lStaerke >= -20)
+        return "sehr schwach feuerallergisch";
+      ElseIf (lStaerke >= -30)
+        return "schwach feuerallergisch";
+      ElseIf (lStaerke >= -50)
+        return "feuerallergisch";
+      ElseIf (lStaerke >= -80)
+        return "gut feuerallergisch";
+      ElseIf (lStaerke >= -100)
+        return "stark feuerallergisch";
+      Else
+        return "sehr stark feuerallergisch";
+      EndIf
+    "wasserresistent":
+      If (lStaerke >= 100)
+        return "sehr stark wasserresistent";
+      ElseIf (lStaerke >= 80)
+        return "stark wasserresistent";
+      ElseIf (lStaerke >= 50)
+        return "gut wasserresistent";
+      ElseIf (lStaerke >= 30)
+        return "wasserresistent";
+      ElseIf (lStaerke >= 20)
+        return "schwach wasserresistent";
+      ElseIf (lStaerke >= 10)
+        return "sehr schwach wasserresistent";
+      ElseIf (lStaerke >= 0)
+        return "minimal wasserresistent";
+      ElseIf (lStaerke >= -10)
+        return "minimal wasserallergisch";
+      ElseIf (lStaerke >= -20)
+        return "sehr schwach wasserallergisch";
+      ElseIf (lStaerke >= -30)
+        return "schwach wasserallergisch";
+      ElseIf (lStaerke >= -50)
+        return "wasserallergisch";
+      ElseIf (lStaerke >= -80)
+        return "gut wasserallergisch";
+      ElseIf (lStaerke >= -100)
+        return "stark wasserallergisch";
+      Else
+        return "sehr stark wasserallergisch";
+      EndIf
+    "erdresistent":
+      If (lStaerke >= 100)
+        return "sehr stark erdresistent";
+      ElseIf (lStaerke >= 80)
+        return "stark erdresistent";
+      ElseIf (lStaerke >= 50)
+        return "gut erdresistent";
+      ElseIf (lStaerke >= 30)
+        return "erdresistent";
+      ElseIf (lStaerke >= 20)
+        return "schwach erdresistent";
+      ElseIf (lStaerke >= 10)
+        return "sehr schwach erdresistent";
+      ElseIf (lStaerke >= 0)
+        return "minimal erdresistent";
+      ElseIf (lStaerke >= -10)
+        return "minimal erdallergisch";
+      ElseIf (lStaerke >= -20)
+        return "sehr schwach erdallergisch";
+      ElseIf (lStaerke >= -30)
+        return "schwach erdallergisch";
+      ElseIf (lStaerke >= -50)
+        return "erdallergisch";
+      ElseIf (lStaerke >= -80)
+        return "gut erdallergisch";
+      ElseIf (lStaerke >= -100)
+        return "stark erdallergisch";
+      Else
+        return "sehr stark erdallergisch";
+      EndIf
+    "luftresistent":
+      If (lStaerke >= 100)
+        return "sehr stark luftresistent";
+      ElseIf (lStaerke >= 80)
+        return "stark luftresistent";
+      ElseIf (lStaerke >= 50)
+        return "gut luftresistent";
+      ElseIf (lStaerke >= 30)
+        return "luftresistent";
+      ElseIf (lStaerke >= 20)
+        return "schwach luftresistent";
+      ElseIf (lStaerke >= 10)
+        return "sehr schwach luftresistent";
+      ElseIf (lStaerke >= 0)
+        return "minimal luftresistent";
+      ElseIf (lStaerke >= -10)
+        return "minimal luftallergisch";
+      ElseIf (lStaerke >= -20)
+        return "sehr schwach luftallergisch";
+      ElseIf (lStaerke >= -30)
+        return "schwach luftallergisch";
+      ElseIf (lStaerke >= -50)
+        return "luftallergisch";
+      ElseIf (lStaerke >= -80)
+        return "gut luftallergisch";
+      ElseIf (lStaerke >= -100)
+        return "stark luftallergisch";
+      Else
+        return "sehr stark luftallergisch";
+      EndIf
+    "giftresistent":
+      If (lStaerke >= 100)
+        return "sehr stark giftresistent";
+      ElseIf (lStaerke >= 80)
+        return "stark giftresistent";
+      ElseIf (lStaerke >= 50)
+        return "gut giftresistent";
+      ElseIf (lStaerke >= 30)
+        return "giftresistent";
+      ElseIf (lStaerke >= 20)
+        return "schwach giftresistent";
+      ElseIf (lStaerke >= 10)
+        return "sehr schwach giftresistent";
+      ElseIf (lStaerke >= 0)
+        return "minimal giftresistent";
+      ElseIf (lStaerke >= -10)
+        return "minimal giftallergisch";
+      ElseIf (lStaerke >= -20)
+        return "sehr schwach giftallergisch";
+      ElseIf (lStaerke >= -30)
+        return "schwach giftallergisch";
+      ElseIf (lStaerke >= -50)
+        return "giftallergisch";
+      ElseIf (lStaerke >= -80)
+        return "gut giftallergisch";
+      ElseIf (lStaerke >= -100)
+        return "stark giftallergisch";
+      Else
+        return "sehr stark giftallergisch";
+      EndIf
+    "versteckend":
+      return "unsichtbar";
+    "erblindend":
+      return "erblindend";
+    "verdunkelnd":
+      If (lStaerke >= 22)
+        return "sehr stark verdunkelnd";
+      ElseIf (lStaerke >= 16)
+        return "stark verdunkelnd";
+      ElseIf (lStaerke >= 12)
+        return "gut verdunkelnd";
+      ElseIf (lStaerke >= 8)
+        return "verdunkelnd";
+      ElseIf (lStaerke >= 4)
+        return "schwach verdunkelnd";
+      ElseIf (lStaerke >= 2)
+        return "sehr schwach verdunkelnd";
+      Else
+        return "minimal verdunkelnd";
+      EndIf
+    "hungrig":
+      If (lStaerke >= 9)
+        return "sehr stark aufzehrend";
+      ElseIf (lStaerke >= 7)
+        return "stark aufzehrend";
+      ElseIf (lStaerke >= 6)
+        return "gut aufzehrend";
+      ElseIf (lStaerke >= 4)
+        return "aufzehrend";
+      ElseIf (lStaerke >= 3)
+        return "schwach aufzehrend";
+      ElseIf (lStaerke >= 2)
+        return "sehr schwach aufzehrend";
+      Else
+        return "minimal aufzehrend";
+      EndIf
+    "durstig":
+      If (lStaerke >= 9)
+        return "sehr stark austrocknend";
+      ElseIf (lStaerke >= 7)
+        return "stark austrocknend";
+      ElseIf (lStaerke >= 6)
+        return "gut austrocknend";
+      ElseIf (lStaerke >= 4)
+        return "austrocknend";
+      ElseIf (lStaerke >= 3)
+        return "schwach austrocknend";
+      ElseIf (lStaerke >= 2)
+        return "sehr schwach austrocknend";
+      Else
+        return "minimal austrocknend";
+      EndIf
+    Default:
+      return "Wirkung unbekannt";
+  EndCase
+EndFunction // }}}
+
+// vim: sw=2 sts=2

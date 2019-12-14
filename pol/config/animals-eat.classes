@@ -1,0 +1,346 @@
+# Einteilung, welches Tier welche Klassen frisst
+# Wichtig ist die Reihenfolge:
+# Zeile mit Nummer muss immer direkt von Zeile mit Klasse gefolgt werden
+# sonstige Zeilen werden ignoriert und dienen nur Lesbarkeit/Gedaechtnis
+# Nummer ist die NPC-Nummer (siehe InsideUO), die Klassen muessen im
+# Perl-Script fuer die Konvertierung vorhanden sein.
+
+# Changelog:
+# 2008-04-16 mehdorn        angelegt auf Basis eigener Ideen, Wikipedia,
+#                           Spielerideen im Forum und Djerins Ratschlaegen;
+#                           Imp, Gremlin nun Fleischfresser;
+#                           Succubus frisst Aas und Samen (Wikipedia);
+#                           boese Fee jetzt Aas, Fisch, Fleisch (alles)
+# 2008-04-17 mehdorn        nochmal etwas ueberarbeitet
+# 2008-04-18 mehdorn        etwas mehr kommentiert
+
+Nummer          5
+Klasse          Fisch Frischfleisch Garfleisch
+NpcTemplate     Eagle
+Name            Adler
+
+Nummer          6
+Klasse          Aas Fisch Frischfleisch Garfleisch Getreide Gemuese Kekse Obst Samen
+NpcTemplate     Raven
+Name            Rabe
+
+Nummer          11
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     PhaseSpider
+Name            Phasenspinne
+
+Nummer          20
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     IcePhaseSpider
+Name            Frostphasenspinne
+
+Nummer          21
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     Giant_Serpent
+Name            Riesenschlange
+
+Nummer          23
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     DireWolf_w
+Name            Hoehlenwoelfin
+
+Nummer          28
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     FlamingSpider
+Name            Flammenspinne
+
+Nummer          29
+Klasse          Frischfleisch Garfleisch Gemuese Obst
+NpcTemplate     Gorilla_w
+Name            Gorillaweibchen
+
+Nummer          37
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     FrostWolf
+Name            Frostwolf
+
+Nummer          39
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     Gremlin
+Name            Gremlin
+
+Nummer          48
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     RockScorpion
+Name            Felsenscorpion
+
+Nummer          52
+Klasse          Frischfleisch Garfleisch
+NpcTemplate     Snake
+Name            Schlange
+
+Nummer          74
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     Imp
+Name            Imp
+
+Nummer          80
+Klasse          Frischfleisch
+NpcTemplate     Giant_Toad
+Name            Riesenkroete
+
+Nummer          81
+Klasse          Frischfleisch
+NpcTemplate     BullFrog
+Name            Ochsenfrosch
+
+Nummer          97
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     HellHound
+Name            Hoellenhund
+
+Nummer          99
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     DarkWolf
+Name            Dunkelwolf
+
+Nummer          127
+Klasse          Aas Fisch Frischfleisch Garfleisch
+NpcTemplate     HellCat
+Name            Hoellenkatze
+
+Nummer          128
+Klasse          Aas Fisch Frischfleisch Garfleisch
+NpcTemplate     EvilFairy
+Name            Boese Fee
+
+Nummer          132
+Klasse          Gemuese Gras Obst
+NpcTemplate     Kirin
+Name            Kirin
+
+Nummer          149
+Klasse          Aas Samen
+NpcTemplate     Succubus
+Name            Succubus
+
+Nummer          167
+Klasse          Aas Fisch Frischfleisch Garfleisch Obst
+NpcTemplate     Bear_w
+Name            Braunbaerin
+
+Nummer          187
+Klasse          Frischfleisch Garfleisch
+NpcTemplate     LavaRidgeback_w
+Name            Lavaridgeback
+
+Nummer          188
+Klasse          Frischfleisch Garfleisch
+NpcTemplate     LavaRidgeback_m
+Name            Lavaridgeback
+
+Nummer          200
+Klasse          Aas Fisch Frischfleisch Garfleisch Getreide Gemuese Getreide Gras Kaese Obst
+NpcTemplate     NightMare
+Name            Nachtmahr
+
+Nummer          201
+Klasse          Aas Fisch Frischfleisch Garfleisch
+NpcTemplate     RabidCat
+Name            Wildkatze
+
+Nummer          202
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     alligatortest
+Name            Alligator
+
+Nummer          203
+Klasse          Aas Fisch Frischfleisch Garfleisch Getreide Gemuese Gras Kaese Obst
+NpcTemplate     Hildisvini
+Name            Wildschwein
+
+Nummer          204
+Klasse          Gemuese Getreide Gras Obst
+NpcTemplate     Horse_m3
+Name            Hengst
+
+Nummer          205
+Klasse          Gemuese Getreide Gras Obst
+NpcTemplate     Rabbit_m
+Name            Hase
+
+Nummer          206
+Klasse          Frischfleisch Garfleisch Gemuese Obst
+NpcTemplate     LavaLizard
+Name            Lavaechse
+
+Nummer          207
+Klasse          Gemuese Getreide Obst
+NpcTemplate     Sheep_m
+Name            Schafbock
+
+Nummer          208
+Klasse          Eierschalen Getreide Gras Salat Samen
+NpcTemplate     Vip
+Name            Waldhuehnchen
+
+Nummer          209
+Klasse          Gemuese Getreide Obst
+NpcTemplate     Goat_m
+Name            Ziegenbock
+
+Nummer          210
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     LavaOstard
+Name            Lavaostard/Wuestenostard
+
+Nummer          211
+Klasse          Aas Fisch Frischfleisch Garfleisch Obst
+NpcTemplate     BlackBear_w
+Name            Schwarzbaerin
+
+Nummer          212
+Klasse          Aas Fisch Frischfleisch Garfleisch Obst
+NpcTemplate     Grizzly
+Name            Grizzly
+
+Nummer          213
+Klasse          Aas Fisch Frischfleisch Garfleisch Obst
+NpcTemplate     PolarRideable
+Name            Alter Eisbaer
+
+Nummer          214
+Klasse          Aas Fisch Frischfleisch Garfleisch
+NpcTemplate     panthertest
+Name            Testpanther
+
+Nummer          215
+Klasse          Gemuese Getreide Gras Kaese Obst
+NpcTemplate     GRat
+Name            Riesenratte
+
+Nummer          216
+Klasse          Gemuese Getreide Gras Obst
+NpcTemplate     cowtest
+Name            Testkuh
+
+Nummer          217
+Klasse          Aas Frischfleisch Garfleisch Knochen
+NpcTemplate     RabidDog
+Name            Wildhund
+
+Nummer          218
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     LavaOstard_m
+Name            Lavaostard
+
+Nummer          219
+Klasse          Gemuese Getreide Gras Obst Samen
+NpcTemplate     ForestOstard_w
+Name            Waldostardin
+
+Nummer          220
+Klasse          Gemuese Getreide Gras Obst
+NpcTemplate     Llama_m
+Name            Lamahengst
+
+Nummer          225
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     direwolftest
+Name            Hoehlenwolf
+
+Nummer          226
+Klasse          Gemuese Getreide Gras Obst
+NpcTemplate     Horse3
+Name            Stute
+
+Nummer          228
+Klasse          Gemuese Getreide Gras Obst
+NpcTemplate     Horse_m5
+Name            Hengst
+
+Nummer          231
+Klasse          Gemuese Getreide Gras Obst
+NpcTemplate     Cow2
+Name            Kuh
+
+Nummer          232
+Klasse          Gemuese Getreide Gras Obst
+NpcTemplate     Bull
+Name            Bulle
+
+Nummer          233
+Klasse          Gemuese Getreide Gras Obst
+NpcTemplate     Bull2
+Name            Bulle
+
+Nummer          234
+Klasse          Gemuese Gras Obst
+NpcTemplate     Gheart
+Name            Hirsch
+
+Nummer          237
+Klasse          Gemuese Gras Obst
+NpcTemplate     Deer
+Name            Hirschkuh
+
+Nummer          238
+Klasse          Gemuese Getreide Gras Kaese Obst Samen
+NpcTemplate     Rat
+Name            Ratte
+
+Nummer          243
+Klasse          Aas Fisch Frischfleisch Garfleisch
+NpcTemplate     HaiRiyo
+Name            Greif
+
+Nummer          276
+Klasse          Aas Fisch Frischfleisch Garfleisch
+NpcTemplate     Chimera
+Name            Chimera
+
+Nummer          277
+Klasse          Aas Frischfleisch Garfleisch
+NpcTemplate     CuSidhe
+Name            Lupus Malus
+
+Nummer          278
+Klasse          Gemuese Getreide Obst Samen
+NpcTemplate     squirrel
+Name            Eichhoernchen
+
+Nummer          279
+Klasse          Aas Fisch Frischfleisch Garfleisch
+NpcTemplate     ferret
+Name            Frettchen
+
+Nummer          284
+Klasse          Gemuese Getreide Gras Obst
+NpcTemplate     MondainSteed
+Name            Schlachtross
+
+Nummer          291
+Klasse          Gemuese Getreide Gras Obst
+NpcTemplate     PackHorse
+Name            Packpferd
+
+Nummer          292
+Klasse          Gemuese Getreide Gras Obst
+NpcTemplate     PackLlama
+Name            Packlama
+
+Nummer          791
+Klasse          Gemuese Obst
+NpcTemplate     GiantBeatle
+Name            ein wirklich grosser Kaefer
+
+Nummer          793
+Klasse          Knochen Eierschalen
+NpcTemplate     SkeletalMount
+Name            Skelettstute
+
+Nummer          794
+Klasse          Aas Fisch Frischfleisch Garfleisch
+NpcTemplate     SwampDragon
+Name            Smaug der Sumpfdrache
+
+Nummer          799
+Klasse          Aas Fisch Frischfleisch Garfleisch
+NpcTemplate     ARSwampDragon
+Name            Grisu der Sumpfdrache
+

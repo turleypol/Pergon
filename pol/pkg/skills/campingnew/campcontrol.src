@@ -1,0 +1,29 @@
+//////////////////////////////////////////////////////////////////////////////
+//
+//   campcontrol - Controllscript der Wildniskundepflanzen (Zerstören)
+//
+//
+//     Author: Turley
+//
+//
+//   Modification:
+//     21.05.07 Turley - Init
+//
+//////////////////////////////////////////////////////////////////////////////
+Use uo;
+
+Include "include/itemnpc";
+
+Program campcontrol(item)
+  Var blink:=CreateItemAtLocationPergon(item.x,item.y,item.z,0xc006,1,item.realm);
+  item.setprop("blink",blink.serial);
+  Sleep(180);
+  If (blink)
+  	DestroyItem(blink);
+  	item.eraseprop("blink");
+  EndIf
+  Sleep(120);
+  If (item)
+  	DestroyItem(item);
+  EndIf
+EndProgram

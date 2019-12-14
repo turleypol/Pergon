@@ -1,0 +1,59 @@
+////////////////////////////////////////////////////////////////////////
+//
+//   ControlScript Tillerman - Registriert die Seriennummer das Bootes
+//
+//     Author: Shinigami
+
+////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.4  2008/07/07 18:02:51  mehdorn
+// Koordinaten bei Fehlermeldungen hinzugefuegt
+//
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+use os;
+use uo;
+use util;
+include "include/logutil";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TillermanControl(tillerman)
+  Var boatserial := GetObjProperty(tillerman, "shipserial");
+  If (!boatserial)
+    syslog(
+      "FEHLER: "+ItemInfoStr(tillerman, COORDS_REALM)+
+      " enthaelt keine 'shipserial'!"
+    );
+    return;
+  EndIf
+
+  Var boat := SystemFindObjectBySerial(boatserial);
+  If (!boat.isa(POLCLASS_BOAT))
+    syslog(
+      "FEHLER: "+ItemInfoStr(tillerman, COORDS_REALM)+
+      " ist mit keinem Boot verknuepft!"
+    );
+    return;
+  EndIf
+
+  // Bisschen Streuung hilft Lags zu reduzieren
+  SleepMs(RandomInt(2000)+ 500);
+
+  Set_Critical(1);
+  Var boatlist := GetGlobalProperty("#boatlist");
+  If (!boatlist)
+    // Liste neu anlegen (da temporaere Liste nach jedem Neustart)
+    boatlist := {boatserial};
+  Else
+    boatlist.append(boatserial); // Liste erweitern
+  EndIf
+  SetGlobalProperty("#boatlist", boatlist);
+  Set_Critical(0);
+EndProgram

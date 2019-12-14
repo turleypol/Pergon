@@ -1,0 +1,27 @@
+/////////////////////////////////////////////////////////
+//
+// letterbox - Briefkastensystem, halt Nachrichten schicken
+//             (pkg=letterbox)
+//             
+//
+//     OrigAuthor: 2006-08-03 07:19:21Z austinheilman
+//
+//     Author: Turley
+//
+//   Modifications:
+//     12.08.2006 Umbau auf Pergon
+//  
+/////////////////////////////////////////////////////////
+
+use uo;
+
+Include "include/msgs";
+Include "include/pergonutil";
+
+Program command_ReadMail(who)
+	Var result := Start_ScriptPergon(":letterbox:email", array{who, who.serial});
+
+	If ( result.errortext )
+		SendSysMessagePergon(who, "Scheitern beim Laden des Briefkastens ->"+result.errortext);
+	EndIf
+EndProgram

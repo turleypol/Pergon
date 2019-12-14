@@ -1,0 +1,80 @@
+/////////////////////////////////////////////////////////////////////////////
+// stealth.src
+//
+// TODO: just about everything.
+//
+// Created: Syzygy 19990429
+//
+//  01.12.2003 Fraggulus: Verstecken und tot sein bringt keine Punkte
+//  05.12.2003 Fraggulus: Skillbegrenzung auf 125%
+//  09.01.2004 Fraggulus: kleine Fehlerkorrektur in der StealthStep-Berechnung
+//  18.02.2004 Fraggulus: Aenderung vom 05.12.2003 rueckgaengig gemacht (wird zentral in modifyskill.inc behandelt)
+//                        flacherer Anstieg der Erfolgschance
+//  22.01.2006 Seppel:    Delay eingebaut & benötigter Versteckskill auf 40% gesenkt
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use util;
+use uo;
+
+include "include/client";
+include "include/modifyskill";
+
+Program skill_stealth(chr)
+
+  var theskill  := GetSkillPergon(chr, SKILLID_SCHLEICHEN);
+  var thepoints := GetSkillDefaultPoints(SKILLID_SCHLEICHEN) - 10;
+  If (chr.dead)  // Im Tode zwar schleichen können, aber es hat keinen Nutzen
+    thepoints := 0;
+  EndIf
+
+  If (GetSkillPergon(chr, SKILLID_VERSTECKEN) < 40)
+    PrintTextAbovePrivatePergon(chr, "Ihr seid nicht gut genug im Verstecken, um schleichen zu können", "", chr);
+    return;
+  EndIf
+
+  If (!chr.hidden)
+    PrintTextAbovePrivatePergon(chr, "Ihr müsst Euch erst verstecken, um zu schleichen!", "", chr);
+    return;
+  EndIf
+
+  If (GetObjProperty(chr, "#UsesSkill") > ReadGameClock())
+    SendSysMessagePergon(chr, "Ihr müsst noch ein wenig warten bevor ihr wieder schleichen könnt");
+    return(0);
+  EndIf
+
+  SetObjProperty(chr, "#UsesSkill", ReadGameClock() + 2);           // Delay bis zur nächsten Nutzung eines Skills 2 Sekunden
+
+  // Schwierigkeitsberechnung
+  // Skill =   0% (Minimum) -> 20% Erfolgschance
+  // Skill =  20%           -> 32% Erfolgschance
+  // Skill =  40%           -> 44% Erfolgschance
+  // Skill =  60%           -> 56% Erfolgschance
+  // Skill =  80%           -> 68% Erfolgschance
+  // Skill = 100%           -> 80% Erfolgschance
+  // Skill = 130% (Maximum) -> 95% Erfolgschance
+  theskill := theskill * 75 / 130.0 + 20;
+
+  // TODO: The difficulty should probably depend on nearby mobiles
+  If (RandomInt(100) + 1 <= theskill)
+    AwardRawPointsPergon(chr, SKILLID_SCHLEICHEN, thepoints); // Skillpunkte
+    AdvanceStatsPergon(chr, SKILLID_SCHLEICHEN); // Stats ggf. erhoehen
+    // TODO: make this distance a bit random
+    chr.stealthsteps := CInt((GetSkillPergon(chr, SKILLID_SCHLEICHEN) / 10.0) + 1);
+    PrintTextAbovePrivatePergon(chr, "Ihr bewegt Euch nun auf leisen Sohlen.", "", chr);
+  Else
+    AwardRawPointsPergon(chr, SKILLID_SCHLEICHEN, CInt(thepoints/3.0)); // Skillpunkte
+    // hmm, could be interesting to just set stealthsteps to 0 - you don't
+    // know if it worked, then.
+    If (chr.hidden) // Um unnoetige Events zu sparen...
+      chr.hidden := 0;
+    EndIf
+    PrintTextAbovePrivatePergon(chr, "Ihr habt zuviel Krach gemacht!", "", chr);
+  EndIf
+    
+  // Falls noch mit Spellversteckt löschen, damit man nicht dadurch aufgedeckt wird
+  If (chr.getprop("spell_invis"))  
+    chr.eraseprop("spell_invis");
+  EndIf
+
+EndProgram

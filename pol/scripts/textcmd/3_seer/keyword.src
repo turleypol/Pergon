@@ -1,0 +1,33 @@
+use uo;
+
+Include "include/msgs";
+
+program textcmd_ident( who, text )
+
+    SendSysMessagePergon( who, "Weise ein Schlüsselwort wem zu?" );
+    Var what := Target( who );
+
+    if (!what)
+	SendSysMessagePergon( who, "Abbruch", "Abort");
+    endif
+
+    if (!text)
+	SendSysMessagePergon( who, "Abbruch", "Abort");
+    endif
+
+    Var keyword := "keyword"+text;
+
+	if (!getobjproperty(what, keyword ))
+		Var response := RequestInputPergon(who, who.backpack, "Was soll die Antwort sein?");
+        if (response)
+          response := CChrZ(response.uc_text);
+        endif
+
+		setobjproperty(what, keyword, response);
+		SendSysMessagePergon( who, "NPC antwortet auf   "+ text + "   mit: "+ response );
+	else
+		EraseObjProperty( what, keyword );
+		SendSysMessagePergon( who, "NPC antwortet nicht länger auf   "+ text );
+	endif
+
+endprogram

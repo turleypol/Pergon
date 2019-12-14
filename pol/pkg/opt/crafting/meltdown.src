@@ -1,0 +1,149 @@
+use attributes;
+use cfgfile;
+use math;
+use os;
+use uo;
+use util;
+
+include "include/client";
+include "include/modifyskill";
+include "include/objtype";
+
+const SOUND_EFFECT_BELLOWS := 0x2c;
+const SOUND_EFFECT_BUBBLE := 0x22;
+
+Program smeltarmor(who)
+  SendSysMessagePergon(who,
+    "Wählt das Objekt zum Zerstören aus.",
+    "choose an object to destroy."
+  );
+  var use_on := target(who, TGTOPT_CHECK_LOS);
+  If (!use_on)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (use_on.container.serial != who.backpack.serial)
+    SendSysMessagePergon(who,
+      "Ihr könnt nur Items schmelzen, die direkt in Eurem Rucksack liegen.",
+      "You can only melt items lying in your backpack."
+    );
+    return;
+  EndIf
+  var amt := use_on.amount;
+  If (!amt)
+    amt := 1;
+  EndIf
+  reserveitem(use_on);
+  // output(who, "Auswahl: " + use_on.desc + " ObjType " + format_hex(use_on.graphic));
+  SendSysMessagePergon(who, "Wählt ein Schmiedefeuer.", "Choose a forge.");
+
+  var forge := target(who, TGTOPT_CHECK_LOS);
+  If (!forge)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (
+    (forge.objtype != UOBJ_SMALL_FORGE) &&
+    (forge.objtype < UOBJ_FORGE_START and forge.objtype > UOBJ_FORGE_END)
+  )
+    SendSysMessagePergon(who,
+      "Ihr müsst ein Schmiedefeuer benutzen, um Material zurückzugewinnen.",
+      "You have to use a forge to regain raw material."
+    );
+    return;
+  EndIf
+
+  If (distance(who, forge) > 2)
+    SendSysMessagePergon(who,
+      "Tretet näher an das Feuer heran.",
+      "You have to stand closer to the forge."
+    );
+    return;
+  EndIf
+
+  var cfg := readconfigfile(":crafting:crafting");
+  If (cfg[format_hex(use_on.graphic)])
+    var material := cfg[format_hex(use_on.graphic)].material;
+    material:=StrReplace(material,"/"," ");
+    var stuff := splitwords(material);
+    var skill := cfg[use_on.graphic].skill;
+    skill:=StrReplace(skill,"/"," ");
+    var skillstuff := splitwords(skill);
+    If (!skillstuff[1])
+      skillstuff[1] := SKILLID_ERZVERARBEITUNG;
+    EndIf
+    If (!skillstuff[2])
+      skillstuff[2] := -1;
+    EndIf
+    If (!stuff[1])
+      stuff[1] := UOBJ_LOGS;
+      stuff[2] := 2;
+    EndIf
+    // output(who, "Material ist " + stuff);
+    // output(who, "Skill ist " + skillstuff);
+    If (cint(stuff[1]) == 0x1bf2)
+      stuff[1] := UOBJ_EISEN_BARREN;
+    ElseIf (cint(stuff[1]) == 0x1bf5)
+      stuff[1] := 0xee20;
+    EndIf
+
+    destroyitem(use_on);
+    playsoundeffect(who, SOUND_EFFECT_BELLOWS);
+    Sleep(1);
+    playsoundeffect(who, SOUND_EFFECT_BELLOWS);
+    Sleep(1);
+    playsoundeffect(who, SOUND_EFFECT_BUBBLE);
+    Sleep(1);
+
+    If (CheckSkillPergon(who, cint(skillstuff[1]),cint(skillstuff[2]), 0))
+      var matamount := cint(stuff[2]) / (randomint(3) + 1);
+      If (!matamount)
+        matamount := 1;
+      EndIf
+      If (matamount > 20)
+        matamount := 20;
+      EndIf
+      If (matamount > cint(stuff[2]))
+        matamount := cint(stuff[2])/2;
+      EndIf
+      CreateItemInBackpackPergon(who, cint(stuff[1]), matamount * amt);
+      SendSysMessagePergon(who,
+        "Ihr schafft es, etwas Material aus dem Item zu gewinnen.",
+        "You regein some raw material from this item."
+      );
+    Else
+      SendSysMessagePergon(who,
+        "Ihr scheitert, etwas Material zurückzugewinnen.",
+        "You failed to regain some raw material."
+      );
+    EndIf
+  Else
+    SendSysMessagePergon(who,
+      "Ihr wisst nicht, aus was das besteht. "+
+      "Ihr könnt somit kein Material zurückgewinnen!",
+      "You dunno this item is made up of. "+
+      "So, you cannot regain some raw material."
+    );
+  EndIf
+  // unloadconfigfile("::nomelt");
+EndProgram
+
+Function output(who, message)
+  If (who.cmdlevel >= CMDLEVEL_SEER)
+    SendSysMessagePergon(who, message);
+  EndIf
+EndFunction
+
+Function format_hex(theobjtype)
+  var thex := hex(theobjtype);
+  If (len(thex) == 5)
+    thex["0x"] := "0x0";
+  ElseIf (len(thex) == 4)
+    thex["0x"] := "0x00";
+  ElseIf (len(thex) == 3)
+    thex["0x"] := "0x000";
+  EndIf
+  return thex;
+EndFunction

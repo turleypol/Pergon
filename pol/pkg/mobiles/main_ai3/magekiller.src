@@ -1,0 +1,372 @@
+///////////////////////////////////////////////////////////////////////////
+// magekiller -
+// schleicht versteckt umher, solange niemand oder Krieger
+// in der Naehe; falls Priester/Magier/Nekro da ist,
+// enttarnt er sich und zaubert los
+//
+// Author: mehdorn
+
+include ":main_ai3:include_common/common";
+include ":main_ai3:include_common/main";
+include ":main_ai3:include_common/main_ai";
+include ":main_ai3:include_nature/mageattack";
+include "include/modifyskill";
+Const NATURE      := NATURE_MAGEATTACK;
+Const MAGEATTACK  := 1; // fuer OnStartMage/OnIdleMage
+Const NEARATTACK  := 1; // Dummy fuer MagicAttackFight
+Const CONCEAL_LVL := 1; // welchen Conceallevel fuer Schleichen?
+
+Function InitParamsSpezial(byref mytemplate)
+  params.insert(CURRNATURE, MAGEATTACK);
+  Return;
+  mytemplate := mytemplate;
+EndFunction
+
+Function Event_Engaged(byref ev) // {{{
+  If (!Event_Engaged_Common(ev))
+    return;
+  EndIf
+
+  If (me.warmode)
+    // ignorieren und weiterkaempfen
+    return;
+  EndIf
+
+  If (ShortManaHide())
+    // Mana knapp, nichts machen
+    return;
+  EndIf
+  
+  If (me.concealed)
+    me.concealed := 0;
+  EndIf
+  MagicAttackFight(ev.source);
+EndFunction // }}}
+
+Function Event_Damaged(byref ev) // {{{
+  If (!Event_Damaged_Common(ev))
+    return;
+  EndIf
+
+  If (ShortManaHide())
+    // Mana knapp, nichts machen
+    return;
+  EndIf
+
+  If (me.warmode)
+    // ab und zu Gegner wechseln
+    If (RandomInt(100) < 20)
+      // fuer Wechsel ist es noetig, den Warmode zeitweilig zu deaktivieren
+      SetWarmode(0);
+      If (me.concealed)
+        me.concealed := 0;
+      EndIf
+      MagicAttackFight(ev.source);
+      SetWarmode(1);
+    EndIf
+    return;
+
+  Else // noch nicht im Warmode
+    If (me.concealed)
+      me.concealed := 0;
+    EndIf
+    MagicAttackFight(ev.source);
+  EndIf
+EndFunction // }}}
+
+Function Event_EnteredArea(byref ev) // {{{
+  If (ev.source.serial == me.serial)
+    // fuer den Fall, dass ich mich beim Enttarnen selbst finde
+    return;
+  EndIf
+
+  If (ShortManaHide())
+    // Mana knapp, nichts machen
+    return;
+  EndIf
+
+  If (!Event_EnteredArea_Common(ev))
+    return;
+  EndIf
+
+  var near := CheckForMobiles();
+  If (me.warmode)
+    If (near.w.size() > 0)
+      // Krieger da, verstecken
+      MakeMePeaceful(params[RANGESENSE]);
+      If (!me.concealed)
+        TestMessage("EnteredArea: Tarnen wegen Krieger", 3);
+        me.concealed := CONCEAL_LVL;
+      EndIf
+      return;
+    EndIf
+    // sonst weiterkaempfen bzw. automatischer Kampfbeginn seitens Core
+    If (me.concealed)
+      me.concealed := 0;
+    EndIf
+    TestMessage("EnteredArea: Kaempfen", 3);
+    return;
+
+  Else // (noch) kein Warmode
+    If (near.w.size() > 0 or near.m.size() <= 0)
+      // Krieger da oder keine Mages, versteckt bleiben
+      TestMessage("EnteredArea: keine Aktion", 3);
+      return;
+    EndIf
+
+    If (me.concealed)
+      me.concealed := 0;
+    EndIf
+    If (ValidEnemy_Override(ev.source, 1))
+      TestMessage("EnteredArea: beginne Angriff auf "+ev.source.name, 3);
+      MagicAttackFight(ev.source);
+      return;
+    EndIf
+    TestMessage("EnteredArea: Override hat zugeschlagen", 3);
+  EndIf
+EndFunction // }}}
+
+Function Event_LeftArea(byref ev) // {{{
+  var near := CheckForMobiles();
+  If (near.w.size() > 0 or near.m.size() <= 0)
+    // wieder verstecken, falls Krieger da oder Magier weg
+    If (me.warmode)
+      MakeMePeaceful(params[RANGESENSE]);
+    EndIf
+    If (!me.concealed)
+      TestMessage("LeftArea: Tarnen", 3);
+      me.concealed := CONCEAL_LVL;
+    EndIf
+  EndIf
+  Event_LeftArea_Common(ev);
+EndFunction // }}}
+
+Function Event_LookAround(byref ev) // {{{
+  ev.source := Event_LookAround_Common(ev);
+  If (ev.source == -1)
+    MakeMePeaceful(params[RANGESENSE]);
+  ElseIf (ev.source)
+    If (ShortManaHide())
+      // Mana knapp, nichts machen
+      return;
+    EndIf
+
+    // sonst ggf. enttarnen und kaempfen
+    If (me.concealed)
+      me.concealed := 0;
+    EndIf
+    MagicAttackFight(ev.source);
+  EndIf
+EndFunction // }}}
+
+Function Event_Peacemade(byref ev) // {{{
+  Event_Peacemade_Common(ev);
+  params[CURRNATURE] := MAGEATTACK;  // Zurücksetzen
+  MakeMePeaceful(params[RANGESENSE]);
+  If (!me.concealed)
+    TestMessage("Peacemade: Tarnen", 3);
+    me.concealed := CONCEAL_LVL;
+  EndIf
+EndFunction // }}}
+
+Function Event_Cast_Wait(byref ev) // {{{
+  If (ShortManaHide())
+    // Mana knapp, nichts machen
+    return;
+  EndIf
+
+  // hinkt wegen Lookaround immer hinterher, deswegen Opp aus CProp holen
+  var opponent := me.getprop(PROP_OPPONENT);
+  If (opponent)
+    ev.source := SystemFindObjectBySerial(opponent);
+    If (!ev.source)
+      return;
+    EndIf
+    If (me.concealed)
+      me.concealed := 0;
+    EndIf
+    MagicAttackFight(ev.source);
+  EndIf
+EndFunction // }}}
+
+Function Event_Reflection(byref ev)
+  CastReflection();
+  Return;
+  ev := ev;
+EndFunction
+
+Function CheckForMobiles() // {{{
+  TestMessage("CheckForMobiles: gestartet, Suchradius "+params[RANGESENSE], 4);
+  var warriors := array{};
+  var mages    := array{};
+
+  ForEach mob in (ListMobilesNearLocation(
+    me.x, me.y, LIST_IGNORE_Z, params[RANGESENSE], me.realm
+  ))
+    SleepMs(2);
+
+    If (mob.isa(POLCLASS_NPC))
+      continue;
+    EndIf
+
+    TestMessage("CheckForMobiles: Pruefe "+mob.name, 5);
+    var class := mob.getprop(SKKLASSE);
+    If (!class)
+      continue;
+    EndIf
+    TestMessage("CheckForMobiles: "+mob.name+" ist "+class, 4);
+
+    If (class == KLASSE_KRIEGER)
+      warriors.append(mob);
+    ElseIf (class == KLASSE_MAGIER)
+      mages.append(mob);
+    EndIf
+  EndForEach
+
+  If (mages.size() > 0)
+    TestMessage("CheckForMobiles: Magier da", 3);
+  EndIf
+  If (warriors.size() > 0)
+    TestMessage("CheckForMobiles: Krieger da", 3);
+  EndIf
+
+  return struct{
+    m := mages,
+    w := warriors
+  };
+EndFunction // }}}
+
+Function ShortManaHide() // {{{
+  If (GetManaPergon(me) <= (GetMaxManaPergon(me)/2))
+    If (!me.concealed)
+      TestMessage("ManaHide: Mana knapp, tarnen", 3);
+      me.concealed := CONCEAL_LVL;
+    EndIf
+    MakeMePeaceful(params[RANGESENSE]);
+    // und ein wenig warten
+    Sleep(5);
+    return 1;
+  EndIf
+  return 0;
+EndFunction // }}}
+
+// ab hier wird es langsam uninteressant
+Function Can_Speech_Kill()
+  Return 1;
+EndFunction
+
+Function Can_Speech_Guard()
+  Return 1;
+EndFunction
+
+Function ValidEnemy_Override(byref mob,byref hostile)
+  Return ValidEnemy_Override_Common(mob);
+  hostile := hostile;
+EndFunction
+
+Function OnStart()
+  TestMessage("OnStart: Tarnen", 3);
+  me.concealed := CONCEAL_LVL;
+  OnStartMage();
+EndFunction
+
+Function OnIdle()
+  If (!me.warmode and !me.concealed)
+    TestMessage("OnIdle: Tarnen", 3);
+    me.concealed := CONCEAL_LVL;
+  EndIf
+  OnIdleMage(0);
+EndFunction
+
+// Standard-Funktionen {{{
+Function InitNPC()
+  InitNPC_Common();
+EndFunction
+
+Function Before_Events()
+  Return;
+EndFunction
+
+Function IdleTime()
+  Return IdleTime_Common();
+EndFunction
+
+Function Event_DoubleClicked(byref ev)
+  Event_DoubleClicked_Common(ev);
+EndFunction
+
+Function Event_ItemGiven(byref ev)
+  Event_ItemGiven_Common(ev);
+EndFunction
+
+Function Event_Speech(byref ev)
+  Event_Speech_Common(ev);
+EndFunction
+
+Function Event_Disengaged(byref ev)
+  Event_Disengaged_Common(ev);
+EndFunction
+
+Function Event_Follow(byref ev)
+  Event_Follow_Common(ev);
+EndFunction
+
+Function Event_Walk(byref ev)
+  If (!me.warmode and !me.concealed)
+    TestMessage("Walk: Tarnen", 3);
+    me.concealed := CONCEAL_LVL;
+  EndIf
+  Event_Walk_Common(ev);
+EndFunction
+
+Function Event_Guards_Help(byref ev)
+  Event_Guards_Help_Common(ev);
+EndFunction
+// }}}
+
+// unbenutzte Events {{{
+Function Event_StillRun(byref ev)
+  Return;
+  ev := ev;
+EndFunction
+
+Function Event_AskJoin(byref ev)
+  Return;
+  ev := ev;
+  // Event_AskJoin_Common(ev);
+EndFunction
+
+Function Event_GrantJoin(byref ev)
+  Return;
+  ev := ev;
+  // Event_GrantJoin_Common(ev);
+EndFunction
+
+Function Event_RefuseJoin(byref ev)
+  Return;
+  ev := ev;
+  // Event_RefuseJoin_Common(ev);
+EndFunction
+
+Function Event_Quest_Waypoint(byref ev)
+  Return;
+  ev := ev;
+EndFunction
+
+Function Event_Quest_Speech(byref ev)
+  Return;
+  ev := ev;
+EndFunction
+
+Function Event_Self_Kill(byref ev)
+  Return;
+  ev := ev;
+EndFunction
+
+Function Event_Quest_Nemesis(byref ev)
+  Return;
+  ev := ev;
+EndFunction
+// }}}
+
+// vim: sw=2 sts=2

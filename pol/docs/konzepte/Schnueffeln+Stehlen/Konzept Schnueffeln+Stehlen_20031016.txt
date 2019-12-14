@@ -1,0 +1,57 @@
+wegens dringendem Handlungsbedarf hat unsereiner sich gestern zusammen mit SeBB
+und LC ein bissel Gedanken über die beiden Skills gemacht und auch was brauchbares
+gefunden:
+
+1. Phase: Öffnen des Backpacks
+Skillcheck auf Stehlen vs. OpferINT * 3/4 - DiebesDEX / 10
+
+2. Phase: Offenhaltung des Backpacks
+SkillCheck auf Schnüffeln vs. OpferINT * 2/5
+ -> Zeit = 10 + DiebesSchnüffelSkill / 4
+
+3. Phase: Stehlen
+Skillanforderung = Fkt(Preis, Menge, Gewicht)
+Skillcheck auf Stehlen vs. Skillanforderng + (OpferDEX - DiebesDEX)/5
+
+
+zu 1.)
+jap, das ist ein Skillcheck auf Stehlen, nicht Schnüffeln. Hintergrund: Der
+hauptsächliche Skill des Diebes ist das Stehlen. Über ihn wird er künftig das
+Opferbackpack öffnen und die Items stehlen können. Schnüffeln wird die Zeit
+beeinflussen, die das Backpack offen bleibt.
+Schnüffeln ist somit ein optionaler Zusatzskill (ähnlich Spruchzauberei beim Zaubern
+oder Anatomie beim Kämpfen), sprich, wenn mans hat, hat man Vorteile, wenn mans
+nicht hat, kann man trotzdem Stehlen, aber es wird schwerer (oder: weniger leicht).
+
+OpferINT: mit ner Annahme von maximal 200 INT, wird das n Skillheck auf 150, der
+durch die DiebesDEX erleichtert wird. (200 INT, 120 DiebesDEX macht n Check auf 138%)
+
+zu 2.)
+Wie bereits erwähnt, dient Schnüffeln zum Offenhalten des Backpacks. Je besser man
+Schnüffeln kann, desto länger kann man Schnüffeln. Der SkillCheck auf Schnüffeln
+dient dazu herauszufinden, ob es einen Bonus auf die Zeit gibt. Bei Misserfolg gibts
+quasi nur die Minimumzeit
++ 10: ist die Minimumzeit für Leute ohne Schnüffelskill. 10 Sek. sind für geübte
+Stehler gut zu meistern. Maximumzeit ist 30 Sekunden.
+
+zu 3.)
+die grundlegende Skillanforderung ergibt sich unter Einbeziehung von Preis, Menge
+und Gewicht des Stehlitems, ähnlich wie es momentan ist. SeBB hat dafür eine schönere
+Funktion gefunden, bei der man Preis, Menge und Gewicht gut gewichten kann.
+Das Gewicht wird im Rahmen von 0..1000 Stones und der Wert (=Preis*Menge) im Bereich
+von 0..5000 verrechnet und danach beides 1:1 gewichtet:
+
+(OpferDEX - DiebesDEX)/5: Skillerleichterung in gewissem Rahmen, wenn die DiebesDEX
+größer als die OpferDEX ist, ansonsten das Gegenteil.
+
+SchnüffelSkill = (4*SQrt(Gewicht) + 1.75*SQrt(Wert))/2 + (OpferDEX - DiebesDEX)/5;
+
+zu allem)
+Das Opfer hat grundlegend zwei Chancen, sich zu wehren. Einmal beim Schnüffeln über
+die OpferINT, die es dem Dieb erschwert und des weiteren beim Stehlen, wo eine höhere
+OpferDEX dem Dieb das Leben schwer macht.
+
+
+- der Stehlenskill der Diebe wird dabei vor Umstellung auf das neue Konzept um 1/3 gesenkt,
+damit auch alles schön stimmig bleibt
+- Schnüffeln wird vor Umstellung als nutzbarer Skill aus dem Skillfenster entfernt

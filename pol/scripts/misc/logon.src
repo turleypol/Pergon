@@ -1,0 +1,659 @@
+///////////////////////////////////////////////////////////////////////////
+// Logon Script
+//
+// Author: Shinigami
+
+use datafile;
+use guilds;
+use os;
+use uo;
+use util;
+use vitals;
+include ":daymoonweather:daymoonweather";
+include ":drinking:common";
+include ":games:common";
+include ":items:lift";
+include ":musicianship:common";
+include ":newspells:light";
+include ":newspells:magicpergon";
+include ":packethook:common";
+include ":runebook:rune";
+include ":teleporters:common";
+include ":timer:common";
+include "include/animal";
+include "include/bank";
+include "include/client";
+include "include/clock";
+include "include/datafile";
+include "include/diebesliste";
+include "include/experience";
+include "include/logutil";
+include "include/mobile";
+include "include/msgs";
+include "include/npc";
+include "include/objtype";
+include "include/onlinesearch";
+include "include/party";
+include "include/pergonstatistik";
+include "include/poison";
+include "include/properties";
+include "include/quests";
+include "include/server";
+include ":sqlmanager:sqlmanager";
+
+Program OnLogon(who)
+  var gameclock := ReadGameClock();
+  var account := who.acct;
+  account.set_uo_expansion("ML");
+  who.followers := 0;
+  who.followers_max := 9;
+
+  // Zur eindeutigen Identifikation beim Tod
+  SetObjProperty(who, "myserial", who.serial);
+
+  // Ist der Client irgendwann mal abgeraucht? Bzw. wurde das LogOff-Script
+  // nicht ausgefuehrt?
+  If (
+    GetObjProperty(who, "lifetime_session") Or
+    GetObjProperty(who, "lifetime_counter")
+  )
+    SysLog("DEBUG: Hmm, is der Client abgeraucht?");
+  EndIf
+
+  // Erfahrungspunkte seit dem letzten Einloggen abziehen
+  CalculationNewExperience(who);
+
+  // Alle Uhrzeiten und Counter richtig setzen (muss hier sein, damit LogOff
+  // richtig arbeitet...)
+  // Wann hab ich mich zuletzt eingeloggt?
+  SetObjProperty(who, "LastLog", gameclock);
+  // Zeit seit dem Einloggen
+  SetObjProperty(who, "lifetime_session", gameclock);
+  // Zeit seit dem letzten WorldSave
+  SetObjProperty(who, "lifetime_counter", gameclock);
+  // Wird irgendwie von 'Murderer' benutzt... (TODO: mal checken)
+  SetObjProperty(who, "logontime", gameclock);
+
+  // Gibt es schon einen Onlinezeit-Zaehler des Characters?
+  If (!GetObjProperty(who, "lifetime"))
+    // ...spaetestens jetzt
+    SetObjProperty(who, "lifetime", 0);
+  EndIf
+  // Gibt es schon einen Onlinezeit-Zaehler des Accounts?
+  If (!account.getprop("lifetime"))
+    // ...spaetestens jetzt
+    account.setprop("lifetime", 0);
+  EndIf
+  // Wird irgendwie von 'Murderer' benutzt... (TODO: mal checken)
+  If (!GetObjProperty(who, "onlinetimer"))
+    SetObjProperty(who, "onlinetimer", 0);
+  EndIf
+
+  // Wann wurde der Account zuletzt benutzt?
+  account.setprop("lastused", gameclock);
+
+  // Verhindern, dass das SkillWin direkt nach dem Einloggen angezeigt wird
+  SetObjProperty(who, "#NoSkillWin", 1);
+
+  // Benutzte IPs mitloggen
+  var logip := who.ip;
+  If (!IsInFeMNet(who))
+    logip := "Extern"; // DSL... jeden Tag eine andere IP... nee, zu viel
+  EndIf
+  var usedips := account.getprop("UsedIPs");
+  If (!usedips)
+    account.setprop("UsedIPs", {logip});
+  ElseIf (!(logip in usedips))
+    usedips.append(logip);
+    account.setprop("UsedIPs", usedips);
+  EndIf
+
+  // alte Anlegesperre im Account und am Char pruefen
+  If (account.getprop(ACCT_NEWCHAR_BLOCK) or who.getprop(ACCT_NEWCHAR_BLOCK))
+    // who.frozen := 1;
+    // IncRevision(who);
+    SendStringAsTipWindow(who,
+      "Ihr habt (wahrscheinlich aus Versehen) einen weiteren Character "+
+      "erzeugt. Dies ist jedoch, gemaess den aktuellen Regeln, nicht "+
+      "zulaessig! Wendet Euch an einen UO-Admin (<"+MADDR_ACCOUNT++")."
+    );
+    // FAQ fuer nicht korrekt angelegte Character oeffnen
+    OpenURL(who, URL_NEWCHAR_FAQ);
+
+    TimedDisconnect(who, 120);
+    return;
+  EndIf
+
+  // Spieler darf sich einloggen...
+
+  // Ist der Client beim Recallen abgeschmiert?
+  If (GetObjProperty(who, PROP_RECALL_RUNNING))
+    syslog("HINWEIS: Recall-Disconnect bei "+CharInfoStr(who));
+    who.frozen := 0;
+    If (who.hidden) // Um unnoetige Events zu sparen...
+      who.hidden := 0;
+    EndIf
+  EndIf
+
+  // Musikeffekte für Resis zurücksetzen // {{{
+  // Aber vorher zur Sicherheit gleich die Prop löschen
+  EraseObjProperty(who, PROP_MUSIC_LISTEN);
+  If (GetObjProperty(who, "music_fire"))
+    SetObjProperty(who, "resist_fire", CInt(GetObjProperty(who, "resist_fire"))-CInt(GetObjProperty(who, "music_fire")));
+    EraseObjProperty(who, "music_fire");
+  EndIf
+  If (GetObjProperty(who, "music_water"))
+    SetObjProperty(who, "resist_water", CInt(GetObjProperty(who, "resist_water"))-CInt(GetObjProperty(who, "music_water")));
+    EraseObjProperty(who, "music_water");
+  EndIf
+  If (GetObjProperty(who, "music_air"))
+    SetObjProperty(who, "resist_air", CInt(GetObjProperty(who, "resist_air"))-CInt(GetObjProperty(who, "music_air")));
+    EraseObjProperty(who, "music_air");
+  EndIf
+  If (GetObjProperty(who, "music_earth"))
+    SetObjProperty(who, "resist_earth", CInt(GetObjProperty(who, "resist_earth"))-CInt(GetObjProperty(who, "music_earth")));
+    EraseObjProperty(who, "music_earth");
+  EndIf
+  If (GetObjProperty(who, "music_poison"))
+    SetObjProperty(who, "resist_poison", CInt(GetObjProperty(who, "resist_poison"))-CInt(GetObjProperty(who, "music_poison")));
+    EraseObjProperty(who, "music_poison");
+  EndIf
+  //Alle Musikeffekte die in der CastPowerProperty noch sind, zurücksetzen
+  ClearCastPowerProperty(who, "Musik", "", "", 0);
+  ClearCastPowerProperty(who, "Musik", "", "", 1);
+  ClearCastPowerProperty(who, "Musik", "", "Fire", 0);
+  ClearCastPowerProperty(who, "Musik", "", "Fire", 1);
+  ClearCastPowerProperty(who, "Musik", "", "Water", 0);
+  ClearCastPowerProperty(who, "Musik", "", "Water", 1);
+  ClearCastPowerProperty(who, "Musik", "", "Air", 0);
+  ClearCastPowerProperty(who, "Musik", "", "Air", 1);
+  ClearCastPowerProperty(who, "Musik", "", "Earth", 0);
+  ClearCastPowerProperty(who, "Musik", "", "Earth", 1);
+  ClearCastPowerProperty(who, "Musik", "", "Poison", 0);
+  ClearCastPowerProperty(who, "Musik", "", "Poison", 1);
+  ClearCastPowerProperty(who, "Musik", "Mage", "", 0);
+  ClearCastPowerProperty(who, "Musik", "Mage", "", 1);
+  ClearCastPowerProperty(who, "Musik", "Cleric", "", 0);
+  ClearCastPowerProperty(who, "Musik", "Cleric", "", 1);
+  ClearCastPowerProperty(who, "Musik", "Necro", "", 0);
+  ClearCastPowerProperty(who, "Musik", "Necro", "", 1);
+
+  // Dauerresibug der Musik -> altlasten entfernen (nur wenn keine durch
+  // magie oder alchemie verursacht -> wird durch spellchecker behandelt
+  If (!GetObjProperty(who, "spell_resist"))
+    If (!GetObjProperty(who, "potion_feuerresistent"))
+      //keine Feuerresistenz -> auf 0 setzen
+      SetObjProperty(who, "resist_fire", 0);
+    EndIf
+    If (!GetObjProperty(who, "potion_erdresistent"))
+      //keine Erdresistenz -> auf 0 setzen
+      SetObjProperty(who, "resist_earth", 0);
+    EndIf
+    If (!GetObjProperty(who, "potion_wasserresistent"))
+      //keine Wasserresistenz -> auf 0 setzen
+      SetObjProperty(who, "resist_water", 0);
+    EndIf
+    If (!GetObjProperty(who, "potion_luftresistent"))
+      //keine Luftresistenz -> auf 0 setzen
+      SetObjProperty(who, "resist_air", 0);
+    EndIf
+    If (!GetObjProperty(who, "potion_giftresistent"))
+      //keine Giftresistenz -> auf 0 setzen
+      SetObjProperty(who, "resist_poison", 0);
+    EndIf
+  EndIf
+  SendStatus(who);
+  // Ende Dauerresibug der Musik
+  // }}}
+
+  // Vergiftungslevel pruefen und ggf. die Vergiftung durchfuehren
+  LoginPoisoning(who);
+
+  // Drinking... Alkohol des Spielers abbauen
+  If (CDbl(who.getprop(PROP_ALCOHOL)) > ALC_LEVEL_SOBER)
+    Start_ScriptPergon(":drinking:drunken", who);
+  EndIf
+
+  // Censor ... die Strafe beenden
+  If (GetObjProperty(who, "PunishRuns"))
+    PlaySoundEffect(who, SFX_THUNDER);
+    who.graphic := GetObjProperty(who, "PunishOldGraphic");
+    who.color := GetObjProperty(who, "PunishOldColor");
+
+    PrintTextAbovePrivatePergon(who,
+      "Bedenkt: Die Götter vergessen Euren Fehltritt nicht!", "", who
+    );
+    EraseObjProperty(who, "PunishRuns");
+  EndIf
+
+  // Veraltete Properties loeschen {{{
+  who.eraseprop("Goldkontotester");   // Baenker-Goldkonto
+  who.eraseprop("Letzte_Pflueckung"); // Obstpfluecker
+  who.eraseprop("Obst");              // Obstpfluecker
+  // }}}
+
+  // Temporaere Properties loeschen {{{
+  // Spurenlesen
+  who.eraseprop("#trackblocktimeout");   // Skill Tracking
+  who.eraseprop("#trackingtimeout");     // Skill Tracking
+  // Sonstiges
+  who.eraseprop("#CombatAbilityDelay");  // Kampffertigkeiten
+  who.eraseprop("#DetectHidden");        // Skill Verstecktes finden
+  who.eraseprop("#DoorMacro");           // Wann darf man wieder Türen öffnen per Macro
+  who.eraseprop("#JustGated");           // Tor: Teleporterkennung
+  who.eraseprop("#UsesSkill");           // Skill Allgemein
+  who.eraseprop("#UsesScroll");          // Artefaktbenutzung
+  who.eraseprop("#UsesSomething");       // Artefaktbenutzung
+  who.eraseprop("#alchemie");            // Skill Alchemie/Rezepteschreiben
+  who.eraseprop("#enticement");          // Skill Abrichten
+  who.eraseprop("#inscription");         // Skill xxx Artefakte
+  who.eraseprop("#kartographie");        // Skill Kartographie
+  who.eraseprop("#lastFireFieldDamage"); // Feuerfeld dmg kontrolle
+  who.eraseprop("#looting");             // .grab
+  who.eraseprop("#potion");              // AlchyTrank benutzen
+  who.eraseprop("#provocating");         // Skill Provokation
+  who.eraseprop("#regeneration");        // Skill Meditation
+  who.eraseprop("#snooper");             // Skill Stehlen
+  who.eraseprop("#spellpowergump");      // Anzeige der Spellpower
+  who.eraseprop("#stealer");             // Skill Schnueffeln
+  who.eraseprop("#taming");              // Skill Zaehmen
+
+  // auf Konstanten umgestellte Dinge
+  who.eraseprop(CPROP_GOLD_TRANS);    // laufende Transaktion (banker)
+  who.eraseprop(LAST_SKILL);          // fuer .checkgain
+  who.eraseprop(PROP_ARENACRIME);     // Arenacontrol
+  who.eraseprop(PROP_BANDIT_AMOUNT);  // OneArmedBandit (0x66c1)
+  who.eraseprop(PROP_CAPTURE_TEAM);   // Capture the flag
+  who.eraseprop(PROP_COMPASS);        // Magischer Kompass
+  who.eraseprop(PROP_CONTROLNPC);     // .controlnpc
+  CancelDisconnect(who);
+  who.eraseprop(PROP_DISCONNECT_PID); // :timer:autodisconnect
+  who.eraseprop(PROP_FOLLOWMODE);     // .follow
+  who.eraseprop(PROP_HIDE_STAFF_ONLINE); // Staffanzeige in Online-Listen
+  who.eraseprop(PROP_LIFT_LAST);      // neuer Lift
+  who.eraseprop(PROP_RECALL_RESULT);  // Zurueckkehren/Runen (rune.inc)
+  who.eraseprop(PROP_STONED);         // I-Stein: StepBack()
+  who.eraseprop(PROP_WISP);           // Magisches Licht
+  who.eraseprop(PROP_ZONEMAKE);       // .quest zone
+  // Skill Musizieren
+  who.eraseprop(PROP_MUSIC_BARDING);  // musiziert gerade
+  who.eraseprop(PROP_MUSIC_LISTEN);   // gehoerter Barde
+  who.eraseprop(PROP_MUSIC_STEALTH);  // Stealth-Wirkung
+  // Packethook
+  who.eraseprop(PROP_SCRIPTERRCOUNT); // AntiSpam Drop/Pickup
+  who.eraseprop(PROP_TARGET);         // AntiSpam TargetCursor
+  who.eraseprop(PROP_TARGET_TIMEOUT); // AntiSpam TargetCursor
+
+  // alle noch vorhandenen temp. Properties anzeigen (zur Fehlersuche)
+  ForEach propname in GetObjPropertyNames(who)
+    If (propname[1]=="#") // Ist es eine temp. Property?
+      // gewollte Ausnahmen
+      If (propname in array{
+            // wird oben erst gesetzt, um das SkillWin zu blocken
+            "#NoSkillWin",
+            // fuer Hidewalls reicht der Server-Restart, nervt sonst
+            "#hidewallgroup"
+      })
+        continue;
+      EndIf
+      syslog("WARNUNG: "+CharInfoStr(who)+" temp. Prop "+propname);
+    EndIf
+  EndForEach
+  // }}}
+
+  If (who.cmdlevel < CMDLEVEL_SEER)
+    // Hunger, Durst etc. setzen, wenn sie noch nicht existieren
+    If (!who.getprop(PROP_THIRST))
+      who.setprop(PROP_THIRST, 9.0);
+    EndIf
+    If (!who.getprop(PROP_ALCOHOL))
+      who.setprop(PROP_ALCOHOL, ALC_LEVEL_SOBER);
+    EndIf
+    If (!who.getprop(PROP_HUNGER))
+      who.setprop(PROP_HUNGER, 9.0);
+    EndIf
+
+    // Bestimmte Rechte wieder nehmen (beim Zaubern gesetzt...)
+    If (who.getprop(PROP_PUNISH_TYPE) != "Pranger")
+      RevokePrivilege(who, "invul");
+    EndIf
+    RevokePrivilege(who, "hearghosts");
+    RevokePrivilege(who, "seeghosts");
+    RevokePrivilege(who, "seeinvisitems");
+  Else
+    // Werte auffrischen
+    SetHPPergon(who, GetMaxHPPergon(who));
+    SetManaPergon(who, GetMaxManaPergon(who));
+    SetStaminaPergon(who, GetMaxStaminaPergon(who));
+
+    // Hunger und Durst zuruecksetzen
+    who.setprop(PROP_THIRST, 9.0);
+    who.setprop(PROP_ALCOHOL, ALC_LEVEL_SOBER);
+    who.setprop(PROP_HUNGER, 9.0);
+  EndIf
+  SetPrivsForCmdlevel(who);
+
+  // Newbie als solchen kenntlich machen bzw. die Flags fuer den
+  // Aufenthalt richtig setzen
+  If (who.cmdlevel < CMDLEVEL_SEER)
+    If (GetObjProperty(who, TYPNEWBIE) || account.getprop(ACCT_NEWCHAR_NAME))
+      If (who.gender)
+        who.title_prefix := "Die junge";
+      Else
+        who.title_prefix := "Der junge";
+      EndIf
+    Else
+      If (!who.guild)  // Sonst gibts Konflikte
+        who.title_prefix := "";
+      EndIf
+    EndIf
+  EndIf
+
+  // Das macht doch inzwischen das Area-Enter-Script, oder?
+  // // Ein normaler Spieler im Newbie-Area oder Newbie/Alt am
+  // // Goetterpalast, jedoch ausserhalb einer Arena?
+  // If (((GetObjProperty(who, PLACE_INNEWBIEAREA) And (!GetObjProperty(who, TYPNEWBIE))) Or
+  //     GetObjProperty(who, PLACE_ATGODPALACE)) And (!GetObjProperty(who, ARENABATTLE)))
+  //   If (!CheckEquipmentForNewbieArea(who))
+  //     // Waffen und [schwere] Ruestungen des Player ablegen
+  //     SendSysMessagePergon(who,
+  //       "Euch fallen ein paar Gegenstände zu Boden."
+  //     );
+  //   EndIf
+  // EndIf
+
+  // Heaven... getamed Viechers werden reaktiviert
+  PetMasterLogOn(who);
+
+  // Korrigiert ggf. fehlerhafte Einstellungen nach dem Einloggen
+  // durch Runen-bedingten Zauber
+  LogonCharFixRune(who);
+
+  // veraltete Infos aus der Liste der Diebstähle aussortieren
+  ExpireTheftList(who);
+
+  // Skillanstiegsmessage initialisieren
+  EraseObjProperty(who, "SkLastGainedMsg");
+
+  // Prueft das Limit aller Skills sowie Attribute und schnippelt ggf.
+  CheckPlayerLimitsAndCut(who);
+  //CheckPlayerLimitsAndCut führt eigentlich dazu das nen Recalc ausgeführt wird
+  //wenn aber alle 3 auf locked stehen passiert das nicht
+  //->Mods die offline aufgehoben wurden haben noch alte vital werte
+  //deswegen zwangs Recalc
+  RecalcVitals(who);
+
+  // Backpack gegen Loeschung versiegeln
+  SetObjProperty(who.backpack, "#backpack", who.serial);
+
+  // Gesprochenes aufzeichnen
+  Start_ScriptPergon("items/listener", who);
+
+  // Sprache des Spielers initialisieren
+  InitLanguage(who);
+
+  // CMDLevel-Zeug {{{
+  If (who.cmdlevel >= CMDLEVEL_SEER)
+    // ueber vorliegende GM-Pages informieren
+    var pages := GetGlobalProperty(GM_PAGE_LIST);
+    If (pages)
+      Case (pages.size())
+      0:
+        SendSysMessagePergon(who,
+          "Es liegen keine Pages vor ...", "",
+          _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+        );
+      1:
+        SendSysMessagePergon(who,
+          "Es liegt eine Page vor ...", "",
+          _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+        );
+      default:
+        SendSysMessagePergon(who,
+          "Es liegen "+pages.size()+" Pages vor ...", "",
+          _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+        );
+      EndCase
+    EndIf
+
+    // CMDLevel ab Seer immer concealed einloggen
+    If (who.concealed != who.cmdlevel)
+      who.concealed := who.cmdlevel;
+    EndIf
+  EndIf
+  // }}}
+
+  // Prefix "BM " automatisch an aktuelle BMs vergeben {{{
+  // faelschlicherweise noch existierende BM-Titel abnehmen
+
+  // findet Stadtsteine
+  var townstones := ListItemsNearLocationOfType(
+    2500, 2500, 10, 2500, UOBJ_TOWNSTONE, REALM_BRITANNIA
+  );
+  var success := 0;
+
+  // alle Townstones nach der Spielerserial abklappern
+  ForEach entry in townstones
+    If (GetObjProperty(entry, "mayorserial") == who.serial)
+      success := 1;
+      Break;
+    EndIf
+  EndForEach
+
+  If (success)
+    If (!(who.name["BM "]))
+      // Char ist BM und bekommt dafuer das "BM " vor den Namen
+      who.name := "BM " + who.name;
+    EndIf
+  Else
+    // nicht mehr BM, ggf. wegnehmen
+    If (who.name["BM "])
+      var name_temp := who.name;
+      name_temp["BM "] := "";
+      who.name := name_temp;
+    EndIf
+  EndIf
+  // }}}
+
+  var namecheck := GetObjProperty(who, PROP_NAME_CHECK);
+  If (who.name["Bewohner"])
+    If (namecheck != IN_PROGRESS && !account.getprop(ACCT_NEWCHAR_NAME))
+      Start_ScriptPergon("::misc/askforname", who);
+    EndIf
+  Else
+    If (namecheck == NAME_DENIED)
+      SendStringAsTipWindow(who, "Euer angeforderter Name wurde abgelehnt, Ihr könnt jedoch per .name einen neuen beantragen.");
+      EraseObjProperty(who, PROP_NAME_CHECK);
+    EndIf
+  EndIf
+  If (namecheck == IN_PROGRESS)
+    SendSysMessagePergon(who,
+      "Euer angeforderter Name wurde noch nicht bestätigt.",
+      "Your requested name isn't yet accepted."
+    );
+  ElseIf (namecheck == NAME_APPLIED)
+    SendStringAsTipWindow(who, "Euer angeforderter Name wurde in Eurer Abwesenheit gesetzt.");
+    who.eraseProp(PROP_NAME_CHECK);
+  EndIf
+  
+  // Einlog-Informationsdienst {{{
+  If (!GetGlobalProperty("#Mute")) // Ruhe
+    // Den anderen Spielern eine Meldung ueber das Einloggen zukommen lassen
+    ForEach player in EnumerateOnlineCharactersCanSeeMe(who)
+      // Liste mit {char.name, char}
+      SendSysMessagePergon(player[2],
+        who.name+" hat sich eingeloggt", who.name+" has logged on",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+      );
+    EndForEach
+  EndIf
+
+  // Den Spectator ueber das Einloggen informieren
+  var Spectator := GetGlobalProperty("#Spectator");
+  If (Spectator)
+    var spectatorev := struct;
+    spectatorev.+type := "logon";
+    spectatorev.+value := {
+      who.acctname, who.name, who.name+" hat sich eingeloggt"
+    };
+    GetProcess(Spectator).sendevent(spectatorev);
+  EndIf
+
+  // Spieler hat sich fertig eingeloggt
+  var logontext :=
+    who.name+" (Account: "+who.acctname+" / IP: "+who.ip+
+    ") hat sich um "+gameclock+" eingeloggt ("+who.clientversion+").";
+  SysLog(logontext);
+  StatistikLogOnOff(who, logontext);
+  // }}}
+
+  // Debug: Kann die Linux-Core das Packet auch empfangen?
+  var clientinfo := who.clientinfo;
+  If (clientinfo.unknown1 Or clientinfo.cpu_clockspeed)
+    SysLog("SpyOnClient '"+who.name+"' ["+who.acctname+"] = "+clientinfo);
+  EndIf
+
+  // Message of the Day anzeigen
+  MessageOfTheDay(who);
+
+  // ShutDown-Message anzeigen, sofern gerade der CountDown laeuft
+  ShutDownMessageLogon(who);
+
+  // Partyinfo an Spieler schicken
+  // var leader := SendPartyInfo(who);
+  // If (leader)
+  //   SendSysMessagePergon(who,
+  //     "Ihr seid noch in der Party von "+leader.name+".", "",
+  //     _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+  //   );
+  // EndIf
+
+  var tage := CInt((gameclock - who.createdat)/86400.0);
+  var stunden := CInt(CInt(GetObjProperty(who, "lifetime"))/3600.0);
+  // Sonst sind die Leute zu deprimiert ;o)
+  If ((tage < 250) && (stunden < 250))
+    SendSysMessagePergon(who,
+      "Ihr lebt bereits "+tage+" Tage und wart dabei "+
+      stunden+" Stunden wach.", "", _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+    );
+  EndIf
+
+  If (who.cmdlevel < CMDLEVEL_SEER)
+    // versteckte bleiben versteckt
+    If (!who.hidden)
+      Case (RandomInt(3))
+        0: PrintTextAbovePergon(who, who, "*gähn*");
+        1: PrintTextAbovePergon(who, who, "*aufwach*");
+        2: PrintTextAbovePergon(who, who, "*aufsteh*");
+      EndCase
+    EndIf
+  EndIf
+
+  // ueber Loginfehler informieren
+  var failedlogins := who.acct.getprop(LOG_LOGINFAIL);
+  If (failedlogins)
+    SendSysMessagePergon(who,
+      "Bisher "+failedlogins+" fehlerhafte Passworteingaben", "",
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+  EndIf
+
+  // Wetter und Saison setzen
+  If (GetObjProperty(who, "Wetter"))
+    SetSeasonSpecialLogonPergon(who);
+  Else
+    DisableWeatherLevelPergon(who);
+    DisableSeasonPergon(who);
+  EndIf
+
+  // wartende Nachrichten verschicken {{{
+  // Sendet den in der CProp "LogonMessage" an den char.
+  // Wird gesetzt zb. vom Stadtstein.
+  var Nachricht := getObjProperty(who, "LogonMessage");
+  If (Nachricht)
+    SendStringAsTipWindow(who, Nachricht);
+    EraseObjProperty(who, "LogonMessage");
+  EndIf
+
+  // GildenInfo - Falls Wannabes vorhanden sind Erinnerungsnachricht
+  // verschicken
+  If (who.guild)
+    If (who.serial in who.guild.getprop("leaders"))
+      If (who.guild.getprop("wannabe_allies"))
+        ForEach gilde in (who.guild.getprop("wannabe_allies"))
+          gilde := FindGuild(gilde);
+          If (gilde)
+            SendSysMessagePergon(who, gilde.getprop("name")+" bietet euch ein Bündnis an.", "", _DEFAULT_TEXT_FONT, FONTCOLOR_BROWN);
+          EndIf
+        EndForEach
+      EndIf
+      If (who.guild.getprop("wannabe_enemies"))
+        ForEach gilde in (who.guild.getprop("wannabe_enemies"))
+          gilde := FindGuild(gilde);
+          If (gilde)
+            SendSysMessagePergon(who, gilde.getprop("name")+" bietet euch einen Krieg an.", "", _DEFAULT_TEXT_FONT, FONTCOLOR_BROWN);
+          EndIf
+        EndForEach
+      EndIf
+    EndIf
+  EndIf // (von Spieler darf sich einloggen)
+
+  // Briefkasten
+  var data_file := DFOpenDataFile(":letterbox:emails", DF_CREATE);
+  var data_elem := DFFindElement(data_file, Hex(who.serial), DF_CREATE);
+  If (!data_elem.GetProp("NextMsgID"))
+    data_elem.SetProp("NextMsgID", 1);
+  EndIf
+  var num_props := 0, mail_info;
+  ForEach mail_number in (data_elem.PropNames())
+    If (mail_number != "NextMsgID")
+      mail_info := data_elem.GetProp(mail_number);
+      If (mail_info.read == 0)
+        num_props+=1;
+      EndIf
+    EndIf
+  EndForEach
+
+  If (num_props > 0)
+    SendSysMessagePergon(who,
+      "Ihr habt "+num_props+" ungelesene Nachrichten in Ihrem Briefkasten. "+
+      "(Zum Lesen benutzt '.letterbox')",
+      "You have "+num_props+" unread messages in your mail box. "+
+      "(read them with '.letterbox')",
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+  EndIf
+  // }}}
+
+  // Weil es beim Serverrestart und beim Client Absturz passieren kann
+  // das Invul und Frozen aufgehoben werden
+  If (who.getprop("spell_statue"))
+    // freeze spelltarget
+    who.frozen := 1;
+    // make spelltarget invulnerable
+    GrantPrivilege(who, "invul");
+    who.enable("invul");
+    IncRevision(who);
+  EndIf
+
+  If (who.getprop("spell_blind"))  // Blind bleibt blind
+    Start_ScriptPergon("::misc/blinded", {who, 1});
+  EndIf
+
+  // Tips anzeigen oder nicht?
+  If (!who.acct.getprop(ACCT_TIP_DISABLED))
+    var param := struct;
+    param.+who  := who;
+
+    Start_ScriptPergon("::textcmd/0_player/tip", who);
+  EndIf
+
+  // BuffIcons wieder einblenden
+  Start_ScriptPergon("misc/logonbuff", who);
+
+  // ggf. ueber kaputte E-Mailadresse informieren
+  Start_ScriptPergon(":mail:logonwarning", who);
+  
+  SendSQLManager(who,SQLStatus_Logon);
+EndProgram
+// vim: sw=2 sts=2 tw=75

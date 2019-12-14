@@ -1,0 +1,400 @@
+///////////////////////////////////////////////////////////////////////////
+// Management - Schnittstelle fuer externe Programme zur Verwaltung von
+//              Pergon (kann mehrfach von aussen angesprochen werden)
+//
+// Author: Shinigami
+
+use file;
+use guilds;
+use os;
+use uo;
+include ":mail:common";
+include ":saver:saveopts";
+include "include/berufe";
+include "include/clock";
+include "include/modifyskill";
+include "include/npc";
+include "include/objtype";
+include "include/onlinesearch";
+include "include/pergoninfos";
+include "include/string";
+include "include/varutil";
+Include ":sqlmanager:sqlmanager";
+
+// Globale Variablen/Konstanten {{{
+Var echte_umlaute := {
+    {"&auml;", CChr(0xc3)+CChr(0xa4)},
+    {"&ouml;", CChr(0xc3)+CChr(0xb6)},
+    {"&uuml;", CChr(0xc3)+CChr(0xbc)},
+    {"&Auml;", CChr(0xc3)+CChr(0x84)},
+    {"&Ouml;", CChr(0xc3)+CChr(0x96)},
+    {"&Uuml;", CChr(0xc3)+CChr(0x9c)},
+    {"&szlig;", CChr(0xc3)+CChr(0x9f)},
+    {"\\\'", "'"}, {"\\\"", CChr(0x22)}
+};
+
+Var unechte_umlaute := {
+    {"&auml;", "ae"}, {"&ouml;", "oe"}, {"&uuml;", "ue"},
+    {"&Auml;", "Ae"}, {"&Ouml;", "Oe"}, {"&Uuml;", "Ue"},
+    {"&szlig;", "ss"}, {"\\\'", "'"}
+};
+// }}}
+
+Program Management(connection)
+    Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+    // Set_Event_Queue_Size(4096);
+
+    While (connection)
+        Var ev := Wait_for_Event(5);
+
+        If (!ev)
+            continue;
+        EndIf
+
+        If (ev.type != "recv")
+            SysLog("FEHLER: Unbekannter Typ = "+ev.type);
+            continue;
+        EndIf
+
+        var params := SplitWords(ev.value);
+        var cmd := lower(params[1]);
+        params.erase(1);
+
+        If (cmd == "quit")
+            // Verbindung trennen
+            // FIXME: irgendwie muss man trotzdem noch eine Taste druecken
+            connection.transmit("Closing connection ...");
+            return;
+        EndIf
+
+
+        // connection.transmit("Thou art not allowed to do this!");
+        If (PublicCmd(cmd, connection))
+            // Uebertragungsende signalisieren
+            connection.transmit("<<< EoT >>>");
+            continue;
+        EndIf
+
+        If (PrivateCmd(cmd, params, connection))
+            // Uebertragungsende signalisieren
+            connection.transmit("<<< EoT >>>");
+            continue;
+        EndIf
+
+        connection.transmit(" unknown command");
+        connection.transmit("<<< EoT >>>");
+        syslog(
+            "WARNUNG: Management-Fehlbedienung ("+connection.ip+"): "+ev.value
+        );
+    EndWhile
+EndProgram
+
+Function PublicCmd(cmd, connection)
+    Case (cmd)
+    "createbook":
+        // Liest die Daten eines neuen Buches ein und legt es im
+        // Backpack an
+        connection.transmit(CreateNewBook(connection));
+
+    "online":
+        // Uebertraegt eine Liste der eingeloggten Character (fuer
+        // Webserver)
+        Transmit_Array(connection, ListOnlineCharacterInfos());
+
+    "statistics":
+        // Statistiken fuer die bunten Graphen ausgeben
+        connection.transmit(
+            "chars_online: "+EnumerateOnlineCharacters().size()
+        );
+        connection.transmit(
+            "save_duration: "+CInt(GetGlobalProperty(SAVER_DUR))
+        );
+        // TableData("Active Account Count (Today)", GetGlobalProperty(STAT_DAILY_ACCS).size());
+        // TableData("Active Player Count (Today)", GetGlobalProperty(STAT_DAILY_CHARS).size());
+        // TableData("Online Player Count", EnumerateOnlineCharacters().size());
+
+    "status":
+        // Uebertraegt bestimmte Server-Informationen (im Sphere-Stil...
+        // evil)
+        connection.transmit(GetServerInfos());
+
+    "time":
+        // Uebertraegt die aktuelle Uhrzeit von Pergon
+        connection.transmit(GetPergonTimeOfDay());
+
+    default:
+        // kein passendes Kommando dabei?
+        return 0;
+    EndCase;
+
+    return 1;
+EndFunction
+
+Function PrivateCmd(cmd, params, connection)
+    If (connection.ip != "127.0.0.1")
+        // keine "private" Verbindung?
+        return 0;
+    EndIf
+
+    Case (cmd)
+    "berufe":
+        // Erstellt eine Liste der genutzten Berufe (fuer Webserver)
+        ListBerufeInfos();
+
+    "broadcast":
+        // Nachricht an alle Player schicken; Format:
+        // Broadcast [Pseudoabsender:] Text
+        var text := join(" ", params);
+        If (!text[":"])
+            text := "Stimme aus dem Off: " + text;
+        EndIf
+        BroadcastPergon(text);
+        syslog("Broadcast: "+text);
+        connection.transmit(1);
+
+    "countcharacters":
+        connection.transmit(EnumerateOnlineCharacters().size());
+
+    "character":
+        // Uebertraegt eine Liste der Character (fuer Webserver)
+        Transmit_Array(connection, ListCharacterInfos());
+
+    "deathcounter":
+        // Erstellt eine Liste der meiststerbenden Character (fuer
+        // Webserver)
+        ListDeathCounterInfos();
+
+    "houses":
+        // Erstellt eine Liste der Haeusern (fuer Webserver)
+        ListHouseInfos();
+
+    "msg":
+        // Nachricht an bestimmten Player schicken; Format:
+        // Msg Player_Name [Pseudoabsender:] Text
+        connection.transmit(StimmeAusDemOff(params));
+
+    "quester":
+        // Erstellt eine Liste der aktivsten Quester (fuer Webserver)
+        ListQuestInfos();
+
+    "shutdown":
+        var info := struct{
+            params := join(" ", params)
+        };
+        Start_ScriptPergon("::textcmd/8_test/shutdown", info);
+
+    "spawnnet":
+        // Erstellt eine Liste aller SpawnRunen (fuer Webserver)
+        ListSpawnNet();
+
+    "waitingmail":
+        // Liste wartender Mails ausgeben
+        Transmit_Array(connection, GetWaitingMail());
+        
+    "trigger_account":
+        // Neuen Accounts in der Datenbank anlegen
+        SendSQLManager(0, SQLStatus_CreateAccount);
+
+    default:
+        // kein passendes Kommando dabei?
+        return 0;
+    EndCase;
+
+    return 1;
+EndFunction
+
+////////////////////////////////////////////////////
+// Transmit_Array - Inhalt eines Array uebertragen
+////////////////////////////////////////////////////
+Function Transmit_Array(connection, infos)
+    ForEach info in infos
+        connection.transmit(info);
+    EndForEach
+EndFunction
+
+// Sendet eine Nachricht an einen Spieler
+Function StimmeAusDemOff(message)
+    // Empfaenger herauspulen und umbauen
+    var recipient := message[1];
+    message.erase(1);
+    recipient:=StrReplace(recipient,"_"," ");
+
+    // Nachricht formatieren
+    var text := join(" ", message);
+    If (!text[":"])
+        text := "Stimme aus dem Off: " + text;
+    EndIf
+
+    // Empfaenger zusammenmatchen
+    var found := 0;
+    var send_to;
+    ForEach char in (EnumerateOnlineCharacters())
+        If (char.name[recipient])
+            found += 1;
+            send_to := char;
+        EndIf
+        SleepMS(2);
+    EndForEach
+
+    // nur senden, wenn eindeutiger Treffer
+    If (found == 1)
+        SendSysMessagePergon(send_to, text);
+        syslog("Msg -> "+send_to.name+": "+text);
+    EndIf
+
+    return found;
+EndFunction
+
+///////////////////////////////////////////////////////////////////////////
+// CreateNewBook - Liest die Daten eines neuen Buches ein und legt es im
+// Backpack an
+///////////////////////////////////////////////////////////////////////////
+Function CreateNewBook(connection)
+    Var serial  := 0;
+    Var author  := "";
+    Var title   := "";
+    Var content := {""};
+    Var modus   := 0;
+
+    While (connection)
+        Var ev:=Wait_for_Event(5);
+        If (!ev)
+            continue;
+        EndIf
+
+        If (ev.type != "recv")
+            continue;
+        EndIf
+
+        If (ev.value<>"<<< EoT >>>") // Daten einlesen
+            Case (modus)
+            0:
+                serial := ev.value;
+                modus  := 1;
+            1:
+                author := ev.value;
+                modus  := 2;
+            2:
+                title  := ev.value;
+                modus  := 3;
+            3:
+                If (ev.value=="") // Leerzeile erzwungen?
+                    content.append("");
+                Else
+                    content[content.size()] :=
+                        content[content.size()] + ev.value + " ";
+                EndIf
+            EndCase
+        Else
+            // ... und nun das Buch anlegen
+            // Den Character suchen
+            Var character := SystemFindObjectBySerial(
+                CInt(serial), SYSFIND_SEARCH_OFFLINE_MOBILES
+            );
+            // ... und testen
+            If (
+                !character.isa(POLCLASS_MOBILE) or
+                (character.isa(POLCLASS_NPC))
+            )
+                // Character wurde nicht gefunden
+                Return ("3");
+            EndIf
+
+            Var book := CreateItemInBackpackPergon(character, 0x0fef, 1);
+            If (!book)
+                // Buch konnte nicht angelegt werden
+                Return ("2");
+            EndIf
+
+            ForEach contentline in content
+                contentline := ConvertUmlauts(contentline, echte_umlaute);
+            EndForEach
+
+            // Inhalt formatieren
+            content := CreateBookContent(content, 160);
+
+            // Buch mit Inhalt fuettern
+            SetObjProperty(
+                book, "author", ConvertUmlauts(author, echte_umlaute)
+            );
+            SetObjProperty(
+                book, "title", ConvertUmlauts(title, echte_umlaute)
+            );
+            SetObjProperty(book, "contents", content);
+            SetObjProperty(book, "maxpages", CInt((content.size()+7)/8)+16);
+
+            // Buch betiteln
+            If (title And author)
+                book.name :=
+                    ConvertUmlauts(title+" von "+author, unechte_umlaute);
+            ElseIf (title)
+                book.name := ConvertUmlauts(title, unechte_umlaute);
+            ElseIf (author)
+                book.name :=
+                    ConvertUmlauts("Verfasst von "+author, unechte_umlaute);
+            Else
+                book.name := "ein Buch";
+            EndIf
+
+            // Alles ok
+            Return ("1");
+        EndIf
+    EndWhile
+EndFunction
+
+///////////////////////////////////////////////////////////////////////////
+// ConvertUmlauts - Konvertiert die Umlaute in das Pol-Book-intere Format
+///////////////////////////////////////////////////////////////////////////
+Function ConvertUmlauts(text, umlaute)
+    text:=CStr(text);
+    If (Len(text)>0)
+       ForEach umlaut in umlaute
+           text:=StrReplace(text,umlaut[1],umlaut[2]);
+       EndForEach
+    EndIf
+
+    Return (text);
+EndFunction
+
+////////////////////////////////////////////////////////////////////
+// CreateBookContent - Wandelt die Daten in lesbaren Buchinhalt um
+////////////////////////////////////////////////////////////////////
+Function CreateBookContent(content, maxwidth)
+    Var newcontent:={};
+
+    ForEach block in content
+        Var words := SplitWords(block);
+        Var width := 0;
+        Var index := 1;
+
+        While (index <= words.size())
+            If (width ==0 )
+                Var testword := words[index];
+
+                newcontent.append(testword);
+                width := GumpTextWidthFast(testword);
+                index += 1;
+                continue;
+            EndIf
+
+            Var testword  := " " + words[index];
+            Var testwidth := GumpTextWidthFast(testword);
+
+            If (width+testwidth<maxwidth)
+                newcontent[newcontent.size()] :=
+                    newcontent[newcontent.size()] + testword;
+                width += testwidth;
+                index += 1;
+            Else
+                width := 0;
+            EndIf
+        EndWhile
+
+        If (CInt(newcontent.size()/8)*8 <> newcontent.size())
+            // Keine neue Zeilen am Seitenanfang einfuegen
+            newcontent.append("");
+        EndIf
+    EndForEach
+
+    Return (newcontent);
+EndFunction

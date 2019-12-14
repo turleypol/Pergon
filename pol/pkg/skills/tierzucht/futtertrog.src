@@ -1,0 +1,30 @@
+use uo;
+use os;
+
+Program FutterTrogControl(trog)
+  trog.color := 0;
+  While (trog)
+    var items := EnumerateItemsInContainer(trog, ENUMERATE_ROOT_ONLY);
+    If (!items.size())
+      If (trog.graphic != 0x0B29)
+        trog.graphic := 0x0B29;
+      EndIf
+    Else
+      var amount := 0;
+      ForEach item in (items)
+        amount += GetAmount(item);
+      EndForEach
+      
+      If (amount >= 25)
+        If (trog.graphic != 0x0B2B)
+          trog.graphic := 0x0B2B;
+        EndIf
+      Else
+        If (trog.graphic != 0x0B2A)
+          trog.graphic := 0x0B2A;
+        EndIf
+      EndIf
+    Endif
+    Sleep(5);
+  EndWhile
+EndProgram

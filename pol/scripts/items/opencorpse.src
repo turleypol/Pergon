@@ -1,0 +1,44 @@
+/////////////////////////////////////////////////////////////
+//
+//   Open Corpse - Prüfen ob der Corpse geöffnet werden darf
+//
+//     Author: Fox
+//
+/////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+Include "include/modifyskill";
+Include "include/party";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program OpenCorpse(who, corpse)
+  If (ZugriffErlaubt(who, corpse))
+   		SendViewContainer(who, corpse); // Container oeffnen  
+   		
+   		//Loggen, wie in opencont
+   		If ((!corpse.container) And (corpse.serial<>who.backpack.serial))
+	    	SysLog("HINWEIS: "+who.name+" ("+Lower(Hex(who.serial))+") oeffnet den Container '"+
+	   	   corpse.desc+"' ("+Lower(Hex(corpse.serial))+") bei "+who.x+" "+who.y+" "+who.z+".");
+	  	EndIf
+	Else
+			PrintTextAbovePrivatePergon(corpse, "Ihr könnt diese Leiche nicht plündern.", "You cannot loot this corpse.", who);
+  EndIf
+EndProgram
+
+
+
+
+

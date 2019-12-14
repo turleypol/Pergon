@@ -1,0 +1,140 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file reveal.src
+//
+//    implements spell 19 <Reveal> - "Enthuellung"
+//
+//  Reveals hidden characters and possible traps
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 27.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+///////////////////////////////////////////////////////////////////////////
+use os;
+use util;
+
+include "../magicpergon";
+
+var item_cfg;
+
+Program cast_reveal (params)
+
+   var caster;
+
+   var spells := ReadConfigFile("::spells");                   // load spelldata
+   var spell := FindConfigElem(spells, SPELLID_COMMON_REVEAL);
+   var range := spell.range;
+   var minrange := spell.rangemin;
+   var maxrange := spell.rangemax;
+   var power;
+
+   If (params[1] == "#MOB")
+      caster := params[2];
+      power := params[3];
+   ElseIf (params[1] == "#SCROLL")
+      caster := params[2];
+      power := params[3];
+   Else
+      caster := params[1];
+
+      power := GetCastPowerPergon(caster, SPELLID_COMMON_REVEAL);
+   EndIf
+
+   range := CInt(power*range/100.0);           // calc spellrange according to casting power
+   If (minrange and minrange > range)
+      range := minrange;
+   ElseIf (maxrange and maxrange < range)
+      range := maxrange;
+   EndIf
+                                  // get hidden chars and items in spellrange
+   var hiders := ListMobilesNearLocationEx(caster.x, caster.y, caster.z, range, LISTEX_FLAG_HIDDEN,caster.realm);
+   var items := ListItemsNearLocation(caster.x, caster.y, caster.z, range,caster.realm);
+   var skill := CInt(power * 2/5);
+   var foundany := 0;
+
+   If (len(hiders) > 0)                   // reveal hidden characters If found
+      ForEach mobile in hiders
+         If (FoundHidden(caster, mobile, skill, range))
+            foundany := 1;
+            If (mobile.hidden) // Um unnoetige Events zu sparen...
+              mobile.hidden := 0;
+            EndIf
+            PrintTextAbovePrivatePergon(mobile, "Ihr wurdet entdeckt", "You have been discovered", mobile);
+            PrintTextAbovePrivatePergon(mobile, "Ahaa", "", caster);
+            PlaySoundEffect(mobile, SFX_SPELL_REVEAL);
+         EndIf
+         SleepMS(2);
+      EndForEach
+   EndIf
+
+   If (!foundany)
+      SendSysMessagePergon(caster, "Ihr habt niemanden Verstecktes finden können",
+                                   "You cannot find anybody hidden around you");
+   EndIf
+
+   var trap;
+   var dtct;
+   foundany := 0;
+
+   ForEach item in items                  // check items in range
+      trap := GetObjProperty(item, "trap_strength");
+      dtct := GetObjProperty(item, "trapped");
+
+      If (dtct && dtct >= ReadGameClock())        // item has been allready detected not so long ago
+         If (skill >= 15)                 // int 40 needed to find detected trap
+            PrintTextAbovePrivatePergon(item, "Falle", "Trap", caster);
+          foundany := 1;
+         EndIf
+      ElseIf (trap)
+         If (FoundTrap(item, skill))      // check hidden trap on item
+          PrintTextAbovePrivatePergon(item, "Falle", "Trap", caster);
+          SetObjProperty(item , "trapped", ReadGameClock() + 60);   // mark trap as found
+          foundany := 1;
+         EndIf
+      EndIf
+      SleepMS(2);
+   EndForEach
+
+   If (!foundany)
+      SendSysMessagePergon(caster, "Ihr habt keine versteckten Fallen finden können",
+                                   "You did not find any hidden traps");
+   EndIf
+
+EndProgram
+
+
+
+Function FoundHidden (finder, hider, skill, range)      // checks, If hidden char is magically found
+
+   var diff := GetObjProperty(hider, "hiding_diff");
+   If (!diff)  // hide_diff (noch) nicht gesetzt, daher wie vorher den normalen Check nehmen
+     diff := CInt((GetSkillPergon(hider, SKILLID_VERSTECKEN)+10)*2/5);
+   EndIf
+   var diffmod := diff + CInt((Distance(finder, hider) - 1) * 20 / range);
+
+   If (diff)
+      If (skill - diffmod + 20 >= RandomInt(40) + 1)    // casters skill must be in range of +/- 20 of
+         return 1;                                    // hider's modified hiding_diff
+      Else
+        return 0;                         // better luck next time
+      EndIf
+   Else
+      syslog("FEHLER: Zauber Enthuellung - Encountered hidden Character w/o property 'hiding_diff': " + hider.serial);
+      return 1;                                       // error in hidden char - prop is missing
+   EndIf
+
+EndFunction
+
+
+
+// checks, If hidden trap is magically found
+Function FoundTrap(item, skill)
+
+   var strength := CInt(GetObjProperty(item, "buildersskill") * 2/3);
+
+   If (skill - strength + 20 >= RandomInt(40) + 1)      // casters skill must be in range of +/- 20 of
+      return 1;                           // trap-builder's skill
+   Else
+      return 0;                           // better luck next time
+   EndIf
+
+EndFunction

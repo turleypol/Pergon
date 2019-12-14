@@ -1,0 +1,586 @@
+/////////////////////////////////////////////////////////////////////////
+// Barber AI Script v1.0
+//
+// based on Barber AI Script
+// Author: Zulu
+//
+// Author: Shinigami
+
+use npc;
+use storage;
+include "include/client";
+include "include/merchant";
+
+Function SetMerchantType(meprototype)
+  meprototype.merchanttype    := "Barber";
+  meprototype.left_area       := 1;
+  meprototype.speech_sleeping := 1;
+  meprototype.speech_default  := 1;
+
+  return meprototype;
+EndFunction
+
+Function Hook_Move_Action(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Merchant_Sold(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Entered_Area(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Left_Area(me, medata, ev)
+  NPCSayTextTraditional(me, "Achtet immer schön auf Eure Haare. Es gibt nichts Wichtigeres.", "");
+  return;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Item_Given_Sleeping(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Item_Given(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Speech_Open(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Speech_Sleeping(me, medata, ev)
+  NPCSayTextTraditional(me, "Jetzt pflege ich meine eigenen Haare. Kommt doch gegen "+medata.open+" wieder.", "");
+  return;
+  ev     := 1;
+EndFunction
+
+Function Hook_Speech_Name(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Speech_Default(me, medata, ev, sayed)
+  var proceeded := 0;
+
+  If (sayed["haarschnitt"] or sayed["frisur"])
+    Barbier_Haare(ev.source, me, 0);
+
+    proceeded := 1;
+  EndIf
+
+  If (sayed["rasur"])
+        If (!ev.source.race) // Nur Menschen
+                If (!ev.source.gender) // Nur Männer
+        Barbier_Haare(ev.source, me, 1);
+      Else
+        PrintTextAbovePergon(ev.source, me, "Ich denke dies ist keine gute Idee.");
+      EndIf
+    Else
+        PrintTextAbovePergon(ev.source, me, "Ich denke dies ist keine gute Idee.");
+    EndIf
+
+    proceeded := 1;
+  EndIf
+
+  return (proceeded);
+  medata := 1;
+EndFunction
+
+Function Hook_Ghost_Speech_Default(me, medata, ev, sayed)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+  sayed  := 1;
+EndFunction
+
+Function Hook_Buy(me, medata, who)
+  return;
+  me     := 1;
+  medata := 1;
+  who    := 1;
+EndFunction
+
+
+
+// Haar- und Bartschneide-Script // by. Fraggulus
+
+
+Function layout_barbier()
+  return array{
+    "page 0",
+    "nodispose",
+    "noclose",
+    "resizepic 0 0 5100 330 335",
+
+    "text 25 20 0 1",
+
+    "button 25  64 2104 2103 1 0 1",
+    "text 45  60 0 2",
+    "text 180 60 0 3",
+    "text 220 60 0 0",
+
+    "button 25  84 2104 2103 1 1 2",
+    "text 45  80 0 4",
+    "text 180 80 0 5",
+    "text 220 80 0 0",
+
+    "button 25 104 2104 2103 1 1 3",
+    "text 45  100 0 6",
+    "text 180 100 0 7",
+    "text 220 100 0 0",
+
+    "button 25 124 2104 2103 1 1 4",
+    "text 45  120 0 8",
+    "text 180 120 0 9",
+    "text 220 120 0 0",
+
+    "button 25 144 2104 2103 1 1 5",
+    "text 45  140 0 10",
+    "text 180 140 0 11",
+    "text 220 140 0 0",
+
+    "button 25 164 2104 2103 1 1 6",
+    "text 45  160 0 12",
+    "text 180 160 0 13",
+    "text 220 160 0 0",
+
+    "button 25 184 2104 2103 1 1 7",
+    "text 45  180 0 14",
+    "text 180 180 0 15",
+    "text 220 180 0 0",
+
+    "button 25 204 2104 2103 1 1 8",
+    "text 45  200 0 16",
+    "text 180 200 0 17",
+    "text 220 200 0 0",
+    
+    "button 25 294 2104 2103 1 1 0",
+    "text 45  290 0 24",
+
+    "button 25 224 2104 2103 1 1 9",
+    "text 45  220 0 18",
+    "text 180 220 0 19",
+    "text 220 220 0 0",
+    
+    "button 25 244 2104 2103 1 1 10",
+    "text 45  240 0 20",
+    "text 180 240 0 21",
+    "text 220 240 0 0",
+
+    "button 25 264 2104 2103 1 1 11",
+    "text 45  260 0 22",
+    "text 180 260 0 23",
+    "text 220 260 0 0"
+  };
+EndFunction
+
+// Preise brauchen nur hier geaendert werden. gilt fuers ganze script
+Function data_Haar_Human()
+  return array{
+    "gp",
+    "Welchen Haarschnitt wollt Ihr?",
+    "Kahlkopf",        "99",
+    "Afroschnitt",     "360",
+    "Broetchenhaar",   "420",
+    "Irokesenschnitt", "400",
+    "Krisnaschnitt",   "360",
+    "Pagenschnitt",    "440",
+    "Pferdeschwanz",   "300",
+    "Zoepfe",          "300",
+    "kurze Haare",     "320",
+    "lichtes Haar",    "360",
+    "Naturlanghaar",   "640",
+    "kein Haarschnitt"
+  };
+EndFunction
+
+Function data_Haar_Elf_M()
+  return array{
+    "gp",
+    "Welchen Haarschnitt wollt Ihr?",
+    "Kahlkopf",          "99",
+    "VokuHila",          "360",
+    "lockig mit Feder",  "420",
+    "kurz",              "400",
+    "lockiger VokuHila", "360",
+    "Naturlanghaar",     "440",
+    "halb hochgesteckt", "300",
+    "geflochtener Zopf", "300",
+    "strubbelig kurz",   "320",
+    "", "",
+    "", "",
+    "kein Haarschnitt"
+  };
+EndFunction
+
+Function data_Haar_Elf_W()
+  return array{
+    "gp",
+    "Welchen Haarschnitt wollt Ihr?",
+    "Kahlkopf",            "99",
+    "Halblang mit Feder",  "360",
+    "kurz",                "420",
+    "halblang",            "400",
+    "dekorativ mit Blume", "360",
+    "halb hochgesteckt",   "440",
+    "geflochtener Zopf",   "300",
+    "Dutt",                "300",
+    "strubbelig kurz",     "320",
+    "", "",
+    "", "",
+    "kein Haarschnitt"
+  };
+EndFunction
+
+Function Gump_Haar_Human_M()
+  return array{
+    "resizepic 235 50 83 80 270",
+    "gumppic 165 30 50900",
+    "gumppic 195 50 50712",
+    "gumppic 165 70 50703",
+    "gumppic 195 90 50903",
+    "gumppic 165 110 50710",
+    "gumppic 195 130 50702",
+    "gumppic 165 150 50902",
+    "gumppic 195 170 50700",
+    "gumppic 165 190 50901",
+    "gumppic 195 210 50701"
+  };
+EndFunction
+
+Function Gump_Haar_Human_W()
+  return array{
+    "resizepic 235 50 83 80 270",
+    "gumppic 165 30 60900",
+    "gumppic 195 50 60712",
+    "gumppic 165 70 60703",
+    "gumppic 195 90 60903",
+    "gumppic 165 110 60710",
+    "gumppic 195 130 60702",
+    "gumppic 165 150 60902",
+    "gumppic 195 170 60700",
+    "gumppic 165 190 60901",
+    "gumppic 195 210 60701"
+  };
+EndFunction
+
+Function Gump_Haar_Elf_M()
+  return array{
+    "resizepic 235 50 83 80 270",
+    "gumppic 165 30 50916", // 0x2fbf VokuHila
+    "gumppic 195 50 50917", // 0x2fc0 lockig mit Feder
+    "gumppic 165 70 50918", // 0x2fc1 kurz
+    "gumppic 195 90 50919", // 0x2fc2 lockiger VokuHila
+    "gumppic 165 110 50891", // 0x2fcd Naturlanghaar
+    "gumppic 195 130 50892", // 0x2fce halb hochgesteckt
+    "gumppic 165 150 50893", // 0x2fcf geflochtener Zopf
+    "gumppic 195 170 50895" // 0x2fd1 strubbelig kurz
+  };
+EndFunction
+
+Function Gump_Haar_Elf_W()
+  return array{
+    "resizepic 235 50 83 80 270",
+    "gumppic 165 30 60917", // 0x2fc0 Halblang mit Feder
+    "gumppic 195 50 60918", // 0x2fc1 kurz
+    "gumppic 165 70 60919", // 0x2fc2 halblang
+    "gumppic 195 90 60890", // 0x2fcc dekorativ mit Blume
+    "gumppic 165 110 60892", // 0x2fce halb hochgesteckt
+    "gumppic 195 130 60893", // 0x2fcd gelfochtener Zopf
+    "gumppic 165 150 60894", // 0x2fd0 Dutt
+    "gumppic 195 170 60895" // 0x2fd1 strubbelig kurz
+  };
+EndFunction
+
+Function Haar_Feld_Human()
+  return array{
+    0x2004, 0x2047, 0x2046, 0x2044, 0x204a, 0x2045, 0x203d, 0x2049, 0x203b,
+    0x2048, 0x203c
+  };
+EndFunction
+
+Function Haar_Feld_Elf_M()
+  return array{
+    0x2004, 0x2fbf, 0x2fc0, 0x2fc1, 0x2fc2, 0x2fcd, 0x2fce, 0x2fcf, 0x2fd1
+  };
+EndFunction
+
+Function Haar_Feld_Elf_W()
+  return array{
+    0x2004, 0x2fc0, 0x2fc1, 0x2fc2, 0x2fcc, 0x2fce, 0x2fcf, 0x2fd0, 0x2fd1
+  };
+EndFunction
+
+// wie Haar, nur kopiert und Namen ersetzt. Das verringert Scriptaufwand.
+Function data_Bart()
+  return array{
+    "gp",
+    "Welchen Bartschnitt wuenscht Ihr?",
+    "Bart ab",            "95",
+    "Ziegenbart",         "360",
+    "Schnurrbart",        "300",
+    "3-Tage-Bart",        "240",
+    "Vandyke",            "360",
+    "kurzer Bart",        "280",
+    "halblanger Bart",    "390",
+    "Naturlanghaar",      "690",
+    "", "",
+    "", "",
+    "", "",
+    "kein Bartschnitt"
+  };
+EndFunction
+
+Function Gump_Bart()
+  return array{
+    "resizepic 235 50 83 80 270",
+    "gumppic 165 20 50800",
+    "gumppic 195 40 50803",
+    "gumppic 195 60 50904",
+    "gumppic 165 80 50906",
+    "gumppic 195 100 50802",
+    "gumppic 165 120 50905",
+    "gumppic 195 140 50801"
+  };
+EndFunction
+
+Function Bart_Feld()
+  return array{0x2005, 0x2040, 0x2041, 0x204b, 0x204d, 0x203f, 0x204c, 0x203e};
+EndFunction
+
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Function Barbier_Haare(who, who_npc, Haar_Oder_Bart)
+  var layout, data, Feld;
+
+  If (Haar_Oder_Bart == 0) // je nach Player-Wunsch Haar- oder Bartschnitt
+    If (!who.race) // Mensch
+      data := data_Haar_Human();
+      Feld := Haar_Feld_Human();
+      layout := layout_barbier();
+      If (!who.gender)
+        layout += Gump_Haar_Human_M();
+      Else
+        layout += Gump_Haar_Human_W();
+      EndIf
+    Else
+      layout := layout_barbier();
+      layout.shrink(43);
+      If (!who.gender) // männlicher Elf
+        data := data_Haar_Elf_M();
+        Feld := Haar_Feld_Elf_M();
+        layout += Gump_Haar_Elf_M();
+      Else // weiblicher Elf
+        data := data_Haar_Elf_W();
+        Feld := Haar_Feld_Elf_W();
+        layout += Gump_Haar_Elf_W();
+      EndIf
+    EndIf
+  Else
+  	layout := layout_barbier();
+    layout.shrink(39);
+    data := data_Bart();
+    Feld := Bart_Feld();
+    layout += Gump_Bart();
+  EndIf
+
+  Case (RandomInt(4) + 1)
+    1: PrintTextAbovePergon(who, who_npc, "Ihr wünscht?");
+    2: PrintTextAbovePergon(who, who_npc, "Meine Empfehlung heute: " + data[ (RandomInt(11) * 2 + 3) ]);
+    3: PrintTextAbovePergon(who, who_npc, "Welchen Schnitt wünscht Ihr?");
+    4: PrintTextAbovePergon(who, who_npc, "Sucht Euch einen Schnitt aus.");
+    default: PrintTextAbovePergon(who, who_npc, "Ihr wünscht?");
+  EndCase
+  SleepMS(500);
+
+  // Rest des Scripts ist fuer 'Haar' und 'Bart' identisch
+  var res := SendDialogGump(who, layout, data, 50, 50);
+  var auswahl := res[0];
+  If ((auswahl == 0) || (!Feld[auswahl])) // abbruch-button
+    PrintTextAbovePergon(who, who_npc, "Nungut, wenn Ihr nicht wollt.");
+    If ((RandomInt(20)) == 1)
+      Sleep(2);
+      PrintTextAbovePergon(who, who_npc, "Ich hätte Euch auch einen Sonderpreis gemacht.");
+    EndIf
+    return;
+  EndIf
+  
+  If (Haar_Oder_Bart == 0)
+	  If (Feld[auswahl] == GetEquipmentByLayer(who, LAYER_HAIR).objtype || (!GetEquipmentByLayer(who, LAYER_HAIR) && Feld[auswahl] == 0x2004))
+	  	PrintTextAbovePergon(who, who_npc, "Eure Haarpracht entspricht schon meinen Vorstellungen dieser Frisur.");
+	  	return;
+	  EndIf
+	Else
+		If (Feld[auswahl] == GetEquipmentByLayer(who, LAYER_BEARD).objtype || (!GetEquipmentByLayer(who, LAYER_BEARD) && Feld[auswahl] == 0x2005))
+	  	PrintTextAbovePergon(who, who_npc, "Euer Flaum entspricht schon meinen Vorstellungen dieser Rasur.");
+	  	return;
+	  EndIf
+	EndIf
+
+  PrintTextAbovePergon(who, who_npc, "Nehmt Platz, macht es Euch bequem, ich werde dann anfangen.");
+  SleepMS(3500);
+
+//  If (!sitting(who)) // who muss auf einem hocker (stool) sitzen // er kann sich auch einen eigenen mitbringen :o)
+//    PrintTextAbovePergon(who, who_npc, "Ihr habt Euch ja noch immer nicht gesetzt.");
+//    SleepMS(2000);
+//    PrintTextAbovePergon(who, who_npc, "So kann ich nicht arbeiten.");
+//    return;
+//  Else
+
+// barbier soll zum hocker laufen
+    While ((Abs(who.x - who_npc.x) > 1) && (Abs(who.y - who_npc.y) > 1))
+      WalkToward(who);
+    EndWhile;
+    PrintTextAbovePergon(who, who_npc, "Dann fange ich mal an.");
+    SleepMS(2500);
+//  EndIf
+
+  Case (auswahl)
+    1: If (!NimmBezahlung(who, who_npc, CInt(data[4]))) // Glatze
+         return;
+       EndIf
+       MakeNoise(who);
+       If (Haar_Oder_Bart == 0)
+         DestroyItem(GetEquipmentByLayer(who, LAYER_HAIR));
+       Else
+         DestroyItem(GetEquipmentByLayer(who, LAYER_BEARD));
+       EndIf
+    2: kurzes_haar(who, who_npc,  6, Haar_Oder_Bart, Feld[2],  data); // afro-schnitt  // Ziegenbart
+    3: kurzes_haar(who, who_npc,  8, Haar_Oder_Bart, Feld[3],  data); // broetchen             // Schnurrbart
+    4: kurzes_haar(who, who_npc, 10, Haar_Oder_Bart, Feld[4],  data); // irokese               // 3-Tage-Bart
+    5: kurzes_haar(who, who_npc, 12, Haar_Oder_Bart, Feld[5],  data); // krisna                // Vandyke
+    6: kurzes_haar(who, who_npc, 14, Haar_Oder_Bart, Feld[6],  data); // page                  // Vandyke      \
+    7: kurzes_haar(who, who_npc, 16, Haar_Oder_Bart, Feld[7],  data); // pferdeschwanz // Vandyke       -- Lueckenfueller
+    8: kurzes_haar(who, who_npc, 18, Haar_Oder_Bart, Feld[8],  data); // zoepfe                // Vandyke      /
+    9: kurzes_haar(who, who_npc, 20, Haar_Oder_Bart, Feld[9],  data); // kurzhaar              // kurzer Bart
+   10: kurzes_haar(who, who_npc, 22, Haar_Oder_Bart, Feld[10], data); // lichtes haar // halblanger Bart
+   11: PrintTextAbovePergon(who, who_npc, "Wie gewünscht ... einmal langes Naturhaar.");
+       If (!NimmBezahlung(who, who_npc, CInt(data[24]))) // langes Haar // langer Bart
+         return;
+       EndIf
+       MakeNoise(who);
+       If (Haar_Oder_Bart == 0)
+         DestroyItem(GetEquipmentByLayer(who, LAYER_HAIR));
+       Else
+         DestroyItem(GetEquipmentByLayer(who, LAYER_BEARD));
+       EndIf
+       var dummy := CreateItemInBackpackPergon(who_npc, Feld[11], 1);
+       EquipItem(who, dummy);
+
+   default: SendSysMessagePergon(who_npc, "Huch, da ging wohl was daneben!", "");
+  EndCase
+
+  SleepMS(2000);
+  PrintTextAbovePergon(who, who_npc, "Und fertig ist Euer neues Aussehen.");
+
+EndFunction
+
+
+Function sitting(who)
+  ForEach item in ListItemsNearLocation(who.x, who.y, who.z, 0, who.realm)
+    If (item.objtype == 0xA2A) // Stool, Barhocker
+      return(1);
+    EndIf
+  EndForEach
+
+  return(0);
+EndFunction
+
+
+Function MakeNoise(who)
+  PlaySoundEffect(who, 0x249);
+  SleepMS(2500);
+
+  PlaySoundEffect(who, 0x249);
+  SleepMS(2500 + RandomInt(2000));
+
+  PlaySoundEffect(who, 0x249);
+  SleepMS(2500 + RandomInt(3000));
+EndFunction
+
+
+Function NimmBezahlung(who, who_npc, amount)
+
+  var bezahlt := 0;
+
+  ForEach item in EnumerateItemsInContainer(who.backpack)
+    If (item.objtype == UOBJ_GOLD_COIN)
+      If (item.amount < amount)
+        PrintTextAbovePergon(who, who_npc, "Soll das ein Scherz sein ?!");
+        SleepMS(1500);
+        PrintTextAbovePergon(who, who_npc, "Kommt wieder, wenn Ihr genug Gold habt!");
+        return(0);
+      Else
+        SubtractAmount(item, amount);
+        bezahlt := 1;
+        return(1);
+      EndIf
+    EndIf
+  EndForEach
+
+  If (!bezahlt)
+    PrintTextAbovePergon(who, who_npc, "Soll das ein Scherz sein ?!");
+    SleepMS(1500);
+    PrintTextAbovePergon(who, who_npc, "Kommt wieder, wenn Ihr genug Gold habt!");
+    return(0);
+  Else
+    return(1);
+  EndIf
+EndFunction
+
+
+Function kurzes_haar(who, who_npc, nr, HoB, Haar, byref data)
+// Funktion ausgelagert, nimmt sonst viel platz in anspruch
+// gilt fuer alle Haare, die kuerzer als Langes Haar sind
+  If (GetEquipmentByLayer(who, LAYER_HAIR) != 0x203c) // wenn kein langes Haar ...
+    PrintTextAbovePergon(who, who_npc, "Ich muss Euch erst einen Langhaarersatz verpassen, da Euer Haar zu kurz ist.");
+    SleepMS(2000);
+    PrintTextAbovePergon(who, who_npc, "Das wird natürlich um einige Goldstücke teurer, dafür siehts auch schöner aus.");
+    SleepMS(2500);
+
+    If (!NimmBezahlung(who, who_npc, CInt(data[nr]) + CInt(data[22]) + 10)) // normale Entlohnung + Geld fuer langes Haar + Zusatzaufwandsaufschlag
+      return;
+    EndIf
+  Else
+    If (!NimmBezahlung(who, who_npc, CInt(data[nr])))
+      return;
+    EndIf
+  EndIf
+
+  MakeNoise(who);
+  If (HoB == 0)
+    DestroyItem(GetEquipmentByLayer(who, LAYER_HAIR));
+  Else
+    DestroyItem(GetEquipmentByLayer(who, LAYER_BEARD));
+  EndIf
+
+  var dummy := CreateItemInBackpackPergon(who_npc, Haar, 1);
+  EquipItem(who, dummy);
+EndFunction

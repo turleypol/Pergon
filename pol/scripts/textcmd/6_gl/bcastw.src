@@ -1,0 +1,24 @@
+//////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD BCastW - Wichtige BroadCasts verschicken (siehe auch BCast)
+//
+//////////////////////////////////////////////////////////////////////////
+
+Use uo;
+
+Include "include/client";
+Include "include/msgs";
+
+Program TextCMD_BCastW(who, text)
+  If (text)
+    ForEach onlinechr in EnumerateOnlineCharacters()
+      PlaySoundEffect(onlinechr, SFX_THUNDER);
+      PlayLightningBoltEffect(onlinechr);
+
+      SendStringAsTipWindow(onlinechr, text);
+    EndForEach
+    SysLog(CharInfoStr(who)+": "+text);
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

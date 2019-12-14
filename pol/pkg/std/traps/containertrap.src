@@ -1,0 +1,97 @@
+// Ergaenzungen:
+// wenn man einen Schluessel zu einem Container mit Falle besitzt, wird
+// die Falle entschaerft ohne ausgeloest zu werden
+
+use math;
+use storage;
+use uo;
+use vitals;
+include ":doorsnew:common";
+include ":traps:traps";
+include "include/client";
+include "include/msgs";
+include "include/objtype";
+include "include/poison";
+include "include/server";
+
+Program OpenTrappedItem(who, item)
+  // Ist es noch eine alte Containerfalle? (Aufruf von :traps:traps)
+  If (TypeOfInt(who) == OT_ARRAY)
+    item := who[2];
+    who := who[1];
+  EndIf
+
+  If (item.isa(POLCLASS_CONTAINER) and who.cmdlevel >= CMDLEVEL_SEER)
+    SendSysMessagePergon(who,
+      "Container mit Falle wird für CMDLevel geöffnet.",
+      "Opening trapped container for CMDLevel."
+    );
+    SendViewContainer(who, item);
+    return;
+  EndIf
+
+  // Schluessel ist im Backpack bzw an einem Schluesselring suchen
+  If (FindKeyIDs(who, CInt(item.getprop("lockid"))))
+    EraseTrapCProps(item);
+    SendSysMessagePergon(who,
+      "Ihr besitzt den passenden Schlüssel und entschärft die Falle.",
+      "You have a matching key and defuse the trap."
+    );
+    return;
+  EndIf
+
+  var traptype := GetObjProperty(item, "trap_type");
+  var trapstrength := CInt(GetObjProperty(item, "trap_strength"));
+  If (trapstrength < 1)
+    trapstrength := 1;
+  EndIf
+
+  Case (CInt(traptype))
+  1:
+    SendSysMessagePergon(who,
+      "Ihr 'entschärft' eine Nadelfalle", "You 'defuse' a needle trap"
+    );
+    PlaySoundEffect(who, SFX_224);
+
+    var dmg := CInt(trapstrength * 0.8);
+    ApplyDamagePergon(who, dmg, DAMAGE_NO_REPSYS);
+
+  2:
+    SendSysMessagePergon(who,
+      "Ihr 'entschärft' eine Giftfalle", "You 'defuse' a poison trap"
+    );
+    PrintTextAbovePrivatePergon(who, "Ihr wurdet vergiftet", "", who);
+    PlaySoundEffect(who, SFX_206);
+    PlayObjectCenteredEffect(who, FX_CURSE_EFFECT, 10, 10);
+
+    var level := CInt(GetObjProperty(item, "poisonlvl"));
+    // Spawnnet-Containerfallen haben offenbar keinen poisonlvl
+    If ((level == error) or (level == 0))
+      // grob einen Wert aus Fallenstaerke ermitteln
+      level := CInt(trapstrength/1.5);
+    EndIf
+    // Vergiftung durchfuehren
+    AddPoisonLevel(who, level);
+
+  3:
+    SendSysMessagePergon (who,
+      "Ihr 'entschärft' eine Sprengfalle", "You 'defuse' a booby trap."
+    );
+    PlaySoundEffect(who, SFX_11E);
+    PlayObjectCenteredEffect(who, FX_EXPLODE_3, 10, 10);
+
+    var resist := 1 - CDbl(GetResistance(who, "fire"));
+    var dmg := CInt(trapstrength * resist);
+
+    ApplyRawDamagePergon(who, dmg, DAMAGE_NO_REPSYS);
+
+  default:
+    SendSysMessagePergon (who,
+      "Schlauerweise meidet Ihr die Falle", "You cunningly avoid a trap"
+    );
+  EndCase
+
+  EraseTrapCProps(item);
+EndProgram
+
+// vim: sw=2 sts=2

@@ -1,0 +1,90 @@
+//////////////////////////////////////////////////////////////////
+//				
+//			Hotny - Herb UseScript
+//
+//			Erstellt: 05.08.2006
+//
+//			Modifikations:
+//        17.11.07 Turley - Allgemeines Script für alle Büsche
+//                          (gebaut von unserem zukünftigen Scripter Niko)
+//															
+//////////////////////////////////////////////////////////////////
+//
+//  itemdesc eintrag des busches:
+//    Difficuly - ...
+//    UsableItem - Ernteprodukt
+
+use util;
+use os;
+use uo;
+use cfgfile;
+
+include "include/modifyskill";
+include "include/msgs";
+
+program UseHerb(who,item)
+	var itemdescs:=ReadConfigFile("::itemdesc");
+	var busch:=itemdescs[item.objtype];
+	var skill:=GetSkillPergon(who,SKILLID_WILDNISKUNDE);
+	var findpossible:= skill - CInt(busch.Difficulty);
+	If (findpossible<=0)
+		SendSysMessagePergon(who,"Ihr traut euch nicht "+item.desc+" zu ernten.",
+		                         "You don't trust yourself to harvest "+item.desc+".");
+		Return;
+	EndIf
+	var lock := item.getprop("#lock");
+	if (lock && (lock > ReadGameClock()))
+		SendSysMessagePergon(who,item.desc+" wird schon geerntet.",
+		                         item.desc+" is already harvest.");
+		return;
+	endif
+	//Busch sperren (mit TimeOut)
+	item.setprop("#lock",(ReadGameClock()+600));
+	SendSysMessagePergon(who,"Ihr versucht "+item.desc+" zu ernten.",
+	                         "You try to harvest "+item.desc+".");
+	var dur := 150 - CInt(skill);
+	var msgdur:=0;
+	
+	//Wait schleife, mann muss ja nicht immer alles gleich finden
+	while(dur>0)	
+		if (msgdur>10)
+			SendSysMessagePergon(who,"Ihr versucht es weiter.","You hold on trying.");
+			msgdur:=0;
+		endif
+		Sleep(2);
+		dur-=2;
+		msgdur+=2;
+		//Abbrechen falls er weggeht
+		if (Distance(who,item)>1)
+			SendSysMessagePergon(who,"Ihr seid zu weit weg.","You're too far away.");
+			item.eraseprop("#lock");
+			return;
+		endif
+	endwhile
+	
+	//Steht er noch nah genug?
+	if (Distance(who,item)>1)
+		SendSysMessagePergon(who,"Ihr seid zu weit weg.","You're too far away.");
+		item.eraseprop("#lock");
+		return;
+	endif
+	
+	//So mal schauen ob er was findet
+	if (findpossible>0)
+		//Findet er was?
+		if (findpossible > RandomInt(40))
+			//Gefunden
+			var create:=CreateItemInBackpackPergon(who,busch.UseableItem);
+			SendSysMessagePergon(who,"Ihr konntet etwas "+create.desc+" ernten und legt es in Euren Rucksack.",
+			                         "You find "+create.desc+" and put it in your backpack.");
+			
+		else
+			SendSysMessagePergon(who,"Ihr konntet nichts ernten.","You can't find anything");
+		endif
+	else
+		SendSysMessagePergon(who,"Ihr konntet nichts ernten.","You can't find anything");
+	endif
+	
+	//So Bush ist durchwühlt, jetzt wird er zerstört
+	DestroyItem(item);
+endprogram

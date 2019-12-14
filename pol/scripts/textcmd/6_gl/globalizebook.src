@@ -1,0 +1,97 @@
+////////////////////////////////////////////////////////////////////////////
+//
+//   GlobalizeBook TextCMD v1.0 - Buch in die globale Bibliothek aufnehmen
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use datafile;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_GlobalizeBook(who)
+  SendSysMessagePergon(who, "Welches Buch wollt ihr in die globale Bibliothek aufnehmen?");
+
+  Var book:=Target(who);
+  If (book.isa(POLCLASS_ITEM))
+    If ((0xfef<=book.objtype) And (book.objtype<=0xff4))
+      If (!GetObjProperty(book, "bookcontent")) // Altes oder neues Buch?
+        If (!GetObjProperty(book, "globalized"))
+          Var contents:=GetObjProperty(book, "contents");
+          If (contents)
+            Var staticbooks:=OpenDataFile(":sysbook:staticbooks");
+            If (staticbooks)
+              Var newkey:=staticbooks.keys().size()+1;
+
+              If (!staticbooks.findelement(newkey))               // Dieses Buch sollte es noch nicht geben!
+                Var newbook:=staticbooks.createelement(newkey); // Buch im DataFile anlegen
+                If (newbook)
+                  Var title:=GetObjProperty(book, "title");
+                  If (title)
+                    newbook.setprop("title", title);
+                  Else
+                    newbook.setprop("title", "");
+                  EndIf
+
+                  Var author:=GetObjProperty(book, "author");
+                  If (author)
+                    newbook.setprop("author", author);
+                  Else
+                    newbook.setprop("author", "");
+                  EndIf
+
+                  Var index:=contents.size(); // Den Content trimmen, d.h. Leerseiten rausschmeissen
+                  While (((contents[index]=="") Or (!contents[index])) And (index>1))
+                    contents.erase(index);
+                    index:=index-1;
+                  EndWhile
+                  newbook.setprop("contents", contents);
+
+                  SetObjProperty(book, "globalized", 1);
+
+                  SendSysMessagePergon(who, "Das Buch wurde aufgenommen.");
+                Else
+                  SendSysMessagePergon(who, "Irgendwas geht hier schief, im DataFile konnte kein Buch angelegt werden!");
+                  SysLog("FEHLER: Im DataFile 'staticbooks' konnte kein neues Buch angelegt werden!");
+                EndIf
+              Else
+                SendSysMessagePergon(who, "Irgendwas geht hier schief, die Buchnummer "+newkey+" ist bereits vergeben!");
+              EndIf
+            Else
+              SendSysMessagePergon(who, "Irgendwas geht hier schief, auf das DataFile konnte nicht zugegriffen werden!");
+              SysLog("FEHLER: DataFile 'staticbooks' konnte nicht geoeffnet werden!");
+            EndIf
+          Else
+            SendSysMessagePergon(who, "Dieses Buch sollte erstmal beschrieben werden!");
+          EndIf
+        Else
+          SendSysMessagePergon(who, "Dieses Buch wurde bereits aufgenommen! Wenn ihr Euch sicher seit, "+
+            "dann benutzt '.erasep globalized' und versucht es erneut.");
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Bücher alten Stils haben keine direkten Seitenvorgaben!");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Dies ist kein Buch!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

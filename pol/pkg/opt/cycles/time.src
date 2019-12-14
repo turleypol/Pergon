@@ -1,0 +1,36 @@
+/////////////////////////////////////////////////////////////////////
+//
+//   Time - Cycle
+//
+//     based on DayNight Pkg (1999/06/02)
+//       Author: Racalac
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     1999/06/02 Rac: Day/Night transitions for one time zone only
+//     2000/04/23 Raxxla: Played around with a little bit
+//     2000/05/28 Shinigami: Complete ReWrite
+//
+/////////////////////////////////////////////////////////////////////
+
+use os;
+include "include/clock";
+include "include/msgs";
+
+Program TimeCycle()
+  BroadcastPergon(
+    "Zeitansage-Zyklus wird aktiviert ...", "Time-cycle activated ..."
+  );
+  syslog("Zeitansage-Zyklus wird aktiviert ...");
+
+  //Set_Critical/(1);
+  Sleep(450);
+
+  While (1)
+    Var time := GetPergonTimeOfDay();
+    BroadcastPergon("Zeit: "+time, "Time: "+time);
+
+    Sleep(1800);
+  EndWhile
+EndProgram

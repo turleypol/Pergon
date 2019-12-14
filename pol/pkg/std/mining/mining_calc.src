@@ -1,0 +1,723 @@
+// Abwandlung der mining.src zur Ermittlung der Häufigkeiten
+
+use attributes;
+use util;
+use os;
+use uo;
+
+include "include/client";
+include "include/objtype";
+include "include/utility";
+include "include/modifyskill";
+include "include/itemnpc";
+
+Var axt_quality;
+Var axt_skill;
+Var axt_hp;
+Var axt_maxhp;
+
+Var erze:=Dictionary;
+Var to_smelt:=Dictionary;
+Var barren:=Dictionary;
+Var barren_sum:=Dictionary;
+Var kombi:=Dictionary;
+Var output_quality;
+Var tiegel;
+
+Program CalcPictool(character)
+  character:=SystemFindObjectBySerial(0x3, SYSFIND_SEARCH_OFFLINE_MOBILES);
+
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  kombi[UOBJ_EISEN_BARREN]:={UOBJ_MOLYBDAEN_BARREN};
+  kombi[UOBJ_MOLYBDAEN_BARREN]:={UOBJ_EISEN_BARREN, UOBJ_MANGAN_BARREN};
+  kombi[UOBJ_MANGAN_BARREN]:={UOBJ_MOLYBDAEN_BARREN, UOBJ_IRIDIUM_BARREN};
+  kombi[UOBJ_IRIDIUM_BARREN]:={UOBJ_MANGAN_BARREN, UOBJ_TENERUM_BARREN};
+  kombi[UOBJ_TENERUM_BARREN]:={UOBJ_IRIDIUM_BARREN, UOBJ_INDIUM_BARREN};
+  kombi[UOBJ_INDIUM_BARREN]:={UOBJ_TENERUM_BARREN, UOBJ_LANTHAN_BARREN};
+  kombi[UOBJ_LANTHAN_BARREN]:={UOBJ_INDIUM_BARREN, UOBJ_WOLFRAM_BARREN};
+  kombi[UOBJ_WOLFRAM_BARREN]:={UOBJ_LANTHAN_BARREN, UOBJ_PLATIN_BARREN};
+  kombi[UOBJ_PLATIN_BARREN]:={UOBJ_WOLFRAM_BARREN, UOBJ_CHROM_BARREN};
+  kombi[UOBJ_CHROM_BARREN]:={UOBJ_PLATIN_BARREN, UOBJ_TITANIUM_BARREN};
+  kombi[UOBJ_TITANIUM_BARREN]:={UOBJ_CHROM_BARREN};
+  kombi[UOBJ_CERIUM_BARREN]:=UOBJ_ROPIUM_BARREN;
+  kombi[UOBJ_ROPIUM_BARREN]:=UOBJ_CERIUM_BARREN;
+  kombi[UOBJ_PRODYMIUM_BARREN]:=UOBJ_GADONIUM_BARREN;
+  kombi[UOBJ_GADONIUM_BARREN]:=UOBJ_PRODYMIUM_BARREN;
+  kombi[UOBJ_NEODYMIUM_BARREN]:=UOBJ_TERBIUM_BARREN;
+  kombi[UOBJ_TERBIUM_BARREN]:=UOBJ_NEODYMIUM_BARREN;
+  kombi[UOBJ_PROMETHIUM_BARREN]:=UOBJ_HOLMIUM_BARREN;
+  kombi[UOBJ_HOLMIUM_BARREN]:=UOBJ_PROMETHIUM_BARREN;
+  kombi[UOBJ_SAMARIUM_BARREN]:=UOBJ_ERBIUM_BARREN;
+  kombi[UOBJ_ERBIUM_BARREN]:={UOBJ_SAMARIUM_BARREN, UOBJ_ERBIUM_BARREN};
+
+  GetTypicallyHarvestValues(5.095);
+
+  Var pickaxe:=SystemFindObjectBySerial(0x44ee8ec5); // 0xe85
+  tiegel:=SystemFindObjectBySerial(0x44ee8ec6);      // 0x9e2
+  SetSkillPergon(character, SKILLID_ERZABBAU, 20);
+  SetSkillPergon(character, SKILLID_ERZVERARBEITUNG, 20);
+  SetStrPergon(character, 50);
+  SetDexPergon(character, 10);
+  SetIntPergon(character, 10);
+  output_quality:=GetObjProperty(pickaxe, "Werkzeug")[1];
+
+  SysLog("Skill1V   = "+GetSkillPergon(character, SKILLID_ERZABBAU)+" "+GetRawSkillPergon(character, SKILLID_ERZABBAU));
+  SysLog("Skill2V   = "+GetSkillPergon(character, SKILLID_ERZVERARBEITUNG)+" "+GetRawSkillPergon(character, SKILLID_ERZVERARBEITUNG));
+  SysLog("Stats     = "+GetStrPergon(character)+" "+GetDexPergon(character)+" "+GetIntPergon(character));
+  SysLog("Werkzeug1 = "+GetObjProperty(pickaxe, "Werkzeug"));
+  SysLog("Werkzeug1 = "+GetObjProperty(tiegel, "Werkzeug"));
+
+  SetGlobalProperty("Blubb", 1);
+  Var count:=1;
+
+  While (GetGlobalProperty("Blubb"))
+ // For index:=1 To 10
+    SetPropertyItem(pickaxe, 5.095, 135, 135, 5.095, 135, "t", SKILLID_WERKZEUGSCHMIEDEN, 60.1, 814);
+    SetPropertyItem(tiegel, 4.29, 399, 438, 4.89, 434, "t", SKILLID_WERKZEUGSCHMIEDEN, 75.1, 1512);
+
+    Use_Picktool(character);
+
+    count+=1;
+    If (count>100)
+      CreateLegierBarren(character);
+      SysLog("Erze      = "+erze);
+      count:=1;
+    EndIf
+ // EndFor
+  EndWhile
+
+  SysLog("Skill1N   = "+GetSkillPergon(character, SKILLID_ERZABBAU)+" "+GetRawSkillPergon(character, SKILLID_ERZABBAU));
+  SysLog("Skill2N   = "+GetSkillPergon(character, SKILLID_ERZVERARBEITUNG)+" "+GetRawSkillPergon(character, SKILLID_ERZVERARBEITUNG));
+  SysLog("Stats     = "+GetStrPergon(character)+" "+GetDexPergon(character)+" "+GetIntPergon(character));
+  SysLog("Quality   = "+output_quality);
+  SysLog("Erze      = "+erze);
+  SysLog("Barren    = "+barren);
+  SysLog("BarrenSum = "+barren_sum);
+
+  CreateLegierBarren(character);
+
+  SysLog("Fertig");
+EndProgram
+
+Var difficulties:={};
+Var diffi_counter:=1;
+
+Function GetTypicallyHarvestValues(axt_quality)
+  If (!GetGlobalProperty("Mining"))
+    For index:=0 To 9
+      For x:=2561 To 2614
+        For y:=454 To 503
+          Var difficulty:=GetHarvestDifficulty("ore", x, y, 0x53b,REALM_BRITANNIA);
+          If (difficulty)
+            HarvestResource("ore", x, y, 1, CInt(axt_quality),REALM_BRITANNIA);
+            difficulties.append(difficulty);
+          EndIf
+        EndFor
+      EndFor
+    EndFor
+
+    SetGlobalProperty("Mining", difficulties);
+  Else
+    difficulties:=GetGlobalProperty("Mining");
+  EndIf
+EndFunction
+
+Function GetNextDiffi()
+  Var diffi:=difficulties[diffi_counter];
+
+  diffi_counter+=1;
+  If (diffi_counter>difficulties.size())
+    diffi_counter:=1;
+  EndIf
+
+  Return (diffi);
+EndFunction
+
+Function Use_Picktool(character)
+  // Werkzeug-Eigenschaften auslesen
+ // Var werkzeug:=GetPropertyItem(pickaxe);
+ // axt_quality:=werkzeug.quality;
+ // axt_skill:=werkzeug.quality;
+ // axt_hp:=werkzeug.hp;
+ // axt_maxhp:=werkzeug.maxhporig;
+  axt_quality:=5.096;
+  axt_skill:=5.096;
+  axt_hp:=135;
+  axt_maxhp:=135;
+
+  If (axt_skill<1) axt_skill:=1; axt_quality:=1; EndIf // das mindestens ein erz rauskommt, auch wenn die quali unter 1 ist
+
+  Var count := 1;
+
+  Var num_chops_axt;
+  Var num_chops_axt_100;
+  Var dummy;
+  Var num_chops;
+  Var maxore;
+
+  maxore:=80;
+
+  Repeat
+    num_chops_axt:=axt_hp; num_chops_axt_100:=axt_maxhp;
+    dummy:=num_chops_axt*100.0/num_chops_axt_100; // dummy gibt die %-punkte der axt an gegeueber 100% Maxhp - also praktisch ob die axt noch scharf ist
+    If (dummy<50)   // nur wenn die hitpoints bei 50% sind, dauerts laenger
+      dummy:=cint( (100.0-dummy)*(5.0/100.0) ); // 100%-dummy%*0.1 von 10 durchlaeufen
+    Else
+      dummy:=0;
+    EndIf
+
+    num_chops:=dummy+1;
+    If (num_chops<1)
+      num_chops:=1;
+    EndIf
+
+    If (mineForore(character))
+      break;
+    EndIf
+
+    count += 1;
+  until (count > maxore);
+EndFunction
+
+Function mineForore(character)
+    If (GetSkillPergon(character, SKILLID_ERZABBAU) >= 1)
+        Var theroll := randomint(100) + 1;
+        Return GetStuff(character, theroll);
+   // Else
+       // If (SetWerkzeugSchaden(character, pickaxe, "", "", ""))
+       //     Return(1);
+       // EndIf
+    EndIf
+EndFunction
+
+Function CreateErz(character, objtype, anzahl_barren)
+  If (erze[objtype])
+    erze[objtype]:=erze[objtype]+anzahl_barren;
+    to_smelt[objtype]:=to_smelt[objtype]+anzahl_barren;
+
+    While (to_smelt[objtype]>=100)
+      to_smelt[objtype]:=to_smelt[objtype]-100;
+      smelt_that_ore(character, objtype);
+      to_smelt[objtype]:=to_smelt[objtype]+decrease_amount;
+    EndWhile
+  Else
+    erze[objtype]:=anzahl_barren;
+    to_smelt[objtype]:=anzahl_barren;
+  EndIf
+EndFunction
+
+Function CreateBarren(objtype, anzahl_barren)
+  If (barren[objtype])
+    barren[objtype]:=barren[objtype]+anzahl_barren;
+    barren_sum[objtype]:=barren_sum[objtype]+anzahl_barren;
+  Else
+    barren[objtype]:=anzahl_barren;
+    barren_sum[objtype]:=anzahl_barren;
+  EndIf
+EndFunction
+
+Function CreateLegierBarren(character)
+    Var barrenkeys:=barren.keys();
+    Var anzahl:=0;
+    ForEach barrenkey in barrenkeys
+      anzahl+=barren[barrenkey];
+    EndForEach
+
+    If (anzahl>50000) // Erstmal legieren
+      SysLog("schmelze... "+GetSkillPergon(character, SKILLID_ERZABBAU)+" "+GetSkillPergon(character, SKILLID_ERZVERARBEITUNG)+" "+
+        GetStrPergon(character)+" "+GetDexPergon(character)+" "+GetIntPergon(character));
+      Var count:=0;
+      Var fehlversuch:=0;
+
+      While (fehlversuch<200)
+        Var kombikeys:=kombi.keys();
+        Var barrentyp1:=kombikeys[RandomInt(kombikeys.size())+1];
+        Var barrentyp2keys:=kombi[barrentyp1];
+        Var barrentyp2:=barrentyp2keys[RandomInt(barrentyp2keys.size())+1];
+        barrentyp1:=CInt(barrentyp1);
+        barrentyp2:=CInt(barrentyp2);
+
+        If ((barren[barrentyp1]>=100) And (barren[barrentyp2]>=100))
+          Var barren1:=Struct{objtype:=barrentyp1, anzahl:=barren[barrentyp1]};
+          Var barren2:=Struct{objtype:=barrentyp2, anzahl:=barren[barrentyp2]};
+
+          ItemUse_BarrenSchmelzen(character, barren1, barren2, 1);
+
+          barren[barrentyp1]:=barren1.anzahl;
+          barren[barrentyp2]:=barren2.anzahl;
+
+          Var anzahlalt:=anzahl;
+          barrenkeys:=barren.keys();
+          anzahl:=0;
+          ForEach barrenkey in barrenkeys
+            anzahl+=barren[barrenkey];
+          EndForEach
+
+          If (anzahlalt==anzahl)
+            fehlversuch:=fehlversuch+1;
+          Else
+            fehlversuch:=0;
+          EndIf
+        Else
+          fehlversuch+=1;
+        EndIf
+
+        count+=1;
+        If (count>10)
+          SetPropertyItem(tiegel, 4.29, 399, 438, 4.89, 434, "t", SKILLID_WERKZEUGSCHMIEDEN, 75.1, 1512);
+          count:=0;
+        EndIf
+      EndWhile
+
+      SysLog("  Barren    = "+barren);
+      SysLog("  BarrenSum = "+barren_sum);
+      SysLog("...genug geschmolzen");
+    EndIf
+EndFunction
+
+Function GetStuff(character, theroll)
+  // Var skill := (GetSkillPergon(character, SKILLID_ERZABBAU)+axt_skill);
+  // Var skillv:=GetRawSkillPergon(character, SKILLID_ERZABBAU);
+
+  If ((theroll+axt_quality >= 60) and (theroll <= 100)) // 40% Farb-Chance
+    Return MakeColoredOre(character);
+  Else
+    Var dIffi := GetNextDiffi();
+
+    If (CheckSkillPergon(character, SKILLID_ERZABBAU, dIffi , cint(dIffi*2+10)))
+
+     // SysLog(skillv+" "+GetRawSkillPergon(character, SKILLID_ERZABBAU)+" "+dIffi+" "+diffi_counter);
+
+      CreateErz(character, UOBJ_EISEN_ERZ, CInt(output_quality*8/5));
+    ElseIf( !dIffi )
+      Return 1;
+    //Else
+    //  If (SetWerkzeugSchaden(character, pickaxe, "", "", ""))
+      //  Return(1);
+      //EndIf
+    EndIf
+  EndIf
+
+  Return 0;
+EndFunction
+
+Function is_minable(theobj, othertype)
+
+  Var Diff_Mining_Tile := GetHarvestDIfficulty("ore", othertype.x, othertype.y, othertype.objtype,othertype.realm);
+  Var Diff_Mining_Map0 := GetHarvestDIfficulty("ore", othertype.x, othertype.y, theobj,othertype.realm);
+
+  If (Diff_Mining_Tile)
+        Return Diff_Mining_Tile;
+    ElseIf (Diff_Mining_Map0)
+        Return Diff_Mining_Map0;
+    Else
+        Return 0;
+    EndIf
+EndFunction
+
+Function MakeColoredOre(character)
+    Var chance :=(randomint(100) + 1);
+    // Var amount := cint(axt_quality);
+
+    Var dIffi := GetNextDiffi();
+
+    Var success := CheckSkillPergon(character, SKILLID_ERZABBAU, cint(dIffi) , cint(dIffi*2+10) );
+
+    If((success) and (dIffi))
+            // maybe make an array and use a loop?
+        If (chance <= 3)
+          If ( CheckSkillPergon( character, SKILLID_ERZABBAU, cint(115-axt_quality) , cint(axt_quality*275) ) )
+            CreateErz(character, UOBJ_TITANIUM_ERZ, CInt(output_quality*8/5));
+          EndIf
+        ElseIf (chance <= 10)
+          If ( CheckSkillPergon( character, SKILLID_ERZABBAU, cint(110-axt_quality) , cint(axt_quality*250) ) )
+            CreateErz(character, UOBJ_CHROM_ERZ, CInt(output_quality*8/5));
+          EndIf
+        ElseIf (chance <= 15)
+          If ( CheckSkillPergon( character, SKILLID_ERZABBAU, cint(105-axt_quality) , cint(axt_quality*225) ) )
+            CreateErz(character, UOBJ_PLATIN_ERZ, CInt(output_quality*8/5));
+          EndIf
+        ElseIf (chance <= 20)
+          If ( CheckSkillPergon( character, SKILLID_ERZABBAU, cint(100-axt_quality) , cint(axt_quality*200) ) )
+            CreateErz(character, UOBJ_WOLFRAM_ERZ, CInt(output_quality*8/5));
+          EndIf
+        ElseIf (chance <= 25)
+          If ( CheckSkillPergon( character, SKILLID_ERZABBAU, cint(95-axt_quality) , cint(axt_quality*175) ) )
+            CreateErz(character, UOBJ_LANTHAN_ERZ, CInt(output_quality*8/5));
+          EndIf
+        ElseIf (chance <= 30)
+          If ( CheckSkillPergon( character, SKILLID_ERZABBAU, cint(90-axt_quality) , cint(axt_quality*150) ) )
+            CreateErz(character, UOBJ_INDIUM_ERZ, CInt(output_quality*8/5));
+          EndIf
+        ElseIf (chance <= 45)
+          If ( CheckSkillPergon( character, SKILLID_ERZABBAU, cint(85-axt_quality) , cint(axt_quality*125) ) )
+            CreateErz(character, UOBJ_TENERUM_ERZ, CInt(output_quality*8/5));
+          EndIf
+        ElseIf (chance <= 59)
+          If ( CheckSkillPergon( character, SKILLID_ERZABBAU, cint(80-axt_quality) , cint(axt_quality*100) ) )
+            CreateErz(character, UOBJ_IRIDIUM_ERZ, CInt(output_quality*8/5));
+          EndIf
+        ElseIf (chance <= 80)
+          If ( CheckSkillPergon( character, SKILLID_ERZABBAU, cint(75-axt_quality) , cint(axt_quality*75) ) )
+            CreateErz(character, UOBJ_MANGAN_ERZ, CInt(output_quality*8/5));
+          EndIf
+        ElseIf( CheckSkillPergon( character, SKILLID_ERZABBAU, cint(70-axt_quality) , cint(axt_quality*50) ) )
+          CreateErz(character, UOBJ_MOLYBDAEN_ERZ, CInt(output_quality*8/5));
+       // Else
+           // If (SetWerkzeugSchaden(character, pickaxe, "", "", ""))
+           //     Return(1);
+           // EndIf
+      Return 0;
+        EndIf
+    ElseIf(!dIffi)
+  Return 1;
+    Else
+  Return 0;
+    EndIf
+
+    Return 0;
+EndFunction
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+Var SOUND_EFFECT_EXPLOSION  := 0x208;
+Var EFFECT_EXPLOSION := 0x36b0;
+Var i;
+const SOUND_EFFECT_BELLOWS := 0x2c;
+const SOUND_EFFECT_BUBBLE := 0x22;
+const UOBJECT_SAND := 0xee18;
+const UOBJECT_GLASS := 0xee20;
+const UOBJECT_GOLD_COINS :=0x0eed;
+const UOBJECT_GOLD_BARREN :=0x1be9;
+
+Function smelt_that_ore ( character , objtype )
+    case( objtype )
+      UOBJ_EISEN_ERZ:     SmeltOre(character, UOBJ_EISEN_BARREN,     20);
+      UOBJ_MOLYBDAEN_ERZ: SmeltOre(character, UOBJ_MOLYBDAEN_BARREN, 55);
+      UOBJ_MANGAN_ERZ:    SmeltOre(character, UOBJ_MANGAN_BARREN,    60);
+      UOBJ_IRIDIUM_ERZ:   SmeltOre(character, UOBJ_IRIDIUM_BARREN,   65);
+      UOBJ_TENERUM_ERZ:   SmeltOre(character, UOBJ_TENERUM_BARREN,   70);
+      UOBJ_INDIUM_ERZ:    SmeltOre(character, UOBJ_INDIUM_BARREN,    75);
+      UOBJ_LANTHAN_ERZ:   SmeltOre(character, UOBJ_LANTHAN_BARREN,   80);
+      UOBJ_WOLFRAM_ERZ:   SmeltOre(character, UOBJ_WOLFRAM_BARREN,   85);
+      UOBJ_PLATIN_ERZ:    SmeltOre(character, UOBJ_PLATIN_BARREN,    90);
+      UOBJ_CHROM_ERZ:     SmeltOre(character, UOBJ_CHROM_BARREN,    100);
+      UOBJ_TITANIUM_ERZ:  SmeltOre(character, UOBJ_TITANIUM_BARREN, 109);
+    endcase
+EndFunction
+
+Var decrease_amount;
+
+function SmeltOre(character, ingot, difficulty)
+    Var anzahl_barren:=100;
+    decrease_amount:=100;
+    Var points:=cint(difficulty*60);
+
+    // Werkzeug-Eigenschaften auslesen
+    // Var werkzeug:=GetPropertyItem(tool);
+    // Var tool_hp:=werkzeug.hp;
+    // Var tool_maxhp:=werkzeug.maxhporig;
+    // Var tool_quality:=werkzeug.quality;
+    // Var tool_hp:=399;
+    // Var tool_maxhp:=438;
+    Var tool_quality:=4.29;
+    Var skill_offset;
+
+    skill_offset:=cint(difficulty-tool_quality);
+    if (skill_offset<1)
+      skill_offset:=1;
+    endif
+
+    Var ok;
+    while ((decrease_amount >= anzahl_barren) && !character.dead)
+      ok:=0;
+
+      if (CheckSkillPergon(character, SKILLID_ERZVERARBEITUNG, skill_offset, cint(points)))
+        if (randomint(100) > 96)
+          decrease_amount:=0;
+          Var tnt:=randomint(11);
+          case(tnt)
+             0: CreateErz(character, UOBJ_EISEN_ERZ, cint(anzahl_barren*2));
+             1: CreateErz(character, UOBJ_MOLYBDAEN_ERZ, cint(anzahl_barren*2));
+             2: CreateErz(character, UOBJ_MANGAN_ERZ, cint(anzahl_barren*1.6));
+             3: CreateErz(character, UOBJ_IRIDIUM_ERZ, cint(anzahl_barren*1.6));
+             4: CreateErz(character, UOBJ_TENERUM_ERZ, cint(anzahl_barren*1.2));
+             5: CreateErz(character, UOBJ_INDIUM_ERZ, cint(anzahl_barren*1.2));
+             6: CreateErz(character, UOBJ_LANTHAN_ERZ, cint(anzahl_barren*0.8));
+             7: CreateErz(character, UOBJ_WOLFRAM_ERZ, cint(anzahl_barren*0.8));
+             8: CreateErz(character, UOBJ_PLATIN_ERZ, cint(anzahl_barren*0.4));
+             9: CreateErz(character, UOBJ_CHROM_ERZ, cint(anzahl_barren*0.4));
+            10: CreateErz(character, UOBJ_TITANIUM_ERZ, cint(anzahl_barren*0.2));
+          endcase
+
+         // if (SetWerkzeugSchaden(character, tool, "", "", ""))
+         //   return;
+         // endif
+          return;
+        endif
+        CreateBarren(ingot, anzahl_barren);
+        decrease_amount:=0;
+      else
+        decrease_amount:=50;
+       // if (SetWerkzeugSchaden(character, tool, "", "", ""))
+       //   return;
+       // endif
+      endif
+    endwhile
+endfunction
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// das legieren müßte zufällig erfolgen. d.h. wenn der eine genügende bandbreite von barren hat, am besten mind. 1000 je einheit,
+// soll er per zufall auswählen, bis von den untersten nix mehr da is... oder so... die frage is, ob das geht und er sich da nich
+// evtl mal festfrist (naja, hmm, wenn ich damit aufhöre, wenn jede menge unter 10 drunteris...
+
+Var hat_legiert := 0;
+Var UOBJ_SCHMIEDEFEUER       := {UOBJ_SMALL_FORGE, 0x197A, 0x19A2, 0x19A6, 0x1982, 0x199E};
+
+Const SOUND_EFFECT_EXPLOSION := SFX_208;
+Const EFFECT_EXPLOSION       := FX_EXPLODE_3;
+
+Function ItemUse_BarrenSchmelzen(who, ByRef barren1, ByRef barren2, auch_zweite_legierung)
+
+ If (auch_zweite_legierung)
+  Case (barren1.objtype)
+    UOBJ_EISEN_BARREN:      if (barren2.objtype==UOBJ_MOLYBDAEN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_CERIUM_BARREN);
+                            endif
+    UOBJ_MOLYBDAEN_BARREN:  if (barren2.objtype==UOBJ_EISEN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_CERIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_MANGAN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_PRODYMIUM_BARREN);
+                            endif
+    UOBJ_MANGAN_BARREN:     if (barren2.objtype==UOBJ_MOLYBDAEN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_PRODYMIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_IRIDIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_NEODYMIUM_BARREN);
+                            endif
+    UOBJ_IRIDIUM_BARREN:    if (barren2.objtype==UOBJ_MANGAN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_NEODYMIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_TENERUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_PROMETHIUM_BARREN);
+                            endif
+    UOBJ_TENERUM_BARREN:    if (barren2.objtype==UOBJ_IRIDIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_PROMETHIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_INDIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_SAMARIUM_BARREN);
+                            endif
+    UOBJ_INDIUM_BARREN:     if (barren2.objtype==UOBJ_LANTHAN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_ROPIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_TENERUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_SAMARIUM_BARREN);
+                            endif
+    UOBJ_LANTHAN_BARREN:    if (barren2.objtype==UOBJ_WOLFRAM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_GADONIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_INDIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_ROPIUM_BARREN);
+                            endif
+    UOBJ_WOLFRAM_BARREN:    if (barren2.objtype==UOBJ_PLATIN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_TERBIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_LANTHAN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_GADONIUM_BARREN);
+                            endif
+    UOBJ_PLATIN_BARREN:     if (barren2.objtype==UOBJ_CHROM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_HOLMIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_WOLFRAM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_TERBIUM_BARREN);
+                            endif
+    UOBJ_CHROM_BARREN:      if (barren2.objtype==UOBJ_TITANIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_ERBIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_PLATIN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_HOLMIUM_BARREN);
+                            endif
+    UOBJ_TITANIUM_BARREN:   if (barren2.objtype==UOBJ_CHROM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_ERBIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_GLASS)
+                                legieren(who, barren1, barren2, UOBJ_TITAN_OBSIDIAN_BARREN);
+                            endif
+
+    UOBJ_CERIUM_BARREN:     if (barren2.objtype==UOBJ_ROPIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_SOLARUM_BARREN);
+                            endif
+    UOBJ_PRODYMIUM_BARREN:  if (barren2.objtype==UOBJ_GADONIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_HYDRIUM_BARREN);
+                            endif
+    UOBJ_NEODYMIUM_BARREN:  if (barren2.objtype==UOBJ_TERBIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_LAVARIUM_BARREN);
+                            endif
+    UOBJ_PROMETHIUM_BARREN: if (barren2.objtype==UOBJ_HOLMIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_TERADIUM_BARREN);
+                            endif
+    UOBJ_SAMARIUM_BARREN:   if (barren2.objtype==UOBJ_ERBIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_TERATUM_BARREN);
+                            endif
+    UOBJ_ERBIUM_BARREN:     if (barren2.objtype==UOBJ_ERBIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_ENERGIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_SAMARIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_TERATUM_BARREN);
+                            endif
+    UOBJ_ROPIUM_BARREN:     if (barren2.objtype==UOBJ_CERIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_SOLARUM_BARREN);
+                            endif
+    UOBJ_GADONIUM_BARREN:   if (barren2.objtype==UOBJ_PRODYMIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_HYDRIUM_BARREN);
+                            endif
+    UOBJ_TERBIUM_BARREN:    if (barren2.objtype==UOBJ_NEODYMIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_LAVARIUM_BARREN);
+                            endif
+    UOBJ_HOLMIUM_BARREN:    if (barren2.objtype==UOBJ_PROMETHIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_TERADIUM_BARREN);
+                            endif
+  EndCase
+ Else
+  Case (barren1.objtype)
+    UOBJ_EISEN_BARREN:      if (barren2.objtype==UOBJ_MOLYBDAEN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_CERIUM_BARREN);
+                            endif
+    UOBJ_MOLYBDAEN_BARREN:  if (barren2.objtype==UOBJ_EISEN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_CERIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_MANGAN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_PRODYMIUM_BARREN);
+                            endif
+    UOBJ_MANGAN_BARREN:     if (barren2.objtype==UOBJ_MOLYBDAEN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_PRODYMIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_IRIDIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_NEODYMIUM_BARREN);
+                            endif
+    UOBJ_IRIDIUM_BARREN:    if (barren2.objtype==UOBJ_MANGAN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_NEODYMIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_TENERUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_PROMETHIUM_BARREN);
+                            endif
+    UOBJ_TENERUM_BARREN:    if (barren2.objtype==UOBJ_IRIDIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_PROMETHIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_INDIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_SAMARIUM_BARREN);
+                            endif
+    UOBJ_INDIUM_BARREN:     if (barren2.objtype==UOBJ_LANTHAN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_ROPIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_TENERUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_SAMARIUM_BARREN);
+                            endif
+    UOBJ_LANTHAN_BARREN:    if (barren2.objtype==UOBJ_WOLFRAM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_GADONIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_INDIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_ROPIUM_BARREN);
+                            endif
+    UOBJ_WOLFRAM_BARREN:    if (barren2.objtype==UOBJ_PLATIN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_TERBIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_LANTHAN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_GADONIUM_BARREN);
+                            endif
+    UOBJ_PLATIN_BARREN:     if (barren2.objtype==UOBJ_CHROM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_HOLMIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_WOLFRAM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_TERBIUM_BARREN);
+                            endif
+    UOBJ_CHROM_BARREN:      if (barren2.objtype==UOBJ_TITANIUM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_ERBIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_PLATIN_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_HOLMIUM_BARREN);
+                            endif
+    UOBJ_TITANIUM_BARREN:   if (barren2.objtype==UOBJ_CHROM_BARREN)
+                                legieren(who, barren1, barren2, UOBJ_ERBIUM_BARREN);
+                            elseif (barren2.objtype==UOBJ_GLASS)
+                                legieren(who, barren1, barren2, UOBJ_TITAN_OBSIDIAN_BARREN);
+                            endif
+  EndCase
+ EndIf
+EndFunction
+
+Function legieren(who, ByRef barren1, ByRef barren2, product)
+  hat_legiert:=1;
+  // Var anzahl_barren1:=barren1.anzahl;
+  Var anzahl_barren2:=barren2.anzahl;
+  Var barren_pro_durchlauf;
+  Var barren_max:=100;//anzahl_barren1;
+  if (anzahl_barren2<barren_max)
+    barren_max:=anzahl_barren2;
+  endif
+
+  // Werkzeug auslesen
+  // Var tool := tiegel;
+
+  Var skill1:=CheckLegierenSkill(barren1);
+  if (!skill1)
+    return 0;
+  endif
+
+  Var skill2:=CheckLegierenSkill(barren2);
+  if (!skill2)
+    return 0;
+  endif
+
+  if (skill2>skill1)
+    skill1:=skill2;
+  endif // skill1 uebernimmt den groessten skill%
+
+  skill1+=10; // +10% skill wenn man mit dem gr. Schmelztiegel arbeitet, wegen der Menge
+  barren_pro_durchlauf:=20;
+
+ // Var smelztiegel:=GetPropertyItem(tool);
+
+ // if ( (GetSkillPergon( who, SKILLID_ERZVERARBEITUNG)+5+smelztiegel.quality) < skill1 )
+  if ( (GetSkillPergon( who, SKILLID_ERZVERARBEITUNG)+5+4.29) < skill1 )
+    return 0;
+  endif
+
+ // while (barren_max >= barren_pro_durchlauf)
+   // if (CheckSkillPergon(who, SKILLID_ERZVERARBEITUNG, cint(skill1-smelztiegel.quality), cint(skill1*(10+barren_pro_durchlauf))))
+    if (CheckSkillPergon(who, SKILLID_ERZVERARBEITUNG, cint(skill1-4.29), cint(skill1*(10+barren_pro_durchlauf))))
+      CreateBarren(product, barren_pro_durchlauf);
+      barren1.anzahl:=barren1.anzahl-barren_pro_durchlauf;
+      barren2.anzahl:=barren2.anzahl-barren_pro_durchlauf;
+    else
+      if ((randomint(100)+1)>90)
+        barren1.anzahl:=barren1.anzahl-barren_pro_durchlauf;
+        barren2.anzahl:=barren2.anzahl-barren_pro_durchlauf;
+        return 1;
+      else
+        barren1.anzahl:=barren1.anzahl-cint(barren_pro_durchlauf/2.0);
+        barren2.anzahl:=barren2.anzahl-cint(barren_pro_durchlauf/2.0);
+       // if (SetWerkzeugSchaden(who, tool, "", "", ""))
+       //   return 0;
+       // endif
+      endif
+    endif
+ //   barren_max:=100;//barren1.anzahl;
+ //   if (barren2.anzahl<barren_max)
+ //     barren_max:=barren2.anzahl;
+ //   EndIf
+ // endwhile
+endfunction
+
+Function CheckLegierenSkill(barren1)
+  Case (barren1.objtype)
+    UOBJ_EISEN_BARREN:      Return 50;
+    UOBJ_GLASS:             Return 55;
+    UOBJ_GOLD_BARREN:       Return 60;
+    UOBJ_MOLYBDAEN_BARREN:  Return 65;
+    UOBJ_MANGAN_BARREN:     Return 70;
+    UOBJ_IRIDIUM_BARREN:    Return 75;
+    UOBJ_TENERUM_BARREN:    Return 80;
+    UOBJ_INDIUM_BARREN:     Return 85;
+    UOBJ_LANTHAN_BARREN:    Return 90;
+    UOBJ_WOLFRAM_BARREN:    Return 95;
+    UOBJ_PLATIN_BARREN:     Return 100;
+    UOBJ_CHROM_BARREN:      Return 105;
+    UOBJ_TITANIUM_BARREN:   Return 110;
+    UOBJ_CERIUM_BARREN:     Return 75;
+    UOBJ_PRODYMIUM_BARREN:  Return 80;
+    UOBJ_NEODYMIUM_BARREN:  Return 85;
+    UOBJ_PROMETHIUM_BARREN: Return 90;
+    UOBJ_SAMARIUM_BARREN:   Return 95;
+    UOBJ_ROPIUM_BARREN:     Return 100;
+    UOBJ_GADONIUM_BARREN:   Return 105;
+    UOBJ_TERBIUM_BARREN:    Return 110;
+    UOBJ_HOLMIUM_BARREN:    Return 115;
+    UOBJ_ERBIUM_BARREN:     Return 119;
+
+    default: Return (0);
+  EndCase
+EndFunction

@@ -1,0 +1,30 @@
+///////////////////////////////////////////////////////////////////////////
+//
+//  Zeigt Knastzeit an
+//
+//    2005-10-16    -   Seppel
+//
+///////////////////////////////////////////////////////////////////////////
+
+Use uo;
+
+Include "include/msgs";
+
+Program TextCMD_JailTime(who)
+  Var usedon:= Target(who);
+  If (!usedon)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    Return;
+  EndIf
+  Var jailTime:= CInt(GetObjProperty(usedon, PROP_PUNISH_JAILTIME));
+
+  If (!jailTime)
+    SendSysMessagePergon(who, "Diese Person sitzt nicht im Knast");
+    Return;
+  EndIf
+  Var hours:= CInt(jailTime / 3600);
+  Var minutes:= CInt((jailTime - (hours * 3600)) / 60);
+
+  SendSysMessagePergon(who, usedon.name + " muss noch " + hours + " Stunden und " + minutes + " Minuten im Knast bleiben");
+
+EndProgram

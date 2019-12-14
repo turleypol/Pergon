@@ -1,0 +1,388 @@
+///////////////////////////////////////////////////////////////////////////
+// RuneBook v1.0 (2002/03/31)
+//
+//     based on RuneBook v1.0 (1999/11/13)
+//       Author: Racalac
+//
+//     Author: Shinigami
+
+///////////////////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+// Revision 1.8  2008/08/06 14:00:18  mehdorn
+// - unbenutzte Variablen entfernt
+//
+// 2005/03/19 Shinigami:
+// Wenn man keinen der Sprueche im Buch hat, erscheint eine Warnung
+//
+// 2003/12/03 AgtMulda:
+// Man kann nun Runen umbenennen und sortieren (RuneRename)(RuneSort)
+//
+// 2003/02/05 Shinigami:
+// Sprueche muessen nun im Zauberbuch vorhanden sein
+//
+// 2003/02/05 Shinigami:
+// Zauberbuch muss beim Casten im Backpack sein
+//
+// 2002/03/31 Shinigami:
+// Komplett neu geschrieben
+//
+// 2002/02/19 Shinigami:
+// Anpassung an neues Magie-System & NoRune-Region eingebaut
+
+/////////////
+// Bibliotheken&Includes
+/////////////
+include ":newmagic:spellbook";
+include ":newspells:magicpergon";
+include "include/objtype";
+include "rune";
+use uo;
+
+///////////////
+// Gump-Daten
+///////////////
+
+var layout := {
+  "nodispose",                       // Gemeinsames Basislayout
+  "page 0",
+  "gumppic 30 30 500",
+  "button 62 266 2462 2461 1 0 1000"
+};
+
+var data := {};
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program RuneBook(who, book)
+  // Skill und Buecher pruefen und zum Casten raussuchen
+  var skillbook := CheckAndGetSkillAndBooksForCasting(who, book);
+  If (skillbook) // Verfuegt der Caster ueber magische Faehigkeiten?
+    // Runenbuch mit Runen fuellen
+    var result := FillRuneBook(book, skillbook);
+    If (!result[1]) // Ist einer der Sprueche im Buch eingetragen?
+      SendSysMessagePergon(who,
+        "Ihr habt weder den Spruch 'Zurückkehren' noch "+
+        "'Magisches Tor' in eurem "+result[2]+"!"
+      );
+    EndIf
+
+    var bttn := CInt(SendDialogGump(who, layout, data)[0]); // Buch anzeigen
+    If (bttn) // Irgendwas [sinnvolles] gedrueckt?
+      If (bttn == 1000)
+        AddRune(who, book);    // Rune ins Buch eintragen
+      ElseIf (bttn == 1001)
+        DeleteRune(who, book); // Rune aus dem Buch loeschen
+      ElseIf (bttn == 1002)
+        RuneRename(who, book); // Rune im Buch umbenennen
+      ElseIf (bttn == 1003)
+        RuneSort(who, book);   // Runen im Buch sortieren
+      ElseIf (bttn<100)
+        var rune := GetObjProperty(book, "runedefs")[bttn];
+        If (CastRecallLocation(who, book, rune[2], rune[3], rune[4], rune[5]) == RUNE_CANCEL_NORUNE) // Teleportiert den Magier zur angegebenen Stelle
+          //SendSysMessagePergon(who, "Die Rune wird dabei zerstört.");
+          //RemoveRune(book, bttn); // Rune zerstoeren
+        EndIf
+      Else
+        var rune := GetObjProperty(book, "runedefs")[bttn-100];
+        If (CastGateLocation(who, book, rune[2], rune[3], rune[4], rune[5]) == RUNE_CANCEL_NORUNE) // Erzeugt ein Tor zur angegebenen Stelle
+          //SendSysMessagePergon(who, "Die Rune wird dabei zerstört.");
+          //RemoveRune(book, bttn-100); // Rune zerstoeren
+        EndIf
+      EndIf
+    EndIf
+  EndIf
+EndProgram
+
+///////////////////////////////////////////////
+// FillRuneBook - Runenbuch mit Runen fuellen
+///////////////////////////////////////////////
+
+Function FillRuneBook(book, skillbook)
+  var recallscrollobjtype;
+  var gatescrollobjtype;
+  var bookdesc;
+
+  // Sprueche den Buechern zuordnen
+  Case (skillbook[1])
+    SKILLID_MAGIE:   recallscrollobjtype := 0x6716;gatescrollobjtype := 0x671e;bookdesc := "Grimoire";
+    SKILLID_SEGNEN:  recallscrollobjtype := 0x6776;gatescrollobjtype := 0x677e;bookdesc := "Liber Castus";
+    SKILLID_FLUCHEN: recallscrollobjtype := 0x67d6;gatescrollobjtype := 0x67de;bookdesc := "paq mu'qaDmey";
+  EndCase
+
+  // Sind die Sprueche in dem Buch auch eingetragen?
+  var recallspellinbook := CheckForSpellInBook(skillbook[2], recallscrollobjtype);
+  var gatespellinbook := CheckForSpellInBook(skillbook[2], gatescrollobjtype);
+
+  // Runeneintraege holen
+  var runedefs := GetObjProperty(book, "runedefs");
+  If (!runedefs)
+    runedefs := {};
+  EndIf
+
+  var pages := CInt((runedefs.size()-1)/4)+1; // Gesamtzahl der Gump-Seiten ermitteln
+  var page := 1;    // Seite
+  var subpage := 1; // Runenposition
+  var rune := 1;    // Nummer der Rune
+
+  If (runedefs.size()) // Wenn nichts da ist, kann es auch nicht geloescht/renamed werden
+    layout.append("button 116 266 2463 2464 1 0 1001"); // Delete-Button
+    layout.append("button 295 266 2716 2717 1 0 1002"); // Rename-Button
+    If (runedefs.size() > 4) // Sortieren auch erst ab mehr als 4 Runen, Designgruende
+      layout.append("button 363 266 2718 2719 1 0 1003"); // Sort-Button
+    EndIf
+  EndIf
+
+  // Jede Rune in das Buch "zeichnen"
+  ForEach runedef in runedefs
+  	SleepMS(2);
+    Case (subpage)
+      1: layout.append("page "+page);                   // Neue Seite anlegen
+
+         If (page>1) // Gibt es vorhergehende Seiten?
+           layout.append("button 30 30 501 501 0 "+(page-1)); // Button zurueck
+         EndIf
+         If (page<pages) // Gibt es Folgeseiten?
+           layout.append("button 386 30 502 502 0 "+(page+1)); // Button vorwaerts
+         EndIf
+
+         layout.append("tilepic 70 65 7956");
+         layout.append("text 105 62 0 "+data.size());
+         If (recallspellinbook) // Hab ich den noetigen Spruch im Zauberbuch?
+           layout.append("button 133 50 2271 2271 1 0 "+rune);
+         EndIf
+         If (gatespellinbook) // Hab ich den noetigen Spruch im Zauberbuch?
+           layout.append("button 176 50 2291 2291 1 0 "+(rune+100));
+         EndIf
+         layout.append("htmlgump 73 100 148 35 "+(data.size()+1)+" 0 0");
+         subpage := 2; // Naechste Runenposition
+
+      2: layout.append("tilepic 70 165 7956");
+         layout.append("text 105 162 0 "+data.size());
+         If (recallspellinbook) // Hab ich den noetigen Spruch im Zauberbuch?
+           layout.append("button 133 150 2271 2271 1 0 "+rune);
+         EndIf
+         If (gatespellinbook) // Hab ich den noetigen Spruch im Zauberbuch?
+           layout.append("button 176 150 2291 2291 1 0 "+(rune+100));
+         EndIf
+         layout.append("htmlgump 73 200 148 35 "+(data.size()+1)+" 0 0");
+         subpage := 3; // Naechste Runenposition
+
+      3: layout.append("tilepic 350 65 7956");
+         layout.append("text 385 62 0 "+data.size());
+         If (recallspellinbook) // Hab ich den noetigen Spruch im Zauberbuch?
+           layout.append("button 306 50 2271 2271 1 0 "+rune);
+         EndIf
+         If (gatespellinbook) // Hab ich den noetigen Spruch im Zauberbuch?
+           layout.append("button 263 50 2291 2291 1 0 "+(rune+100));
+         EndIf
+         layout.append("htmlgump 263 100 148 35 "+(data.size()+1)+" 0 0");
+         subpage := 4; // Naechste Runenposition
+
+      4: layout.append("tilepic 350 165 7956");
+         layout.append("text 385 162 0 "+data.size());
+         If (recallspellinbook) // Hab ich den noetigen Spruch im Zauberbuch?
+           layout.append("button 306 150 2271 2271 1 0 "+rune);
+         EndIf
+         If (gatespellinbook) // Hab ich den noetigen Spruch im Zauberbuch?
+           layout.append("button 263 150 2291 2291 1 0 "+(rune+100));
+         EndIf
+         layout.append("htmlgump 263 200 148 35 "+(data.size()+1)+" 0 0");
+         page := page+1; // Naechste Seite
+         subpage := 1;   // Naechste Runenposition
+    EndCase
+
+    data.append(rune);
+    data.append(GetShortRuneDesc(runedef[1])); // Kurze Beschreibung der Rune ermitteln
+    rune := rune+1;
+  EndForEach
+
+  return ({recallspellinbook Or gatespellinbook, bookdesc}); // Ist einer der Sprueche im Buch eingetragen?
+EndFunction
+
+//////////////////////////////////////
+// AddRune - Rune ins Buch eintragen
+//////////////////////////////////////
+
+Function AddRune(who, book)
+  SendSysMessagePergon(who, "Wählt eine Rune zur Aufnahme ins Buch!");
+
+  var rune := Target(who);
+  If (rune.objtype == UOBJ_RUNE)
+    If (IsRuneMarked(rune)) // Ist die Rune markiert?
+      var runedef := {GetShortRuneDesc(rune.desc), GetObjProperty(rune, "x"),
+        GetObjProperty(rune, "y"), GetObjProperty(rune, "z"), GetObjProperty(rune, "realm")};
+
+      var runedefs := GetObjProperty(book, "runedefs"); // Neue Rune eintragen
+      If (runedefs)
+        If (runedefs.size()<64) // Buch schon voll?
+          runedefs.append(runedef);
+          SetObjProperty(book, "runedefs", runedefs);
+          DestroyItem(rune); // Die "alte" Rune entsorgen
+        Else
+          SendSysMessagePergon(who, "Das Runenbuch ist bereits voll.");
+        EndIf
+      Else // Rune in frisches Buch eintragen
+        SetObjProperty(book, "runedefs", {runedef});
+        DestroyItem(rune); // Die "alte" Rune entsorgen
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Diese Rune ist noch nicht markiert!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndFunction
+
+////////////////////////////////////////////
+// DeleteRune - Rune aus dem Buch loeschen
+////////////////////////////////////////////
+
+Function DeleteRune(who, book)
+  var maxrune := GetObjProperty(book, "runedefs").size();
+
+  var rune := CInt(SendTextEntryGump(who, "Welche Rune wollt ihr entfernen (1 bis "+maxrune+") ?", 5));
+  If ((1<=rune) And (rune<=maxrune))
+    SendSysMessagePergon(who, "Der Eintrag wurde entfernt.");
+    RemoveRune(book, rune); // Rune zerstoeren
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndFunction
+
+////////////////////////////////////////////
+// RuneRename - Rune aus dem Buch umbenennen
+////////////////////////////////////////////
+
+Function RuneRename(who, book)
+  var maxrune := GetObjProperty(book, "runedefs").size();
+  var runedefs := GetObjProperty(book, "runedefs");
+  var rune := CInt(SendTextEntryGump(who, "Welche Rune wollt ihr umbenennen (1 bis "+maxrune+") ?", 5));
+  If ((1<=rune) And (rune<=maxrune))
+    var runedescription := SendTextEntryGump(who, "Neue Bezeichnung ? (Max. 40 Zeichen)", 5);
+    If (runedescription)
+      If (Len(runedescription)<=40)
+        runedefs[rune][1] := runedescription;
+        SetObjProperty(book, "runedefs", runedefs);
+        SendSysMessagePergon(who, "Rune wurde umbenannt.");
+      Else
+        SendSysMessagePergon(who, "Bezeichnung ist zu lang!");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndFunction
+
+/////////////////////////////
+// RuneSort - Runen sortieren
+/////////////////////////////
+
+Function RuneSort(who, book)
+  var runedefs := GetObjProperty(book, "runedefs"); // Layout vom Gump
+  var maxrune := GetObjProperty(book, "runedefs").size();
+  var activerune := maxrune;
+  var count;
+  var result;
+  var runesave;
+  var cont := {};
+  var y_mod := 40;
+  var Lengthdesc := 20;
+
+  // Wahre Breite bestimmen anhand der Laenge der RunenBeschreibungen
+  For (count := 1; count <= maxrune; count += 1)
+    If (Len(runedefs[count][1]) > Lengthdesc)
+      Lengthdesc := Len(runedefs[count][1]);
+    EndIf
+  EndFor
+
+  // Standardlayout vom Sortiergump
+  var stdlayout := {
+    "page 0",                                                                                  // Seite 0 (Basisseite)
+    "nodispose",                                                                               // Kein Esc zum Beenden
+    "resizepic 25 25 3600 " + CStr(60+lengthdesc*9) + " " + CStr(y_mod+maxrune*15+20),         // Hintergrund
+    "button " + CStr(46+lengthdesc*9) + " " + CStr(y_mod) +" 2710 2711 1 0 101",               // ganz hoch
+    "button " + CStr(45+lengthdesc*9) + " " + CStr(y_mod+20) +" 2650 2651 1 0 102",            // eins hoch
+    "button " + CStr(45+lengthdesc*9) + " " + CStr(y_mod+maxrune*15-35) +" 2648 2649 1 0 103", // eins runter
+    "button " + CStr(46+lengthdesc*9) + " " + CStr(y_mod+maxrune*15-15) +" 2710 2711 1 0 104", // ganz runter
+    "button 42 " + CStr(y_mod+maxrune*15+5) +" 2128 2129 1 0 105",                             // Okay
+    "button 104 " + CStr(y_mod+maxrune*15+5) +" 2125 2126 1 0 106",                            // Default
+    "button 166 " + CStr(y_mod+maxrune*15+5) +" 2119 2120 1 0 0"                               // Cancel
+  };
+
+  Repeat
+    layout := stdlayout;
+    cont := {};
+    y_mod := 40;
+    // Buttons und Texte aufbauen
+    For (count := 0; count < maxrune; count += 1)
+      If (count+1 == activerune)
+        // Aktive Rune extra Farbe und Button
+        layout.append("text 60 "+ CStr(y_mod)+" 38 "+CStr(count));
+        layout.append("button 40 "+ CStr(y_mod+3) + " 1210 1209 1 0 "+ CStr(count+1));
+        cont.append(runedefs[count+1][1]);
+        y_mod := y_mod + 15;
+      Else
+        layout.append("text 60 "+ CStr(y_mod)+" 5 "+CStr(count));
+        layout.append("button 40 "+ CStr(y_mod+3) + " 1209 1210 1 0 "+ CStr(count+1));
+        cont.append(runedefs[count+1][1]);
+        y_mod := y_mod + 15;
+      EndIf
+    EndFor
+    result := SendDialogGump(who, layout, cont);
+    If (result[0]) // Irgendwas [sinnvolles] gedrueckt?
+      // Ganz Hoch
+      If (result[0] == 101)
+        runesave := runedefs[activerune];
+        runedefs.erase(activerune);
+        runedefs.insert(1,runesave);
+        activerune := 1;
+      // Eins Hoch
+      ElseIf ((result[0] == 102) AND activerune > 1)
+        runesave := runedefs[activerune-1];
+        runedefs[activerune-1] := runedefs[activerune];
+        runedefs[activerune] := runesave;
+        activerune -= 1;
+      // Eins Runter
+      ElseIf ((result[0] == 103) AND activerune < maxrune)
+        runesave := runedefs[activerune+1];
+        runedefs[activerune+1] := runedefs[activerune];
+        runedefs[activerune] := runesave;
+        activerune += 1;
+      // Ganz Runter
+      ElseIf (result[0] == 104)
+        runesave := runedefs[activerune];
+        runedefs.erase(activerune);
+        runedefs.append(runesave);
+        activerune := maxrune;
+      // Okay Button
+      ElseIf (result[0] == 105)
+        // Runenconfig ins Buch sichern Schleife verlassen
+        SetObjProperty(book, "runedefs", runedefs);
+        result := 0;
+      // Default Button
+      ElseIf (result[0] == 106)
+        // Runenconfig ausm Buch erneut laden
+        runedefs := GetObjProperty(book, "runedefs");
+        activerune := maxrune;
+      // Buttons neben der Beschreibung
+      ElseIf (result[0] < 100)
+        activerune := result[0];
+      EndIf
+    EndIf
+  Until !result[0];
+EndFunction
+
+/////////////////////////////////
+// RemoveRune - Rune zerstoeren
+/////////////////////////////////
+
+Function RemoveRune(book, rune)
+  var runedefs := GetObjProperty(book, "runedefs");
+  runedefs.erase(rune); // Rune loeschen
+  SetObjProperty(book, "runedefs", runedefs);
+EndFunction

@@ -1,0 +1,26 @@
+////////////////////////////////////////////////////////////
+//
+//   Doppelklick auf Artefaktbuch
+//
+//     02.10.2005  -  Seppel - erste Fassung
+//
+//////////////////////////////////////////////////////////////
+
+/////////////
+// Includes
+/////////////
+
+Include "artefactbook";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Click_ArtefactBook(who, artefactbook)
+  If (who.isa(POLCLASS_MOBILE))
+    UseArtefactBook(who, artefactbook); // Normales Item-Script
+//  wozu auch immer das gut ist....
+//  Else
+//    UseSpellBook(who[1], who[2]);     // HookOpenSpellbookPergon
+  EndIf
+EndProgram

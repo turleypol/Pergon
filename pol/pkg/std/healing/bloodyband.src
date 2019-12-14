@@ -1,0 +1,45 @@
+/////////////////////////////////////////////////////////
+// bloodyband.src - blutige Bandagen wieder auswaschen und verfügbar machen
+//
+// Fraggulus' Edition
+//
+// 26.09.2000
+//
+//////////////////////////////////////////////////////////
+
+Use os;
+Use uo;
+
+Include "include/client";
+Include "include/itemnpc";
+Include "include/msgs";
+
+// Hier alle Items eintragen, mit denen man Bandagen reinigen kann. Gemeint sind vor allem Wasser-Items
+Var WASSER := {0xe7b, 0x154d, 0x1559, 0x1797, 0x1798, 0x1799, 0x179a, 0x179b, 0x179c};
+
+Program bloody_bandages ( who, item )
+
+  SendSysMessagePergon( who, "Wählt eine Stelle zum Ausspülen der Bandagen aus.");
+
+  Var use_on := TargetCoordinates(who);
+
+  If (!use_on)
+    Return;
+  EndIf
+
+  If (Distance(who, use_on) > 3)
+    SendSysMessagePergon(who, "Das ist viel zu weit weg.");
+    Return;
+  EndIf
+
+  If (use_on.objtype IN WASSER)
+    CreateItemInBackpackPergon(who, 0xe21, item.amount);
+    SubtractAmount (item, item.amount);
+    SleepMs(2500);
+    SendSysMessagePergon(who, "Ihr reinigt die Bandagen und legt sie in Euren Rucksack.");
+  Else
+    SleepMs(1500);
+    SendSysMessagePergon(who, "Damit kann man keine Bandagen reinigen.");
+    Return;
+  EndIf
+EndProgram

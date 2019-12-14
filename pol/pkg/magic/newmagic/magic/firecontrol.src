@@ -1,0 +1,69 @@
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//  firecontrol.src - Control Script for FireFields
+//
+//  Modifications:
+//
+//  21.01.2002 - Bihinos - Rewrite for new Magic
+//  09.02.2004 - Bihinos - removed creator as scriptcontroller (misused by players)
+//                         minor changes
+//  16.03.2005 - Seppel  - creator als scriptcontroller wieder angeschaltet (wurde ausgenutzt bei Playern)
+//  2005/06/03 Shinigami: Bugfix gegen Endlosschleife, falls das Item schon zerstoert wurde
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+use vitals;
+use uo;
+use os;
+use cfgfile;
+use math;
+
+Include ":newspells:resistance";
+Include "include/packets";
+
+Program FireControl (item)
+
+  Var fields:= ReadConfigFile("magicfields"); // read Config-File for magic fields
+
+  if (fields)
+
+		SleepMS(50);													// wait 50 ms to get CProps set on item
+
+    Var boss:= SystemFindObjectBySerial(CInt(GetObjProperty(item, "creator"))); // get creator of field
+    if (boss) // make creator attacker
+      SetScriptController(boss);
+    endif
+
+    Var fielddata:= FindConfigElem(fields, "fire"); // get field data from Config
+    Var dmg:= CInt(GetObjProperty(item, "f") * fielddata.dmg / 100); // read and calc fields base damage
+    Var int:= CInt(fielddata.int); // read interval of attack
+    Var res;
+    Var hit;
+
+    Set_Priority(1);
+
+    Var mobiles:=ListMobilesNearLocation(item.x, item.y, item.z, 0,item.realm); // get possible victims
+    while (mobiles.size() And item)
+      foreach mobile in mobiles
+        If (mobile.getprop("ignorefields"))  // DynDungeon Vieh ignoriert alle Felder
+          continue;
+        EndIf
+        if (!mobile.dead)															// no damage to ghosts
+          res:= 1 - CDbl(GetResistance(mobile, "fire")); // get fire resistance of mobile
+          hit:= CInt(dmg * res);                         // alter damage
+          ApplyRawDamagePergon(mobile, hit);                   // apply damage to mobile
+        endif
+      endforeach
+
+      SleepMS(int); // sleep interval
+      
+      If (item)
+        mobiles:= ListMobilesNearLocation(item.x, item.y, item.z, 0,item.realm); // get possible victims again
+      EndIf
+    endwhile
+
+  else
+    SysLog("FEHLER: MagicFields-ConfigFile nicht gefunden!");
+  endif
+
+EndProgram

@@ -1,0 +1,75 @@
+///////////////////////////////////////////////////////////////////////////
+// SOS Message Script
+//
+//
+// This script is the item handler that is called when the user
+// double-clicks on an SOS message.
+//
+// I changed the original script to display a gump dialog instead of
+// printing the message above the message graphic.
+//
+// I added support For multiple messages to the sosmessage object.
+// There are currently four different SOS messages that can be
+// displayed.
+
+use os;
+use uo;
+include "include/msgs";
+
+// This is the main SOS message handler.  It is called when the player
+// double-clicks on an SOS message.
+Program use_message(who, message)
+  // get the properties from the sosmessage object that are needed
+  // to display the message
+  var tox := GetObjProperty(message , "tileX");
+  var toy := GetObjProperty(message , "tileY");
+  var msgindex := GetObjProperty(message , "msgnum");
+  // debug messages
+  // SendSysMessagePergon(who, "The SOS location is " + tox + ", " + toy);
+  // SendSysMessagePergon(who, "The SOS message number is " + msgindex);
+  // check For a corrupted SOS message
+  If ((tox==error) or (toy==error))
+    syslog("bad message "+tox+" "+toy);
+    destroyitem(message);
+    SendSysMessagePergon(who, "Die Nachricht ist so zerfetzt, dass sie unlesbar geworden ist!");
+    return;
+  EndIf
+  // define the gump dialog layout
+  var layout := array(
+    "page 0",
+    "resizepic 0 0 3500 300 200",
+    "button 110 140 1148 1149 1 0 1",
+    "text 20 30 0 0",
+    "text 20 50 0 1",
+    "text 20 70 0 2"
+  );
+  // start with empty array For dialog text
+  var data := array();
+  // Fill the data array with the proper text For the message that is
+  // indicated in the "msgnum" Cprop in the sosmessage object.  We put
+  // the msgnum into the msgindex var variable earlier.  The text of
+  // each SOS message should be three lines.  Care should be taken to
+  // make the length of each line look decent on the dialog gump.  It
+  // is also important to use the tox and toy variables to insert the
+  // coordinates into the message.
+  Case (msgindex)
+  0:
+    data[1] := "Hilfe, unser Schiff  sinkt!  Wir";
+    data[2] := "befinden uns bei " + tox + ", " + toy + "!  Bitte";
+    data[3] := "beeilt Euch, wir versinken sehr schnell!";
+  1:
+    data[1] := "Wir werden angegriffen von einer riesigen";
+    data[2] := "Seeschlange!  Wir befinden uns bei";
+    data[3] := tox + ", " + toy + "!  Bitte helft uns!";
+  2:
+    data[1] := "Ein monstroeses Ungeheuer hat unser Schiff durchloechert.";
+    data[2] := "Unsere Position ist bei " + tox + ", " + toy + "!";
+    data[3] := "Wir warten so lang wie moeglich.";
+  3:
+    data[1] := "Wir sind in einen furchtbaren Sturm ";
+    data[2] := "bei Koordinaten " + tox + ", " + toy + " gekommen!";
+    data[3] := "Das Schiff droht zu kentern!";
+  EndCase
+  // Were all set now, show the gump dialog
+  SendDialogGump(who, layout, data);
+EndProgram

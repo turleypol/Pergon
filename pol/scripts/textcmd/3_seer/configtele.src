@@ -1,0 +1,293 @@
+///////////////////////////////////////////////////////////////////////////
+// configtele -- Teleporterrestriktionen per Gump aendern
+//
+// Aufrufvarianten:
+// - interaktiv als Textcmd (teleport ist Textparameter)
+// - als Doppelklickscript (teleport ist Item)
+// - per Start_Script (struct{who, item})
+
+use os;
+use uo;
+include ":teleporters:common";
+include "include/msgs";
+
+// maximale Distanz fuer Teleportersuche
+Const SEARCH_MAX_DIST := 25;
+
+Program ConfigTele(who, teleport)
+	// Parameter je nach Aufrufvariante umsortieren bzw. ermitteln {{{
+  If (TypeOfInt(who) == OT_STRUCT)
+    // externer Aufruf per Start_Script {{{
+    teleport := who.item;
+    who      := who.who;
+    // }}}
+  EndIf
+  
+  If (who.cmdlevel < CMDLEVEL_SEER)
+    return;
+  EndIf
+
+  If (!teleport.isa(POLCLASS_ITEM))
+    // Aufruf als Textcmd {{{
+    SendSysMessagePergon(who,
+      "Teleporter wählen (Abbruch = Suche in Umgebung)",
+      "Select teleporter (Cancel = search area)"
+    );
+    teleport := Target(who);
+    If (teleport)
+      If (!(teleport.objtype in Teleporters(T_LAX)))
+        SendSysMessagePergon(who,
+          "Das ist kein Teleporter! Abbruch",
+          "Not a teleport! Cancelling"
+        );
+        return;
+      EndIf
+      If (!(teleport.objtype in Teleporters(T_STRICT)))
+        SendSysMessagePergon(who,
+          "Achtung, Teleporter unterstützt nicht unbedingt alle Optionen!",
+          "Caution, teleport may not support all options!"
+        );
+      EndIf
+    Else // Teleporter in Umgebung suchen
+      var candidates := array{};
+      ForEach type in (Teleporters(T_STRICT))
+        SleepMs(2);
+        candidates += ListItemsNearLocationOfType(
+          who.x, who.y, LIST_IGNORE_Z, SEARCH_MAX_DIST, type, who.realm
+        );
+      EndForEach
+      If (candidates.size() <= 0)
+        // kein Teleporter da
+        SendSysMessagePergon(who,
+          "Keine geeigneten Teleporter in Umgebung gefunden. Abbruch",
+          "No suitable teleporters found in area. Cancelling"
+        );
+        return;
+      EndIf
+      // gibt doch welche, den dichtesten ermitteln
+      var dist := SEARCH_MAX_DIST;
+      ForEach candidate in (candidates)
+        SleepMs(2);
+        var newdist := Distance(who, candidate);
+        If (newdist < dist)
+          // der ist naeher
+          dist     := newdist;
+          teleport := candidate;
+        EndIf
+      EndForEach
+    EndIf
+    // }}}
+  EndIf
+  // Aufruf als Doppelklickscript geht ohne weitere Massnahmen
+  // }}}
+
+  TeleConfigGump(who, teleport);
+EndProgram
+
+// Liste potentieller Teleporteritems
+Const T_LAX    := 0;
+Const T_STRICT := 1;
+Function Teleporters(strict := T_LAX) // {{{
+  If (strict == T_STRICT)
+    // nur Teleporter, die alle Restriktionen unterstuetzen
+    return array{0x6002, 0x6200, 0x6201};
+  EndIf
+
+  // sonst alle potentiell geeigneten Teleporter
+  // (zumindest an/aus ist verbreitet)
+  return array{
+    // rotes Moongate
+    0x0dda, 0x0ddb, 0x0ddc, 0x0ddd, 0x0dde,
+    // blaues Moongate
+    0x0f6c, 0x0f6d, 0x0f6e, 0x0f6f, 0x0f70,
+    // schwarzes Moongate
+    0x1fd4,
+    // weisses Moongate
+    0x1fe7,
+    // Returngate
+    0x6002,
+    // Systemteleporter
+    0x6200, 0x6201,
+    // I-Stein
+    0x70d0,
+    // statisches Moongate
+    0x70da
+  };
+EndFunction // }}}
+
+// Teleporter-Restriktionen konfigurieren
+Const BUTT_OK   := 100;
+Const FLD_ENERG := 500;
+Const FLD_REGEN := 501;
+Const HEIGHT    := 400;
+Function TeleConfigGump(who, teleport) // {{{
+  // struct mit Keys aus :teleporters:common (GATE_SPC_*)
+  var opts    := teleport.getprop(PROP_GATE_SPECIAL);
+  If (!opts)
+    opts := struct;
+  EndIf
+  var active  := teleport.getprop(ONOFF_CPROP);
+  If (active == error)
+    active := 1;
+  Else
+    active := CInt(active);
+  EndIf
+  
+  var mirrorgate := SystemFindObjectBySerial(teleport.getprop("mirrorgate"));
+  If (!mirrorgate)
+  	opts[GATE_SPC_RETURNGATE] := 0;
+  EndIf
+
+  var layout := array{ // {{{
+    // Hintergrund
+    "page 0",
+    "nodispose",
+    "resizepic 0 0 2620 310 "+(112+HEIGHT),
+    // Balken unter Titel
+    "gumppic 20 30 2621",
+    "checkertrans 5 6 300 "+(100+HEIGHT),
+    // Ueberschrift
+    "text 20 10 40 0",
+    "page 1",
+    // Einstellungen
+    // aktiv
+    "checkbox   20  55  2152 2154 "+active+" 1001",
+    "text       60  60  40  1",
+    // Rueckfrage
+    "checkbox   20  95  2152 2154 "+OnOff(opts, GATE_SPC_ASK)+" 1002",
+    "text       60 100  40  2",
+    // Newbies sperren
+    "checkbox   20 135  2152 2154 "+OnOff(opts, GATE_SPC_NEWBIES)+" 1003",
+    "text       60 140  40  3",
+    // Festland sperren
+    "checkbox   20 175  2152 2154 "+OnOff(opts, GATE_SPC_NONNEWBIES)+" 1004",
+    "text       60 180  40  4",
+    // Reittiere verbieten
+    "checkbox   20 215  2152 2154 "+OnOff(opts, GATE_SPC_NOMOUNT)+" 1005",
+    "text       60 220  40  5",
+    // nur 'nackt'
+    "checkbox   20 255  2152 2154 "+OnOff(opts, GATE_SPC_NAKED)+" 1006",
+    "text       60 260  40  6",
+    // Anzahl Durchgaenge
+    "resizepic 210 290  2620 80 40",
+    "textentry 220 300  70 20 50 "+FLD_ENERG+" 11",
+    "text       60 300  40  7",
+    // Zerstoeren
+    "checkbox   20 335  2152 2154 "+OnOff(opts, GATE_SPC_EDESTRUCT)+" 1008",
+    "text       60 340  40  8",
+    // Regenerationszeit
+    "resizepic 210 370  2620 80 40",
+    "textentry 220 380  70 20 50 "+FLD_REGEN+" 12",
+    "text       60 380  40  9",
+    // Tor zur Rückreise
+    "checkbox   20 415  2152 2154 "+OnOff(opts, GATE_SPC_RETURNGATE)+" 1009",
+    "text       60 420  40  14",
+    // FIXME:
+    // Klassen
+    // "text       60 420  40 10",
+
+    // Ok-Button
+    "button  60 "+(75+HEIGHT)+" 2076 2075 1 0 "+BUTT_OK,
+    // Cancel-Button00+
+    "button 200 "+(75+HEIGHT)+" 2073 2072 1 0 0",
+    ""
+  }; // }}}
+
+  var data := array{ // {{{
+    "Teleportoptionen",
+    "Teleporter aktiv",
+    "Mit Rückfrage",
+    "Jhe'lomer verbieten",
+    "Festländer verbieten",
+    "Reittiere verbieten",
+    "nur 'nackt' (fast keine Items)",
+    "maximale Durchgänge:",
+    "Zerstörung statt Regeneration",
+    "Regenerationszeit:",
+    "Klassen verbieten",
+    CInt(opts[GATE_SPC_ENERGY]),
+    CInt(opts[GATE_SPC_EREGENTIME]),
+    "",
+    "Tor zur Rückreise"
+  }; // }}}
+
+  var ret := SendDialogGump(who, layout, data, 100, 20);
+  If (CInt(ret[0]) <> BUTT_OK)
+    If (active)
+      SendSysMessagePergon(who, "Abbruch, aktiv");
+    Else
+      SendSysMessagePergon(who, "Abbruch, inaktiv");
+    EndIf
+    return error{errortext := "Config cancelled"};
+  EndIf
+
+  active                    := CInt(ret[1001]);
+  opts[GATE_SPC_ASK]        := CInt(ret[1002]);
+  opts[GATE_SPC_NEWBIES]    := CInt(ret[1003]);
+  opts[GATE_SPC_NONNEWBIES] := CInt(ret[1004]);
+  opts[GATE_SPC_NOMOUNT]    := CInt(ret[1005]);
+  opts[GATE_SPC_NAKED]      := CInt(ret[1006]);
+  opts[GATE_SPC_ENERGY]     := GetNumericValue(ret[FLD_ENERG]);
+  opts[GATE_SPC_EDESTRUCT]  := CInt(ret[1008]);
+  opts[GATE_SPC_EREGENTIME] := GetNumericValue(ret[FLD_REGEN]);
+  opts[GATE_SPC_RETURNGATE] := CInt(ret[1009]);
+  // FIXME: opts[GATE_SPC_CLASSES]    := array{};
+
+  teleport.setprop(PROP_GATE_SPECIAL, opts);
+  teleport.setprop(ONOFF_CPROP, active);
+
+  If (active)
+    SendSysMessagePergon(who, "Gespeichert, aktiv");
+  Else
+    SendSysMessagePergon(who, "Gespeichert, inaktiv");
+  EndIf
+  
+  If (OnOff(opts, GATE_SPC_RETURNGATE))
+    If (!mirrorgate)
+      var gate := CreateItemAtLocationPergon(
+        teleport.getprop("DestX"),
+        teleport.getprop("DestY"),
+        teleport.getprop("DestZ"),
+        "systemteleporter", 1,
+        teleport.getprop("DestRealm")
+      );
+      If (gate)
+        teleport.setprop("mirrorgate", gate.serial);
+        gate.setprop("mirrorgate", teleport.serial);
+        gate.setprop("DestX", teleport.x);
+        gate.setprop("DestY", teleport.y);
+        gate.setprop("DestZ", teleport.z);
+        gate.setprop("DestRealm", teleport.realm);
+        gate.setprop(PROP_GATE_SPECIAL, opts);
+        gate.setprop(ONOFF_CPROP, active);
+      Else
+        SendSysMessagePergon(who, gate.errortext);
+      EndIf
+    Else
+    	mirrorgate.setprop(PROP_GATE_SPECIAL, opts);
+    	mirrorgate.setprop(ONOFF_CPROP, active);
+    EndIf
+  Else
+  	If (mirrorgate)
+  		DestroyItem(mirrorgate);
+  		teleport.eraseprop("mirrorgate");
+  	EndIf
+  EndIf
+
+  return 1;
+EndFunction // }}}
+
+// ist eine Einstellung im Struct gesetzt?
+Function OnOff(opt, what) // {{{
+  If (opt[what])
+    return 1;
+  EndIf
+
+  return 0;
+EndFunction // }}}
+
+// Gump-Dictwerte in Key und Wert splitten
+Function GetNumericValue(retstr) // {{{
+  var splitted := SplitWords(retstr, " ");
+  return CInt(splitted[2]);
+EndFunction // }}}

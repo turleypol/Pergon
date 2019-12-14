@@ -1,0 +1,95 @@
+// Fox' Funskript für Fischwurf
+// angelehnt an snowball.src Stand: 04.07.2004
+//
+// Modifications:
+// 2006-10-10 Turley        Check auf .movable eingefügt
+// 2008-04-12 mehdorn       Multimedial aufgehuebscht (Sound)
+
+//////////////
+// Bibliotheken&Includes
+//////////////
+use os;
+use uo;
+use util;
+include "include/client";
+include "include/itemnpc";
+include "include/mobile";
+include "include/msgs";
+include "include/server";
+
+Program ThrowFish(who, item)
+    If (!item.movable)
+        SendSysMessagePergon(who, "Dies ist nicht zum Werfen geeignet.");
+        return;
+    EndIf
+
+    SendSysMessagePergon(who, "Wählt Euer Opfer.");
+    Var subject := Target(who);
+
+    If (!subject)
+        SendSysMessagePergon(who, "Zielen abgebrochen");
+        return;
+    ElseIf (Distance(who, subject) >= 15)
+        SendSysMessagePergon(who, "So weit fliegen Fische nicht!");
+        return;
+    ElseIf (!CheckLineOfSight(who, subject))
+        SendSysMessagePergon(who, "Ihr könnt Euer Opfer nicht sehen.");
+        return;
+    EndIf
+
+    If (who == subject)
+        PrintTextAbovePergon(who, who, "Das ist keine gute Idee.");
+        return;
+    EndIf
+
+    Detach();
+
+    If (subject.isa(POLCLASS_MOBILE))
+        SendSysMessagePergon(
+            who, "Ihr werft einen Fisch auf " + subject.name + "."
+        );
+    ElseIf (subject.isa(POLCLASS_ITEM))
+        SendSysMessagePergon(
+            who, "Ihr werft einen Fisch auf " + subject.desc + "."
+        );
+    EndIf
+    SubtractAmount(Item, 1);
+
+    PlayMovingEffectXYZ(
+        who.x,     who.y,     who.z+15,
+        subject.x, subject.y, subject.z,
+        item.objtype, 8, 0, 0, who.realm
+    );
+    SleepMs(800);
+    PrintTextAbovePergon(who, subject, "*klatsch*");
+    Sleepms(1500);
+
+    Var text  := "";
+    Var wuerg := 0;
+    Case (RandomInt(3))
+    0:
+        text  := " bewarf euch mit einem frischen Fisch.";
+    1:
+        text  := " bewarf euch mit einem stinkenden Fisch.";
+    2:
+        wuerg := 1;
+        text  := " bewarf euch mit einem total vergammelten Fisch, "+
+                 "euch wird übel.";
+    EndCase
+
+    If (!subject.isa(POLCLASS_MOBILE))
+        return;
+    EndIf
+
+    If (who.concealed >= CMDLEVEL_SEER)
+        SendSysMessagePergon(subject, "Jemand"+text);
+    Else
+        SendSysMessagePergon(subject, who.name+text);
+    EndIf
+
+    If (!wuerg)
+        return;
+    EndIf
+
+    Puke(subject);
+EndProgram

@@ -1,0 +1,64 @@
+<html>
+
+<head>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+<title>Structures</title>
+</head>
+
+<body>
+
+<h1>Structures</h1>
+
+<p>Structures are just arrays whose elements are named. </p>
+
+<p>Normally, structures are only used when a function returns a structure.&nbsp; </p>
+
+<p>To access members, use the '<strong><big>.</big></strong>' operator:</p>
+
+<table border="1">
+  <tr>
+    <td width="100%"><pre>print( a.height );
+print( a.width );</pre>
+    </td>
+  </tr>
+</table>
+
+<p>The syntax to create a structure is kind of weak, because it looks just like you're
+declaring an array:</p>
+
+<table border="1">
+  <tr>
+    <td width="100%"><pre>Local a Array;</pre>
+    </td>
+  </tr>
+</table>
+
+<p>To add members, use the '<strong><big>.+</big></strong>' operator:</p>
+
+<table border="1">
+  <tr>
+    <td width="100%"><pre>Local a Array;
+a.+height;
+a.+width;
+
+a.height := 5;</pre>
+    </td>
+  </tr>
+</table>
+
+<p>A more complete example:</p>
+
+<table border="1">
+  <tr>
+    <td width="100%"><pre>function get_position()
+begin
+    Local posn Array;
+    posn.+x := GetX();
+    posn.+y := GetY();
+    return posn;
+end</pre>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

@@ -1,0 +1,102 @@
+///////////////////////////////////////////////////////////////////////////
+// SavePlayerCorpses - Sichert die Inhalte der Playercorpses in deren Bankboxen
+//
+// Author: Shinigami
+
+use os;
+use storage;
+use uo;
+include "include/bank";
+include "include/itemnpc";
+include "include/msgs";
+
+Program SavePlayerCorpses(who)
+  SendSysMessagePergon(who, "Suche nach Playercorpses...");
+
+  Var anzahl:=0;
+
+  ForEach corpse in ListObjectsInBox(0, 0, -128, 6143, 4095, 127,who.realm)
+    If (corpse.isa(POLCLASS_CORPSE))
+      If (!GetObjProperty(corpse, "npctemplate")) // Player-Corpse?
+        Var charname:=corpse.name;
+        charname[1, 12]:="";
+        SysLog("  Corpse "+corpse.x+" "+corpse.y+" "+corpse.z+" '"+charname+"'");
+
+        Var corpsechar;
+        Var gefunden:=0;
+
+        Var charserial:=GetObjProperty(corpse, "myserial"); // Char anhand der CProp(myserial) suchen
+        If (charserial)
+          corpsechar:=SystemFindObjectBySerial(charserial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+          If (corpsechar) // Gefunden?
+            SysLog("    Char gefunden [Ghost = "+corpsechar.dead+"]");
+            gefunden:=1;
+          Else // ...noe
+            SysLog("    WARNUNG: Char zur Serial nicht gefunden");
+          EndIf
+        EndIf
+
+        If (!gefunden) // Hmm, dann anhand des Namens. Ist zugehoeriger Player eingeloggt?
+          ForEach char in EnumerateOnlineCharacters() // Ist zugehoeriger Player eingeloggt?
+            If (char.name==charname)
+              If (!gefunden) // Hab ihn doch noch nicht gefunden, oder?
+                SysLog("    Char gefunden [Ghost = "+char.dead+"] [online] ");
+                corpsechar:=char;gefunden:=1;
+              Else // ...leider doch
+                SysLog("    WARNUNG: Char doppelt gefunden");
+              EndIf
+            EndIf
+          EndForEach
+        EndIf
+
+        If (!gefunden) // Noe. Ist er vielleicht ausgeloggt?
+          ForEach accountname in ListAccounts();
+            Var account:=FindAccount(accountname);
+            If (account)
+              For charnr:=1 To 5
+                Var char:=account.getcharacter(charnr);
+                If (char)
+                  If (char.name==charname)
+                    If (!gefunden) // Hab ihn doch noch nicht gefunden, oder?
+                      SysLog("    Char gefunden [Ghost = "+char.dead+"] [offline] ");
+                      corpsechar:=char;gefunden:=1;
+                    Else // ...leider doch
+                      SysLog("    WARNUNG: Char doppelt gefunden");
+                    EndIf
+                  EndIf
+                EndIf
+              EndFor
+            EndIf
+          EndForEach
+        EndIf
+
+        If (gefunden) // Nunja, hab ihn gefunden
+          Var bankbox:=FindBankBox(corpsechar); // Mal die Bankbox suchen
+          If (bankbox)
+            Var backpackkopie:=CreateItemInContainerPergon(bankbox, 0x0e75);
+            If (backpackkopie)
+              backpackkopie.name:="Corpseinhalt ["+ReadGameClock()+"]";
+
+              ForEach item in EnumerateItemsInContainer(corpse,ENUMERATE_ROOT_ONLY)
+                If (!MoveItemToContainer(item, backpackkopie))
+                  SysLog("    WARNUNG: Konnte '"+item.desc+"' nicht in den Rucksack verschieben ["+item.x+" "+item.y+" "+item.z+"] !");
+                EndIf
+              EndForEach
+
+              anzahl+=1;
+              SysLog("    Inhalt des Corpse in Rucksack "+Lower(Hex(backpackkopie.serial))+" gesichert...");
+            Else
+              SysLog("    FEHLER: Konnte keinen Rucksack in der Bankbox anlegen!");
+            EndIf
+          Else
+            SysLog("    FEHLER: Konnte die Bankbox zum Char nicht finden!");
+          EndIf
+        Else // ...oder auch nicht. Doof...
+          SysLog("    WARNUNG: Char nicht gefunden!");
+        EndIf
+      EndIf
+    EndIf
+  EndForEach
+
+  SendSysMessagePergon(who, "...abgeschlossen ("+anzahl+" gesichert).");
+EndProgram

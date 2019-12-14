@@ -1,0 +1,39 @@
+use uo;
+use cfgfile;
+
+Include "include/msgs";
+
+program checkname(who)
+
+Var hisname := lower(who.name);
+
+Var cfg := readconfigfile("badnames");
+
+Var elem := findconfigelem(cfg, hisname);
+
+if (!elem)
+        return;
+endif
+
+who.name := "invalid name";
+
+while (who.name == "invalid name")
+
+        Var newname := Sendtextentrygump( who,
+                   "You have selected a name that is not valid on this shard.",
+                   TE_CANCEL_DISABLE,
+                   TE_STYLE_NORMAL,
+                   20,
+                   "Please select a new name");
+
+Var elem := findconfigelem(cfg, lower(newname));
+
+if (!elem)
+        SendSysMessagePergon(who, "Good choice, " + newname + "!");
+        who.name := newname;
+        return;
+endif
+
+endwhile
+
+endprogram

@@ -1,0 +1,122 @@
+///////////////////////////////////////////////////////////////////////////
+// Cronlike - Regelmaessige Aufgaben ausfuehren, aehnlich wie cron
+
+use os;
+use uo;
+use util;
+
+include ":housing:house";
+include ":xmas:common";
+include "include/quests";
+
+Const LAST_DONE_OLD   := "ResetDeathCounterMonth";
+Const LAST_DONE_MONTH := "CronlikeMonth";
+Const LAST_DONE_DAY   := "CronlikeDay";
+Const LAST_DONE_HOUR  := "CronlikeHour";
+Const DEBUG           := 0;
+
+Program Cronlike() // {{{
+    If (PolCore().uptime < 300)
+        // Haeuser brauchen bis 60 Sekunden, ab 90 sollte reichen
+        Sleep(RandomIntMinMax(90, 300));
+    EndIf
+
+    If (DEBUG)
+        syslog("gestartet");
+    EndIf
+
+    While (1)
+        // monatliche Aufgaben
+        var thismonth := GetCurrentMonth();
+        If (GetGlobalPropOrDefault(LAST_DONE_MONTH, 0) <> thismonth)
+            ResetDeathCounterOfAllChars();
+            CheckRent(thismonth);
+
+            // 14 Tage vorher und auf Monat runden und auf Maerz basiert
+            var easter_build  := CInt(3+(EasterDate()-14)/32);
+            // 14 Tage nach Ostern bestimmen und mit Monat verrechnen
+            // (Abbau im Mai oder Juni)
+            var easter_remove := CInt(5+(EasterDate())/49);
+            // besser erst abreissen, dann aufbauen,
+            // da sich Ostern und Mai ueberschneiden koennen
+            If (
+                // Weihnachten vorbei
+                thismonth == 1 or
+                // Mai vorbei
+                thismonth == 6 or
+                // Ostern vorbei
+                thismonth == easter_remove
+            )
+                // abreissen
+                XmasSetCreate();
+            EndIf
+
+            If (thismonth == easter_build)
+                // Osternester
+                XmasSetCreate(EVENT_EASTER);
+            EndIf
+            If (thismonth == 5)
+                // Maibaum
+                XmasSetCreate(EVENT_MAY);
+            EndIf
+            If (thismonth == 12)
+                // Weihnachtsgeschenke
+                XmasSetCreate(EVENT_XMAS);
+            EndIf
+            SetGlobalProperty(LAST_DONE_MONTH, thismonth);
+        EndIf
+
+        // taegliche Aufgaben
+        var thisday := GetCurrentDay();
+        If (GetGlobalPropOrDefault(LAST_DONE_DAY, 0) <> thisday)
+            SetGlobalProperty(LAST_DONE_DAY, thisday);
+        EndIf
+
+        // stuendliche Aufgaben
+        var thishour := GetCurrentHour();
+        If (GetGlobalPropOrDefault(LAST_DONE_HOUR, 0) <> thishour)
+            // abgelaufene Zonen aufraeumen
+            QuestZoneExpire();
+            SetGlobalProperty(LAST_DONE_HOUR, thishour);
+        EndIf
+
+        // Auf Stundenwechsel warten
+        var minute    := GetCurrentMinute();
+        var sleeptime := 60 * (60 - minute);
+        If (DEBUG)
+            syslog("Schlafe "+sleeptime+" Sekunden ...");
+        EndIf
+        Sleep(sleeptime);
+    EndWhile
+EndProgram // }}}
+
+Function ResetDeathCounterOfAllChars() // {{{
+    If (DEBUG)
+        syslog("setze Werte zurueck");
+    EndIf
+
+    var count := 0;
+    ForEach acctname in (ListAccounts())
+        SleepMs(2);
+        var acct := FindAccount(acctname);
+        For slot := 1 To 5
+            SleepMs(2);
+            var char := acct.getcharacter(slot);
+            If (char == error)
+                continue;
+            EndIf
+            SetObjProperty(char, LOG_DEATHCOUNTM, 0);
+
+            If (DEBUG)
+                count += 1;
+                If (count % 50 == 0)
+                    syslog("bearbeitete Character: "+count);
+                EndIf
+            EndIf
+        EndFor
+    EndForEach
+
+    If (DEBUG)
+        syslog("fertig; bearbeitete Character: "+count);
+    EndIf
+EndFunction // }}}

@@ -1,0 +1,179 @@
+Konzept Bootsbau!
+
+Beruf Bootsbauer:
+Holzverarbeitung/Schiffbau
+
+
+Rohstoffgrundlagen:
+
+Holzstämme und Bretter
+Nägel
+Tücher
+
+Stafflung bei der Herstellung:
+Zeichen:
+Bauplan für kleine Schiffe 0-30% (Schwierigkeit bei 10%)
+Bauplan für kleine Drachen-Schiffe 5%-45% (Schwierigkeit bei 25%)
+
+Bauplan für mittlere Schiffe 20%-60% (Schwierigkeit bei 40%) 
+Bauplan für mittlere Drachen-Schiffe 35%-75% (Schwierigkeit bei 55%)
+
+Bauplan für große Schiffe 55%-95% (Schwierigkeit 75%)
+Bauplan für große DrachenSchiffe 70%-110% (SChwierigkeit 90%)
+
+-----
+
+Amforderungen von Schiffen:
+Aufbaun:
+kleines Schiff ( Schwierigkeit 80% Bootsbau ; 40% Holzverarbeitung ; 60% Schneidern)
+kleines Drachenschiff (Schwierigkeit 85% Bootsbau ; 55% Holzverarbeitung ; 60% Schneidern)
+
+mittleres Schiff ( Schwierigkeit 100% Bootsbau ; 60% Holzverarbeitung ; 70% Schneidern)
+mittleres Drachenschiff ( Schwierigkeit 105% Bootsbau ; 75% Holzverarbeitung ; 70% Schneidern)
+
+großes Schiff (Schwierigkeit 115% Bootsbau ; 80% Holzverarbeitung ; 80% Schneidern)
+großes Drachenschiff (Schwierigkeit 120% Bootsbau ; 90% Holzverarbeitung ; 80% Schneidern)
+
+
+Die Anforderungen an den Holzverarbeitungsskill steigen mit der Qualität des Holzes. 
+Die Anforderungen sinken mit der Qualität des Werkzeuges (maximal 5%). 
+
+Beispiel:
+
+kleines Schiff 40% Anforderung bei Mischholz, 90?% Anforderung bei Elfenbeinholz.
+
+-----
+
+Verbrauch noch mit Skillgain abzustimmen:
+
+Bedarf zum Zeichnen: Tinte und Feder
+Bauplan kleines Schiff: 2 Rollenpapier 
+Bauplan kleines Drachenschiff: 3 Rollenpapier
+Bauplan mittleres Schiff: 4 Rollenpapier
+Bauplan mittleres Drachenschiff: 5 Rollenpapier
+Bauplan großes Schiff: 6 Rollenpapier
+Bauplan großes Drachenschiff: 8 Rollenpapier
+
+
+Bedarf zum Bauen: Schere, Säge, Hammer, Bauplan
+
+kleines Schiff:
+100 Stämme
+10k Bretter
+500 Tücher
+30 Nägelpackungen
+
+
+kleines Drachenschiff:
+150 Stämme
+12k Bretter
+500 Tücher
+30 Nägelpackungen
+
+
+mittleres Schiff:
+200 Stämme
+20k Bretter
+750 Tücher
+50 Nägelpackungen
+
+mittleres Drachenschiff:
+250 Stämme
+24k Bretter
+750 Tücher
+50 Nägelpackungen
+
+großes Schiff:
+300 Stämme
+30k Bretter
+900 Tücher
+100 Nägelpackungen
+
+großes Drachenschiff:
+
+350 Stämme
+35k Bretter
+900 Tücher
+100 Nägelpackungen
+
+-----
+
+Bauablauf:
+
+1. Bauplan zeichnen
+2. Rohstoffe besorgen
+3. Bauplan doppelklicken -> Hammer auswählen -> Säge auswählen -> Schere ----> Produktion läuft an
+3a. Die Quality der Werkzeuge bestimmt die Dauer der Wartezeiten zwischen den einzelnen Schritten.
+4. nach kurzer Zeit Abfrage nach Brettern (dabei gleich Nägel aus dem Backpack abziehen)
+5. nach kurzer Zeit Abfrage nach Stämmen ( Wählt die Stämme für den Mast)
+6. nach kurzer Zeit Abfrage nach Tüchern (Wählt die Tücher für das Segel)
+7. nach längerer Zeit Schiffsmodell im Backpack erzeugen 
+8. Werkzeug bekommt 70% der MaxHP des Werkzeuges Schaden.
+
+----
+
+Grundquality für Schiffe:
+
+kleines Schiff: 4k HP
+kleines Drachenschiff: 5k HP
+
+mittleres Schiff hat: 8k HP
+mittleres Drachenschiff: 9k HP
+
+großes Schiff hat: 16k HP
+großes Drachenschiff hat: 17k HP
+
+(bitte eine lineare Funktion)
+
+Zu den Grundhitpoints kommen abhängig vom Material Bonushitpoints die bis maximal doppelte Grundhp gehen
+Bsp:
+
+ein kleines Mischholz,Eisen,Leinen Schiff hat demnach 4k HP
+ein kleines Elfenbein,Energium,Brokat Schiff hat demnach 8k HP
+
+Einfluss des Materials:
+
+70% Bretter (Holzquality)
+15% Segeltücher (Tuchquality)
+10% Mast (Holzquality)
+5% Nägel(Metallquality)
+
+----
+
+Schiffbau:
+
+Erstmal ein Check, ob das Schiff klappt oder nicht.
+
+Fall 1:
+Schiff klappt: aus der Formel über das Material werden die HP ermittelt
+
+Fall2:
+Schiff klappt nicht: Nun wird über eine Formel bestimmt, ob das Schiff totaler schrott ist oder noch schwimmfähig. 
+Wenn das Schiff noch schwimmfähig ist, erhält es zwischen 10% und 40% der orgainal HP eines gelungenen Schiffes.
+Ist es nicht mehr schwimmfähig, dann werden die Rohstoffe abgezogen, aber kein Schiffsmodell erzeugt.
+
+Beispiel:
+
+kleines Schiff aus Mischholz:
+Bootsbauerskill: (80% Bootsbau, 40% Holzverarbeitung, 60% Schneidern)
+
+Somit eine 50% Wahrscheinlichkeit dass das Schiff gelingt.
+Sollte das Schiff nicht gelingen, geht es in die Schleife Fall2. Nun sollte er nochmal eine 50% Chance haben, dass das Schiff mit minderer Quali gelingt bzw. schrott ist.
+Gelingt der Check auf mindere Quali, dann wird ein Zufallswert zwischen 10% und 40% ermittelt und mit der Orignalhp des Schiffes verrechnet.
+
+
+----
+
+
+Skillgain:
+
+Um 10% mit Bauplänen zu skillen, soll der Rollenverbrauch 50% vom Rohstoffbedarf(Bretter) von 10% Skill mit direktem Bau vom Booten betragen.
+
+Beispiel: 10k Bretter für ein kleines Schiff, das bedeutet für den selben Skillgain mit Bauplänen nur 5k Rollen.
+
+Beim Schiffsbau:
+
+Der Skillgain sind die Hitpoints des Schiffes in Rawpoints. Natürlich nur solange er das Schiff nicht pefekt kann. (Nochmal anschauen in Bezug auf Spanne von +-20% Skill)
+
+Bootsbau/Holzverarbeitung: Wenn das SChiff gelingt, dann voller Skillgain. Wenn das Schiff nur schwimmfähig, dann anteilsmässig nach Prozentwert.
+ 

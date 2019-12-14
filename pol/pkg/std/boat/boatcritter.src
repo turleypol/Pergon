@@ -1,0 +1,29 @@
+//
+// Tötungsscript für Bootcritter
+//
+// 2004/12/12 Turley: FirstWrite (geklaut bei Sebbs Elementarscripten)
+//
+
+
+use os;
+use uo;
+
+include "include/modifyskill";
+
+program boatcritter(params)
+  Detach();
+  var dur := CInt(params[2] / 5.0);
+  Var i;
+
+  for (i :=  0; i < 4; i +=  1)       // wait summa 4/5th of duration
+    sleep(dur);
+    if ((params[1].dead) || (!params[1]))     // abort if critter got killed
+      return;
+    endif
+  endfor
+
+  Sleep(dur);
+  If ((!params[1].dead) && (params[1]))
+    MoveObjectToLocation(params[1], 5283, 1184, 0, _DEFAULT_REALM, MOVEOBJECT_FORCELOCATION);    // beam critter away // in den Knast zum Vernichter
+  EndIf
+endprogram

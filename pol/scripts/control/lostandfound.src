@@ -1,0 +1,63 @@
+///////////////////////////////////////////////////////////////////////////
+// lostandfound --
+// sammelt verlorene Items im Bereich (0, 0) - (500, 500) und
+// verschiebt sie in die Gegend um (6135, 1090)
+
+use os;
+use uo;
+use util;
+include "include/logutil";
+
+Program LostAndFound()
+    While (1)
+        // sollte kleiner als die globale Decayzeit sein
+        Sleep(300);
+        ForEach thing in (
+            ListObjectsInBox(0, 0, -127, 500, 500, 127, REALM_BRITANNIA)
+        )
+            SleepMs(2);
+            If (thing.isa(POLCLASS_MOBILE))
+                // NPCs und Spieler nicht anfassen
+                continue;
+            EndIf
+            If (thing.multi)
+                // ist wahrscheinlich auf einem Boot
+                continue;
+            EndIf
+            If (thing.isa(POLCLASS_MULTI))
+                // und Multis erst recht nicht wegschieben
+                // (kann der Core derzeit eh nicht)
+                continue;
+            EndIf
+
+            If (!thing.movable)
+                // nach Bedarf loesen
+                thing.movable := 1;
+            EndIf
+
+            // Verschieben
+            syslog(
+                "HINWEIS: Versuche "+ItemInfoStr(thing, COORDS_REALM)+
+                " ins Fundbuero zu verschieben"
+            );
+            var result := MoveObjectToLocation(
+                thing,
+                // um x und y etwas verteilen
+                6135 + RandomIntMinMax(-5, 6),
+                1090 + RandomIntMinMax(-5, 6),
+                0, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+            );
+            If (!result)
+                // Fehlschlag, besser wieder festmachen
+                syslog(
+                    "FEHLER: "+ItemInfoStr(thing, COORDS_REALM)+
+                    " konnte nicht verschoben werden: "+result.errortext
+                );
+                thing.movable := 0;
+            EndIf
+
+            // verschwinden verhindern
+            thing.decayat := 0;
+        EndForEach
+    EndWhile
+EndProgram

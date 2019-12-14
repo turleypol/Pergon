@@ -1,0 +1,84 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file light.src
+//
+// implements spell 9 <Light> - "Licht"
+//
+// raises lightlevel of spelltarget
+
+include "../magicpergon";
+include "../light";
+include ":daymoonweather:daymoonweather";
+
+Program CastLight(params)
+  var caster;
+  var caston;
+  var power;
+
+  If (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_COMMON_LIGHT);
+    caston := TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+  EndIf
+
+  // waehrend Target krepiert?
+  If (!caster)
+    return;
+  EndIf
+  If (!caston or !caston.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(caster, "Kein Ziel", "No target");
+    return;
+  EndIf
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  // check if spelltarget is blind
+  If (GetObjProperty(caston, "spell_blind"))
+    SendSysMessagePergon(caster,
+      "Euer Ziel ist blind - da helfen auch Lichtzauber nichts mehr.",
+      "Your targed has been blinded - light spells are useless."
+    );
+    return;
+  EndIf
+
+  // load spelldata
+  var spells  := ReadConfigFile("::spells");
+  var spell   := FindConfigElem(spells, SPELLID_COMMON_LIGHT);
+
+  // calc duration according to casting power
+  var dur := CInt(power*spell.duration/100.0);
+  If (spell.durationmin and spell.durationmin > dur)
+      dur := spell.durationmin;
+  ElseIf (spell.durationmax and spell.durationmax < dur)
+      dur := spell.durationmax;
+  EndIf
+
+  PlaySoundEffect(caster, SFX_SPELL_NIGHT_SIGHT);
+  PlayObjectCenteredEffect(caston, FX_MARK_EFFECT, 7, 7);
+
+  // Magilite benutzen?
+  If (UseMagilite(caster, caston))
+    // kleiner, haelt dafuer laenger
+    CreateMagicLight(caster, caston, 2*dur);
+    return;
+  EndIf
+
+  var level := NIGHTLIGHT;
+  // calc increase of light
+  var amnt := CInt(power*level/150.0);
+
+  // if increase is bigger than current lightlevel
+  If (amnt > level)
+      // reduce to lightlevel
+      // (SetLightLevelPergon() doesn't like negative values
+      amnt := level;
+  EndIf
+  // alter lightlevel
+  SetLightLevelPergon(caston, CInt(level-amnt), dur, CHECK_NOLIGHT);
+EndProgram
+
+// vim: sw=2 sts=2

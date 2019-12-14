@@ -1,0 +1,213 @@
+///////////////////////////////////////////////////////////////////////////
+// hidewall
+//
+// Item auf dem Boden, steuert eine versenk- und versteckbare Wand
+
+use math;
+use os;
+use polsys;
+use uo;
+use util;
+include "hidecommon";
+include "include/logutil";
+
+Program HideWall(wall)
+    wall.setprop(WALLPID, GetPID());
+    // If (polcore().uptime < 600)
+    //     Sleep(10+RandomInt(500));
+    // EndIf
+    Sleep(10);
+
+    Set_Event_Queue_Size(10);
+    Clear_Event_Queue();
+
+    // die Wand, die vom Item gesteuert wird
+    var realwall;
+
+    While (wall)
+        var lastcolor := wall.color;
+
+        // gucken, ob wir (schon/noch) ein eigenes Wanditem haben
+        If (!realwall)
+            realwall := FindRealWall(wall);
+        EndIf
+
+        If (wall.container)
+            // ich wurde verpackt
+            If (realwall)
+                // meine Wand abreissen
+                DestroyItem(realwall);
+            EndIf
+        EndIf
+
+        If (!wall.container and !realwall)
+            // nix gefunden, dann eben neu erzeugen
+            realwall := CreateRealWall(wall);
+            If (!realwall)
+                syslog(
+                    "FEHLER: "+ItemInfoStr(wall, COORDS_REALM)+
+                    " keine Erzeugung der Wand: "+realwall.errortext
+                );
+                Sleep(300+RandomInt(60));
+                continue;
+            EndIf
+
+            SetName(realwall, "Wand");
+            wall.setprop(REALWALL, realwall.serial);
+            var event := struct{
+                type   := EVID_MASTER_RECALL,
+                action := ACTION_WALLDOWN
+            };
+            // FIXME: komischerweise kommt erst das zweite Event an
+            GetProcess(GetPid()).sendevent(event);
+            GetProcess(GetPid()).sendevent(event);
+        EndIf
+
+        var ev := Wait_For_Event(300+RandomInt(60));
+        If (!realwall)
+            // in Wartezeit wurde kontrolliertes Item zerstoert
+            continue;
+        EndIf
+        If (!ev)
+            ev := struct{type := 0};
+        EndIf
+
+        If (ev.type <> EVID_MASTER_RECALL)
+            // nix Runaway bei falschem Event
+            Sleep(1);
+        Else
+            EventAction(wall, realwall, ev);
+        EndIf
+
+        // Farbaenderungen auf kontrollierte Wand uebertragen
+        If (wall.color <> lastcolor)
+            realwall.color := wall.color;
+        EndIf
+        // ggf. Wand nachziehen, falls etwas verschoben wurde
+        If (wall.x <> realwall.x or wall.y <> realwall.y)
+            MoveObjectToLocation(
+                realwall, wall.x, wall.y, realwall.z, wall.realm,
+                MOVEOBJECT_FORCELOCATION
+            );
+        EndIf
+    EndWhile
+
+    // Schleife endet mit Zerstoerung des Steueritems,
+    // kontrollierte Wand ggf. mit Abreissen
+    // (spart ein DestroyScript)
+    If (realwall)
+        DestroyItem(realwall);
+    EndIf
+EndProgram
+
+Function CreateRealWall(wall) // {{{
+    var desc := struct{
+        Name      := "Wand",
+        Desc      := "Wand",
+        Facing    := 29,
+        Graphic   := 0xc5,
+        Invisible := 1,
+        Movable   := 0,
+        ObjClass  := "Item",
+        ObjType   := 0xc5,
+        Weigth    := 1
+    };
+    return CreateItemAtLocation(
+        wall.x, wall.y, wall.z, desc, 1, wall.realm
+    );
+EndFunction // }}}
+
+Function EventAction(wall, realwall, ev) // {{{
+    Case (ev.action)
+    ACTION_WALLUP:
+        If (realwall.z <> wall.z)
+            RealWallAscend(wall, realwall);
+        EndIf
+
+    ACTION_WALLDOWN:
+        If (realwall.z <> -127)
+            RealWallDescend(wall, realwall);
+        EndIf
+
+    ACTION_WALLVIS:
+        If (realwall.invisible)
+            realwall.invisible := 0;
+        EndIf
+        If (ev.param == 1)
+            wall.invisible := 0;
+        EndIf
+
+    ACTION_WALLINVIS:
+        If (!realwall.invisible)
+            realwall.invisible := 1;
+        EndIf
+        If (ev.param == 1)
+            wall.invisible := 1;
+        EndIf
+
+    ACTION_COLOR:
+        realwall.color := ev.param;
+        wall.color     := ev.param;
+
+    ACTION_GRAPHIC:
+        realwall.graphic := ev.param;
+
+    default:
+        // nix Runaway bei falschem Event
+        Sleep(1);
+    EndCase
+EndFunction // }}}
+
+Function RealWallDescend(wall, realwall) // {{{
+    If (!ReserveItem(realwall))
+        return;
+    EndIf
+
+    // langsam versenken
+    var z;
+    For (z := wall.z; z >= wall.z - realwall.height; z -= 2)
+        SleepMs(500);
+        If (!wall or !realwall)
+            break;
+        EndIf
+        MoveObjectToLocation(
+            realwall, wall.x, wall.y, Max(-127, z), wall.realm,
+            MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+        );
+    EndFor
+
+    // danach ganz am Boden absetzen
+    MoveObjectToLocation(
+        realwall, wall.x, wall.y, -127, wall.realm,
+        MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+    );
+
+    ReleaseItem(realwall);
+EndFunction // }}}
+
+Function RealWallAscend(wall, realwall) // {{{
+    If (!ReserveItem(realwall))
+        return;
+    EndIf
+
+    // langsam aufsteigen lassen
+    var z;
+    For (z := wall.z - realwall.height; z <= wall.z; z += 2)
+        SleepMs(500);
+        If (!wall or !realwall)
+            break;
+        EndIf
+        MoveObjectToLocation(
+            realwall, wall.x, wall.y, Max(-127, z), wall.realm,
+            MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+        );
+    EndFor
+
+    // danach direkt auf Wanditem absetzen
+    MoveObjectToLocation(
+        realwall, wall.x, wall.y, wall.z, wall.realm,
+        MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+    );
+
+    ReleaseItem(realwall);
+EndFunction // }}}

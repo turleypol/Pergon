@@ -1,0 +1,50 @@
+use uo;
+
+Include ":popuphook:popupmenu";
+
+Program Install()
+	return 1;
+EndProgram
+
+Exported Function haspopup(mobile)
+	return 1;
+	mobile := mobile;
+EndFunction
+
+Exported Function popupinfo(mobile, who)
+	If (!GetObjProperty(mobile, "master"))                              //Hat der Händler einen Meister?
+		return {{ID_PVENDOR_RENT, CLILOC_PVENDOR_RENT}};
+	EndIf
+	
+	var info := {
+	  {ID_VENDOR_BUY, CLILOC_VENDOR_BUY},
+	  {ID_VENDOR_SELL, CLILOC_VENDOR_SELL},
+	  {ID_PVENDOR_MSGSEND, CLILOC_PVENDOR_MSGSEND}
+	};
+  
+  If (GetObjProperty(mobile, "master") == who.serial)
+  	If (GetObjProperty(mobile, "msgs"))                               //Sind überhaupt Nachrichten vorhanden?
+  	  info += {
+  	    {ID_PVENDOR_MSGRECEIVE, CLILOC_PVENDOR_MSGRECEIVE},
+  	    {ID_PVENDOR_MSGDELETE, CLILOC_PVENDOR_MSGDELETE}
+  	  };
+    EndIf
+    
+    If (GetObjProperty(mobile, "rp"))                                 //Hat der Händler geschlossen?
+      info.append({ID_PVENDOR_OPEN, CLILOC_PVENDOR_OPEN});
+    Else
+      info.append({ID_PVENDOR_CLOSE, CLILOC_PVENDOR_CLOSE});
+    EndIf
+    
+    info += {
+      {ID_PVENDOR_CLOTHES, CLILOC_PVENDOR_CLOTHES},
+      {ID_PVENDOR_STRIP, CLILOC_PVENDOR_STRIP},
+      {ID_PVENDOR_PAYME, CLILOC_PVENDOR_PAYME},
+      {ID_PVENDOR_LOHN, CLILOC_PVENDOR_LOHN},
+      {ID_PVENDOR_STATUS, CLILOC_PVENDOR_STATUS},
+      {ID_PVENDOR_FIRE, CLILOC_PVENDOR_FIRE}
+  	};
+  EndIf
+  
+  return info;
+EndFunction

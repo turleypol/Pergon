@@ -1,0 +1,106 @@
+///////////////////////////////////////////////////////////////////////
+// TextCMD CreateNPCRange - Erzeugt NPCs im Quadrat mit angegebenen Radius
+//
+// Author: Shinigami
+
+use os;
+use uo;
+include "include/msgs";
+include "include/npc";
+include "include/permissions";
+include "include/quests";
+
+Program TextCMD_CreateNPCRange(who, param)
+  If (!AllowedToCreateNPC(who))
+    SendSysMessagePergon(who,
+      "Ihr seid nicht befugt, diesen Befehl zu benutzen!",
+      "You are not authorizied to use this command!"
+    );
+    return;
+  EndIf
+
+  var zoneopts := QuestZoneIsIn(who, QZ_ISIN_OPT);
+
+  var params := SplitWords(param);
+  var template := params[1];
+  var range    := Abs(CInt(params[2]));
+
+  If (!template or params.size() <> 2)
+    SendSysMessagePergon(who,
+      "Parameter: .CreateNpcRange <Template> <Radius>"
+    );
+    return;
+  EndIf
+
+  If (range > 20)
+    range := 20;
+    SendSysMessagePergon(who, "Range wurde auf "+range+" limitiert");
+  EndIf
+
+  var count := Pow(range + 1, 2);
+  If (range > who.cmdlevel or count > 100)
+    If (!SendYesNoGump(who,
+        "Sollen wirklich bis zu "+count+" NPCs erzeugt werden?"
+    ))
+      SendSysMessagePergon(who, "Abbruch");
+      return;
+    EndIf
+  EndIf
+
+  var startx := who.x - range;
+  var starty := who.y - range;
+  var endx   := who.x + range;
+  var endy   := who.y + range;
+  var realm  := who.realm;
+  var props  := struct;
+  props.+facing := who.facing;
+
+  // fuer Logging
+  var goodnpc  := 0;
+  var npccount := 0;
+
+  var x, y;
+  var fail;
+  For (x := startx; x <= endx; x += 1)
+    For (y := starty; y <= endy; y += 1)
+      // Hoehe oberhalb der Karte, ab der man stehen kann
+      // (wichtig bei Haefen, Bruecken, ...)
+      var z := GetStandingHeight(
+        // Hoehe der Karte ermitteln
+        x, y, GetMapInfo(x, y, who.realm).z, who.realm
+      ).z;
+      var npc := CreateNpcFromTemplatePergon(
+        template, x, y, z, 0, props, 1, realm
+      );
+      If (!npc)
+        fail := npc;
+        continue;
+      EndIf
+      goodnpc  := npc;
+      npccount += 1;
+
+      If (zoneopts.size() >= 1)
+        // Restriktionen aus der Questzone setzen
+        QuestZoneApplyRestrictions(npc, zoneopts);
+        // speichern, dass er in Questzone gebaut wurde
+        npc.setprop(PROP_QUESTBUILT, who.serial);
+      EndIf
+
+      // Erzeuger festhalten
+      SignNPCCreation(who, npc);
+
+      SleepMs(500);
+    EndFor
+  EndFor
+
+  // Logging
+  If (goodnpc)
+    syslog(
+      "CreateNPCRange: "+CharInfoStr(goodnpc, COORDS_REALM)+" ("+
+      npccount+" Stueck) durch "+CharInfoStr(who)+
+      " bei ("+startx+", "+starty+"; "+realm+")"
+    );
+  Else
+    SendSysMessagePergon(who, "Konnte keinen NPC erzeugen: "+fail.errortext);
+  EndIf
+EndProgram

@@ -1,0 +1,260 @@
+////////////////////////////////////////////////////////////
+// getm --
+//
+// An GM text command that prints the value of the given object member.
+//
+// based on .getprop by DC
+
+// neu: shield trading_with gold uclang ip ownerserial footprint
+use os;
+use uo;
+include "include/logutil";
+include "include/modifyskill"; // GetDexPergon etc.
+include "include/msgs";
+include "include/names";
+include "include/server";
+
+Program TextCmdGetMember(who, param)
+  If (!param)
+    SendSysMessagePergon(who, "Syntax: .getprop <member> [serial]");
+    return;
+  EndIf
+
+  var params := SplitWords(param);
+  var member := params[1];
+
+  var obj;
+  If (params[2] and CInt(params[2]))
+    obj := SystemFindObjectBySerial(CInt(params[2]),
+      SYSFIND_SEARCH_OFFLINE_MOBILES
+    );
+    If (!obj)
+      SendSysMessagePergon(who, "Objekt nicht gefunden");
+      return;
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Wählt ein Objekt.");
+    obj := Target(who, TGTOPT_NOCHECK_LOS);
+
+    If (!obj)
+      SendSysMessagePergon(who,
+        "Kein normales Item - Wählt ein Paperdoll-Item!"
+      );
+      obj := TargetCoordinates(who);
+      If (obj.item)
+        obj := obj.item;
+      EndIf
+    EndIf
+    If (!obj)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+  EndIf
+
+  var value := GetObjMember(who, obj, member);
+  If (value != error)
+    SendSysMessagePergon(who, member+" = "+CStr(value));
+  ElseIf (value.errortext["not found on that object"])
+    SendSysMessagePergon(who,
+      "Ungültiger Member-Name (zumindest für diesen Objekttyp)"
+    );
+  Else
+    SendSysMessagePergon(who,
+      member+" hat keinen gültigen Wert ("+value.errortext+")"
+    );
+  EndIf
+EndProgram
+
+Function GetObjMember(who, obj, member)
+  // Sonderbehandlungen davor {{{
+  If (member == "acct")
+    member := "acctname";
+  EndIf
+  If (member == "pid")
+    member := "process";
+  EndIf
+  // }}}
+
+  var retstr := obj.get_member(member);
+
+  // keine weitere Behandlung {{{
+  //                          writable
+  //                          | / typical object class
+  //                          | |
+  // "alignment":          // w Mobile
+  // "amount":             //   Item
+  // "ar":                 //   Mobile
+  // "ar_base":            //   Armor
+  // "ar_mod":             // w Mobile
+  // "buyprice":           // w Item
+  // "clientversion":      //   Mobile
+  // "cmdlevel":           // w Mobile
+  // "concealed":          // w Mobile
+  // "corpsetype":         //   Corpse
+  // "criminal":           // ? Mobile
+  // "dead":               // ? Mobile
+  // "decayat":            // w Item
+  // "delay_mod":          // w Mobile
+  // "desc":               // w Item
+  // "dmg_mod":            // w Weapon
+  // "equipscript":        // w Item
+  // "evasionchance_mod":  // w Mobile
+  // "eventmask" :         //   Mobile
+  // "facing":             // w UObject
+  // "frozen":             // w Mobile
+  // "gender":             // w Mobile
+  // "gold":               //   Mobile
+  // "guildid":            // w UObject
+  // "gumpheight":         // w Map
+  // "gumpwidth":          // w Map
+  // "height":             //   UObject
+  // "hidden":             // w Mobile
+  // "hitchance_mod":      // w Mobile
+  // "hitscript":          // w Armor
+  // "invisible":          // w Item
+  // "isopen":             //   Door
+  // "layer":              //   Item
+  // "locked":             // w Lockable
+  // "maxhp_mod":          // w Equipment
+  // "movable":            // w Item
+  // "murderer":           // ?
+  // "newbie":             // w Item
+  // "npctemplate":        //   NPC
+  // "paralyzed":          // w Mobile
+  // "poisoned":           // w Mobile
+  // "quality":            // w Equipment
+  // "race":               // w Mobile
+  // "reportables":        //   NPC
+  // "run_speed":          //   NPC
+  // "script":             // w NPC
+  // "sellprice":          // w Item
+  // "skillid":            //   Weapon
+  // "squelched":          //   Mobile
+  // "stackable":          //   Item
+  // "stealthsteps":       // w Mobile
+  // "title_guild":        //   Mobile
+  // "title_prefix":       //   Mobile
+  // "title_race":         //   Mobile
+  // "title_suffix":       //   Mobile
+  // "truecolor":          //   Mobile
+  // "trueobjtype":        //   Mobile
+  // "uclang":             //   Mobile
+  // "unequipscript":      // w Item
+  // "usescript":          // w Item
+  // "warmode":            //   Mobile
+  // "weight":             //   UObject
+  // "x":                  // w UObject
+  // "xeast":              // w Map
+  // "xwest":              // w Map
+  // "y":                  // w UObject
+  // "ynorth":             // w Map
+  // "ysouth":             // w Map
+  // "z":                  // w UObject
+  // default:
+  // }}}
+
+  // Sonderbehandlungen danach {{{
+  Case (member)
+  // Typ "Wert dezimal und in Hex"
+  "color":              // w UObject
+  "graphic":            // w UObject
+  "objtype":            // ? UObject
+  "ownerserial":        //   Corpse
+  "serial":             //   UObject
+    If (retstr != error)
+      retstr := retstr+" ("+LHex(retstr)+")";
+    EndIf
+
+  // Typ "Serial dezimal und in Hex"
+  "backpack":           //   Mobile
+  "container":          //   Item
+  "multi":              //   UObject
+    If (retstr != error)
+      retstr := retstr.serial+" ("+LHex(retstr.serial)+")";
+    EndIf
+
+  // Typ "Name und Serial"
+  "master":             // w NPC
+  "opponent":           //   Mobile
+  "trading_with":       //   Mobile
+    If (retstr != error)
+      retstr := retstr.name+" ("+LHex(retstr.serial)+")";
+    EndIf
+
+  // Typ "Externe Pergon-Funktionen"
+  "dexterity":          // ? Mobile
+    retstr := GetDexPergon(obj);
+  "dexterity_mod":      // w Mobile
+    retstr := GetDexModPergon(obj);
+  "hp":                 // w Mobile
+    If (obj.isa(POLCLASS_MOBILE))
+      retstr := GetHPPergon(obj)+" (von "+GetMaxHPPergon(obj)+")";
+    ElseIf (retstr)     // w not Mobile
+      retstr += " (von "+obj.get_member("maxhp")+")";
+    EndIf
+  "intelligence":       // ? Mobile
+    retstr := GetIntPergon(obj);
+  "intelligence_mod":   // w Mobile
+    retstr := GetIntModPergon(obj);
+  "mana":               // w Mobile
+    retstr := GetManaPergon(obj)+" (von "+GetMaxManaPergon(obj)+")";
+  "maxhp":              //   Mobile
+    If (obj.isa(POLCLASS_MOBILE))
+      retstr := GetMaxHPPergon(obj);
+    EndIf
+  "maxmana":            //   Mobile
+    retstr := GetMaxManaPergon(obj);
+  "maxstamina":         //   Mobile
+    retstr := GetMaxStaminaPergon(obj);
+  "stamina":            // w Mobile
+    retstr := GetStaminaPergon(obj)+" (von "+GetMaxStaminaPergon(obj)+")";
+  "strength":           // ? Mobile
+    retstr := GetStrPergon(obj);
+  "strength_mod":       // w Mobile
+    retstr := GetStrModPergon(obj);
+  "name":               // w UObject
+    If (obj.isa(POLCLASS_MOBILE))
+      var realname := GetRealName(obj);
+      If (realname <> retstr)
+        retstr += " ("+realname+")";
+      EndIf
+    EndIf
+
+  // Typ "Nur Beschreibung"
+  "shield":             //   Mobile
+  "weapon":             //   Mobile
+    If (retstr != error)
+      retstr := retstr.desc+"; "+retstr.serial+" ("+LHex(retstr.serial)+")";
+    EndIf
+
+  // ganz spezieller Kram
+  // "Seer sehen keine Accounts"-Restriktion
+  "acctname":           //   Mobile
+  // "acct":               //   Mobile
+    If (retstr != error)
+      If (who.cmdlevel <= CMDLEVEL_SEER)
+        retstr := 1;
+      EndIf
+    EndIf
+  "footprint":          //   Multi
+    If (retstr != error)
+      retstr :=
+        "("+retstr.xmin+", "+retstr.ymin+") - "+
+        "("+retstr.xmax+", "+retstr.ymax+")";
+    EndIf
+  // Adresse darf fast keiner sehen
+  "ip":                 //   Mobile
+    If (retstr != error)
+      If (!AllowedToCheckIP(who))
+        retstr := 1;
+      EndIf
+    EndIf
+  "process":            //   NPC
+    If (retstr != error)
+      retstr := retstr.pid;
+    EndIf
+  EndCase
+  // }}}
+
+  return retstr;
+EndFunction

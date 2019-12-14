@@ -1,0 +1,157 @@
+///////////////////////////////////////////////////////////////////////////
+// Zentrales Script der Sammlung von Teleportern und Blockern
+//
+// In den einzelnen Faellen auch testen, ob ein NPC das WalkOn ausloest
+// und ob das sinnvoll ist!
+//
+// Zu den Bedeutungen der einzelnen Faelle siehe teleport.cfg
+
+///////////////////////////////////////////////////////////////////////////
+// $Log: not supported by cvs2svn $
+// Revision 1.8  2008/08/29 18:18:57  mehdorn
+// - alten Code entfernt
+// - Kommentare aktualisiert
+//
+// Revision 1.7  2008/08/25 14:43:06  mehdorn
+// - Cmdlevel-Ignorierroutine scharfgeschaltet
+//
+// Revision 1.6  2008/08/25 12:04:18  mehdorn
+// - Walkonaction gibt nun auch Ursprungskoordinaten weiter
+// - OneStepBack entsprechend umgebaut
+//
+// Revision 1.5  2008/08/25 10:50:47  mehdorn
+// - allgemeines Teleportsetupscript
+// - restliche Auswahlen konvertiert
+//
+// Revision 1.4  2008/08/24 18:47:42  mehdorn
+// - zwei weitere Auswahlen konvertiert
+// - fehlen nur noch die Wind-Magie-Dinger
+//
+// Revision 1.3  2008/08/23 21:14:55  mehdorn
+// + (unkonfigurierter) I-Stein ist nun auffaellig rot
+// - Template fuer Walk-On-Scripte namens template.src_
+// - einige Walk-On-Scripte erstellt
+//   - bis auf Frostkram sogar getestet
+// - Setupscript fuer Arenateleporter
+// - neue Konstanten eingefuehrt
+// - Goetterspendescript erzeugt nun bereits neuen I-Stein
+// + Bugfixes, Tippfehler, teilweise englische Texte eingebaut
+//
+// Revision 1.2  2008/08/18 16:33:22  mehdorn
+// - noch mehr am Logging geschraubt
+//
+// Revision 1.1  2008/08/18 11:39:19  mehdorn
+// - Istein zwecks Umbau verpackt
+//
+// Revision 1.22  2008/08/17 14:53:50  mehdorn
+// - who.gump-Abfrage bei Fluchttor auskommentiert
+//   (funktionierte nicht)
+// - mehr logutil
+// - Einrückung stellenweise gefixt
+//
+// 03.02.2007 Turley:
+// Fluchttor/Götterinseltor setzt/löscht die PLACE* nicht mehr
+// -> control/leave-enterregion
+//
+// 27.01.2007 Turley:
+// Fluchttor löscht PLACE_INNEWBIEAREA (manchmal haben Newbies das
+// zusätzlich zu TYPNEWBIE)
+//
+// 24.03.2006 Fraggulus:
+// Nr. 13: CProp ARENABATTLE wird mit geloescht
+//
+// 18.02.2006 Fraggulus:
+// Nr. 13: (Notausgang Jhelom-Arena)
+//
+// 15.09.2005 Fraggulus:
+// 1: Bei Abfrage Schmuck rausgenommen
+//
+// 2005/03/09 Shinigami:
+// Tore von Jhelom aus, nach massivem Umbau, wieder auf
+//
+// 2004/12/11 Shinigami:
+// Tore von Jhelom aus auf GL-Beschluss geschlossen
+//
+// 2004/11/15 Shinigami:
+// 6: Nicht-Newbies duerfen dann auf Pergon wieder ihre Ausruestung tragen
+//
+// 29.07.2004 Fox:
+// 6: Attentaetersonderregelung eingepflegt
+//
+// 13.08.2003 Fraggulus:
+// 11: kleine Fehlerkorrektur (Portal der Newbies wurde immer gelöscht)
+//
+// 10.08.2003 Fraggulus:
+// 11: Newbies bekommen ihr eigenes Portal auf Jhelom
+//
+// 15.07.2003 Fraggulus:
+// 6: Koordinaten fuer das Jhelomgate angepasst
+//
+// 04.12.2002 Fraggulus:
+// Nr. 12   (Tor Richtung Portaltempel)
+//
+// 28.11.2002 Fraggulus:
+// Nr. 11   (Tor Richtung Goetterinsel)
+//
+// 13.12.2001 Fraggulus:
+// Nr. 8  (Durchgangssperre fuer tote Player)
+//
+// 06.11.2001 Fraggulus:
+// Nr. 10 (Frost-Quest)
+//
+// 2001/06/09 Shinigami:
+// Nummer 4 - Badehaus-Zutritt ueberarbeitet
+//
+// 21.10.2000 Fraggulus:
+// Trennung in Istein.src und Uni_Script.src
+//
+// 13.09.2000 Fraggulus:
+// Initialisierung
+
+include "include/logutil";
+include "include/msgs";
+include "include/pergonutil";
+include "include/server";
+include "common";
+use uo;
+
+Program Uni_Script(who, walkon, lx, ly, lz)
+    // gucken, ob wir bei CmdLevel-Leuten etwas tun muessen
+    var iscmdlevel := 0;
+    If (who.cmdlevel >= CMDLEVEL_SEER)
+        If (GetObjProperty(walkon, PROP_CMD_AFFECT) == 0)
+            return;
+        EndIf
+        iscmdlevel := who.cmdlevel;
+    EndIf
+
+    // Ist ein Walkon-Script konfiguriert?
+    var walkscript := GetObjProperty(walkon, PROP_WALKSCRIPT);
+    If (walkscript == error)
+        If (iscmdlevel)
+            SendSysMessagePergon(who,
+                ItemInfoStr(walkon)+" ist nicht (richtig) konfiguriert",
+                ItemInfoStr(walkon)+" has no (valid) configuration",
+                _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+            );
+        EndIf
+        syslog(
+            "FEHLER: "+ItemInfoStr(walkon, COORDS_REALM)+
+            ": "+PROP_WALKSCRIPT+"-Property fehlt"
+        );
+        return;
+    EndIf
+
+    var lastcoords := struct{
+      x := lx,
+      y := ly,
+      z := lz
+    };
+    var param := struct{
+      who  := who,
+      item := walkon,
+      last := lastcoords,
+      cmd  := iscmdlevel
+    };
+    Start_ScriptPergon(":teleporters:"+walkscript, param);
+EndProgram

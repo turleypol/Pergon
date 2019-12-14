@@ -1,0 +1,38 @@
+// 04.09.2006 Turley - Gleichzeitiges killen und neustarten des EventWaiterGrazerNew
+Use uo;
+Use os;
+
+Include "include/msgs";
+Include "include/pergonutil";
+Include "include/eventwaiter";
+
+Program TextCMD_RestartAll(who, scriptname)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  Var waitershort:=GetProcess(GetGlobalProperty(PID_EVENTWAITERSHORT));
+  Var waiterlong:=GetProcess(GetGlobalProperty(PID_EVENTWAITERLONG));
+
+  Var number:=0;
+  Var subnumber:=0;
+  Var event:=struct{erase};
+
+  ForEach npc in ListObjectsInBox(0, 0, -128, 6143, 4095, 127)
+    If (npc.isa(POLCLASS_NPC))
+      If ((!scriptname) Or (npc.script==scriptname))
+        event.erase:=npc.serial;
+        waitershort.sendevent(event);
+        waiterlong.sendevent(event);
+        RestartScript(npc);
+
+        number+=1;
+        subnumber+=1;
+        If (subnumber>=10)
+          subnumber:=0;
+          SendSysMessagePergon(who, number+" NPCs restarted");
+        EndIf
+      EndIf
+    EndIf
+  EndForEach
+
+  SendSysMessagePergon(who, "Insgesamt "+number+" NPCs restarted.");
+EndProgram

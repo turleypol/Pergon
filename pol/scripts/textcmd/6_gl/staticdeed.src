@@ -1,0 +1,257 @@
+/////////////////////////////////////////////////
+// Static Housing Package
+// Version 1.0
+// Maintainer: Bishop Ebonhand
+
+use uo;
+
+include ":housing:house";
+
+Program Buildhouse(who) // {{{
+  SendSysMessagePergon(who, "Wo soll das Schild aufgestellt werden?");
+
+  var where := TargetCoordinates(who); //Koords fuer Schild einlesen
+  If (!where)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  //Funktion Schild erstellen aufrufen
+  var createdsign := MakeSign(who, where);
+  If (!createdsign)  //Check ob Schild erstellt
+    SendSysMessagePergon(who, "ERROR: Kann Schild nicht erstellen!");
+    return;
+  EndIf
+EndProgram // }}}
+
+// Erstellt Sign fuer StaticHouse   //
+Function MakeSign(who, where) // {{{
+  var housetype := HouseTypCheck(who);
+  If (!housetype)
+    return;
+  EndIf
+
+  var sign := CreateItemAtLocationPergon(
+    where.x, where.y, where.z, housetype.signtyp, 1, where.realm
+  );
+  If (!sign)
+    return;
+  EndIf
+  SetObjProperty(sign, PROP_HS_C_OWNER,   who.serial);
+  SetObjProperty(sign, PROP_HS_C_ACCOUNT, who.acctname);
+  sign.graphic := housetype.signgraphic;
+  sign.movable := 0;
+
+  // setzt Halter
+  var post := CreateItemAtLocationPergon(
+    where.x, where.y, where.z, housetype.postgraphic, 1, where.realm
+  );
+  If (post)
+    post.movable := 0;
+    // kein Abbruch (unkritisch, wenn Halter fehlt)
+  EndIf
+
+  // Einlesen und Setzen der Hausdimensionen
+  If (!ResetKoords(who, sign))
+    return;
+  EndIf
+
+  // setzt Name des Sign
+  var name := SendTextEntryGump(who, "Wie soll das Haus heissen?");
+  If (!name)
+    SetName(sign, "[unbenannt]");
+  Else
+    SetName(sign, name);
+  EndIf
+
+  return sign;
+  // Rueckgabe
+EndFunction // }}}
+
+// Menue zur Haustypauswahl (Gildenhaus, Rathaus, Zimmer, ...)
+Function HouseTypCheck(who) // {{{
+  // Erstellt Auswahlmenue fuer Haustyp
+  var boxmenu := CreateMenu("Waehlt ein Haustyp:");
+  AddMenuItem(boxmenu, 0x0bb7, "Acker/Gehege");
+  AddMenuItem(boxmenu, 0x0bef, "Zimmer");
+  AddMenuItem(boxmenu, 0x0bed, "Haus");
+  AddMenuItem(boxmenu, 0x0bdd, "Gildehaus");
+  AddMenuItem(boxmenu, 0x0c09, "Rathaus");
+  var selection := SelectMenuItem2 (who, boxmenu);
+  var housetyp := struct;
+  var graphic;
+  If (selection.objtype == 0x0bdd)
+    housetyp.+signtyp := 0x7060;
+    selection := 0;
+    boxmenu := 0;
+    graphic := 0;
+    boxmenu := CreateMenu("Waehlt ein Schild:");
+    // Erstellt Auswahlmenue fuer Schildgrafik
+
+    var UOBJECT_GUILD_SIGN := {
+      0x0bd3, 0x0bd4, 0x0bd5, 0x0bd6, 0x0bd7, 0x0bd8, 0x0bd9, 0x0bda,
+      0x0bdb, 0x0bdc, 0x0bdd, 0x0bde, 0x0bdf, 0x0be0, 0x0be1, 0x0be2,
+      0x0be3, 0x0be4, 0x0be5, 0x0be6, 0x0be7, 0x0be8, 0x0be9, 0x0bea,
+      0x0beb, 0x0bec, 0x0bee, 0x0bef, 0x0c01, 0x0c02, 0x0c03, 0x0c04,
+      0x0c05, 0x0c06, 0x0c07, 0x0c08
+    };
+    ForEach graphic in UOBJECT_GUILD_SIGN
+      AddMenuItem(boxmenu,graphic,"Schild");
+    EndForEach
+
+    selection := SelectMenuItem2 (who, boxmenu);
+    If (!selection) // Checkt ob Auswahl richtig
+      return;
+    EndIf
+    // setzt die Grafik des Sign und Halters nach obiger Auswahl
+    If (selection.objtype == 0x0bd3)
+      housetyp.+postgraphic := 0xb99;
+      housetyp.+signgraphic := 0x0bd3;
+    ElseIf (selection.objtype == 0x0bd4)
+      housetyp.+postgraphic := 0xb98;
+      housetyp.+signgraphic := 0x0bd4;
+    ElseIf (selection.objtype == 0x0bd5)
+      housetyp.+postgraphic := 0xb99;
+      housetyp.+signgraphic := 0x0bd5;
+    ElseIf (selection.objtype == 0x0bd6)
+      housetyp.+postgraphic := 0xb98;
+      housetyp.+signgraphic := 0x0bd6;
+    ElseIf (selection.objtype == 0x0bd7)
+      housetyp.+postgraphic := 0xb99;
+      housetyp.+signgraphic := 0x0bd7;
+    ElseIf (selection.objtype == 0x0bd8)
+      housetyp.+postgraphic := 0xb98;
+      housetyp.+signgraphic := 0x0bd8;
+    ElseIf (selection.objtype == 0x0bd9)
+      housetyp.+postgraphic := 0xb99;
+      housetyp.+signgraphic := 0x0bd9;
+    ElseIf (selection.objtype == 0x0bda)
+      housetyp.+postgraphic := 0xb98;
+      housetyp.+signgraphic := 0x0bda;
+    ElseIf (selection.objtype == 0x0bdb)
+      housetyp.+postgraphic := 0xb99;
+      housetyp.+signgraphic := 0x0bdb;
+    ElseIf (selection.objtype == 0x0bdc)
+      housetyp.+postgraphic := 0xb98;
+      housetyp.+signgraphic := 0x0bdc;
+    ElseIf (selection.objtype == 0x0bdd)
+      housetyp.+postgraphic := 0xb99;
+      housetyp.+signgraphic := 0x0bdd;
+    ElseIf (selection.objtype == 0x0bde)
+      housetyp.+postgraphic := 0xb98;
+      housetyp.+signgraphic := 0x0bde;
+    ElseIf (selection.objtype == 0x0bdf)
+      housetyp.+postgraphic := 0xb99;
+      housetyp.+signgraphic := 0x0bdf;
+    EndIf
+
+  ElseIf (selection.objtype == 0x0bed)
+    // Setzt Signtyp und startet neues gump
+    housetyp.+signtyp := 0x7062;
+    selection := 0;
+    boxmenu := 0;
+    // Erstellt Auswahlmenue fuer Schildgrafik
+    boxmenu := CreateMenu("Waehlt ein Schild:");
+    AddMenuItem(boxmenu, 0x0bcf, "Holzschild");
+    AddMenuItem(boxmenu, 0x0bd0, "Holzschild");
+    AddMenuItem(boxmenu, 0x0bd1, "Messingschild");
+    AddMenuItem(boxmenu, 0x0bd2, "Messingschild");
+    selection := SelectMenuItem2 (who, boxmenu);
+    If (!selection)
+      // Checkt ob Auswahl richtig
+      return;
+    EndIf
+    // setzt die Grafik des Sign und Halters nach obiger Auswahl
+    If (selection.objtype == 0x0bcf)
+      housetyp.+postgraphic := 0xb99;
+      housetyp.+signgraphic := 0x0bcf;
+    ElseIf (selection.objtype == 0x0bd0)
+      housetyp.+postgraphic := 0xb98;
+      housetyp.+signgraphic := 0x0bd0;
+    ElseIf (selection.objtype == 0x0bd1)
+      housetyp.+postgraphic := 0xb99;
+      housetyp.+signgraphic := 0x0bd1;
+    ElseIf (selection.objtype == 0x0bd2)
+      housetyp.+postgraphic := 0xb98;
+      housetyp.+signgraphic := 0x0bd2;
+    EndIf
+
+  ElseIf (selection.objtype == 0x0bef)
+    // Setzt Signtyp und startet neues gump
+    housetyp.+signtyp := 0x7064;
+    selection := 0;
+    boxmenu := 0;
+    // Erstellt Auswahlmenue fuer Schildgrafik
+    boxmenu := CreateMenu("Waehlt ein Schild:");
+    AddMenuItem(boxmenu, 0x0bcf, "Holzschild");
+    AddMenuItem(boxmenu, 0x0bd0, "Holzschild");
+    AddMenuItem(boxmenu, 0x0bd1, "Messingschild");
+    AddMenuItem(boxmenu, 0x0bd2, "Messingschild");
+    selection := SelectMenuItem2 (who, boxmenu);
+    If (!selection) //Checkt ob Auswahl richtig
+      return;
+    EndIf
+    // setzt die Grafik des Sign und Halters nach obiger Auswahl
+    If (selection.objtype == 0x0bcf)
+      housetyp.+postgraphic := 0xb99;
+      housetyp.+signgraphic := 0x0bcf;
+    ElseIf (selection.objtype == 0x0bd0)
+      housetyp.+postgraphic := 0xb98;
+      housetyp.+signgraphic := 0x0bd0;
+    ElseIf (selection.objtype == 0x0bd1)
+      housetyp.+postgraphic := 0xb99;
+      housetyp.+signgraphic := 0x0bd1;
+    ElseIf (selection.objtype == 0x0bd2)
+      housetyp.+postgraphic := 0xb98;
+      housetyp.+signgraphic := 0x0bd2;
+    EndIf
+
+  ElseIf (selection.objtype == 0x0c09)
+    //Setzt Signtyp und startet neues gump
+    housetyp.+signtyp := 0x7066;
+    selection := 0;
+    boxmenu := 0;
+    //Erstellt Auswahlmenue fuer Schildgrafik
+    boxmenu := CreateMenu("Waehlt ein Schild:");
+    AddMenuItem(boxmenu, 0x0c09, "Holzschild");
+    AddMenuItem(boxmenu, 0x0c0a, "Holzschild");
+    selection := SelectMenuItem2 (who, boxmenu);
+    If (!selection) //Checkt ob Auswahl richtig
+      return;
+    EndIf
+    // setzt die Grafik des Sign und Halters nach obiger Auswahl
+    If (selection.objtype == 0x0c09)
+      housetyp.+postgraphic := 0xb99;
+      housetyp.+signgraphic := 0x0c09;
+    ElseIf (selection.objtype == 0x0c0a)
+      housetyp.+postgraphic := 0xb98;
+      housetyp.+signgraphic := 0x0c0a;
+    EndIf
+
+  ElseIf (selection.objtype == 0x0bb7)
+  AddMenuItem(boxmenu, 0x0bb7, "Acker/Gehege");
+    //Setzt Signtyp und startet neues gump
+    housetyp.+signtyp := 0x7069;
+    selection := 0;
+    boxmenu := 0;
+    //Erstellt Auswahlmenue fuer Schildgrafik
+    boxmenu := CreateMenu("Waehlt ein Schild:");
+    AddMenuItem(boxmenu, 0x0bb7, "Holzschild");
+    AddMenuItem(boxmenu, 0x0bb8, "Holzschild");
+    selection := SelectMenuItem2 (who, boxmenu);
+    If (!selection) //Checkt ob Auswahl richtig
+      return;
+    EndIf
+    // setzt die Grafik des Sign und Halters nach obiger Auswahl
+    If (selection.objtype == 0x0bb7)
+      housetyp.+postgraphic := 0xb99;
+      housetyp.+signgraphic := 0x0bb7;
+    ElseIf (selection.objtype == 0x0bb8)
+      housetyp.+postgraphic := 0xb98;
+      housetyp.+signgraphic := 0x0bb8;
+    EndIf
+  EndIf
+  return(housetyp);
+EndFunction // }}}
+
+// vim: sw=2 sts=2

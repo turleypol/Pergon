@@ -1,0 +1,76 @@
+//////////////////////////////////
+//
+//   SpeechModifier TextCMD v1.0
+//
+//     Author: Shinigami
+//
+//////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use os;
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/eventid";
+Include "include/itemnpc";
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_SpeechMod(who, text)
+  If ((text=="0") Or (text=="1"))
+    SendSysMessagePergon(who, "Bitte den Player auswählen!");
+
+    Var opfer:=Target(who);
+    If (opfer.isa(POLCLASS_MOBILE) And (!opfer.isa(POLCLASS_NPC)))
+      If (text=="1")
+        Var found:=0;
+        ForEach item in EnumerateItemsInContainer(opfer.backpack)
+          If (item.objtype==0xa404)
+            If (GetObjProperty(item, "SpeechMod"))
+              SendSysMessagePergon(who, opfer.name+" wird bereits bestraft ("+GetObjProperty(item, "SpeechMod")+") !");
+            Else
+              SendSysMessagePergon(who, opfer.name+" wird bereits bestraft!");
+            EndIf
+
+            found:=1;
+          EndIf
+        EndForEach
+
+        If (!found)
+          Var item:=CreateItemInBackpackPergon(opfer, 0xa404, 1);
+          SetObjProperty(item, "SpeechMod", "huehnchen");
+        EndIf
+      Else
+        Var found:=0;
+        ForEach item in EnumerateItemsInContainer(opfer.backpack)
+          If (item.objtype==0xa404)
+            If (GetObjProperty(item, "SpeechMod"))
+              SendSysMessagePergon(who, opfer.name+" wurde begnadigt ("+GetObjProperty(item, "SpeechMod")+") !");
+            Else
+              SendSysMessagePergon(who, opfer.name+" wurde begnadigt!");
+            EndIf
+
+            EraseObjProperty(item, "SpeechMod");found:=1;
+          EndIf
+        EndForEach
+
+        If (!found)
+          SendSysMessagePergon(who, opfer.name+" wurde garnicht bestraft!");
+        EndIf
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Sie müssen als Parameter 0 oder 1 angeben (aus-/einschalten)!");
+  EndIf
+EndProgram

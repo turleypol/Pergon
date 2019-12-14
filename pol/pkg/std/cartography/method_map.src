@@ -1,0 +1,28 @@
+/////////////////////////////////////////////////////////
+//
+//   method_map - Für Tooltips
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     12.08.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Include ":tooltips:method_include";
+
+Program Install()
+  Return(1);
+EndProgram
+
+Exported Function HasTooltip(object,who)
+  Return(1);
+  who:=who;
+  object:=object;
+EndFunction
+
+Exported Function setTooltip(object, byref packet)
+  setTooltipMap(object,packet);
+EndFunction

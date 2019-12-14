@@ -1,0 +1,445 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+// - fixed <invalid> error
+// - fixed display of items and person
+// - added hearing to npc, you no longer have to be standing on him
+//   to talk to him.
+// - they now scan for event words.
+// 11.12.1999 kiesow:    added speech-files (profession and Var)
+// 12.12.1999 kiesow:    added support for special locations
+// 06.11.2005 Fraggulus: Update, Korrektur und Optimierung
+// 07.11.2005 Fraggulus: wenn das Questtarget auf Jhelom steht, muessen Jhelom-Items verwendet werden
+// 10.11.2005 Fraggulus: Textkorrektur
+// 11.02.2006 Fraggulus: Falls kein Questziel definiert ist, erfolgt ein Abbruch beim Hilfeangebot
+// 18.02.2006 Fraggulus: Questziele auf Jhelom kampfmaessig etwas schwaechen
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use cfgfile;
+use npc;
+use os;
+use storage;
+use uo;
+use util;
+include "include/animal";
+include "include/client";
+include "include/clock";
+include "include/eventid";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/msgs";
+include "include/names";
+include "include/npc";  //some new functions
+include "include/objtype";
+include "include/packets";
+include "include/storage";
+include "include/vetement"; // need for random clothing
+
+const HALT_THRESHOLD  := 7; // how close before he barks?
+const HALT_THRESHOLD2 := 3; // how close before he barks? for speaking
+
+Var questlocs  := ReadConfigFile("questlocs");
+Var questitems := ReadConfigFile("questitems");
+Var itemdesc   := ReadConfigFile("::itemdesc");
+Var quest_type := 0;
+Var item_name;
+//Var has_item;
+Var has_loc;
+Var has_koords;
+Var jhelomquest;
+Var quest_reward;
+Var quest_gold;
+Var quest_item;
+Var quest_desc;
+Var has_name;
+Var quest_reward_item;
+Var mybankbox;
+Var mygold;
+
+Var me := Self();
+
+program questie()
+
+    DropAnchor();
+    SetObjProperty(me, "serial", me.serial);
+
+    EnableEvents(SYSEVENT_SPEECH + SYSEVENT_ENGAGED + SYSEVENT_DISENGAGED + SYSEVENT_DAMAGED, HALT_THRESHOLD2);
+    EnableEvents(SYSEVENT_ENTEREDAREA + SYSEVENT_LEFTAREA, HALT_THRESHOLD);
+    EnableEvents(SYSEVENT_OPPONENT_MOVED);
+    EnableEvents(SYSEVENT_ITEM_GIVEN , 1);
+
+    If (GetObjProperty(me, "frozen"))
+      me.frozen := 1;
+      IncRevision(me);
+    EndIf
+
+    SetWarMode(0);
+    set_priority(10);
+
+    If (me.name["<random>"])
+      Var npcname := RandomName(me);
+      SetName(me, npcname);
+      SetName(me, npcname + NPCTitle(me));
+
+      npcname := me.name+" ";
+
+      Var pos := Find(npcname, ",", 1);
+      If (pos)
+        npcname := npcname[1, pos - 1];
+      EndIf
+
+      SetObjProperty(me, "myname", npcname);
+    EndIf
+
+    Habille(me, GetObjProperty(me, "Equipt")); // Random Clothing
+    Var minename := GetObjProperty(me, "myname");
+
+    // Setze neue Quest oder lade vorhandene
+    set_quest();
+
+    // ending configure of npc and starting ai
+    Var ev;
+    While (1)
+        PerformAction(me, UACTION_LOOK_AROUND);
+        ev := Wait_for_EventLogging(120);
+        PerformAction(me, UACTION_LOOK_AROUND);
+
+        If (ev && (!ev.source.isa(POLCLASS_NPC)) && !ev.source.dead)
+          TurnToward (ev.source);
+          Case (ev.type)
+            SYSEVENT_SPEECH:
+                Var sayed     := ev.text;
+                Var talktome  := 1;
+                Var wordarray := SplitWords(sayed);
+                Var word1     := wordarray [1];
+
+                If (lower(word1)==lower(minename))
+                  SetObjProperty(ev.source, "talkto", minename);
+                  sayed := wordarray[2];
+                  If (wordarray[3])
+                    sayed += " " + wordarray[3];
+                  EndIf
+                EndIf
+
+                SleepMs(5);
+                If (GetObjProperty(ev.source, "talkto") && GetObjProperty(ev.source, "talkto") != minename)
+                  talktome := 0;
+                EndIf
+
+                If (talktome)
+                  If (sayed["hilfe"] || sayed["quest"] || sayed["helfen"])
+
+                    // checken, ob alle notwendigen Variablen verfuegbar sind (sonst crasht's)
+                    If (has_koords && has_name && has_loc && GetObjProperty(me, "quest_item"))
+                      SayPergon(ev.source, "Ich benötige die Hilfe eines mutigen Abenteurers.");
+                      sleep(5);
+
+                      If (quest_type == 1)
+                        SayPergon(ev.source, "Ich wünschte, ich hätte einen Gegenstand: " + DescEinzahl(itemdesc[GetObjProperty(me, "quest_item")].desc) + ".");
+                        sleep(5);
+                        SayPergon(ev.source, "Wenn Ihr ihn mir bringt, werde ich Euch dafür belohnen.");
+                      ElseIf (quest_type == 2)
+                        SayPergon(ev.source, "Mir wurde etwas von " + has_name + " gestohlen: " + DescEinzahl(itemdesc[GetObjProperty(me, "quest_item")].desc) + ".");
+                        sleep(5);
+                        SayPergon(ev.source, "Er soll " + has_loc + " wohnen.");
+                        sleep(5);
+                        SayPergon(ev.source, "Wenn Ihr es mir wiederbeschafft, werdet Ihr fuer Eure Mühen belohnt.");
+                        SetQuestArrow(ev.source, QUESTARROW_ON, has_koords[1], has_koords[2]);
+                      Else
+                        SayPergon(ev.source, "Ich begehre eine/n " + DescEinzahl(itemdesc[GetObjProperty(me, "quest_item")].desc) + " von " + has_name + ".");
+                        sleep(5);
+                        SayPergon(ev.source, "Er befindet sich " + has_loc + ".");
+                        sleep(5);
+                        SayPergon(ev.source, "könnt Ihr es mir gegen einen guten Preis 'beschaffen'?");
+                        SetQuestArrow(ev.source, QUESTARROW_ON, has_koords[1], has_koords[2]);
+                      EndIf
+                    Else
+                      SayPergon(ev.source, "Uh, es tut mir leid.. ich habe gerade vergessen, was ich wollte.. *grübel*");
+                      Sleep(2);
+                      SayPergon(ev.source, "Habt trotzdem Dank für Euer Hilfsangebot.");
+                      SayPergon(ev.source, "Auf Bald!");
+                      Sleep(3);
+                      KillMe("questie: Lost Quest target");
+                    EndIf
+                  Else
+                    Case (sayed)
+                      "zeit":
+                        SayPergon(ev.source, "Es ist " + GetPergonTimeOfDay());
+                      "ort":
+                        SayPergon(ev.source, "Ihr seid in " + PlaceName(me));
+                      "name":
+                        SayPergon(ev.source, "Ich werde " + minename + " genannt");
+                      default:
+                        Var answer := Answering(sayed, PlaceName(me), me);
+                        SayPergon(ev.source, answer);
+                    EndCase
+                  EndIf
+                EndIf
+
+            SYSEVENT_ENGAGED:
+                SayPergon(ev.source, "Aaahhh! Hilfe! Hilfe! Man greift mich an!");
+                Run(ev.source, HALT_THRESHOLD);
+
+            SYSEVENT_DAMAGED:
+                SayPergon(ev.source, "Was habe ich nur getan. Zu Hilfe, Wachen!!");
+                //print("I just took " + ev.damage + " points of damage!");
+                If (ev.source)
+                    Run(ev.source, HALT_THRESHOLD);
+                Else
+                    SayPergon(ev.source, "So viele gegen mich alleine? Hilfe!!");
+                EndIf
+
+            SYSEVENT_ITEM_GIVEN:
+                // check to see If what I was given is what I want
+                //if so, give reward
+                If (quest_type == 1)
+                  If (ev.item.objtype == quest_item)
+                    SetQuestArrow(ev.source, QUESTARROW_OFF, 0, 0);
+                    MoveItemToContainer(ev.item, mybankbox);
+                    SayPergon(ev.source, "Eure Güte soll nicht vergessen werden. Nehmt dies als Zeichen meines Dankes.");
+                    Sleep(2);
+                    SayPergon(ev.source, "*Belohnung überreich*");
+                    give_reward(ev.source);
+                    me.script := "townperson";
+
+                    Sleep(15);
+                    SayPergon(ev.source, "Auf Bald!");
+                    Sleep(2);
+                    KillMe("questie: Quest successfully done");
+                  EndIf
+                EndIf
+                If (GetObjProperty(ev.item, "iWant") == me.serial)
+                  MoveItemToContainer(ev.item, mybankbox);
+                  SayPergon(ev.source, "Eure Güte soll nicht vergessen werden. Dies ist ein kleines Zeichen meines Dankes.");
+                  give_reward(ev.source);
+                  me.script := "townperson";
+
+                  //restartscript(me);
+                  SetQuestArrow(ev.source, QUESTARROW_OFF, 0, 0);
+                  Sleep(15);
+                  KillMe("questie: Quest successfully done");
+                Else
+                  MoveItemToContainer(ev.item, mybankbox);
+                  SayPergon(ev.source, "Habt vielen Dank! Doch wolltet Ihr mir nicht was anderes bringen?");
+                EndIf
+
+            SYSEVENT_ENTEREDAREA:
+              If (RandomInt(3) == 1)
+                Case (RandomInt(3))
+                  0: PrintTextAbovePrivatePergon(me, "könnt Ihr mir helfen ?", "", ev.source);
+                  1: PrintTextAbovePrivatePergon(me, "Ich benötige Eure Hilfe", "", ev.source);
+                  2: PrintTextAbovePrivatePergon(me, "Hilfe! Wieso hilft mir keiner ?", "", ev.source);
+                EndCase
+              EndIf
+
+            SYSEVENT_LEFTAREA:
+              If (GetObjProperty(ev.source, "talkto") == minename)
+                EraseObjProperty(ev.source, "talkto");
+              EndIf
+
+            default:
+              WanderPergon();
+          EndCase
+        EndIf
+        SleepMs(10);
+    EndWhile
+endprogram
+
+
+
+
+function set_quest()
+// type 1 : regular item in store
+// type 2 : stolen from me
+// type 3 : I want stolen
+  If (GetObjProperty(me, "quest_type"))
+    quest_type   := GetObjProperty(me, "quest_type");
+    item_name    := GetObjProperty(me, "itemname");
+//    has_item     := GetObjProperty(me, "has_item");
+    has_loc      := GetObjProperty(me, "has_loc");
+    has_koords   := GetObjProperty(me, "has_koords");
+    jhelomquest  := GetObjProperty(me, "jhelomquest");
+    quest_reward := GetObjProperty(me, "reward");
+    quest_gold   := GetObjProperty(me, "quest_gold");
+    quest_item   := GetObjProperty(me, "quest_item");
+    quest_desc   := GetObjProperty(me, "quest_desc");
+    has_name     := GetObjProperty(me, "has_name");
+    quest_reward_item := GetObjProperty(me, "quest_reward_item");
+  Else
+    // Art der Quest auswuerfeln
+    quest_type  := RandomInt(3) + 1;
+
+    Var maxelem := GetConfigMaxIntKey(questlocs);
+    Var telem   := RandomInt(maxelem) + 1;
+    Var qelem   := FindConfigElem(questlocs, telem);
+    Var jhelom  := GetConfigInt(qelem, "jhelom");
+    Var counter := 0;
+    jhelomquest := 0;
+
+    // Wenn der Questie auf Jhelom steht, duerfen nur Jhelom-Locations verwendet werden
+    While (PlaceName(me)["Jhelom"] && (!jhelom) && qelem && (counter < 30))
+      telem   := RandomInt(maxelem) + 1;
+      qelem   := FindConfigElem(questlocs, telem);
+      jhelom  := GetConfigInt(qelem, "jhelom");
+      counter += 1;
+      SleepMs(30);
+      jhelomquest := 1;
+    EndWhile
+    If (counter >= 30)
+      Syslog("FEHLER: questlocs.cfg beinhaltet keine brauchbaren Jhelom-Locations! (" + me.x + "/" + me.y + ")");
+      KillMe("questie: could not initialize quest location");
+    EndIf
+
+    If (qelem)
+      // Locationdaten auslesen
+      Var rangex := GetConfigInt(qelem, "rangex");
+      Var rangey := GetConfigInt(qelem, "rangey");
+      Var x      := GetConfigInt(qelem, "x") - CInt(rangex / 2.0) + RandomInt(rangex);
+      Var y      := GetConfigInt(qelem, "y") - CInt(rangey / 2.0) + RandomInt(rangey);
+      has_loc    := GetConfigString(qelem, "name");
+      has_koords := {x, y};
+      Var tbaddie, tbaddie_serial;
+
+      maxelem := GetConfigMaxIntKey(questitems);
+      telem   := RandomInt(maxelem) + 1;
+      qelem   := FindConfigElem(questitems, telem);
+      jhelom  := GetConfigInt(qelem, "jhelom");
+      counter := 0;
+
+      // Wenn das Questtarget auf Jhelom steht, duerfen nur Jhelom-Items verwendet werden
+      While ((PlaceName(me)["Jhelom"] || jhelomquest) && (!jhelom) && qelem && (counter < 30))
+        telem   := RandomInt(maxelem) + 1;
+        qelem   := FindConfigElem(questitems, telem);
+        jhelom  := GetConfigInt(qelem, "jhelom");
+        counter += 1;
+        SleepMs(30);
+      EndWhile
+      If (counter >= 30)
+        Syslog("FEHLER: questitems.cfg beinhaltet keine brauchbaren Jhelom-Items! (" + me.x + "/" + me.y + ")");
+        KillMe("questie: could not initialize quest item");
+      EndIf
+
+
+      If (qelem)
+        // Questitemdaten auslesen
+        quest_item   := GetConfigInt(qelem, "itemid");
+        quest_reward := GetConfigInt(qelem, "reward");
+        quest_gold   := GetConfigInt(qelem, "gold");
+        quest_desc   := GetConfigString(qelem, "desc");
+        item_name    := DescEinzahl(itemdesc[quest_item].desc);
+        mybankbox    := FindMyPack(me);
+
+        If (quest_type != 1)   //'1' means an item that appears on a vendor
+          tbaddie := CreateNpcFromTemplate("quest_target", x, y, 0,0,me.realm);
+          If (!tbaddie)
+            tbaddie   := CreateNpcFromTemplate("quest_target", x, y, GetWorldHeight(x, y,me.realm),0,me.realm);
+          EndIf
+          Sleep(5);
+
+          If (tbaddie)
+            Var hisbankbox := FindMyPack(tbaddie);
+            Var titem      := CreateItemInContainerPergon(hisbankbox, quest_item, 1);
+            titem.movable  := 1;
+            tbaddie_serial := tbaddie.serial;
+
+            SetName(tbaddie , RandomName(me));
+            SetObjProperty(titem, "iWant", me.serial);
+            has_name := tbaddie.name;
+            If (quest_type == 2)
+              If (quest_desc)
+                titem.name := GetObjProperty(me, "myname") + "'s " + quest_desc;
+              Else
+                titem.name := GetObjProperty(me, "myname") + "'s " + item_name;
+              EndIf
+            Else
+              If (quest_desc)
+                titem.name := has_name + "'s " + quest_desc;
+              Else
+                titem.name := has_name + "'s " + item_name;
+              EndIf
+            EndIf
+            SetObjProperty(me, "serial", me.serial);
+            SetObjProperty(tbaddie, "serial", tbaddie.serial);
+          Else
+            KillMe("questie: could not create quest target");
+          EndIf
+        EndIf
+
+        If (quest_reward)
+          quest_reward_item := CreateItemInContainerPergon(mybankbox, quest_reward,1);
+        EndIf
+
+        If (quest_gold)
+          mygold := CreateItemInContainerPergon(mybankbox, UOBJ_GOLD_COIN, quest_gold);
+        EndIf
+
+        SetObjProperty(me, "itemname", item_name);
+//        SetObjProperty(me, "has_item", has_item);
+        SetObjProperty(me, "has_koords", has_koords);
+        SetObjProperty(me, "has_loc", has_loc);
+        SetObjProperty(me, "has_name", has_name);
+        SetObjProperty(me, "has_serial", tbaddie_serial);
+        SetObjProperty(me, "jhelomquest", jhelomquest);
+        SetObjProperty(me, "reward", quest_reward);
+        SetObjProperty(me, "quest_type", quest_type);
+        SetObjProperty(me, "quest_gold", quest_gold);
+        SetObjProperty(me, "quest_item", quest_item);
+        SetObjProperty(me, "quest_desc", quest_desc);
+        SetObjProperty(me, "quest_reward_item", quest_reward_item);
+      Else
+        print("couldn't find item element!");
+      EndIf
+
+      // Questie-Ziele auf Jhelom ein wenig schwaechen
+      If (jhelomquest)
+        SetSkillPergon(tbaddie, SKILLID_TAKTIK,       CInt(GetSkillPergon(tbaddie, SKILLID_TAKTIK) / 2.0));
+        SetSkillPergon(tbaddie, SKILLID_SCHWERTKAMPF, CInt(GetSkillPergon(tbaddie, SKILLID_SCHWERTKAMPF) / 2.0));
+      EndIf
+    Else
+      syslog("WARNUNG: couldn't find location element!");
+    EndIf
+  EndIf
+
+  // checken, ob die wichtigsten Variablen ordentlich vermerkt wurden
+  Sleep(1);
+  If (GetObjProperty(me, "quest_type") && GetObjProperty(me, "itemname") && GetObjProperty(me, "has_loc") &&
+      GetObjProperty(me, "has_koords") && GetObjProperty(me, "reward")   && GetObjProperty(me, "quest_item") &&
+      GetObjProperty(me, "quest_desc") && GetObjProperty(me, "has_name"))
+    print("alle Variablen ok");
+  Else
+    KillMe("questie: could not (re-)initialize quest cprops");
+  EndIf
+endfunction
+
+function give_reward(who)
+  If (quest_reward)
+    moveitemtocontainer(quest_reward_item, who.backpack);
+  EndIf
+
+  If (quest_gold)
+    subtractamount(mygold, quest_gold);
+    CreateItemInBackpackPergon(who, UOBJ_GOLD_COIN, quest_gold);
+  EndIf
+  quest_type := 0;
+endfunction
+
+Function KillMe(reason)
+
+  // ich geh sterben und entferne eventuelle Questziele mit
+  If (GetObjProperty(me, "has_serial"))
+    Var tgt := SystemFindObjectBySerial(GetObjProperty(me, "has_serial"));
+    If (tgt)
+      KillMobileSilent(tgt, "questie: Quest aborted - removing quest target");
+    EndIf
+  EndIf
+
+  // Kill mich
+  KillMobileSilent(me, reason);
+EndFunction
+
+Function FindMyPack(who)
+    return GetBoxInStorageArea(
+        "QuestNPC Storage", "Backpack of "+Lower(Hex(who.serial))
+    );
+EndFunction
+

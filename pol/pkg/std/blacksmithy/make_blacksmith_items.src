@@ -1,0 +1,544 @@
+///////////////////////////////////////////////////////////////////////////
+// make_blacksmith_items.src
+//
+// Use a smithy hammer to either repair arms & armor or
+// to work with metal to create new items. You need to be
+// skillful to work with the rarer metals.
+//
+// Author: DreamWeaver:    original
+// Edit by Laas Vegas, Pider, Fraggulus
+
+///////////////////////////////////////////////////////////////////////////
+//
+// Waffe...    maxhp:=quality*(itemdesc.maxhp+maxhp_mod);
+//
+// Ruestung... ar:=((itemdesc.ar*hp)/(itemdesc.maxhp+maxhp_mod))+ar_mod
+//   maxhp und damit hp der Ruestung wird hochgesetzt und kann deutlich über itemdesc.maxhp liegen.
+//   deshalb wird so indirekt über die quality auch ar hochgesetzt.
+
+// ToDo
+//   wieder die materials.cfg nutzen
+//   item.color aus der materials.cfg holen
+
+use attributes;
+use cfgfile;
+use file;
+use os;
+use uo;
+use util;
+include "include/clock";
+include "include/itemnpc";
+include "include/manufacturegump";
+include "include/modifyskill";
+include "include/npc";
+include "include/objtype";
+
+////////////////////////////////////////////////////////
+// Konstanten - Materialzuordnung fuer Except-Zuschlag
+////////////////////////////////////////////////////////
+
+Var material_metal:=     {UOBJ_EISEN_BARREN, UOBJ_MOLYBDAEN_BARREN, UOBJ_MANGAN_BARREN, UOBJ_IRIDIUM_BARREN,
+                          UOBJ_TENERUM_BARREN, UOBJ_INDIUM_BARREN, UOBJ_LANTHAN_BARREN, UOBJ_WOLFRAM_BARREN,
+                          UOBJ_PLATIN_BARREN, UOBJ_CHROM_BARREN, UOBJ_TITANIUM_BARREN, UOBJ_GOLD_BARREN};
+
+Var material_legierung1:={UOBJ_CERIUM_BARREN, UOBJ_PRODYMIUM_BARREN, UOBJ_NEODYMIUM_BARREN, UOBJ_PROMETHIUM_BARREN,
+                          UOBJ_SAMARIUM_BARREN, UOBJ_ROPIUM_BARREN, UOBJ_GADONIUM_BARREN, UOBJ_TERBIUM_BARREN,
+                          UOBJ_HOLMIUM_BARREN, UOBJ_ERBIUM_BARREN};
+
+Var material_legierung2:={UOBJ_SOLARUM_BARREN, UOBJ_HYDRIUM_BARREN, UOBJ_LAVARIUM_BARREN, UOBJ_TERADIUM_BARREN,
+                          UOBJ_TERATUM_BARREN, UOBJ_ENERGIUM_BARREN};
+
+////////////////////////////////////////////////////////
+// globale Variablen
+////////////////////////////////////////////////////////
+
+Var meister_oder_except;
+Var werkzeugqual;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program ItemUse_Hammer(who, hammer)
+
+  // wenn ein Nicht-Newbie auf Jhe'lom schmieden will...
+  If (who.getprop(PLACE_INNEWBIEAREA) && !who.getprop(TYPNEWBIE))
+    // ...dann wird gecheckt, ob die Haende frei sind
+    // (derjenige darf ja den Hammer nicht in die Hand nehmen)
+    If ((GetEquipmentByLayer(who, 1)) || (GetEquipmentByLayer(who, 2))) // linke und rechte Hand
+      SendSysMessagePergon(who,
+        "Ihr braucht freie Hände, um das Werkzeug benutzen zu können!",
+        "You need free hands to use this tool!"
+      );
+      return;
+    EndIf
+  Else  // Nicht-Newbieregion oder Newbie
+    If (!IsItemEquipped(who, hammer))
+      SendSysMessagePergon(who,
+        "Zum Schmieden müsst Ihr das in die Hand nehmen!",
+        "You have to hold this in your hand!"
+      );
+      return;
+    EndIf
+  EndIf
+
+  If (!Find_an_Anvil(who)) // Einen Amboss suchen
+    SendSysMessagePergon(who,
+      "Ihr müsst neben einem Amboss stehen!",
+      "You need an anvil near yourself!"
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Worauf wollt Ihr das anwenden?",
+    "Select something to be used!"
+  );
+
+  Var ingots := Target(who);
+
+  If (ingots)
+    If (!(((UOBJ_BARREN_START<=ingots.objtype) And (ingots.objtype<=UOBJ_BARREN_END)) Or (ingots.objtype==UOBJ_GOLD_BARREN)))
+      SendSysMessagePergon(who, "Ihr könnt das nur auf Barren anwenden!");
+      Return;
+    EndIf
+
+    If (!AccessiblePergon(who, ingots))
+      SendSysMessagePergon(who, "Ihr kommt an die Barren nicht ran!");
+      Return;
+    EndIf
+
+    If (!ReserveItem(ingots))
+      SendSysMessagePergon(who, "Diese Barren sind bereits in Gebrauch.");
+      return;
+    EndIf
+
+    If (!CheckSkillForDifferentMetals(who, ingots)) // Besteht ueberhaupt die Chance, das Metall zu verarbeiten?
+      SendSysMessagePergon(who, "Ihr habt nicht die geringste Chance, etwas mit dem Material anzufangen!");
+      Return;
+    EndIf
+
+    DoItemUse_Hammer(who, hammer, ingots); // Auf gehts...
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram
+
+/////////////////////////////////////////////////////////////////////
+// IsItemEquipped - Befindet sich der Gegenstand in meinen Haenden?
+/////////////////////////////////////////////////////////////////////
+
+Function IsItemEquipped(who, equipeditem)
+  If (AccessiblePergon(who, equipeditem) And (Distance(who, equipeditem)<=1))
+    Var item:=GetEquipmentByLayer(who, LAYER_HAND1);
+    If (item)
+      If (equipeditem.serial==item.serial)
+        Return (1);
+      EndIf
+    EndIf
+
+    item:=GetEquipmentByLayer(who, LAYER_HAND2);
+    If (item)
+      If (equipeditem.serial==item.serial)
+        Return (1);
+      EndIf
+    EndIf
+
+    Return (EquipItem(who, equipeditem));
+  EndIf
+EndFunction
+
+////////////////////////////////////////
+// Find_an_Anvil - Einen Amboss suchen
+////////////////////////////////////////
+
+Function Find_an_Anvil(who)
+  ForEach item in ListItemsNearLocation(who.x, who.y, who.z, 1,who.realm)
+    If ((item.objtype==0xfaf) Or (item.objtype==0x0fb0))
+      Return (1);
+    EndIf
+  EndForEach
+EndFunction
+
+///////////////////////////////////////////////////////////////////////////
+// CheckSkillForDifferentMetals -
+// Besteht ueberhaupt die Chance, das Metall zu verarbeiten?
+//
+//  normale Metalle: werden bis 60 gestaffelt
+//   1. Legierungen: 60 - 80 (ab Buntmetalleinfluss 80)
+//   2. Legierungen: 100, Energium Ausnahme
+//  Gold ist nur für Legenden da
+///////////////////////////////////////////////////////////////////////////
+Function CheckSkillForDifferentMetals(who, ingot)
+  Case (ingot.objtype)
+    UOBJ_EISEN_BARREN:      return CheckHisSkill(who, 1);   // Metall
+    UOBJ_MOLYBDAEN_BARREN:  return CheckHisSkill(who, 20);  // Metall
+    UOBJ_MANGAN_BARREN:     return CheckHisSkill(who, 30);  // Metall
+    UOBJ_INDIUM_BARREN:     return CheckHisSkill(who, 40);  // Metall
+    UOBJ_IRIDIUM_BARREN:    return CheckHisSkill(who, 40);  // Metall
+    UOBJ_TENERUM_BARREN:    return CheckHisSkill(who, 40);  // Metall
+    UOBJ_CHROM_BARREN:      return CheckHisSkill(who, 60);  // Metall
+    UOBJ_LANTHAN_BARREN:    return CheckHisSkill(who, 60);  // Metall
+    UOBJ_PLATIN_BARREN:     return CheckHisSkill(who, 60);  // Metall
+    UOBJ_WOLFRAM_BARREN:    return CheckHisSkill(who, 60);  // Metall
+    UOBJ_TITANIUM_BARREN:   return CheckHisSkill(who, 60);  // Metall
+    UOBJ_CERIUM_BARREN:     return CheckHisSkill(who, 60);  // 1. Legierung
+    UOBJ_PRODYMIUM_BARREN:  return CheckHisSkill(who, 60);  // 1. Legierung
+    UOBJ_NEODYMIUM_BARREN:  return CheckHisSkill(who, 60);  // 1. Legierung
+    UOBJ_PROMETHIUM_BARREN: return CheckHisSkill(who, 60);  // 1. Legierung
+    UOBJ_SAMARIUM_BARREN:   return CheckHisSkill(who, 60);  // 1. Legierung
+    UOBJ_ROPIUM_BARREN:     return CheckHisSkill(who, 80);  // 1. Legierung
+    UOBJ_GADONIUM_BARREN:   return CheckHisSkill(who, 80);  // 1. Legierung
+    UOBJ_TERBIUM_BARREN:    return CheckHisSkill(who, 80);  // 1. Legierung
+    UOBJ_HOLMIUM_BARREN:    return CheckHisSkill(who, 80);  // 1. Legierung
+    UOBJ_ERBIUM_BARREN:     return CheckHisSkill(who, 80);  // 1. Legierung
+    UOBJ_SOLARUM_BARREN:    return CheckHisSkill(who, 100); // 2. Legierung
+    UOBJ_HYDRIUM_BARREN:    return CheckHisSkill(who, 100); // 2. Legierung
+    UOBJ_LAVARIUM_BARREN:   return CheckHisSkill(who, 100); // 2. Legierung
+    UOBJ_TERADIUM_BARREN:   return CheckHisSkill(who, 100); // 2. Legierung
+    UOBJ_TERATUM_BARREN:    return CheckHisSkill(who, 100); // 2. Legierung
+    UOBJ_ENERGIUM_BARREN:   return CheckHisSkill(who, 115); // 2. Legierung
+    // Dekadenz pur *g*
+    UOBJ_GOLD_BARREN:       return CheckHisSkill(who, 125); // Metall
+
+    default:
+      SendSysMessagePergon(who, "Ihr könnt das nicht schmelzen!");
+      return 0;
+  EndCase
+EndFunction
+
+///////////////////////////////////////////////////////////
+// CheckHisSkill - Prueft den Skill auf einen Mindestwert
+///////////////////////////////////////////////////////////
+
+Function CheckHisSkill(who, skill)
+  If (GetSkillPergon(who, SKILLID_WAFFENSCHMIEDEN)>=skill)
+    Return (1);
+  Else
+    Return (0);
+  EndIf
+EndFunction
+
+////////////////////////////////////////////////////
+// DoItemUse_Hammer - Erzverarbeitung durchfuehren
+////////////////////////////////////////////////////
+
+Function DoItemUse_Hammer(who, hammer, ingots)
+  ReserveItem(ingots);
+
+  //
+  //  commander, neue config-datei; wuenschenswert wäre ein merging mit der "globalen" materials.cfg
+  //
+
+  Var materials:= ReadConfigFile("materials_local");
+  If (!materials)
+    SysLog("FEHLER: Konnte die materials_local.cfg nicht oeffnen!");
+    Return;
+  EndIf
+  Var materialselement:= materials[ingots.objtype];
+  If (!materialselement)
+    SendSysMessagePergon(who, ingots.desc+" konnte nicht in der Config gefunden werden!");
+    SysLog("FEHLER: "+ingots.desc+" ("+Lower(Hex(ingots.objtype))+") konnte nicht in materials_local.cfg gefunden werden!");
+    Return;
+  EndIf
+
+  Var thetool:=GetPropertyItem(hammer); // Werkzeug-Eigenschaften auslesen
+
+  // NPC - Werkzeug
+  If (!thetool.quality)
+    werkzeugqual := 0.5;
+  Else
+    werkzeugqual := thetool.quality;
+  EndIf
+
+  //
+  //  commander: hammer gut genug fuer material?; kein check bei eisenbarren
+  //
+  If ((materialselement.quality > werkzeugqual) and (ingots.objtype != 0x6300))
+    SendSysMessagePergon(who, "Euer Hammer ist nicht gut genug für dieses Material!");
+    Return;
+  EndIf
+
+  Var skillMod := materialselement.difficulty-1-werkzeugqual;
+  Var menu := MGCreateMenuFromCFG(who, "blacksmithy", "blacksmithy", hammer, SKILLID_WAFFENSCHMIEDEN, skillMod);
+
+  If (!menu)
+    SendSysMessagePergon(who, "Ihr könnt mit dem Material nichts anfangen.");
+    Return;
+  EndIf
+
+  Var what := MGSelect(who, menu);
+  If (!what)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    Return;
+  EndIf
+
+  If (!what.amount || what.amount < 0)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    Return;
+  EndIf
+
+  If (what.amount > 10)
+    what.amount := 10;
+  EndIf
+
+  Var number := what.amount;
+
+  // Defaults im Tool speichern
+  MGSetDefault( hammer, "blacksmithy", what);
+
+
+  Var itemdesc:=ReadConfigFile("::itemdesc");
+  If (itemdesc)
+    Var blacksmithy:=ReadConfigFile("blacksmithy");
+    If (blacksmithy)
+      //Var materials:=ReadConfigFile(":crafting:materials"); // wird weiter oben schon geladen (Phygon)
+      If (materials)
+        Var ingotsdesc:=itemdesc[ingots.objtype];
+        If (ingotsdesc)
+          Var blacksmithyelement:=blacksmithy[what.objtype];
+          If (blacksmithyelement)
+            //Var materialselement:=materials[ingots.objtype];  // weiter oben... (Phygon)
+            If (materialselement)
+              Var material:=    GetConfigInt(blacksmithyelement,    "material");
+              Var skill:=       GetConfigInt(blacksmithyelement,    "skill");
+              Var desc:=        GetConfigString(blacksmithyelement, "desc");
+
+              Var materialdesc:=GetConfigString(materialselement,   "shortdesc");
+              Var quality:=     GetConfigReal(materialselement,     "quality");
+              Var difficulty:=  GetConfigInt(materialselement,      "difficulty");
+              If (!difficulty)
+                difficulty:=100;
+              EndIf
+
+              If (ingots.objtype==UOBJ_GOLD_BARREN) // sonst könnte man mit dem leicht herstellbaren Gold bis 130% Schmieden kommen
+                difficulty:=100; // Korrektur des Wertes, ohne in den Configs rumzufuschen... Goldruesten etc. sollen "nur" Prunk sein
+              EndIf
+
+              Var OldX:=who.x;
+              Var OldY:=who.y;
+
+              For piece:=1 To number
+                // Abbruch durch Bewegen
+                If (OldX <> who.x || OldY <> who.y || who.dead)
+                  break;
+                EndIf
+
+                If (GetAmount(ingots)>=material) // Reicht mein Material?
+                  Var tool:=GetPropertyItem(hammer); // Werkzeug-Eigenschaften auslesen
+                  Var tool_skill:= tool.quality;
+                  Var num_chops_tool:= tool.hp;
+                  Var num_chops_tool_100:= tool.maxhp;
+
+                  Var dummy:=num_chops_tool*100.0/num_chops_tool_100; // dummy gibt die %-Punkte des Tools an gegenueber 100% MaxHp - also praktisch ob das Tool noch scharf ist
+                  If (dummy<20)
+                    SendSysMessagePergon(who, "Euer Schmiedehammer ist kaum noch zu gebrauchen.");
+                  EndIf
+                  dummy:=CInt((100.0-dummy)*(5.0/100.0)); // 100%-dummy%*0.1 von 10 Durchlaeufen
+
+                  Var num_chops_skill:=CInt((100-GetSkillPergon(who, SKILLID_WAFFENSCHMIEDEN))/10);
+
+                  Var num_chops:=dummy+num_chops_skill; // Wie viele Durchlaeufe gibt es...
+                  If (num_chops<1)
+                    num_chops:=1;
+                  EndIf
+
+                  For i:=1 To num_chops+2 // 'n bisschen was tun... Zeit schinden
+                    PerformAction(who, UACTION_PICK);
+                    PlaySoundEffect(who, SFX_ANVIL);
+                    Sleep(2);
+                  EndFor
+
+                  //
+                  //  commander; massiver einfluss des metalls, s. materials_local.cfg
+                  //  analog bei repairskill, und points
+                  //
+                  Var buildskill:= CInt(skill + difficulty - tool_skill); // Werte fuer CheckSkill ermitteln
+                  If (buildskill < 1)
+                    buildskill:=1;
+                  EndIf
+                  Var repairskill:= CInt(skill + difficulty);             // Beim Reparieren geht das Reparaturwerkzeug rein...
+                  Var points:= CInt(buildskill + difficulty * 5);
+
+
+                  If (CheckSkillPergon(who, SKILLID_WAFFENSCHMIEDEN, buildskill, points))
+                    Var theitem:=CreateItemInBackpackPergon(who, what.objtype, 1);
+                    If (theitem)
+                      If (theitem.isa(POLCLASS_WEAPON) Or theitem.isa(POLCLASS_ARMOR))
+                        If (ingots.objtype==UOBJ_GOLD_BARREN) // Die Goldbarren haben keine Eigenfarbe
+                          theitem.color:=COLOR_GOLD;
+                        Else
+                          theitem.color:=ingots.color;
+                        EndIf
+
+                        Var price:=ingotsdesc.vendorsellsfor*material;
+                        Var qualitymod:=1.0;
+
+                        // Logging
+                        // Var text:=theitem.desc+" ["+Lower(Hex(what.objtype))+"] mit "+hammer.desc+" ["+Lower(Hex(hammer.objtype))+" / "+thetool+"] aus "+
+                        //   ingots.desc+" "+materialselement.quality+" ["+Lower(Hex(ingots.objtype))+"] ";
+                        // Var time:=GetDateTimeStr();
+
+                        // Meisterstuecke und Excepts
+                        //   quality      [Rohstoff]          = 0.69  bis 3.79
+                        //   werkzeugqual [Werkzeug]          = 0.552 bis 4.7375
+                        //   char_skill   [Herstellungsskill] = 0     bis 130
+
+                        Var char_skill:=GetSkillPergon(who, SKILLID_WAFFENSCHMIEDEN);
+
+                        // Logging
+                        // text:=text+"mit Skill "+SKILLID_WAFFENSCHMIEDEN+" (Check "+buildskill+"% von "+char_skill+"%) und Meister/Excep-Rate=(("+
+                        //   quality+"-0.69)*(-62.9)+250)+("+werkzeugqual+"*6.333)+("+char_skill+"/8.67)="+
+                        //   (((quality-0.69)*(-62.9)+250)+(werkzeugqual*6.333)+(char_skill/8.67));
+
+                        If ((RandomInt(5000)<((quality-0.69)*(-62.9)+250)+(werkzeugqual*6.333)+(char_skill/8.67)) And (char_skill>40))
+                          CheckSkillPergon(who, SKILLID_WAFFENSCHMIEDEN, (char_skill-40)*0.78+50, 120); // Meisterstuecke/Excepts geben auch Punkte
+
+                          If (CheckSkillPergon(who, SKILLID_WAFFENSCHMIEDEN, buildskill+15, buildskill*2))
+                            // Logging
+                            // text:="Exceptional "+text;
+
+                            If (ingots.objtype in material_metal) // Je nach Legierungsstufe kommt ein Except-Zuschlag dazu...
+                              qualitymod:=1.05;
+                            ElseIf (ingots.objtype in material_legierung1)
+                              qualitymod:=1.10;
+                            ElseIf (ingots.objtype in material_legierung2)
+                              qualitymod:=1.15;
+                            Else
+                              Syslog("WARNUNG: ObjType "+Lower(Hex(ingots.objtype))+" ist kein Metall!");
+                            EndIf
+
+                            // mit Zufall vermischter Modifikator, der insg. das 1.1- bis 1.6-fache der Quality eines normales Items gibt
+                            // qualitymod:=CDbl(1.1+(RandomInt(50))/100.0); // Shinigami: Lahmgelegt, wegens Jerry's Zahlen
+                            price:=CInt(1.5*price);
+
+                            meister_oder_except := 1;  // except.
+
+                            theitem.setprop(TOOLINFO,struct{material:=materialdesc,
+                                                            manufacturer:=who.name});
+
+                            SetName(theitem, "Exceptional "+desc);
+
+                            SendSysMessagePergon(who, "Ihr fertigt ein außergewöhnliches Stück und legt es beiseite.");
+                          Else
+                            // Logging
+                            // text:="Meisterstück "+text;
+
+                            If (ingots.objtype in material_metal) // Je nach Legierungsstufe kommt ein Except-Zuschlag dazu...
+                              qualitymod:=1.00;
+                            ElseIf (ingots.objtype in material_legierung1)
+                              qualitymod:=1.03;
+                            ElseIf (ingots.objtype in material_legierung2)
+                              qualitymod:=1.05;
+                            Else
+                              Syslog("WARNUNG: ObjType "+Lower(Hex(ingots.objtype))+" ist kein Metall!");
+                            EndIf
+
+                            price:=CInt(1.2*price);
+
+                            meister_oder_except := 0.5;  // Meisterstueck
+
+                            theitem.setprop(TOOLINFO,struct{material:=materialdesc,
+                                                            manufacturer:=who.name});
+
+                            SetName(theitem, "Meisterstück "+desc);
+                            SendSysMessagePergon(who, "Ihr fertigt ein Meisterstück und legt es beiseite.");
+                          EndIf
+
+                          //  Commander: Anpassung an Thaumaturgie, CProp status_except [0;20]
+                          //  Werkzeug, Skill, Material & Zufall geht zu gleichen Teilen ein
+                          //  Metallqualitaet maximal 3.79
+                          //  Skill / 25 -> ab Legende 5 Punkte
+                          //  Werkzeug - Qualitaet ist maximal 4.7375 (alt 5.595), auf [0;5] skalieren
+                          //  abschliessend Zufallswert in [0;5]
+                          //  Check, ob irgendwie mehr als 20 rauskommt (eigentlich nicht moeglich)
+                          //  Meisterstueck nur die Haelfte des Bonus (meister_oder_except = 0.5)
+
+                          Var except_bonus;
+                          except_bonus := CInt(GetSkillPergon(who, SKILLID_WAFFENSCHMIEDEN) / 25);
+                          except_bonus += CInt(werkzeugqual / 4.7375 * 5);
+                          except_bonus += CInt(quality / 3.79 * 5);
+                          except_bonus += RandomInt(6);
+
+                          If (except_bonus >= 20)
+                            except_bonus := 20;
+                          EndIf
+
+                          except_bonus := CInt(except_bonus * meister_oder_except);
+
+                          SetObjProperty( theitem, "status_except", except_bonus );
+
+
+                        Else
+                          // mit Zufall vermischter Modifikator
+                          qualitymod:=(80+(RandomInt(GetSkillPergon(who, SKILLID_WAFFENSCHMIEDEN))/6))/100.0;
+
+                          If (qualitymod > 1)
+                            qualitymod := 1;
+                          EndIf
+                          theitem.setprop(TOOLINFO,struct{material:=materialdesc});
+
+                          SetName(theitem, desc);
+                          SendSysMessagePergon(who, "Ihr fertigt das Stück und legt es beiseite.");
+                        EndIf
+
+                        theitem.quality:=quality*qualitymod;
+                        SetPropertyItem(theitem, theitem.quality, theitem.maxhp, theitem.maxhp, theitem.quality,
+                        theitem.maxhp, "b", SKILLID_WAFFENSCHMIEDEN, repairskill, price);
+
+                        // Logging
+                        // text:=who.name+" ["+who.x+", "+who.y+"] "+text+" ("+GetObjProperty(theitem, "Werkzeug")+")";
+                        // LogToFile("z_blacksmithy.log", time+text);
+                        // LogToFile("z_char_"+who.name+" - "+Lower(Hex(who.serial))+".log", time+text);
+
+                        SubtractAmount(ingots, material); // Materialverbraucht...
+
+
+                        //  kleine Wahrscheinlichkeit auf Beschaedigung der Werkzeugs
+                        If (RandomInt(100) < 2)
+                          If (SetWerkzeugSchaden(who, hammer, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!"))
+                            Return;
+                          EndIf
+                        EndIf
+                      Else
+                        SysLog("FEHLER: "+theitem.desc+" ("+Lower(Hex(theitem.objtype))+") ist weder Waffe noch Ruestung!");
+                      EndIf
+                    EndIf
+                  Else
+                    If (ingots>=3) // Bei Fehlschlag einige Ingots abziehen (max. die Haelfte der noetigen Barren)
+                      SubtractAmount(ingots, RandomInt(CInt(ingots/2))+1);
+                    Else
+                      SubtractAmount(ingots, 1);
+                    EndIf
+                    SendSysMessagePergon(who, "Ihr zerstört einige Barren.");
+
+                    If (SetWerkzeugSchaden(who, hammer, "Euer Schmiedehammer hat gelitten!", "Euer Schmiedehammer ist stark beschädigt!", "Euer Schmiedehammer ist zerbrochen!"))
+                      Return;
+                    EndIf
+                  EndIf
+                Else
+                  SendSysMessagePergon(who, "Ihr habt nicht genug Barren!");
+                  Return;
+                EndIf
+              EndFor
+            Else
+              SendSysMessagePergon(who, ingots.desc+" konnte nicht in der Config gefunden werden!");
+              SysLog("FEHLER: "+ingots.desc+" ("+Lower(Hex(ingots.objtype))+") konnte nicht in :crafting:materials.cfg gefunden werden!");
+            EndIf
+          Else
+            SendSysMessagePergon(who, what.desc+" konnte nicht in der Config gefunden werden!");
+            SysLog("FEHLER: "+what.desc+" ("+Lower(Hex(what.objtype))+") konnte nicht in blacksmithy.cfg gefunden werden!");
+          EndIf
+        Else
+          SysLog("FEHLER: "+ingots.desc+" ("+Lower(Hex(ingots.objtype))+") konnte nicht in itemdesc.cfg gefunden werden!");
+        EndIf
+      Else
+        SysLog("FEHLER: Konnte die :crafting:materials.cfg nicht oeffnen!");
+      EndIf
+    Else
+      SysLog("FEHLER: Konnte die blacksmithy.cfg nicht oeffnen!");
+    EndIf
+  Else
+    SysLog("FEHLER: Konnte die itemdesc.cfg nicht oeffnen!");
+  EndIf
+EndFunction

@@ -1,0 +1,134 @@
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//  FPrintEvidence.Src: Beweis, um den Einbrecher bzw. Dieb zu fassen
+//                      Wichtig ist nur die Serial/Fingerabdruck des Diebs/Einbrechers, nicht der (Real-)Name
+//
+//                      Beweis verfaellt nach allerspaetestens einem rl-Monat (30 Tage)
+//
+//  01.07.2003 Fraggulus: Create
+//  16.07.2003 Fraggulus: Erfolgsmeldung nun auch fuer den Beweisfuehrer
+//  08.11.2003 Fraggulus: Messages fuer Diebstahlsnachweise ergaenzt
+//  17.11.2003 Fraggulus: Print-Aboves korrigiert
+//  10.01.2004 Fraggulus: 'evstamp' vollstaendig integriert (es sind nur noch Nachweise mit Zeitstempel gueltig)
+//  19.02.2006 Fox      : Commandlevel ab Seer bekommen jetzt detailiertere Informationen über den Diebstahl
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+use os;
+use uo;
+include "include/clock";
+include "include/modifyskill";
+include "include/msgs";
+
+Program fprintevid(who, evidence)
+
+  // Zeitsperre setzen bzw pruefen
+  If (GetObjProperty(evidence, "#evidencetimestamp") > ReadGameClock() - 60)
+    SendSysMessagePergon(who, "Ihr müsst noch etwas warten.", "");
+    Return;
+  EndIf
+
+  Var evwho   := CInt(GetObjProperty(evidence, "FPrintWho"));
+  Var evtime  := CInt(GetObjProperty(evidence, "FPrintTime"));
+  Var evplace := GetObjProperty(evidence, "FPrintPlace");
+  Var evstamp := CInt(GetObjProperty(evidence, "FPrintTimeStamp"));
+  Var evvict  := GetObjProperty(evidence, "FPrintVictim");  // ist nur bei Diebstahlsnachweisen belegt
+
+  If (!evwho || !evtime || !evplace || !evstamp)
+    SendSysMessagePergon(who, "Dieser Beweis ist unbrauchbar.", "");
+    Return;
+  EndIf
+
+  If (evstamp)
+    If (evstamp < ReadGameClock() - 60*60*24*30)
+      SendSysMessagePergon(who, "Der Beweis ist zu alt und nun unbrauchbar.", "");
+      Return;
+    EndIf
+  Else
+    evstamp := ReadGameClock();
+  EndIf
+
+  If (who.cmdlevel >= CMDLEVEL_SEER)
+    SendSysMessagePergon(who, "Wählt eine Person, um sie mit dem Beweis zu prüfen oder den Beweis selbst fuer mehr Informationen.", "");
+  Else
+    SendSysMessagePergon(who, "Wählt eine Person, um sie mit dem Beweis zu prüfen.", "");
+  EndIf
+  Var what := target(who, TGTOPT_CHECK_LOS);
+
+  If (!what)
+    SendSysMessagePergon(who, "Zielen abgebrochen", "Abort");
+    Return;
+  EndIf
+
+  If (what.isa(POLCLASS_MOBILE) && !what.isa(POLCLASS_NPC))
+
+    // Beweisfuehrung
+    If (Distance(who, what) <= 1)
+
+      // Untersuchten informieren
+      SendSysMessagePergon(what, "Ihr werdet gerade von " + who.name + " auf Fingerabdrücke untersucht.", "");
+      PrintTextAbovePergon(who, who, "*untersucht " + what.name + "'s Fingerabdrücke*");
+
+      // ein paar Sekunden Zeit geben?
+      Sleep(4);
+
+      // wenn der Untersuchte der Falsche ist, passiert nichts Grossartiges weiter...
+      If (what.serial == evwho)
+
+        SendSysMessagePergon(what, who.name + " wurde fündig!", "");
+        If (evvict)
+          Var victim := SystemFindObjectBySerial(CInt(evvict));
+
+          SendSysMessagePergon(who, "Ihr wurdet fündig! " + what.name + " ist ein Dieb!", "");
+          PrintTextAbovePergon(who, what, "*wurde des Diebstahls an " + victim.name + " überführt!*");
+        Else
+          SendSysMessagePergon(who, "Ihr wurdet fündig! " + what.name + " ist ein Einbrecher!", "");
+          PrintTextAbovePergon(who, what, "*wurde des Einbruchs überführt!*");
+        EndIf
+
+        // ... ansonsten wird er als grau markiert und Wachen werden benachrichtigt
+        what.setcriminal(1);
+
+        Var Mobs := ListMobilesNearLocation(who.x, who.y, who.z, 12,who.realm);
+        ForEach Mob in Mobs
+          If (Lower(Mob.npctemplate)["townguard"])
+            Var ev     := struct;
+            ev.+type   := 0x2;
+            ev.+source := who;
+
+            If (evvict)
+              PrintTextAbovePergon(Mob, who, "Ahaa! Ein überführter Dieb!");
+            Else
+              PrintTextAbovePergon(Mob, who, "Ahaa! Ein überführter Einbrecher!");
+            EndIf
+            SendEvent(Mob, ev);
+          EndIf
+        EndForeach
+
+        // Beweis kann dann vernichtet werden
+        SubtractAmount(evidence, 1);
+
+      Else
+        SendSysMessagePergon(what, who.name + " wurde nicht fündig.", "");
+        SendSysMessagePergon(who, "Ihr wurdet nicht fündig.", "");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Ihr müsst näher herantreten.", "");
+    EndIf
+  Else
+    If ((who.cmdlevel >= CMDLEVEL_SEER)and(what.serial==evidence.serial))
+      Var victim := SystemFindObjectBySerial(CInt(evvict));
+      SendSysMessagePergon(who, "Opfer: "+victim.name+" ");
+      SendSysMessagePergon(who, "Beweisnahme Zeit: "+Format_Time(evstamp));
+      SendSysMessagePergon(who, "Beweisnahme Ort: "+evplace);
+      Var dieb := SystemFindObjectBySerial(CInt(evwho));
+      SendSysMessagePergon(who, "Täter (akt. Name): "+dieb.name);
+      SendSysMessagePergon(who, "Tatzeit: "+Format_Time(evtime));
+      Return;
+    EndIf
+    SendSysMessagePergon(who, "Das wird wohl nichts werden.", "");
+  EndIf
+
+EndProgram
+
+
+

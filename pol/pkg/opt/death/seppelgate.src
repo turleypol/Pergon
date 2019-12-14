@@ -1,0 +1,311 @@
+/////////////////////////////////////////////////////////////////////////////
+// Seppelgate -- heilt nach Wartezeit oder Goldzahlung
+
+// Anregungen:
+// - für 60k nimmt man gerne mal nen refresh, bei ner halben mille bestimmt
+//   nicht
+// - Loottasche oder Leiche per Script finden: .info-Befehl
+// - Wartezeit maximal ca. 5 Minuten
+// - Jeopardy-Musik in Hoelle
+
+use os;
+use uo;
+include ":saver:saveopts";
+include "include/bank";
+include "include/clock";
+include "include/logutil";
+include "include/modifyskill";
+include "include/msgs";
+include "include/properties";
+include "include/stringcalc";
+include "seppel";
+
+// volle Heilung oder nur halbe?
+Const HEAL_MED       := 1;
+Const HEAL_BIG       := 2;
+
+Program Seppelgate(who, gate) // {{{
+    // man sollte schon tot sein
+    If (!who.dead)
+        return;
+    EndIf
+
+    If ("Tod" == who.getprop(PROP_PUNISH_TYPE))
+        SendSysMessagePergon(who,
+            "Eure Todesstrafe ist noch nicht abgesessen.",
+            "Your death sentence has not been served completely yet."
+        );
+        return;
+    EndIf
+
+    If (
+        GetObjProperty(who, TYPNEWBIE) == 1 and
+        !GetObjProperty(gate, ALLOW_NEWBIE)
+    )
+        SendSysMessagePergon(who,
+            "Dieses Tor ist nicht für Euch gedacht!",
+            "This gate is not for you!"
+        );
+        syslog(
+            "WARNUNG: "+ItemInfoStr(gate, COORDS_REALM)+
+            " in newbie-zugaenglichen Bereich gefunden"
+        );
+        return;
+    EndIf
+
+    If (GetObjProperty(who, "spell_doomed"))
+        SendSysMessagePergon(who,
+            "Ihr seid dazu verdammt, unter den Toten zu wandeln.",
+            "You are doomed to dwell amongst the dead."
+        );
+        return;
+    EndIf
+
+    While (WorldsaveRunning())
+        Sleep(1);
+    EndWhile
+
+    var ret_ser := GetObjProperty(who, SG_RETURN_PROP);
+    var wait    := GetObjProperty(who, SG_WAIT_PROP);
+    // Rueckkehren, falls Return-Ziel und Wartezeit abgelaufen
+    If (ret_ser and wait and ReadGameClock()>wait)
+        var dest_ser := GetObjProperty(who, SG_RETURN_PROP);
+        If (!dest_ser)
+            SendSysMessagePergon(who,
+                "Das Rückkehrtor fehlt! Ruft einen GM.",
+                "The return gate is missing! Call for a GM."
+            );
+            syslog(
+                "FEHLER: Rueckkehrseppelgate nicht gesetzt bei "+
+                CharInfoStr(who, COORDS_REALM)
+            );
+            return;
+        EndIf
+
+        var dest := SystemFindObjectBySerial(dest_ser);
+        If (!dest)
+            SendSysMessagePergon(who,
+                "Das Rückkehrtor fehlt! Ruft einen GM.",
+                "The return gate is missing! Call for a GM."
+            );
+            syslog(
+                "FEHLER: Rueckkehrseppelgate fehlt fuer "+
+                CharInfoStr(who, COORDS_REALM)
+            );
+            return;
+        EndIf
+
+        SleepMS(100);
+        If (Distance(who, gate)>0)
+            // durchgerannt?
+            SendSysMessagePergon(
+                who, "Ihr seid zu weit weg!", "You are too far away!"
+            );
+            return;
+        EndIf
+
+        // Wartezeit entfernen
+        EraseObjProperty(who, SG_WAIT_PROP);
+
+        // damit die Hoellenmonster nicht nerven
+        who.hidden := 1;
+        SleepMS(100);
+
+        // beleben
+        DoResurrect(who, HEAL_MED);
+
+        // FORCELOCATION, falls jemand am Ziel im Weg steht
+        MoveObjectToLocation(
+            who, dest.x, dest.y, dest.z, dest.realm, MOVEOBJECT_FORCELOCATION
+        );
+        who.hidden := 0;
+
+        // kein Gump
+        return;
+
+    ElseIf (ret_ser and wait)
+        // Wartezeit noch nicht um
+        var rest := wait - ReadGameClock();
+        If (rest > 60)
+            rest := Format_Time(rest, WITH_SECONDS);
+        Else
+            rest += " Sekunden";
+        EndIf
+        SendSysMessagePergon(who,
+            "Ihr müsst leider noch "+rest+" in der Hölle büßen.",
+            "Sorry, you still have to expiate in hell for "+rest+"."
+        );
+
+        // kein Gump
+        return;
+
+    ElseIf (ret_ser)
+        // Rueckkehr aus Hoelle, Prop loeschen
+        EraseObjProperty(who, SG_RETURN_PROP);
+
+        // kein Gump
+        return;
+
+    EndIf
+
+    SelectResurrectionMethod(who, gate);
+EndProgram // }}}
+
+Function SelectResurrectionMethod(who, gate) // {{{
+    var skill := GetSkillAverage(who);
+    var cost_resurrect := CInt(
+        skill *
+        GetObjPropOrDefault(gate, SG_FACT_RES, 1) *
+        GetGlobalPropOrDefault(SG_FACT_RES, 1)
+    );
+    var cost_res_plus  := CInt(
+        skill *
+        GetObjPropOrDefault(gate, SG_FACT_PLUS, 1) *
+        GetGlobalPropOrDefault(SG_FACT_PLUS, 1)
+    );
+    // ca. 5 Minuten bei 130%
+    var time_wait      := CInt(
+        skill *
+        GetObjPropOrDefault(gate, SG_FACT_WAIT, 1) *
+        GetGlobalPropOrDefault(SG_FACT_WAIT, 1)
+    );
+
+    var res_lay := {
+        "nodispose", // schliessen per ESC verhindern
+
+        // Hintergrund, Ueberschrift
+        "page 0",
+        "gumppic   135   0 101",                // Grabstein
+        "resizepic   0 115 5054 500 250",       // grauer Kasten
+        "text      170 120 0 0",                // Ueberschrift
+        "button    410 320 2073 2072 1 0 0",    // Abbruchknopf
+
+        "page 1",
+        // Wiederbeleben (gegen Geld)
+        "button  25 145 2152 2154 1 0 1",       // Auswahlknopf
+        "text    75 150 0 1",                   // Art der Belebung
+        "text   250 150 0 4",                   // Preis
+        "button 410 150 2033 2032 0 2 0",       // Hilfeknopf
+        // Wiederbeleben mit Bergen (gegen Geld)
+        "button  25 195 2152 2154 1 0 2",       // Auswahlknopf
+        "text    75 200 0 2",                   // Art der Belebung
+        "text   250 200 0 5",                   // Preis
+        "button 410 200 2033 2032 0 3 0",       // Hilfeknopf
+        // Warten
+        "button  25 245 2152 2154 1 0 3",       // Auswahlknopf
+        "text    75 250 0 3",                   // Art der Belebung
+        "text   250 250 0 6",                   // Preis
+        "button 410 250 2033 2032 0 4 0",       // Hilfeknopf
+
+        "page 2",
+        "text   170 150 0 1",                   // Art der Belebung
+        "text    75 200 0 7",                   // ein paar
+        "text    75 230 0 8",                   // Zeilen Text
+        "text    75 260 0 9",
+        "button  25 320 2008 2007 0 1 0",       // zur Hauptseite
+
+        "page 3",
+        "text   170 150 0 2",                   // Art der Belebung
+        "text    75 200 0 10",                  // ein paar
+        "text    75 230 0 11",                  // Zeilen Text
+        "text    75 260 0 12",
+        "button  25 320 2008 2007 0 1 0",       // zur Hauptseite
+
+        "page 4",
+        "text   170 150 0 3",                   // Art der Belebung
+        "text    75 200 0 13",                  // ein paar
+        "text    75 230 0 14",                  // Zeilen Text
+        "text    75 260 0 15",
+        "button  25 320 2008 2007 0 1 0"        // zur Hauptseite
+    };
+    var res_data := {
+        "Tor des kostbaren Lebens",
+        "Ablass kaufen",
+        "Ablass kaufen mit Heilung",
+        "In der Hoelle büßen",
+        cost_resurrect+" Gold",
+        cost_res_plus +" Gold",
+        Format_Time(time_wait, WITH_SECONDS),
+        // Wiederbelebung
+        "- sofortige Wiederbelebung",
+        "- kleine Heilung",
+        "- Gold wird vom Konto abgebucht",
+        // Wiederbelebung (mit Heilen)
+        "- sofortige Wiederbelebung",
+        "- grosse Heilung",
+        "- Gold wird vom Konto abgebucht",
+        // Warten
+        "- einige Zeit in der Hoelle buessen",
+        "- kostenlose Wiederbelebung nach Wartezeit",
+        ""
+    };
+
+    var choice := SendDialogGump(who, res_lay, res_data);
+    If (!choice)
+        SendSysMessagePergon(
+            who, "Dann eben nicht.", "So you don't like this gate?"
+        );
+        return;
+    EndIf
+
+    // waehrend des Dialogs weggerannt?
+    If (Distance(who, gate) > 0)
+        SendSysMessagePergon(
+            who, "Ihr seid zu weit weg!", "You are too far away!"
+        );
+        return;
+    EndIf
+
+    Case (choice[0])
+    1:
+        If (TryToGetPayment(who, cost_resurrect))
+            DoResurrect(who);
+        Else
+            SendSysMessagePergon(who,
+                "Das könnt ihr Euch nicht leisten!",
+                "You do not have enough money!"
+            );
+        EndIf
+    2:
+        If (TryToGetPayment(who, cost_res_plus))
+            DoResurrect(who, HEAL_BIG);
+        Else
+            SendSysMessagePergon(who,
+                "Das könnt ihr Euch nicht leisten!",
+                "You do not have enough money!"
+            );
+        EndIf
+    3:
+        DescentIntoHell(who, gate, time_wait);
+    EndCase
+EndFunction // }}}
+
+Function DoResurrect(who, full := 0) // {{{
+    // SendSysMessagePergon(who, "Lebe wieder!", "Live again!");
+    PlaySoundEffect(who, SFX_SPELL_RESSURECTION);
+    ResurrectPergon(who);
+    ResPenalties(who);
+    Sleep(1);
+    PlayObjectCenteredEffect(who, FX_HEAL_EFFECT, 7, 14);
+    If (full == HEAL_BIG)
+        // 3/4 Heilung, halb Stamina/Mana
+        SetHPPergon(who,      CInt(GetMaxHPPergon(who)      *3/4));
+        SetStaminaPergon(who, CInt(GetMaxStaminaPergon(who) /2));
+        SetManaPergon(who,    CInt(GetMaxManaPergon(who)    /2));
+    ElseIf (full == HEAL_MED)
+        // 1/2 Heilung, drittel Stamina/Mana
+        SetHPPergon(who,      CInt(GetMaxHPPergon(who)      /2));
+        SetStaminaPergon(who, CInt(GetMaxStaminaPergon(who) /3));
+        SetManaPergon(who,    CInt(GetMaxManaPergon(who)    /3));
+    Else
+        // ein Viertel von allem
+        SetHPPergon(who,      CInt(GetMaxHPPergon(who)      /4));
+        SetStaminaPergon(who, CInt(GetMaxStaminaPergon(who) /4));
+        SetManaPergon(who,    CInt(GetMaxManaPergon(who)    /4));
+    EndIf
+EndFunction // }}}
+
+Function GetBackpack(who)
+    // FIXME: mal implementieren, sobald passende
+    // Region-Property existiert
+EndFunction

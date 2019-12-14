@@ -1,0 +1,88 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file poison.src
+//
+// implements spell 302 <Poison> - "Gift"
+//
+// poisons spelltarget (raises poison level)
+// [ Reflected ]
+
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.8  2008/07/27 13:28:56  mehdorn
+// - ueberarbeitet
+// - Caster-Tod bei Zielauswahl wird abgefangen
+//
+// Vers. 1.1 - 04.10.2003 Sebastian 'Bihinos' Giese
+// ueberarbeitet
+//
+// Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+// gebaut
+
+include "../magicpergon";
+include "../spellattack";
+include "include/poison";
+
+Program cast_poison (params)
+  var caster;
+  var caston;
+  var power;
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  := params[3];
+    caston := params[4];
+    send_attack(caston, caster, 302);
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_NECRO_POISON);
+    caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  // Caster (z. B. beim Target) verstorben?
+  If (!caster)
+    return;
+  EndIf
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_DIR);
+
+  // load spelldata
+  var spells := ReadConfigFile("::spells");
+  var spell := FindConfigElem(spells, SPELLID_NECRO_POISON);
+
+  // calc spell damage according to casting power
+  var dmg := CInt(power*spell.primary/100.0);
+  If (spell.primarymin and spell.primarymin > dmg)
+    dmg := spell.primarymin;
+  ElseIf (spell.primarymax and spell.primarymax < dmg)
+    dmg := spell.primarymax;
+  EndIf
+
+  // get spelltarget -> possible spell reflection
+  var spelltarget :=
+    ReflectSpell(caster, caston, dmg, 1, FX_CURSE_EFFECT, 10, 15, 0, SFX_206);
+
+  If (spelltarget)
+    PrintTextAbovePrivatePergon(spelltarget,
+      "Ihr wurdet magisch vergiftet",
+      "You have been magically poisoned", spelltarget
+    );
+    // poison spelltarget
+    AddPoisonLevel(spelltarget, dmg, caster);
+  EndIf
+EndProgram
+
+// vim: sts=2 sw=2

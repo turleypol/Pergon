@@ -1,0 +1,133 @@
+///////////////////////////////////////////////////////////////////////////
+// Static Housing Package v1.0
+//
+// Maintainer: Bishop Ebonhand
+
+use os;
+use storage;
+use uo;
+include ":doorsnew:common";
+include "house";
+include "include/msgs";
+include "include/objtype";
+include "include/server";
+
+Program UseSecureCont(who, container)
+  var house := SystemFindObjectBySerial(
+    GetObjProperty(container, PROP_HS_C_SC_HOUSE)
+  );
+
+  var secure := 0; // Darf der Container geoeffnet werden?
+  var ownerserial := GetObjProperty(house, PROP_HS_C_OWNER);
+  var owner;
+  If (ownerserial)
+    owner := SystemFindObjectBySerial(
+      ownerserial, SYSFIND_SEARCH_OFFLINE_MOBILES
+    );
+  EndIf
+  If (
+    // Eigentuemer?
+    // FIXME: der darf immer ohne Schlüssel?
+    IsHouseOwner(house, who)
+  )
+    secure := 1;
+    SendSysMessagePergon(who,
+      "Hauscontainer wird geöffnet.", "House container is opened."
+    );
+  ElseIf (IsHouseFriend(house, who)) // Freund?
+    // Prüft, ob der Container verschlossen ist und ob die Person einen
+    // passenden Schlüssel hat oder nicht.
+    If (container.locked)
+      If (!CanUnlock(who, container))
+        PrintTextAbovePrivatePergon(container,
+          "Das ist verschlossen.", "That's locked.", who
+        );
+      Else
+        secure := 1;
+        SendSysMessagePergon(who,
+          "Verschlossener Hauscontainer wird für Freunde geöffnet.",
+          "House container is opened for friends."
+        );
+      EndIf
+    Else
+      SendSysMessagePergon(who,
+        "Hauscontainer wird für Freunde geöffnet.",
+        "House container is opened for friends."
+      );
+      secure := 1;
+    EndIf
+  ElseIf (who.cmdlevel >= CMDLEVEL_HIGHGM) // GameMaster und Co. ?
+    secure := 1;
+    SendSysMessagePergon(who,
+      "Hauscontainer wird für CMDLevel geöffnet.",
+      "House container is opened for CMDLevel."
+    );
+  EndIf
+
+  // Darf der Container geoeffnet werden?
+  If (!secure)
+    SendSysMessagePergon(who,
+      "Diesen Container könnt Ihr nicht öffnen!",
+      "You cannot open this container!"
+    );
+    return;
+  EndIf
+
+  var box := SystemFindObjectBySerial(
+    GetObjProperty(container, PROP_HS_C_SC_BOX)
+  );
+
+  // Alle Items, die per Drag'n'Drop raufgezogen wurden, reinverschieben
+  ForEach item in EnumerateItemsInContainer(container, ENUMERATE_ROOT_ONLY)
+    If (item.serial == box.serial)
+      // die interne Box ignorieren
+      continue;
+    EndIf
+
+    // Wenn es zu gross zum Verschieben ist, dann rauswerfen
+    If (!MoveItemToContainer(item, box))
+      MoveObjectToLocation(
+        item, who.x, who.y, who.z, who.realm, MOVEOBJECT_FORCELOCATION
+      );
+      SendSysMessagePergon(who,
+        "Der Hauscontainer quillt über!", "The house container flows over!"
+      );
+    EndIf
+    SleepMs(2);
+  EndForEach
+
+  SendOpenSpecialContainer(who, box);
+EndProgram
+
+/////////////////////////////////////////////////////////////
+// CanUnlock - Kann die Person den Container aufschliessen?
+/////////////////////////////////////////////////////////////
+Function CanUnlock(me, container)
+  If (!container.locked)
+    return 1;
+  EndIf
+
+  If (GetObjProperty(container, "gmlocked") == 1)
+    PrintTextAbovePrivatePergon(container,
+      "Die Götter verbieten das Öffnen.", "", me
+    );
+    return 0;
+  EndIf
+
+  var haskey := HasKeyFor(me, container);
+
+  If (GetObjProperty(container, "#LockPicked"))
+    If (haskey)
+      // Besitzer hat Schluessel und schliesst danach wieder ab
+      EraseObjProperty(container, "#LockPicked");
+    EndIf
+
+    // Tuer wurde aufgebrochen
+    return 1;
+  EndIf
+
+  // Tuer wird kurz aufgeschlossen, sofern Schluessel vorhanden
+  return haskey;
+EndFunction
+
+// vim: sw=2 sts=2

@@ -1,0 +1,30 @@
+///////////////////////////////////////////////////////////////////////////
+// liftnewcall -- Signal an zugehoerigen Lift senden
+
+use os;
+use uo;
+include "include/eventid";
+include "include/logutil";
+include "include/msgs";
+include "lift";
+
+Program LiftCall(who, caller)
+    // nur auf Spieler reagieren
+    If (!who.isa(POLCLASS_MOBILE) or who.isa(POLCLASS_NPC))
+        return;
+    EndIf
+
+    var process := GetLiftProcess(who, caller);
+    If (!process)
+        return;
+    EndIf
+
+    var event := struct;
+    event["type"]   := EVID_LIFT_CALL;
+    event["source"] := who;
+    event["storey"] := caller;
+    process.sendevent(event);
+
+    // temporaere CProp am Char loeschen (ist ja nicht mehr auf dem Lift)
+    who.eraseprop(PROP_LIFT_LAST);
+EndProgram

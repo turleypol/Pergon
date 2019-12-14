@@ -1,0 +1,246 @@
+///////////////////////////////////////////////////////////////////////////
+// .wear -- Anziehen/Ausziehen verschiedener Kleidungssets
+//
+// Parameter: [set] <nummer>
+//      mit "set" ein Set definieren
+//      ohne "set" ein definiertes Set anziehen
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log
+
+include "include/client";
+include "include/msgs";
+include "include/server";
+include "include/utility";
+use cfgfile;
+use math;
+use os;
+use uo;
+
+// enthaelt die Kleidungsets des Spielers
+Const PROP_CLOTHING_SETS := "clothingsets";
+// speichert an Kleidungsstueck, in welchem Container es war
+Const PROP_CLOTHING_CONT := "wearcont";
+Const WAIT_MS_PER_ITEM   := 2000;
+
+Program Wear(who, cmd)
+    var param := SplitWords(cmd);
+    If (
+        // ein nicht numerischer Parameter
+        (param.size() == 1 and !CInt(param[1])) or
+        // zwei Parameter, aber einer falsch
+        (param.size() == 2 and param[1] != "set" and !CInt(param[2])) or
+        // zuviele Parameter
+        (param.size() > 2)
+    )
+        SendSysMessagePergon(who,
+            "Benutzung: .wear [set] <nummer>",
+            "Usage: .wear [set] <number>"
+        );
+        return;
+    EndIf
+
+    // Tote ziehen sich nicht um
+    If (who.dead)
+        SendSysMessagePergon(who,
+            "Das letzte Hemd muss man nicht ausziehen.",
+            "You won't stand naked at heaven's gate."
+        );
+        return;
+    EndIf
+
+    // im Kampfmodus nicht umziehen
+    If (who.warmode)
+        SendSysMessagePergon(who,
+            "Ihr wollt Euch doch wohl nicht mitten im Kampf umziehen?",
+            "You don't want to redress in a fight, do you?"
+        );
+        return;
+    EndIf
+
+    // welches Kleidungsset? (1 .. 10)
+    var setnum := CInt(Max(1, Min(10, CInt(param[param.size()]))));
+
+    // Spieler erstmal limitieren, damit es nicht ueberhand nimmt
+    If (setnum > 3 and who.cmdlevel < CMDLEVEL_SEER)
+        SendSysMessagePergon(who,
+            "Ihr dürft nur 3 Kleidungssets definieren",
+            "You may only define 3 clothing sets"
+        );
+        return;
+    EndIf
+
+    var relevantlayers := array{
+        LAYER_ARMS,   LAYER_CAPE,   LAYER_CHEST,    LAYER_EARS,
+        LAYER_GLOVES, LAYER_HELMET, LAYER_LEGS,     LAYER_NECK,
+        LAYER_PANTS,  LAYER_RING,   LAYER_ROBE,     LAYER_SHIRT,
+        LAYER_SHOES,  LAYER_SKIRT,  LAYER_TALISMAN, LAYER_TUNIC,
+        LAYER_WAIST,  LAYER_WRIST
+    };
+
+    Case (Lower(param[1]))
+    "set":
+        // Kleidungsset speichern {{{
+
+        // Itemserials auf relevanten Layern auslesen
+        var newset := array{};
+        ForEach layer in (relevantlayers)
+            SleepMs(2);
+            var item := GetEquipmentByLayer(who, layer);
+            If (item)
+                newset.append(item.serial);
+            EndIf
+        EndForEach
+
+        // als Set sichern
+        var crit := Is_Critical();
+        Set_Critical(1);
+        var list := GetObjProperty(who, PROP_CLOTHING_SETS);
+        If (list == error or TypeOfInt(list) != OT_DICTIONARY)
+            list := dictionary;
+        EndIf
+        list.insert(setnum, newset);
+        SetObjProperty(who, PROP_CLOTHING_SETS, list);
+        Set_Critical(crit);
+
+        // Abschlussmeldung
+        SendSysMessagePergon(who,
+            "Kleidungsset "+setnum+" gesichert",
+            "Clothing set "+setnum+" saved"
+        );
+        // }}}
+
+    default:
+        // Kleidungsset anziehen {{{
+        var towear := GetObjProperty(who, PROP_CLOTHING_SETS)[setnum];
+        If (!towear or TypeOfInt(towear) != OT_ARRAY)
+            SendSysMessagePergon(who,
+                "Kleidungsset "+setnum+" existiert nicht",
+                "Clothing set "+setnum+" does not exist"
+            );
+            return;
+        EndIf
+
+        var touchedlayers := array{};
+        ForEach serial in (towear)
+            SleepMs(2);
+            var item := SystemFindObjectBySerial(serial);
+            If (!item or !InContainer(item, array{who, who.backpack}))
+                SendSysMessagePergon(who,
+                    "Ein Kleidungsstück im Set fehlt!",
+                    "Some clothing in your Set is missing."
+                );
+                continue;
+            EndIf
+
+            // gucken, auf welchen Layer das Item gehoert und ...
+            var layer   := GetEquipmentLayer(item);
+            // ... ob da schon etwas ist
+            var wearing := GetEquipmentByLayer(who, layer);
+
+
+            // traegt man das richtige Item?
+            If (wearing.serial == item.serial)
+                // vermerken, dass der Layer bearbeitet wurde
+                touchedlayers.append(layer);
+                continue;
+            EndIf
+
+            // man traegt das falsche Item
+            If (wearing)
+                // probieren, es erst auszuziehen
+                If (!StripClothing(who, wearing, who.backpack))
+                    continue;
+                EndIf
+            EndIf
+
+            // alte Position sichern
+            var oldpos := struct;
+            oldpos.+c := item.container.serial;
+            oldpos.+x := item.x;
+            oldpos.+y := item.y;
+            item.setprop(PROP_CLOTHING_CONT, oldpos);
+
+            // nun Anziehversuch
+            If (EquipItem(who, item))
+                SleepMs(WAIT_MS_PER_ITEM);
+                // vermerken, dass der Layer bearbeitet wurde
+                touchedlayers.append(layer);
+            Else
+                item.eraseprop(PROP_CLOTHING_CONT);
+            EndIf
+        EndForEach
+
+        // nun noch Sachen in restlichen Layern ablegen
+        ForEach layer in (relevantlayers)
+            SleepMs(2);
+            If (layer in (touchedlayers))
+                // wurde bereits oben behandelt
+                continue;
+            EndIf
+
+            var wearing := GetEquipmentByLayer(who, layer);
+            StripClothing(who, wearing, who.backpack);
+        EndForEach
+        // }}}
+    EndCase
+EndProgram
+
+Function StripClothing(who, item, tocont) // {{{
+    // bevorzugt in alten Container zuruecklegen
+    var oldpos := item.getprop(PROP_CLOTHING_CONT);
+    If (!oldpos)
+        // Default setzen
+        oldpos := struct;
+        oldpos.x := -1;
+        oldpos.y := -1;
+        oldpos.c := error{errortext := "undefined"};
+    EndIf
+
+    If (oldpos.c)
+        var oldcont := SystemFindObjectBySerial(oldpos.c);
+        If (oldcont)
+            // der alte Container muss aber noch im Gepaeck sein
+            If (InContainer(oldcont, array{who, who.backpack}))
+                // noch da, Default-Container ueberschreiben
+                tocont := oldcont;
+            EndIf
+        EndIf
+    EndIf
+
+    var result := MoveItemToContainer(item, tocont, oldpos.x, oldpos.y);
+    If (result == error)
+        return error;
+    EndIf
+
+    item.eraseprop(PROP_CLOTHING_CONT);
+
+    SleepMs(WAIT_MS_PER_ITEM);
+    return 1;
+EndFunction // }}}
+
+Function GetEquipmentLayer(item) // {{{
+    var cfgfile := ReadConfigFile("::tiles");
+    If (cfgfile == error)
+        syslog(
+            "FEHLER: Laden von Tiledata gescheitert: "+cfgfile.errortext
+        );
+        return cfgfile;
+    EndIf
+    var elem := FindConfigElem(cfgfile, item.graphic);
+    If (elem == error)
+        syslog(
+            "FEHLER: Typ "+item.graphic+" nicht gefunden: "+elem.errortext
+        );
+        return elem;
+    EndIf
+
+    var layer := GetConfigInt(elem, "Layer");
+    If (layer == error)
+        syslog(
+            "FEHLER: Typ "+item.graphic+" hat kein Layer: "+layer.errortext
+        );
+    EndIf
+    return layer;
+EndFunction // }}}

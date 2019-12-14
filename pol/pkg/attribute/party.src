@@ -1,0 +1,33 @@
+/////////////////////////////////////////////////////////
+//
+//   party - Partysystem script
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     11.03.09 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Use os;
+Use uo;
+
+Include "include/pergonstatistik";
+Include "include/clock";
+
+Program Install()
+  SysLog("Party Hook ist aktiviert");
+  Return(1);
+EndProgram
+
+Exported Function OnPublicChat(speaker, ucmsg)
+  // Statistische Analyse durchfuehren
+  StatistikPartyFull(speaker, speaker.party.members, ucmsg); 
+EndFunction
+
+Exported Function OnPrivateChat(speaker,tochar, ucmsg)
+  // Statistische Analyse durchfuehren
+  StatistikPartyMember(speaker, tochar, ucmsg);
+EndFunction

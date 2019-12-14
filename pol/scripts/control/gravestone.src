@@ -1,0 +1,65 @@
+///////////////////////////////////////////////////////////////////////////
+// ControlScript fuer Gravestone
+// (Ueberreste einer Spielerleiche, wenn diese verschwindet)
+//
+// Grabsteine verschwinden (im Allgemeinen) nach 24h
+
+use file;
+use os;
+use uo;
+include "include/logutil";
+
+Program GraveStoneCtrl(stone)
+  If (!GetObjProperty(stone, "DeadTime"))
+    Sleep(5);
+  EndIf
+
+  var DeadTime := GetObjProperty(stone, "DeadTime");
+  If (DeadTime)
+    While (ReadGameClock() < DeadTime + 86400)
+      Detach();
+      Sleep(3600);
+    EndWhile
+
+    // Wann wurde der Corpse erzeugt und wem gehoert er?
+    var corpseinfo := GetObjProperty(stone, "corpseinfo");
+    If (corpseinfo)
+      LogToFile(
+        "log/corpses.log",
+        corpseinfo[2]+"_"+Lower(Hex(corpseinfo[1]))+
+        ": Der Grabstein "+ItemInfoStr(stone, COORDS_REALM)+
+        ", erzeugt um "+corpseinfo[3]+", wird nach "+
+        (ReadGameClock() - corpseinfo[3])+
+        " Sekunden vom GraveStone-Script geloescht. Der Stein stand "+
+        (corpseinfo[3] - corpseinfo[2])+" Sekunden da. [Typ A]",
+        LOG_DATETIME
+      );
+    EndIf
+
+    SubtractAmount(stone, 1);
+
+  Else
+    // Wenn die Ueberreste bereits einmal erfolglos initialisiert worden sind,
+    // werden sie endgueltig vernichtet
+    If (!GetObjProperty(stone, "marked"));
+      SetObjProperty(stone, "marked", 1);
+    Else
+      // Wann wurde der Corpse erzeugt und wem gehoert er?
+      var corpseinfo := GetObjProperty(stone, "corpseinfo");
+      If (corpseinfo)
+        LogToFile(
+          "log/corpses.log",
+          corpseinfo[2]+"_"+Lower(Hex(corpseinfo[1]))+
+          ": Der Grabstein "+ItemInfoStr(stone, COORDS_REALM)+
+          ", erzeugt um "+corpseinfo[3]+", wird nach "+
+          (ReadGameClock() - corpseinfo[3])+
+          " Sekunden vom GraveStone-Script geloescht. Der Stein stand "+
+          (corpseinfo[3] - corpseinfo[2])+" Sekunden da. [Typ B]",
+          LOG_DATETIME
+        );
+      EndIf
+
+      SubtractAmount(stone, 1);
+    EndIf
+  EndIf
+EndProgram

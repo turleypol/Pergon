@@ -1,0 +1,156 @@
+/////////////////////////////////////////////////////////
+//
+//   bmvote - Bugfreie Wahl :)
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     05.03.10 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+
+Include "include/msgs";
+Include "include/server";
+Include "include/pergonutil";
+
+Enum Constants
+  STONESERIAL:=	0x402F1984, // Vesper
+  GLOBAL:="bmvote_"
+EndEnum
+
+Program TextCMD_BMVote(who, text)
+  Var stone:=SystemFindObjectBySerial(STONESERIAL);
+  If (!stone)
+    SendSysMessagePergon(who, "Stadtstein nicht gefunden!");
+    Return;
+  EndIf
+  Var townid:=stone.getprop("town");
+  If (!townid)
+    SendSysMessagePergon(who, "Stadtstein hat keine Stadtdefinition");
+    Return;
+  EndIf
+  Var citizen:=stone.getprop("citizen");
+  If (!citizen)
+    SendSysMessagePergon(who,"Stadtstein hat keine Einwohner");
+    Return;
+  EndIf
+  Var candidates:=stone.getprop("candidatos");
+  If (!candidates)
+    SendSysMessagePergon(who,"Stadtstein hat keine Kanditaten");
+    Return;
+  EndIf
+  
+  var townname:=GetTownName(townid);
+  If (who.cmdlevel>=CMDLEVEL_SCRIPTER)
+    If (text=="init") 
+      var votes:=dictionary;
+      SetGlobalProperty(GLOBAL+townname,votes);
+      SendSysMessagePergon(who,"Global erzeugt "+GLOBAL+townname);
+      Return;
+    ElseIf (text=="count")
+      var votes:=GetGlobalProperty(GLOBAL+townname);
+      Var bms:=dictionary;
+      Var i;
+      For (i:=1;i<candidates.size();i+=2)
+        bms[CStr(candidates[i])]:=0;
+      EndFor
+      ForEach vote in votes
+        bms[CStr(vote)]+=1;
+        SleepMS(2);
+      EndForEach
+      SendSysMessagePergon(who,"Stimmenvergabe:");
+      Foreach key in bms
+        var bm:=SystemFindObjectBySerial(CInt(_key_iter),SYSFIND_SEARCH_OFFLINE_MOBILES);
+        If (bm)
+          SendSysMessagePergon(who,bm.name+" : "+key);
+        Else
+          SendSysMessagePergon(who,"Ungültige Serial "+_key_iter);
+        EndIf
+        SleepMs(2);
+      EndForEach
+      Return;
+    Endif
+  EndIf
+  If (!CanVote(who, townid))
+    SendSysMessagePergon(who,"Ihr seid nicht berechtigt zum wählen!");
+    Return;
+  EndIf
+  
+  var votes:=GetGlobalProperty(GLOBAL+townname);
+  If (!votes)
+    SendSysMessagePergon(who,"Es wurde keine Wahl gestartet.");
+    Return;
+  EndIf
+  If (votes[CStr(who.serial)])
+    SendSysMessagePergon(who,"Ihr habt bereits gewählt!");
+    Return;
+  EndIf
+  var layout := {"nodispose",
+                 "page 0",
+                 "resizepic 0 0 9270 390 420",       //Hintergrund links
+                 "gumppictiled 0 395 108 31 10462",  // unten links
+                 "gumppic 108 395 10452",            // mitte
+                 "gumppictiled 286 395 108 31 10462",// unten rechts
+                 "gumppictiled 0 17 31 378 10464",   // linke seite
+                 "gumppic 0 0 10301",                // oben links
+                 "gumppictiled 17 0 362 17 10251",   // mitte oben
+                 "gumppic 377 0 10303",              // oben rechts
+                 "gumppictiled 363 17 31 378 10464", // rechte seite
+                 "htmlgump 48 20 300 30 0 0 0",      // Überschrift
+                 "button 220 357 9721 9724 1 0 1",
+                 "htmlgump 50 360 165 30 1 0 0",
+                 "group 1"};
+  var data := {"<basefont color=#FFFFFF size=5><center>Wahl für "+townname+"</center>",
+               "<basefont color=#FFFFFF><p align=right>Stimme abgeben</p>"};
+  
+  var i;
+  var y:=50;
+  For (i:=1;i<candidates.size();i+=2)
+    layout.append("radio 50 "+y+" 9727 9729 0 "+(10+i));
+    layout.append("htmlgump 90 "+(y+5)+" 275 30 "+data.size()+" 0 0");
+    data.append("<basefont color=#FFFFFF>"+candidates[i+1]);
+    y+=40;
+  EndFor
+  var ret:=SendDialogGump(who,layout,data,50,50);
+
+  If (ret[1])
+    var vote:=ret.keys[ret.keys.size()];
+    If (vote>10)
+      vote-=10;
+      If (candidates[vote])
+        Set_Critical(1);
+        var votes:=GetGlobalProperty(GLOBAL+townname);
+        If (votes[CStr(who.serial)])
+          Set_Critical(0);
+          SendSysMessagePergon(who,"Nice try...");
+          Return;
+        EndIf
+        votes[CStr(who.serial)]:=candidates[vote];
+        SetGlobalProperty(GLOBAL+townname,votes);
+        Set_Critical(0);
+        Return;
+      EndIf
+    EndIf
+  EndIf
+  SendSysMessagePergon(who,"Abbruch", "Abort");
+EndProgram
+
+Function CanVote(who, townid)
+  var whoid:=who.getprop("town");
+  If (whoid)
+    If (whoid==townid)
+      Return 1;
+    EndIf
+  EndIf
+  Return 0;
+EndFunction
+
+Function GetTownName(town)
+  var namelist := GetGlobalProperty("townlist");
+  return namelist[town];
+EndFunction

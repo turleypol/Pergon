@@ -1,0 +1,55 @@
+//////////////////////////////////////////////////////////////////////////
+//
+//   UnEquipTest Script - Checks wheather or not u can unequip Something
+//
+//     based on Class/Racc System
+//       Author: Dream Weaver
+//
+//       Thanks to Racalac and Sigismund for scripting support.
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2000/04/30 Shinigami: Complete ReWrite
+//     2001/09/20 Shinigami: Debugging zur Fehlersuche eingeschaltet
+//     2003/10/06 SeBB:      cursed-Prop angepasst / zweisprachig
+//
+//////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+Include "include/modifyskill";
+
+/////////////
+// Programm
+/////////////
+
+Program UnEquipTest(who, item)
+ // If (GetGlobalProperty("#GameActive")) // Meldungen beim StartUp unterdruecken
+ //   SysLog("UnEquipTestStart "+who.name+" "+item.desc);
+ // EndIf
+
+  If ((!who.isa(POLCLASS_NPC)) And (who.cmdlevel < CMDLEVEL_SEER))
+   // SysLog("UnEquipTest: "+who.name+" ("+Hex(who.serial)+") -> "+item.desc+" ("+Hex(item.serial)+")");
+
+    If (GetObjProperty(item, "spell_curse"))
+      SendSysMessagePergon(who, "$%&$, der Gegenstand ist verflucht.", "$%&$, this item is cursed.");
+      Sleep(1);
+      SendSysMessagePergon(who, "Ihr könnt ihn nicht ablegen.", "You cannot take it off");
+
+      Return (0);
+    EndIf
+  EndIf
+
+  Return (1);
+EndProgram

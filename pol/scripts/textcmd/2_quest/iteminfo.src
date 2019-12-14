@@ -1,0 +1,495 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD ItemInfo
+//
+// Oeffnet ein Gump mit veraenderbaren Params zum angeklickten Item
+//
+// Author: Maverick (RGabra)
+// eMail : ?
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/onlinesearch";
+include "include/server";
+use cfgfile;
+use os;
+use uo;
+
+//////////////////////
+// Gump-Definitionen
+//////////////////////
+var layout := {
+  "page 0",
+  "resizepic 0 50 2620 500 320",
+  "resizepic 325 100 5054 150 190",
+  "text 40 59 5 0",
+  "text 20 84 40 1",
+  "text 114 84 40 2",
+  "text 208 84 40 3",
+  "button 78 81 2640 2641 0 1",
+  "button 170 81 2640 2641 0 4",
+  "button 256 81 2640 2641 0 5",
+  "button 20 62 2118 2117 1 1 24",
+  "",                                    // Grafisches Abbild des Items
+
+  "page 1",
+  "text 14 120 40 6",
+  "text 120 120 40 7",
+  "text 14 145 40 8",
+  "text 120 145 40 9",
+  "text 14 170 40 10",
+  "text 120 170 40 11",
+  "text 14 195 40 12",
+  "text 120 195 40 13",
+  "text 14 220 40 14",
+  "text 120 220 40 15",
+  "text 14 245 40 16",
+  "text 120 245 40 17",
+  "text 14 270 40 18",
+  "text 120 270 40 19",
+  "text 14 295 40 20",
+  "text 120 295 40 21",
+  "text 14 320 40 39",
+  "text 120 320 40 40",
+  "button 270 120 2644 2645 0 2",        // -> Page 2 (Amount)
+  "button 270 145 2640 2641 1 1 2",      // X
+  "button 270 170 2640 2641 1 1 3",      // Y
+  "button 270 195 2640 2641 1 1 4",      // Z
+  "button 270 220 2640 2641 1 1 5",      // HP
+  "button 270 245 2644 2645 0 3",        // -> Page 3 (ar/dam mods)
+  "button 270 270 2640 2641 1 1 7",      // Graph
+  "button 270 295 2640 2641 1 1 8",      // Color
+  "button 450 320 2640 2641 1 1 9",      // Tooltip
+
+  "page 2",
+  "text 14 120 40 6",                    // Amount
+  "text 120 120 40 7",
+  "text 14 155 40 28",                   // Create Stack In Backpack
+ // "textentry 235 155 250 32 60 17 29",
+  "button 270 155 2640 2641 1 1 1",
+  "text 14 180 40 30",                   // Dupe Item In Backpack
+  "button 270 180 2640 2641 1 1 16",
+  "button 270 120 2645 2644 0 1",        // -> Page 1 (Amount)
+
+  "page 3",
+  "text 14 120 40 6",
+  "text 120 120 40 7",
+  "text 14 145 40 8",
+  "text 120 145 40 9",
+  "text 14 170 40 10",
+  "text 120 170 40 11",
+  "text 14 195 40 12",
+  "text 120 195 40 13",
+  "text 14 220 40 14",
+  "text 120 220 40 15",
+  "text 14 245 40 16",
+  "text 120 245 40 17",
+  "button 270 120 2644 2645 0 2",        // -> Page 2 (Amount)
+  "button 270 145 2640 2641 1 1 2",      // X
+  "button 270 170 2640 2641 1 1 3",      // Y
+  "button 270 195 2640 2641 1 1 4",      // Z
+  "button 270 220 2640 2641 1 1 5",      // HP
+  "button 270 245 2645 2644 0 1",        // -> Page 1
+  "text 14 270 40 31",                   // AR/Dmg Mod.
+  "text 120 270 40 32",                  // AR/Dmg Mod. Value
+  "button 270 270 2640 2641 1 1 6",
+
+  "page 4",
+  "text 14 120 40 22",                   // Destroy
+  "button 270 120 2640 2641 1 1 20",
+  "text 14 145 40 26",                   // Bounce
+  "button 270 145 2640 2641 1 1 21",
+  "text 14 170 40 27",                   // Set Movable
+  "button 270 170 2640 2641 1 1 22",
+  "text 14 195 40 25",                   // Set Newbie
+  "button 270 195 2640 2641 1 1 23"
+
+};
+
+var data := {
+  "",                         // 0 Item Name
+  "General",                  // 1
+  "Options",                  // 2
+  "Props",                    // 3
+  "temp",                     // 4
+  "/",                        // 5
+  "Amount",                   // 6
+  "",                         // 7 Item Amount
+  "X",                        // 8
+  "",                         // 9 X
+  "Y",                        // 10
+  "",                         // 11 y
+  "Z",                        // 12
+  "",                         // 13 z
+  "Hp/Mhp",                   // 14
+  "",                         // 15HP/MaxHP
+  "Armor",                    // 16
+  "",                         // 17 AR
+  "Graphic [Obj]",            // 18
+  "",                         // 19 Graphic
+  "Color",                    // 20
+  "",                         // 21 Color
+  "Destroy Item",             // 22
+  "",                         // 23
+  "Dupe Item",                // 24
+  "",                         // 25 SetNewbie
+  "Bounce Item in Backpack",  // 26
+  "",                         // 27 SetMovable
+  "Create Stack in Backpack", // 28
+  "0",                        // 29
+  "Dupe Item in Backpack",    // 30
+  "",                         // 31
+  "",                         // 32 Ar/Dmg Modifier
+  "",                         // 33 Ar/Dmg Modifier Value
+  "",                         // 34
+  "Int",                      // 35 Integer
+  "Real",                     // 36 Gleitkomma
+  "Str",                      // 37 String
+  "Kompl",                    // 38 Komplex (Array, Struct, Dictionary)
+  "Tooltip",                  // 39 Tooltip
+  ""                          // 40 TooltipString
+};
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program TextCMD_ItemInfo(who, params)
+  // nach Aufruftypen unterscheiden
+  var item;
+  If (TypeOfInt(who) == OT_STRUCT)
+    item := who.item;
+    who  := who.char;
+  EndIf
+
+  // Alle ab QuestChar duerfen, der Rest nich
+  If (who.cmdlevel < CMDLEVEL_QUESTCHAR)
+    SendSysMessagePergon(who,
+      "Ihr seid nicht befugt, diesen Befehl zu benutzen!",
+      "You are not authorizied to use this command!"
+    );
+    return;
+  EndIf
+
+  // noch kein Item durch externen Aufruf gesetzt?
+  If (!item)
+    If (CInt(params) > 0)
+      item := SystemFindObjectBySerial(CInt(params));
+      If (!item)
+        SendSysMessagePergon(who,
+          "Serial nicht gefunden.",
+          "Serial not found."
+        );
+        return;
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Wählt ein Item!");
+      item := Target(who, TGTOPT_NOCHECK_LOS);
+    EndIf
+  EndIf
+
+  If (item.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(who, "Ein Mobile ist kein gültiges Ziel!");
+    return;
+  EndIf
+  If (!item.isa(POLCLASS_ITEM))
+    SendSysMessagePergon(who,
+      "Kein normales Item - Wählt ein Static oder Paperdoll-Item!"
+    );
+
+    item := TargetCoordinates(who);
+    If (item.item)
+      item := item.item;
+    ElseIf (item)
+      item.+desc := "Static Item - Name leider nicht bestimmbar";
+      item.+graphic := item.objtype;
+      item.+amount := 1;
+      item.+color := 0;
+    Else
+      SendSysMessagePergon(who, "Ungültiges Ziel.");
+      return;
+    EndIf
+  EndIf
+
+  FillInItemInfo(item);
+  FillInProps(item, 5);
+
+  var result := SendDialogGump(who, layout, data);
+
+  Case (result[0])
+  1: 2: 3: 4: 5: 6: 7: 8:
+    EditItem(item, who, result[0]);
+    
+  9:
+    var text := RequestInputUC(who, who.backpack,
+      CAscZ("Welchen Text soll der Tooltip haben? (Abbruch = Löschen)"),
+      "DEU"
+    );
+    
+    If (text)
+      item.setprop("Tooltip", text.uc_text); 
+      IncRevision(item);
+    ElseIf (text == 0);
+      item.eraseprop("Tooltip");
+      SendSysMessagePergon(who, "Gelöscht");
+      IncRevision(item);
+    EndIf
+    
+  16:
+    CreateItemInContainerPergon(who.backpack, item.objtype, 1);
+    SysLog(CharInfoStr(who)+" dupliziert "+ItemInfoStr(item));
+  20:
+    SendSysMessagePergon(who, "Item zerstört.");
+    DestroyItem(Item);
+
+  21:
+    // ohne Losmachen wird es nichts
+    item.movable := 1;
+    If (MoveItemToContainer(item, who.backpack))
+      SendSysMessagePergon(who, "Item wurde in Euren Rucksack verschoben.");
+    Else
+      SendSysMessagePergon(who,
+        "Item konnte nicht in Euren Rucksack verschoben werden!"
+      );
+    EndIf
+
+  22:
+    item.movable := 1-item.movable;
+
+  23:
+    item.newbie := 1-item.newbie;
+
+  24:
+    // Name des Items
+    var name := RequestInput(who, who.backpack, "Neuer Name:");
+    If (name)
+      SetNamePergon(item, name);
+    EndIf
+  EndCase
+EndProgram
+
+////////////////////////////////////////////////////
+// FillInItemInfo - Infos ueber das Item eintragen
+////////////////////////////////////////////////////
+
+Function FillInItemInfo(item)
+  layout[12] := "tilepic 380 180 "+item.graphic;
+  data[1] := "Info fuer "+item.desc;
+
+  If (item.newbie)
+    data[26] := "Set Item not Newbie";
+  Else
+    data[26] := "Set Item Newbie";
+  EndIf
+
+  If (item.movable)
+    data[28] := "Set Item Unmovable";
+  Else
+    data[28] := "Set Item Movable";
+  EndIf
+
+  data[8] := item.amount;
+  data[10] := item.x;
+  data[12] := item.y;
+  data[14] := item.z;
+
+  If (item.isa(POLCLASS_WEAPON) Or item.isa(POLCLASS_ARMOR))
+    var weapfile := ReadConfigFile(":combat:itemdesc");
+    data[16] := item.hp+"/"+item.maxhp;
+
+    If (item.isa(POLCLASS_WEAPON)) // Siehe auch info.src
+      data[17] := "Damage";
+      data[18] := weapfile[item.objtype].damage;
+      data[32] := "Dmg modifier";
+      data[33] := item.dmg_mod;
+    ElseIf (item.ar)
+      data[17] := "Armor";
+      data[18] := item.ar;
+      data[32] := "Ar modifier";
+      data[33] := item.ar_mod;
+    EndIf
+  Else
+    data[16] := "n/a";
+    data[17] := "Ar/Dam";
+    data[18] := "n/a";
+    layout[36] := 0;
+    layout[37] := 0;
+  EndIf
+
+  data[20] := Lower(Hex(item.graphic))+" ["+Lower(Hex(item.objtype))+"]";
+  data[22] := item.color;
+  
+  If (item.getprop("Tooltip"))
+    data[41] := CChrZ(item.getprop("Tooltip"));
+  EndIf
+
+EndFunction
+
+//////////////////////////////////////////////
+// EditItem - Veraendert die Werte des Items
+//////////////////////////////////////////////
+
+Function EditItem(item, who, result)
+  SendSysMessagePergon(who, "Changes are made immediately, Integers only. Hit Esc to cancel.");
+
+  var val := RequestInputPergon(who, who.backpack, "Enter a new value.");
+  if (val)
+    val := CChrZ(val.uc_text);
+  endif
+
+  If (TypeOfInt(val)<>OT_STRING) // Beim echten Abbruch liefert der 0 als Integer...
+    SendSysMessagePergon(who, "Cancelled.");
+    return;
+  EndIf
+  val := CInt(val);
+
+  Case (result)
+    1: CreateItemInInventoryPergon(who.backpack, item.objtype, val); //SetAmount(item) := val;
+       SendSysMessagePergon(who, "You have just created "+val+" "+item.desc+" in your backpack.");
+       SysLog(CharInfoStr(who)+" erzeugte "+val+" "+ItemInfoStr(item));
+    2: MoveObjectToLocation(item, CInt(val), item.y, item.z, item.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+
+    3: MoveObjectToLocation(item, item.x, CInt(val), item.z, item.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+
+    4: MoveObjectToLocation(item, item.x, item.y, CInt(val), item.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+
+    5: LogModification(who, item, "hp", item.hp, CInt(val));
+       item.hp := CInt(val);
+       IncRevision(item);
+
+    6: If (item.isa(POLCLASS_WEAPON))
+         LogModification(who, item, "dmg_mod", item.dmg_mod, CInt(val));
+         item.dmg_mod := CInt(val);
+       ElseIf (item.isa(POLCLASS_ARMOR))
+         LogModification(who, item, "ar_mod", item.ar_mod, CInt(val));
+         item.ar_mod := CInt(val);
+       EndIf
+
+    7: item.graphic := CInt(val);
+
+    8: item.color := CInt(val);
+  EndCase
+EndFunction
+
+////////////////////////////////////////////////
+// LogModification - Loggt bestimmte Infos mit
+////////////////////////////////////////////////
+
+Function LogModification(who, item, propname, value, newvalue)
+  var container := item.container;
+  While (container.container)
+    container := container.container;
+  EndWhile
+
+  var addinfo := "";
+  If (container.serial<>who.serial) // Befindet sich nicht im Backpack des aendernden
+    addinfo := " / Mastercontainer "+Lower(Hex(container.serial));
+  EndIf
+
+  SysLog("ITEMINFOCMD: "+who.name+" ["+who.acctname+" / "+Lower(Hex(who.serial))+" / "+GetCMDLevelTitle(who.cmdlevel)+"] bei "+who.x+" "+who.y+" "+who.z+" aendert die Prop "+propname+" bei "+item.desc+" ["+Lower(Hex(item.serial))+addinfo+"] von "+value+" auf "+newvalue);
+ // QuestCharLog(who, "TextCMD ItemInfo: '"+item.desc+"' ["+Lower(Hex(item.objtype))+"] ["+item.x+", "+item.y+", "+item.z+"]");
+EndFunction
+
+////////////////////////////////////////
+// FillInProps - Setzt alle Properties
+////////////////////////////////////////
+
+Function FillInProps(item, firstpage)
+  // layout[22] := "button 266 41 2640 2641 0 "+CStr(firstpage);
+
+  var properties := { };
+
+  var append;
+  ForEach propname in GetObjPropertyNames(item)
+    SleepMS(2);
+    append := 1;
+    If (propname[1, 3]==SKILLWERTKENNUNG)
+      var propnamepart := propname;
+      propnamepart[1, 3] := "";
+      If (IsSkillNameDefinied(propnamepart))
+        append := 0;
+      EndIf
+    ElseIf (propname[1, 5]==SKILLTYPKENNUNG)
+      If (IGNORE_TYPES[" "+GetObjProperty(item, propname)+" "])
+        var propnamepart := propname;
+        propnamepart[1, 5] := "";
+        If (IsSkillNameDefinied(propnamepart))
+          append := 0;
+        EndIf
+      EndIf
+    ElseIf (IGNORE_PROPS[" "+propname+" "])
+      append := 0;
+    EndIf
+
+    If (append)
+      properties.append(propname);
+    EndIf
+  EndForEach
+
+  var pages := CInt(properties.size()/14);
+  If (pages*14<properties.size())
+    pages+=1;
+  ElseIf (pages==0)
+    pages := 1;
+  EndIf
+
+  var page;
+  For (page := 1; page<=pages; page+=1)
+    FillInPropsPage(item, properties, pages, page, firstpage-1);
+  EndFor
+EndFunction
+
+////////////////////////////////////////////
+// FillInPropsPage - Einzelseiten erzeugen
+////////////////////////////////////////////
+
+Function FillInPropsPage(item, ByRef properties, pages, page, firstpage)
+  layout.append("page "+CStr(firstpage+page));
+
+  If (pages>1)
+    If (page==1)
+      layout.append("button 295 315 2648 2647 0 "+CStr(firstpage+page+1));
+    ElseIf (page==pages)
+      layout.append("button 295 90 2650 2651 0 "+CStr(firstpage+page-1));
+    Else
+      layout.append("button 295 90 2650 2651 0 "+CStr(firstpage+page-1));
+      layout.append("button 295 315 2648 2647 0 "+CStr(firstpage+page+1));
+    EndIf
+  EndIf
+
+  var startprop := page*14-13;
+  var endprop := page*14;
+  If (endprop>properties.size())
+    endprop := properties.size();
+  EndIf
+
+  var y_mod;
+  var value;
+  var color;
+  var prop;
+  For (prop := page*14-13; prop<=endprop; prop+=1)
+    SleepMS(2);
+    y_mod := (prop-startprop)*15;
+    value := GetObjProperty(item, properties[prop]);
+
+    Case (TypeOfInt(value))
+      OT_LONG: color := " 1 ";
+      OT_DOUBLE:  color := " 66 ";
+      OT_STRING:  color := " 32 ";
+      default:   color := " 23 ";
+    EndCase
+
+    layout.append("text 24 "+CStr(110+y_mod)+color+CStr(data.size()));
+    layout.append("text 175 "+CStr(110+y_mod)+" 5 "+CStr(data.size()+1));
+    data.append(properties[prop]);
+    data.append(value);
+  EndFor
+
+  layout.append("text 24 320 1 35");
+  layout.append("text 50 320 66 36");
+  layout.append("text 86 320 32 37");
+  layout.append("text 115 320 23 38");
+EndFunction
+
+// vim: sw=2 sts=2

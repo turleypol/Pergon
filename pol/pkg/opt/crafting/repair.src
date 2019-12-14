@@ -1,0 +1,223 @@
+///////////////////////////////////////////////////////////////////////////
+// repair -- ein Item reparieren
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use attributes;
+use math;
+use os;
+use uo;
+use util;
+Include "include/client";
+Include "include/itemnpc";
+Include "include/modifyskill";
+Include "include/objtype";
+
+Program Use_Repair(who, item)
+  SendSysMessagePergon(who, "Wählt das defekte Teil aus.", "Choose an item to repair.");
+  Var what := target(who, TGTOPT_CHECK_LOS);
+  if (!what)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  endif
+
+  If (!what.isa(POLCLASS_ITEM))
+    SendSysMessagePergon(who, "Dies ist kein Gegenstand!", "That's no item!");
+    Return;
+  EndIf
+
+  If (!IsReparabel(what))
+    SendSysMessagePergon(who, "Eine fremde Macht untersagt das Reparieren dieses veralteten Gegenstandes!",
+                              "A strange might stops you from repairing this obsolete item!");
+   // SysLog("WARNUNG: Es ist immernoch ein alter Gegenstand im Umlauf ("+Lower(Hex(what.serial))+" - "+what.desc+") !");
+    Return;
+  EndIf
+
+  if (what.container.serial != who.backpack.serial)
+    SendSysMessagePergon(who, "Das Item muss direkt in Eurem Rucksack liegen.",
+                              "This item has to be located in your backpack.");
+    return;
+  endif
+  
+  If (what.getprop("spell_rust"))
+  	//magisch verrostete gegenstände müssen erst davon befreit werden
+  	SendSysMessagePergon(who, "Dieser Gegenstand ist von magischem Rost befallen und kann nicht repariert werden.",
+  							"This item has magic rust.");
+  	Return;
+  EndIf
+  
+  if (what.serial == item.serial)
+    SendSysMessagePergon(who, "Ihr könnt das nicht mit sich selbst reparieren!",
+                              "You cannot repair that by itself.");
+    return;
+  endif
+
+  if (!checkforanvil(who))
+    SendSysMessagePergon(who, "Ihr müsst in der Nähe eines Ambosses stehen, um das zu reparieren!",
+                              "You have to stand close to an anvil to repair this.");
+    return;
+  endif
+
+  reserveitem(item);
+  reserveitem(what);
+
+  Var reparaturkit:=GetPropertyItem(item);
+  Var item_to_repair:=GetPropertyItem(what);
+
+/*
+    if (who.cmdlevel >= CMDLEVEL_SEER)
+    print("**********repair.src*********");
+    print("reparaturkit.quality: "+reparaturkit.quality);
+    print("reparaturkit.hp: "+reparaturkit.hp);
+    print("reparaturkit.maxhp: "+reparaturkit.maxhp);
+    print("-----------------------------");
+    print("Quality Item: "+item_to_repair.quality);
+    print("Quali Item orig: "+item_to_repair.qualityorig);
+    print("Hp Item: "+item_to_repair.hp);
+    print("Maxhp Item: "+item_to_repair.maxhp);
+    print("Maxhp Item orig: "+item_to_repair.maxhporig);
+    print("Item Type: "+item_to_repair.type);
+    print("Item SkillID: "+item_to_repair.skillid);
+    print("Item Skillrepair: "+item_to_repair.skillrepair);
+    print("Char Skill: "+GetSkillPergon(who, item_to_repair.skillid));
+    print("Item Price: "+item_to_repair.price);
+    print("Quality -: "+(item_to_repair.qualityorig-item_to_repair.quality));
+    print("Hp -: "+cint(item_to_repair.maxhporig-item_to_repair.hp));
+    print("*****************************");
+  EndIf
+*/
+
+  if ((!item_to_repair.skillrepair) or (!item_to_repair.skillid))
+    SendSysMessagePergon(who, "Das könnt Ihr nicht reparieren.", "You cannot repair this.");
+    return;
+  endif
+
+  if (GetSkillPergon(who, item_to_repair.skillid)+reparaturkit.quality+5+25<item_to_repair.skillrepair) // reparatur bei -5% unter eigentlichem skill%
+    SendSysMessagePergon(who, "Ihr habt noch nicht die Fähigkeiten das zu reparieren.",
+                              "You're not skilled enough to repair this.");
+    return;
+  endif
+
+  if ( ((item_to_repair.qualityorig-item_to_repair.quality)<0.1) and (cint(item_to_repair.maxhporig-item_to_repair.hp)<1.0) )
+    SendSysMessagePergon(who, "Das braucht nicht repariert zu werden.",
+                              "This doesn't need to be repaired.");
+  else
+    // Starte Reparatur
+    Var x:=who.x; Var y:=who.y; Var ok:=0; Var i;
+
+    Var skill_reparatur:=cint(item_to_repair.skillrepair-reparaturkit.quality); // berechnet sich aus den Skill% beim Herstellen des Items - der Reparaturkit.quality
+    if (skill_reparatur<1) skill_reparatur:=1; endif // Absicherung, falls Reparaturkit.quality>Reparaturskill ist
+
+    while ((x==who.x) and (y==who.y) and (ok==0))
+      item_to_repair:=GetPropertyItem(what); // muss in der Schleife staendig aktuallisiert werden
+      for (i := 1 ; i <= 4; i += 1)
+        PlaySoundEffect(who, SFX_ANVIL);
+        performaction(who, UACTION_PICK);
+        sleep (1);
+        PlaySoundEffect(who, SFX_ANVIL);
+        performaction(who, UACTION_PICK);
+        sleep (1);
+        PlaySoundEffect(who, SFX_ANVIL);
+        performaction(who, UACTION_PICK);
+        sleep (1);
+      endfor
+      if (CheckSkillPergon(who, item_to_repair.skillid, skill_reparatur-15, cint(item_to_repair.skillrepair*3)))
+
+        item_to_repair.hp:=item_to_repair.hp+cint(randomint(10)+5); // Hp werden wieder aufgefuellt
+        if (item_to_repair.hp>item_to_repair.maxhporig)
+          item_to_repair.hp:=item_to_repair.maxhporig;
+        endif
+        item_to_repair.quality:=item_to_repair.quality+0.2; // Quality wird wieder aufgefuellt
+
+        if (item_to_repair.quality>item_to_repair.qualityorig)
+          item_to_repair.quality:=item_to_repair.qualityorig;
+        endif
+
+        if (( (item_to_repair.qualityorig-item_to_repair.quality)<0.1 ) and ( cint(item_to_repair.maxhporig-item_to_repair.hp)<1.0))
+          ok:=1;
+          SendSysMessagePergon(who, "Alle Schäden sind behoben.", "All damages were repaired.");
+        else
+          SendSysMessagePergon(who, "Noch nicht alle Schäden sind behoben. Ihr müsst weitermachen.",
+                                    "There are still damages on the item. You have to continue.");
+        endif
+
+        if (ok==1)
+          item_to_repair.qualityorig:=item_to_repair.qualityorig-0.1; // bei jeder reparatur abzug qualy-0.1, hp-1
+          item_to_repair.maxhporig:=item_to_repair.maxhporig-1;
+          if (item_to_repair.hp>item_to_repair.maxhporig)  // Falls es durch den Abzug drüber ist..
+            item_to_repair.hp:=item_to_repair.maxhporig;
+          endif
+          if (item_to_repair.quality>item_to_repair.qualityorig)
+            item_to_repair.quality:=item_to_repair.qualityorig;
+          endif
+        endif
+        SetPropertyItem(what, item_to_repair.quality, item_to_repair.hp, item_to_repair.maxhp, item_to_repair.qualityorig, item_to_repair.maxhporig, item_to_repair.type, item_to_repair.skillid, item_to_repair.skillrepair, item_to_repair.price);
+      else
+        SendSysMessagePergon(who, "Das ging daneben.", "You failed.");
+        if (SetWerkzeugSchaden(who, item, "Euer Reparaturkit hat gelitten!", "Euer Reparaturkit ist stark beschädigt!", "Euer Reparaturkit wurde zerstört!")) // bei Fehlversuchen kann das Reparaturkit leiden
+          ok:=1;
+        endif
+        if ( ((item_to_repair.quality-0.2)<0.1) or (cint(item_to_repair.hp-5)<2.0) )
+          SendSysMessagePergon(who, "Der Schaden war zu groß. Das Reparaturstück ist zerfallen.",
+                                    "The item disintegrates due to heavy damages.");
+          DestroyItem(what);
+          ok:=1;
+        else
+          SetPropertyItem(what, item_to_repair.quality-0.2, item_to_repair.hp-5, item_to_repair.maxhp, item_to_repair.qualityorig, item_to_repair.maxhporig, item_to_repair.type, item_to_repair.skillid, item_to_repair.skillrepair, item_to_repair.price);
+        endif
+        sleep (1);
+      endif
+    endwhile
+    SendSysMessagePergon(who, "Reparatur beendet.", "Repair finished.");
+  endif
+EndProgram
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+// IsReparabel - Kann der Gegenstand repariert werden (abhaengig vom zusaetzlichen Serial-Check)?
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// Blocken:
+//   alles was keine Armor ist (Waffen + Werkzeuge)
+//   nur Platte/Helme/Schilde/Rindmail/Chainmail/beschlagenes Leder/Sonstiges
+
+Function IsReparabel(item)
+  Var exportedserial:=GetObjProperty(item, "ExportedSerial"); // Container-/Equipmentexport
+  If (!exportedserial)
+    exportedserial:=item.serial;
+  EndIf
+
+  If (item.serial<0x4102b988) // Shinigami: Neue Quality etc.pp. Werte... (23.03.2003)
+    Return (0); // quasi antik
+  ElseIf ((item.serial<=0x472bcb33) Or (exportedserial<=0x472bcb33)) // Commander: neue props, qualis usw. (ct-vergleich is doof) (28.01.2005)
+    If (item.isa(POLCLASS_ARMOR))
+      If (item.objtype in {0x1410, 0x1411, 0x1413, 0x1414, 0x1415, 0x1416, 0x1417, 0x1418, 0x141a, 0x1c04, // Platte
+          0x1408, 0x1409, 0x140a, 0x140b, 0x140c, 0x140d, 0x140e, 0x140f, 0x1412, 0x1419,                  // Helme
+          0x1b72, 0x1b73, 0x1b74, 0x1b75, 0x1b76, 0x1b77, 0x1b78, 0x1b79, 0x1b7a, 0x1b7b, 0x1bc3, 0x1bc4,  // Schilde
+          0x13ec, 0x13ed, 0x13ee, 0x13ef, 0x13f0, 0x13f1, 0x13f2,                                          // Ringmail
+          0x13bb, 0x13be, 0x13bf, 0x13c0, 0x13c3, 0x13c4,                                                  // Chainmail
+          0x13d4, 0x13d5, 0x13d6, 0x13da, 0x13db, 0x1c00, 0x1c02, 0x1c06, 0x1c0c, 0x8060,                  // beschlagenes Leder
+          0xbfbb, 0xbfbe, 0xbfbf, 0xcdab})                                                                 // Sonstiges
+        Return (0);
+      Else
+        Return (1); // normales Leder, Knochenrüsten, normale Kleider, ...
+      EndIf
+    Else
+      Return (0); // Waffen oder Werkzeuge
+    EndIf
+  Else
+    Return (1); // Was Neues...
+  EndIf
+EndFunction
+
+//////////////////////////////////////////
+// CheckForAnvil - Hab ich einen Amboss?
+//////////////////////////////////////////
+
+Function CheckForAnvil(character)
+  ForEach item in ListItemsNearLocation(character.x, character.y, character.z, 2,character.realm)
+    If ((item.objtype==UOBJ_ANVIL1) Or (item.objtype==UOBJ_ANVIL2))
+      Return (1);
+    EndIf
+  EndForEach
+EndFunction

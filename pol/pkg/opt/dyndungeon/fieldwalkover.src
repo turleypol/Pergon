@@ -1,0 +1,48 @@
+/////////////////////////////////////////////////////////
+//
+//   fieldwalkover - Schickt an Controlscript Meldung
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     24.04.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+
+Include ":dyndungeon:dyndungeon";
+Include "include/client";
+Include "include/eventid";
+
+Program fieldwalkover(who,item)
+  If (who.isA(POLCLASS_NPC)) // NPCs dürfen nicht
+    Return;
+  EndIf
+
+  PlaySoundEffect(who, SFX_DYN_WALKFIELD);
+  If (item.getprop(CPITEM_STATE))
+    // schon betreten
+    return;
+  Else
+    item.setprop(CPITEM_STATE, 1);
+  EndIf
+
+  var control:=item.getprop(CPMOB_CONTROL);
+  If (!control)
+    Return;
+  EndIf
+  control:=GetProcess(control);
+  If (!control)
+    Return;
+  EndIf
+  var ev:=struct;
+  ev.+type        :=EVID_DUNGEONWALKOVER;
+  ev.+FieldID     :=item.getprop(CPTELE_FIELDID);
+  ev.+playerserial:=who.serial;
+  ev.+FieldSerial :=item.serial;
+  control.sendevent(ev);
+EndProgram

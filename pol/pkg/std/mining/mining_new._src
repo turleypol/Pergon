@@ -1,0 +1,515 @@
+/////////////////
+// mining.src
+//
+// By using a shovel or pickaxe on cave tile this script allows
+// the harvesting of ore. Special reagents or colored ore are
+// possible to find. You get more ore per dig the higher your
+// skill is.
+//
+// If a shovel is used on a swamp tile, clay is digged up and
+// can be used to make pots, jars, etc.
+//
+// Authors: DreamWeaver:
+//               original
+//          Racalac:
+//               5/8/99 colored ore, resource use
+
+//////////////////////////
+//
+//   ModIfication:
+//     2001/05/17 Pauker
+//     23.06.2002 Fraggulus: is_minable() und is_sand() mit jeweiliger Resources-cfg arbeiten lassen
+//                           Zufaelliges Finden von Reagenzien (Feuerstein, Bimsstein, schw. Perle) oder Edelsteinen beim Sandgraben
+//                           Zufaelliges Finden von Reagenzie  (Blackrock) beim Erzegraben
+//
+//////////////////////////
+
+// Hmm, mal nach '???' suchen
+//   IsMinable nochmal genauer Pruefen... weil, bei 'GetHarvestDifficulty("ore", use_on.x, use_on.y, use_on.objtype);' war die y-koord falsch
+//   Hmm, wenn ich den Skill garnicht habe, krieg ich dann trotzdem was raus?
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use cfgfile;
+Use util;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/client";
+Include "include/objtype";
+Include "include/dist";
+Include "include/utility";
+Include "include/itemnpc";
+Include "include/modifyskill";
+
+///////////////
+// Konstanten
+///////////////
+
+Var UOBJ_EDELSTEINE:={0x0f0f, 0x0f10, 0x0f11, 0x0f13, 0x0f15, 0x0f16, 0x0f18, 0x0f25, 0x0f30};
+
+Const UOBJ_SCHAUFEL:=0x0f39;
+Const UACTION_PICK:=0x0b;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Skill_Mining(who, pickaxe)
+  ReserveItem(pickaxe); // Die Picke exklusiv benutzen...
+
+  If (who.multi) // Waere ja noch schoener... gemuetlich im Sessel und so
+    SendSysMessagePergon(who, "Ihr koennt nicht in Haeueser schuerfen!");
+    Return;
+  EndIf
+
+  If (IsPickAxeEquipped(who, pickaxe)) // Befindet sich mein Schuerfgeraet in meiner Reichweite?
+    SendSysMessagePergon(who, "Waehlt einen Platz zum Schuerfen aus!");
+
+    Var use_on:=TargetCoordinates(who);
+    If (use_on) // Einen Platz zum Schuerfen gewaehlt?
+      If (CoorDist(who.x, who.y, use_on.x, use_on.y)>2) // Entferung bestimmen
+        SendSysMessagePergon(who, "Das ist zu weit weg!");
+        Return;
+      EndIf
+
+      SendSysMessagePergon(who, "Ihr beginnt zu graben."); // Als ob der User das nich selber wuesste... tzzz...   :oP
+
+      Var werkzeug:=GetPropertyItem(pickaxe); // Werkzeug-Eigenschaften auslesen
+      Var werkzeug_quality:=werkzeug.quality;
+      Var werkzeug_skill:=werkzeug.quality;
+      Var werkzeug_hp:=werkzeug.hp;
+      Var werkzeug_maxhp:=werkzeug.maxhporig;
+
+      If (werkzeug_skill<1) // Sicherstellen, dass mind. 1 Erz rauskommt, selbst bei mieserabelstem Werkzeug
+        werkzeug_quality:=1;
+        werkzeug_skill:=1;
+      EndIf
+
+      Var maxcount:=80;  // Mehr als 80 Versuch pro einmal Ansetzen waeren 'n bisschen viel
+      Var count:=1;      // Wieviel Versuche hab ich schon verbraucht?
+      Var abnutzung;     // Wie sehr ist das Schuerfwerkzeug schon abgenutzt? (%'te)
+      Var message_50:=0; // Wurde die Msg. "Euer Werkzeug ist Stumpf!"                  schon angezeigt?
+      Var message_20:=0; // Wurde die Msg. "Euer Werkzeug ist kaum noch zu gebrauchen!" schon angezeigt?
+      Var num_chops;     // Wie lange dauert es, bis ich fuendig werde?
+
+      Var oldx:=who.x;   // Wo befinde ich mich gerade?
+      Var oldy:=who.y;
+      Var oldz:=who.z;
+
+      While (count<=maxcount) // Na dann wollen wir mal schuerfen...
+        abnutzung:=werkzeug_hp*100.0/werkzeug_maxhp; // Wie sehr ist das Schuerfwerkzeug schon abgenutzt? (%'te)
+        If (abnutzung<20) // Naja, nichmalmehr zu 20% brauchbar
+          If (!message_20) // Den Spieler nerven
+            SendSysMessagePergon(who, "Euer Werkzeug ist kaum noch zu gebrauchen!", _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+            message_20:=1; // Einmal nerven reicht
+          EndIf
+        ElseIf (abnutzung<50) // Schon besser, aber trotzdem nichmalmehr zu 50% brauchbar
+          If (!message_50) // Den Spieler nerven
+            SendSysMessagePergon(who, "Euer Werkzeug ist Stumpf!", _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+            message_50:=1; // Einmal nerven reicht
+          EndIf
+        EndIf
+
+        If (abnutzung<50) // Schon ziemlich abgenutzt, deshalb dauerts etwas laenger
+          num_chops:=CInt((100.0-abnutzung)*0.05)+1; // Ich brauche 2 bis 5 Sekunden _mehr_ zum Hacken, weil mein Werkzeug so kaputt ist
+        Else
+          num_chops:=1; // Eine Sekunde zum Hacken
+        EndIf
+
+        For chop:=1 To num_chops // Eine Weile rumhacken, um was zu finden...
+          PerformAction(who, UACTION_PICK); // Damits schoen aussieht
+          PlaySoundEffect(who, SFX_PICK);
+          Sleep(1);
+
+          If ((who.x<>oldx) Or (who.y<>oldy) Or (who.z<>oldz)) // Hab ich mich bewegt?
+            SendSysMessagePergon(who, "Ihr seid nicht konzentriert bei eurer Arbeit!");
+            count:=maxcount+1; // Kuenstlichen Abbruch herbeifuehren
+          EndIf
+        EndFor
+
+        Var info:=GetMapInfo(use_on.x, use_on.y); // Worauf hack ich eigentlich grad rum?
+        If (Is_Sumpf(info.landtile))                                         // Befinde ich mich im Sumpf?
+          DigForClay(who, use_on, info.landtile, pickaxe, werkzeug_quality); //   Nach Lehm suchen...
+        ElseIf (Is_Minable(use_on, info.landtile))                           // Kann ich hier Erze finden?
+          MineForOre(who, use_on, info.landtile, pickaxe, werkzeug_quality); //   Nach richtigen Erzen suchen...
+        Else                                        // Woanders
+          DigForSand(who, use_on, info, pickaxe);   //   Sand is auch ganz schoen...
+        EndIf
+
+        count:=count+1; // Einen Versuch aufbrauchen
+      EndWhile
+
+      SendSysMessagePergon(who, "Ihr hoert auf zu graben.");
+    Else
+      SendSysMessagePergon(who, "Abbruch");
+    EndIf
+  EndIf
+EndProgram
+
+//////////////////////////////////////////////////////////////////////////////////
+// IsPickAxeEquipped - // Befindet sich mein Schuerfgeraet in meiner Reichweite?
+//////////////////////////////////////////////////////////////////////////////////
+
+Function IsPickAxeEquipped(who, pickaxe)
+  Var result:=0;
+
+  If (AccessiblePergon(who, pickaxe) And (Distance(who, pickaxe)<=1)) // Komm ich da ran?
+    If (pickaxe.objtype=UOBJ_SCHAUFEL) // Ist es eine Schaufel?
+      If (pickaxe.container=who.backpack) // Und befindet sie sich [direkt] im Backpack?
+        result:=1; // Jupp, fein
+      Else
+        SendSysMessagePergon(who, "Zum Schuerfen muss sich die Schaufel im Backpack befinden!");
+      EndIf
+    Else // Keine Schaufel, irgendwas anderes zum Schuerfen...
+      Var itemlayer:=pickaxe.layer; // In welcher Hand muesste sich das Teil befinden?
+      If (itemlayer in {LAYER_HAND1, LAYER_HAND2}) // Is doch was zum in die Hand nehmen?
+        Var itemequipped:=GetEquipmentByLayer(who, itemlayer); // Was trage ich in dieser Hand?
+        If (itemequipped)
+          If (itemequipped.serial=pickaxe.serial) // Ist es mein Schuerfgeraet?
+            result:=1; // Jupp
+          Else // Hab was anderes in meiner Hand...
+            SendSysMessagePergon(who, "Zum Schuerfen muesst Ihr das in die Hand nehmen, wenn sie denn frei waere!");
+          EndIf
+        Else // Meine Hand ist leer...
+          result:=EquipItem(who, pickaxe); // Also versuch ich mal, es zu equippen
+
+          If (!result) // Hmm, ging wohl nich, Mist
+            SendSysMessagePergon(who, "Zum Schuerfen muesst Ihr das in die Hand nehmen!");
+          EndIf
+        EndIf
+      Else
+        SendSysMessagePergon("Wendet Euch an einen GM! Dieses Item kann man garnicht in die Hand nehmen");
+        SysLog("FEHLER: SchuerfItem "+item.desc+" ("+Lower(Hex(pickaxe.objtype))+") kann man garnicht in die Hand nehmen!");
+      EndIf
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr kommt dort nicht ran!");
+  EndIf
+
+  Return (result);
+EndFunction
+
+////////////////////////////////////////////////////////////////////////////
+// Is_Sumpf - Befinde ich mich im Sumpf? Koennte hier Lehm zu finden sein?
+////////////////////////////////////////////////////////////////////////////
+
+Function Is_Sumpf(landtile)
+  If ((0x3d65<=landtile) And (landtile<=0x3ef0)) // Sumpf oder nicht Sumpf?
+    Return (1); // Hier kann man schuerfen
+  Else
+    Return (0);
+  EndIf
+EndFunction
+
+////////////////////////////////////////////
+// Is_Minable - Kann ich hier Erze finden?
+////////////////////////////////////////////
+
+Function Is_Minable(use_on, landtile)
+  If (GetHarvestDifficulty("ore", use_on.x, use_on.y, use_on.objtype) Or GetHarvestDifficulty("ore", use_on.x, use_on.y, landtile)) // Gibts hier Erze?
+    Return (1); // Hier kann man schuerfen
+  Else
+    Return (0);
+  EndIf
+EndFunction
+
+///////////////////////////////////////////////////////////////
+// DigForClay - Ich befinde mich im Sumpf und suche nach Lehm
+///////////////////////////////////////////////////////////////
+
+Function DigForClay(who, use_on, landtile, pickaxe, werkzeug_quality)
+  Var difficulty:=GetHarvestDifficulty("clay", use_on.x, use_on.y, landtile);
+
+
+
+
+
+  If (difficulty)
+    //
+  Else
+    SendSysMessagePergon(who, "Hier gibt es keinen Lehm mehr."); // Das weiss man aber nur, wenn man gesucht hat, also Abnutzung
+
+    SetWerkzeugSchaden(who, pickaxe, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschaedigt!", "Euer Werkzeug ist zerbrochen!");
+  EndIf
+
+
+      If (difficulty<>error)
+        If (difficulty)
+          SendSysMessagePergon(who, "Hier koennte man was finden.");
+        Else
+          SendSysMessagePergon(who, "Hier ist grad alles weggeschuerft!");
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Hier koennte man nie irgendwas finden!");
+      EndIf
+
+
+
+
+
+  difficulty:=CInt(difficulty-werkzeug_quality);
+
+  If (difficulty<1)
+    difficulty:=1; // Ich hab generell ueberall eine gewisse Chance was zu finden
+  EndIf
+
+  If (CheckSkillPergon(who, SKILLID_ERZABBAU, difficulty, werkzeug_quality*10))) // Bin ich erfolgreich?
+    Var amount:=HarvestResource("clay", use_on.x, use_on.y, 1, CInt(werkzeug_quality)); // Liefert 1*RandomInt(werkzeug_quality) und zieht intern was ab
+    If (amount)
+      CreateItemInBackpackPergon(who, UOBJ_CLAY, amount);
+
+      SendSysMessagePergon(who, "Ihr stapelt einige Lehmbrocken in Euren Rucksack.");
+    Else
+      SendSysMessagePergon(who, "Hier gibt es keinen Lehm.");
+    EndIf
+  Else // Noe...
+    SendSysMessagePergon(who, "Ihr findet keinen Lehm.");
+
+    HarvestResource("clay", use_on.x, use_on.y, 1, 1); // ...trotzdem die Ressourcen beinflussen
+    SetWerkzeugSchaden(who, pickaxe, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschaedigt!", "Euer Werkzeug ist zerbrochen!");
+  EndIf
+EndFunction
+
+/////////////////////////////////////////////////////////////////////
+// MineForOre - Ich befinde mich in einer Mine und suche nach Erzen
+/////////////////////////////////////////////////////////////////////
+
+Function MineForOre(who, use_on, landtile, pickaxe, werkzeug_quality)
+  If (werkzeug_quality+RandomInt(100)>=60) // 40% Farb-Chance
+    Return (MakeColoredOre(who, use_on.x, use_on.y, info.landtile, pickaxe); // ???
+  Else
+    Var amount:=GetSkillPergon(who, SKILLID_ERZABBAU)+werkzeug_skill;
+
+    Var difficulty:=GetHarvestDifficulty("ore", use_on.x, use_on.y, info.landtile);
+
+    If (CheckSkillPergon(who, SKILLID_ERZABBAU, difficulty, CInt(werkzeug_quality*35))) // Bin ich erfolgreich?
+      //
+    ElseIf ( !dIffi )
+			SendSysMessagePergon(who, "Hier gibt es kein Erz mehr.");
+			Return 1;
+		Else
+			SendSysMessagePergon(who, "Ihr findet absolut kein Erz.");
+			If (SetWerkzeugSchaden(who, pickaxe, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschaedigt!", "Euer Werkzeug ist zerbrochen!"))
+				Return(1);
+			EndIf
+		EndIf
+
+
+
+			If (RandomInt(1000) >= 1)	// zu 99.9% normales Erzbuddeln
+
+				Var num := HarvestResource("ore", use_on.x, use_on.y, 1, cint(werkzeug_quality));
+				CreateItemInBackpackPergon(who, UOBJ_EISEN_ERZ, num );
+				SendSysMessagePergon(who, "Ihr legt " + num + " Eisenerz in Euren Rucksack.");
+
+        	Else	// Rest: zufaelliges Finden von Reagenzie Blackrock
+        		If (RandomInt(100) < 3)		// Blackrock
+					Var ReagItem := CreateItemInBackpackPergon(who, UOBJ_BLACKROCK, 1);
+					If (ReagItem)
+						SendSysMessagePergon(who, "Ihr findet eine Blackrock-Reagenzie und legt sie in Euren Rucksack.");
+					Else
+						SendSysMessagePergon(who, "Scheinbar ist Euer Rucksack zu voll. Ihr koennt die Blackrock-Reagenzie nicht darin ablegen!");
+					EndIf
+				Else
+					Var Edelstein := CreateItemInBackpackPergon(who, UOBJ_EDELSTEINE[RandomInt(Len(UOBJ_EDELSTEINE)) + 1], 1);
+					If (Edelstein)
+						SendSysMessagePergon(who, "Ihr findet einen Edelstein und legt ihn in Euren Rucksack.");
+					Else
+						SendSysMessagePergon(who, "Scheinbar ist Euer Rucksack zu voll. Ihr koennt den Edelstein nicht darin ablegen!");
+					EndIf
+				EndIf
+			EndIf
+
+	EndIf
+
+	Return 0;
+EndFunction
+
+
+
+
+
+
+
+
+
+
+Function is_sand(theobj, othertype)
+
+	Var DIff_Mining_Map0 := GetHarvestDifficulty("sand", othertype.x, othertype.y, theobj);
+
+	If (DIff_Mining_Map0)
+		Return 1;
+	Else
+		Return 0;
+	EndIf
+
+EndFunction
+
+
+
+
+Function MakeColoredOre( who , x , y , tiletype, pickaxe )
+
+    Var chance :=(randomint(100) + 1);
+    Var amount := cint(werkzeug_quality);
+    Var num;
+
+    Var dIffi := GetHarvestDifficulty( "ore" , x , y , tiletype )-werkzeug_quality;
+
+    Var success := CheckSkillPergon( who, SKILLID_ERZABBAU, cint(dIffi) , cint(werkzeug_quality*25) );
+    print("dIffi:"+dIffi);
+    print("succes:"+success);
+
+    If((success) and (dIffi))
+            // maybe make an array and use a loop?
+        If (chance <= 3)
+          If ( CheckSkillPergon( who, SKILLID_ERZABBAU, cint(115-werkzeug_quality) , cint(werkzeug_quality*275) ) )
+            num := HarvestResource( "ore" , x , y , 1 , amount );
+            CreateItemInBackpackPergon( who, UOBJ_TITANIUM_ERZ, num );
+            SendSysMessagePergon(who, "Ihr stapelt " + num + " Titaniumerz in Euren Rucksack.");
+          EndIf
+        ElseIf (chance <= 10)
+          If ( CheckSkillPergon( who, SKILLID_ERZABBAU, cint(110-werkzeug_quality) , cint(werkzeug_quality*250) ) )
+            num := HarvestResource( "ore" , x , y , 1 , amount );
+            CreateItemInBackpackPergon( who, UOBJ_CHROM_ERZ, num );
+            SendSysMessagePergon(who, "Ihr stapelt " + num + " Chromerz in Euren Rucksack.");
+          EndIf
+        ElseIf (chance <= 15)
+          If ( CheckSkillPergon( who, SKILLID_ERZABBAU, cint(105-werkzeug_quality) , cint(werkzeug_quality*225) ) )
+            num := HarvestResource( "ore" , x , y , 1 , amount );
+            CreateItemInBackpackPergon( who, UOBJ_PLATIN_ERZ, num );
+            SendSysMessagePergon(who, "Ihr stapelt " + num + " Platinerz in Euren Rucksack.");
+          EndIf
+        ElseIf (chance <= 20)
+          If ( CheckSkillPergon( who, SKILLID_ERZABBAU, cint(100-werkzeug_quality) , cint(werkzeug_quality*200) ) )
+            num := HarvestResource( "ore" , x , y , 1 , amount );
+            CreateItemInBackpackPergon( who, UOBJ_WOLFRAM_ERZ, num );
+            SendSysMessagePergon(who, "Ihr stapelt " + num + " Wolframerz in Euren Rucksack.");
+          EndIf
+        ElseIf (chance <= 25)
+          If ( CheckSkillPergon( who, SKILLID_ERZABBAU, cint(95-werkzeug_quality) , cint(werkzeug_quality*175) ) )
+            num := HarvestResource( "ore" , x , y , 1 , amount );
+            CreateItemInBackpackPergon( who, UOBJ_LANTHAN_ERZ, num );
+            SendSysMessagePergon(who, "Ihr stapelt " + num + " Lanthanerz in Euren Rucksack.");
+          EndIf
+        ElseIf (chance <= 30)
+          If ( CheckSkillPergon( who, SKILLID_ERZABBAU, cint(90-werkzeug_quality) , cint(werkzeug_quality*150) ) )
+            num := HarvestResource( "ore" , x , y , 1 , amount );
+            CreateItemInBackpackPergon( who, UOBJ_INDIUM_ERZ, num );
+            SendSysMessagePergon(who, "Ihr stapelt " + num + " Indiumerz in Euren Rucksack.");
+          EndIf
+        ElseIf (chance <= 45)
+          If ( CheckSkillPergon( who, SKILLID_ERZABBAU, cint(85-werkzeug_quality) , cint(werkzeug_quality*125) ) )
+            num := HarvestResource( "ore" , x , y , 1 , amount );
+            CreateItemInBackpackPergon( who, UOBJ_TENERUM_ERZ, num );
+            SendSysMessagePergon(who, "Ihr stapelt " + num + " Tenerumerz in Euren Rucksack.");
+          EndIf
+        ElseIf (chance <= 59)
+          If ( CheckSkillPergon( who, SKILLID_ERZABBAU, cint(80-werkzeug_quality) , cint(werkzeug_quality*100) ) )
+            num := HarvestResource( "ore" , x , y , 1 , amount );
+            CreateItemInBackpackPergon( who, UOBJ_IRIDIUM_ERZ, num );
+            SendSysMessagePergon(who, "Ihr stapelt " + num + " Iridiumerz in Euren Rucksack.");
+          EndIf
+        ElseIf (chance <= 80)
+          If ( CheckSkillPergon( who, SKILLID_ERZABBAU, cint(75-werkzeug_quality) , cint(werkzeug_quality*75) ) )
+            num := HarvestResource( "ore" , x , y , 1 , amount );
+            CreateItemInBackpackPergon( who, UOBJ_MANGAN_ERZ, num );
+            SendSysMessagePergon(who, "Ihr stapelt " + num + " Manganerz in Euren Rucksack.");
+          EndIf
+        ElseIf( CheckSkillPergon( who, SKILLID_ERZABBAU, cint(70-werkzeug_quality) , cint(werkzeug_quality*50) ) )
+            num := HarvestResource( "ore" , x , y , 1 , amount );
+            CreateItemInBackpackPergon( who, UOBJ_MOLYBDAEN_ERZ, num );
+            SendSysMessagePergon(who, "Ihr stapelt " + num + " Molybdaenerz in Euren Rucksack.");
+        Else
+            SendSysMessagePergon(who, "Ihr findet kein brauchbares Erz.");
+            If (RandomInt(100)<10) // mit 10% werden bei einem Fehlversuch 1 Erz an der Stelle abgezogen
+                Var num_nix := HarvestResource( "ore" , x , y , 1 , 1);
+            EndIf
+            If (SetWerkzeugSchaden(who, pickaxe, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschaedigt!", "Euer Werkzeug ist zerbrochen!"))
+                Return(1);
+            EndIf
+	    Return 0;
+        EndIf
+    ElseIf( !dIffi )
+        SendSysMessagePergon( who, "Die Erzvorkommen hier sind erschoepft.");
+	Return 1;
+    Else
+        SendSysMessagePergon( who, "Ihr findet absolut kein Erz." );
+
+	Return 0;
+    EndIf
+
+    Return 0;
+
+EndFunction
+
+
+Function digForsand(who, use_on,info, pickaxe)
+	If (is_sand(info.landtile, use_on))
+	    Var tdIff := GetHarvestDifficulty("sand", use_on.x, use_on.y, info.landtile);
+		tdIff:=cint(tdIff-werkzeug_quality);
+		If (tdIff<1)
+			tdIff:=1;
+		EndIf
+	    If (CheckSkillPergon(who, SKILLID_ERZABBAU, tdIff, cint(10*werkzeug_quality)))
+	        Var sandamount := HarvestResource("sand", use_on.x, use_on.y, 1, cint(werkzeug_quality));
+
+	        Var thecntr;
+	        For (thecntr := 1; thecntr <= sandamount; thecntr := thecntr + 1)
+	        	If (RandomInt(1000) >= 1)	// zu 99.9% normales Sandbuddeln
+
+		            Var thesand :=CreateItemInBackpackPergon(who, UOBJ_SAND, 5);
+		            Setname(thesand, "Sand");
+
+	        	Else	// Rest: zufaelliges Finden von Schwarzen Perlen, Bimsstein und Feuerstein
+	        		Var ReagRandom := RandomInt(100);
+	        		Var ReagType := 0;
+
+	        		If (ReagRandom >= 90)		// Feuerstein
+						ReagType := UOBJ_FEUERSTEIN;
+	        		ElseIf (ReagRandom >= 75)	// Bimsstein
+						ReagType := UOBJ_BIMSSTEIN;
+	        		ElseIf (ReagRandom >= 40)	// Schwarze Perle
+						ReagType := UOBJ_SCHWARZE_PERLE;
+					EndIf
+
+					If (ReagType > 0)
+						Var ReagItem := CreateItemInBackpackPergon(who, reagtype, 1);
+						If ((ReagItem.amount) == 1)
+							SendSysMessagePergon(who, "Ihr findet eine Reagenzie (" + ReagItem.desc + ") und legt sie in Euren Rucksack.");
+						ElseIf (ReagItem)
+							SendSysMessagePergon(who, "Ihr findet eine Reagenzie und habt nun insgesamt " + ReagItem.desc + " in Eurem Rucksack.");
+						Else
+							SendSysMessagePergon(who, "Scheinbar ist Euer Rucksack zu voll. Ihr koennt die schwarze Perle nicht darin ablegen!");
+						EndIf
+					Else
+						SendSysMessagePergon(who, "Beim Graben zerhackt Ihr eine schwarze Perle.");
+						Sleep(3);
+						SendSysMessagePergon(who, "Sie ist nun nicht mehr zu gebrauchen.");
+					EndIf
+				EndIf
+			EndFor
+
+	        Return 0;
+	    Else
+	        SendSysMessagePergon(who, "Ihr findet absolut keinen Sand.");
+	        Var sandamount_nix := HarvestResource( "sand" , use_on.x , use_on.y , 1 , 1 );
+	        If (SetWerkzeugSchaden(who, pickaxe, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschaedigt!", "Euer Werkzeug ist zerbrochen!"))
+	            Return(1);
+	        EndIf
+
+	        Return 0;
+	    EndIf
+	Else
+		SendSysMessagePergon(who,"Da koennt Ihr nicht graben.");
+		Return 1;
+	EndIf
+EndFunction

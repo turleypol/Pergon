@@ -1,0 +1,93 @@
+/////////////////////////////////////////////////////////////////////
+//
+//   TextCMD TestWeapon - Testet bestimmte Eigenschaften von Waffen
+//
+//     Author: Shinigami
+//
+//   Modification:
+//     11.10.2005 Fraggulus: wg. Ordnung und von Schlaubieh nicht mehr benoetigt, nach 3_Seer verlagert
+//
+/////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use cfgfile;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/client";
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_TestWeapon(who, params)
+  params    := SplitWords(params);
+  params[1] := CInt(params[1]);
+  params[2] := CInt(params[2]);
+
+  If ((1<=params[1]) && (params[1] <= 3))
+    Var itemdesc := ReadConfigFile("::itemdesc");
+    If (itemdesc)
+      Var gefunden := 0;
+
+      Var waffe := GetEquipmentByLayer(who, LAYER_HAND1);
+      If (waffe)
+        If (waffe.isa(POLCLASS_WEAPON))
+          gefunden := 1;
+        Else
+          waffe := GetEquipmentByLayer(who, LAYER_HAND2);
+          If (waffe)
+            If (waffe.isa(POLCLASS_WEAPON))
+              gefunden := 1;
+            EndIf
+          EndIf
+        EndIf
+      EndIf
+
+      If (gefunden)
+        Var waffendesc := itemdesc[waffe.objtype];
+        If (waffendesc)
+          Var animid      := waffendesc.anim;
+          Var hitsoundid  := waffendesc.hitsound;
+          Var misssoundid := waffendesc.misssound;
+
+          If (params[2])
+            Case (params[1])
+              1: animid      := params[2];
+              2: hitsoundid  := params[2];
+              3: misssoundid := params[2];
+            EndCase
+          EndIf
+
+          Case (params[1])
+            1: PerformAction(who, animid);
+               SendSysMessagePergon(who, "Waffe "+Lower(Hex(waffe.objtype))+", AnimID "+Lower(Hex(animid)));
+
+            2: PlaySoundEffectPrivate(who, hitsoundid, who);
+               SendSysMessagePergon(who, "Waffe "+Lower(Hex(waffe.objtype))+", HitSoundID "+Lower(Hex(animid)));
+
+            3: PlaySoundEffectPrivate(who, misssoundid, who);
+               SendSysMessagePergon(who, "Waffe "+Lower(Hex(waffe.objtype))+", MissSoundID "+Lower(Hex(animid)));
+          EndCase
+        Else
+          SendSysMessagePergon(who, "Kann die Waffe "+Lower(Hex(waffe.objtype))+" nicht in der Configdatei finden!");
+          SysLog("FEHLER: Kann die Waffe "+Lower(Hex(waffe.objtype))+" nicht in der itemdesc.cfg finden!");
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Ihr tragt keine Waffe in Euren Händen!");
+      EndIf
+    Else
+      SysLog("FEHLER: Kann die itemdesc.cfg nicht oeffnen!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr müsst einen Parameter angeben (1 bis 3 für den Test der AnimID, Hit- und MissSoundID) !");
+  EndIf
+EndProgram

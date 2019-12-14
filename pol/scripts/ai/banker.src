@@ -1,0 +1,260 @@
+///////////////////////////////////////////////////////////////////////////
+// Banker Script - Control script for NPC NonMerchants
+
+use npc;
+use os;
+use storage;
+use uo;
+use util;
+include ":newmagic:moonstonemerchant";
+include "include/logutil";
+include "include/modifyskill";
+include "include/msgs";
+include "include/nonmerchant";
+include "include/stringcalc";
+
+/////////////////////////////
+// Banker - Initialisierung
+/////////////////////////////
+
+Function SetNonMerchantType(meprototype)
+  meprototype.nonmerchanttype := "Banker";
+  meprototype.speech_open     := 1;
+  meprototype.speech_sleeping := 1;
+  meprototype.speech_name     := 1;
+  meprototype.speech_default  := 1;
+
+  return meprototype;
+EndFunction
+
+/////////////////////
+// Hook_Move_Action
+/////////////////////
+
+Function Hook_Move_Action(me, medata, ev)
+  return;
+  me := 1; medata := 1; ev := 1;
+EndFunction
+
+//////////////////////
+// Hook_Entered_Area
+//////////////////////
+
+Function Hook_Entered_Area(me, medata, ev)
+  return;
+  me := 1; medata := 1; ev := 1;
+EndFunction
+
+///////////////////
+// Hook_Left_Area
+///////////////////
+
+Function Hook_Left_Area(me, medata, ev)
+  return;
+  me := 1; medata := 1; ev := 1;
+EndFunction
+
+/////////////////////
+// Hook_Speech_Open
+/////////////////////
+
+Function Hook_Speech_Open(me, medata, ev)
+  var timetext;
+  If (medata.sleeping == 1)
+    timetext := "Jetzt";
+  Else
+    timetext := "Sonst";
+  EndIf
+
+  var saytext;
+  If (RandomInt(2) == 1)
+    saytext := "Überweisungen";
+  Else
+    saytext := "Bankunterlagen";
+  EndIf
+
+  NPCSayTextTraditional(me,
+    "Zwischen "+medata.open+" und "+medata.close+" habe ich Zeit für Euch. "+
+    timetext+" kümmere ich mich um "+saytext+".", ""
+  );
+
+  return;
+  ev := 1;
+EndFunction
+
+/////////////////////////
+// Hook_Speech_Sleeping
+/////////////////////////
+
+Function Hook_Speech_Sleeping(me, medata, ev)
+  NPCSayTextTraditional(me,
+    "Der Schalter ist geschlossen. Unsere Bank öffnet um "+medata.open+".", ""
+  );
+
+  return;
+  ev := 1;
+EndFunction
+
+/////////////////////
+// Hook_Speech_Name
+/////////////////////
+
+Function Hook_Speech_Name(me, medata, ev)
+  var saytext;
+  If (RandomInt(100)>80)
+    saytext := "In Finanzerkreisen nennt man mich ... Ach, für Euch bin ich";
+  Else
+    saytext := "Ihr wollt meinen Namen wissen? Nunja, ich bin";
+  EndIf
+
+  NPCSayTextTraditional(me, saytext+" "+medata.minename, "");
+
+  return;
+  ev := 1;
+EndFunction
+
+////////////////////////
+// Hook_Speech_Default
+////////////////////////
+Function Hook_Speech_Default(me, medata, ev, sayed)
+  If (sayed["bank"])
+    NPCSayTextTraditional(me, "Einen Moment bitte. Ich hole Eure Bankbox.", "");
+    Sleep(3);
+
+    // Befindet sich der Spieler als Ex-Newbie auf Jhe'lom?
+    If (PlaceNewbie(ev.source) and (!GetObjProperty(ev.source, TYPNEWBIE)))
+      NPCSayTextTraditional(
+        me, "Tut mir leid, ich kann Eure Bankbox nicht finden. "+
+        "Ach, ich weiss auch wieso... Ihr seht nicht so aus, als "+
+        "ob ihr hier wohnen würdet.", ""
+      );
+      return 1;
+    EndIf
+
+    var bankbox := FindBankBox(ev.source);
+    If (bankbox)
+      SendOpenSpecialContainer(ev.source, bankbox);
+    Else
+      NPCSayTextTraditional(
+        me, "Tut mir leid, ich kann Eure Bankbox nicht finden. Wendet "+
+        "Euch bitte an einen GM.", ""
+      );
+      syslog(
+        meprototype.nonmerchanttype+" "+me.name+": "+
+        CharInfoStr(ev.source)+" hat keine Bankbox"
+      );
+    EndIf
+
+    return 1;
+  ElseIf (sayed["mondstein"])
+    return Speech_Mondstein(me, medata, ev);
+
+  ElseIf (sayed["einzahlen"] or sayed["einzahlung"])
+    var bankbox := FindBankBox(ev.source);
+    If (!bankbox)
+      NPCSayTextTraditional(
+        me, "Tut mir leid, ich kann Eure Bankbox nicht finden. Wendet "+
+        "Euch bitte an einen GM.", ""
+      );
+      syslog(CharInfoStr(ev.source)+" hat keine Bankbox");
+      return 1;
+    EndIf
+
+    var params := struct;
+    params.+bankbox  := bankbox;
+    params.+banker   := me;
+    params.+customer := ev.source;
+    Start_Script("misc/banker-einzahlen", params);
+
+    return 1;
+
+  ElseIf (
+    sayed["auszahlen"] or sayed["auszahlung"] or
+    sayed["abheben"] or sayed["abhebung"]
+  )
+    If (PlaceNewbie(ev.source) and (!GetObjProperty(ev.source, TYPNEWBIE)))
+      NPCSayTextTraditional(
+        me, "Tut mir leid, ich gebe kein Gold an Fremde heraus.", ""
+      );
+      return 1;
+    EndIf
+
+    var bankbox := FindBankBox(ev.source);
+    If (!bankbox)
+      NPCSayTextTraditional(
+        me, "Tut mir leid, ich kann Eure Bankbox nicht finden. Wendet "+
+        "Euch bitte an einen GM.", ""
+      );
+      syslog(CharInfoStr(ev.source)+" hat keine Bankbox");
+      return 1;
+    EndIf
+
+    var params := struct;
+    params.+bankbox  := bankbox;
+    params.+banker   := me;
+    params.+customer := ev.source;
+    Start_Script("misc/banker-auszahlen", params);
+
+    return 1;
+
+  ElseIf (sayed["konto"])
+    var bankbox := FindBankBox(ev.source);
+    If (!bankbox)
+      syslog(CharInfoStr(ev.source)+" hat keine Bankbox");
+      return 1;
+    EndIf
+
+    var acct := GetObjProperty(bankbox, CPROP_GOLD_ACCT);
+    If (!acct)
+      acct := "0";
+    EndIf
+
+    NPCSayTextTraditional(me, "Euer Kontostand beträgt "+acct+" Goldstücke.", "");
+    return 1;
+
+  ElseIf (sayed["scheck"])
+    If (PlaceNewbie(ev.source) and (!GetObjProperty(ev.source, TYPNEWBIE)))
+      NPCSayTextTraditional(
+        me, "Tut mir leid, ich gebe kein Gold an Fremde heraus.", ""
+      );
+      return 1;
+    EndIf
+
+    var bankbox := FindBankBox(ev.source);
+    If (!bankbox)
+      NPCSayTextTraditional(
+        me, "Tut mir leid, ich kann Eure Bankbox nicht finden. Wendet "+
+        "Euch bitte an einen GM.", ""
+      );
+      syslog(CharInfoStr(ev.source)+" hat keine Bankbox");
+      return 1;
+    EndIf
+
+    var params := struct;
+    params.+bankbox  := bankbox;
+    params.+banker   := me;
+    params.+customer := ev.source;
+    Start_Script("misc/banker-cheque", params);
+
+    return 1;
+  EndIf
+
+  return 0;
+EndFunction
+
+////////////////////////////////////////////
+// GetPayment - Kohle beim Player abziehen
+////////////////////////////////////////////
+Function GetPayment(me, player, price)
+  If (price)
+    If (player.gold >= price)
+      player.spendgold(price);
+    Else
+      NPCSayTextTraditional(me, "Ihr habt keine "+price+" Goldstücke!", "");
+      return 1;
+    EndIf
+  EndIf
+  return 0;
+EndFunction
+
+// vim: sts=2 sw=2

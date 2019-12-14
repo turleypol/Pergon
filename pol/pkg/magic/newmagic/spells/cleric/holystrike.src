@@ -1,0 +1,99 @@
+//**************************************************************************************************
+// Script file holystrike.src
+//
+//    implements spell 218 <Holy Strike> - "Opferschlag"
+//
+//	sacrifices casters HP for damage against critter
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 02.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//              06.02.2007 Turley - Geschlechtsspezifische Soundeffekte
+//
+//**************************************************************************************************
+use vitals;
+
+Include "../magicpergon";
+Include "../spellattack";
+Include "include/packets";
+
+program cast_holystrike (params)
+
+   Var caster;
+   Var caston;
+   Var spelltarget;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_HOLYSTRIKE);
+   Var dmg:=    spell.primary;
+   Var mindmg:= spell.primarymin;
+   Var maxdmg:= spell.primarymax;
+   Var power;
+   Var sacrifice;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+      send_attack(caston, caster, 218);
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_HOLYSTRIKE);
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+
+   if (caston.isa(POLCLASS_MOBILE) And (!caston.isa(POLCLASS_NPC)) And (!caster.isa(POLCLASS_NPC)))			// check if casted against player by a player
+      SendSysMessagePergon(caster, "Dieser Zauber taugt nur gegen Monster und Kreaturen",
+      				   				  "You can cast this spell against monster and creatures only");
+      If (caster.gender)
+      	PlaySoundEffect(caster, SFX_152);
+      Else
+        PlaySoundEffect(caster, SFX_15C);
+      EndIf
+      PerformAction(caster, ANIM_HIT);
+      ApplyRawDamagePergon(caster, CInt(GetHPPergon(caster) * 0.1));					// spell 'backfires'
+      return;
+   endif
+
+   dmg:= CInt(power*dmg/100.0);						// calc damage according to casting power
+   if (mindmg and mindmg > dmg)
+      dmg:= mindmg;
+   elseif (maxdmg and maxdmg < dmg)
+      dmg:= maxdmg;
+   endif
+																// get spelltarget -> possible spell reflection
+   spelltarget:= ReflectSpell(caster, caston, dmg, 1, FX_EXPLODE_BALL, 5, 5, 0, 0);
+
+   if (spelltarget)
+   	  If (caster.gender)
+   	  	PlaySoundEffect(caster, SFX_154);
+   	  Else
+        PlaySoundEffect(caster, SFX_15E);
+      EndIf
+      PerformAction(caster, ANIM_HIT);
+      sacrifice:= CInt(GetHPPergon(caster) * 0.25);							// calc casters sacrifice
+      if (sacrifice<1)
+         sacrifice:= 1;                                                 // caster has to sacrifice at least 1 HP
+      endif
+      ApplyRawDamagePergon(caster, sacrifice);											// sacrifice HP of caster
+
+      PlayObjectCenteredEffect(spelltarget, FX_EXPLODE_1, 10, 10);
+      ApplyRawDamagePergon(spelltarget, dmg);											// apply damage to spelltarget
+   endif
+
+endprogram

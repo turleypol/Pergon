@@ -1,0 +1,29 @@
+////////////////////////////////////////////////////////
+// TextCMD UnConcealMe - Enttarnt einen CMDLevelChar
+//
+// Author: Shinigami
+
+////////////////////////////////////////////////////////
+// .unconcealme <parameter>
+// erlaubte Parameter siehe .concealme
+
+use file;
+use uo;
+include "include/msgs";
+include "include/quests";
+
+Program TextCMD_UnConcealMe(who, param)
+    If (!who.isa(POLCLASS_MOBILE)) // Externer Aufruf?
+        param := who[2];
+        who := who[1];
+    EndIf
+
+    var params := SplitWords(param);
+    If (param && !IsNumeric(params[1]))
+      param := "0 "+param;
+    ElseIf (!param)
+      param := "0";
+    EndIf
+
+    Start_ScriptPergon("textcmd/2_quest/concealme", {who, param});
+EndProgram

@@ -1,0 +1,188 @@
+// kleines Programm fuer Kontoauszahlungen, aufgerufen vom Baenker
+
+use math;
+use uo;
+use util;
+include "include/bank";
+include "include/itemnpc";
+include "include/msgs";
+include "include/stringcalc";
+
+Program Auszahlen(param)
+    var acct := GetAccountBalance(param.bankbox);
+
+    If (acct == "0")
+        PrintTextAbovePrivatePergon(
+            param.banker,
+            "Euer Konto ist leider leer.", "",
+            param.customer
+        );
+        return;
+    EndIf
+
+    PrintTextAbovePrivatePergon(
+        param.banker,
+        "Zeigt mir Euren Geldbeutel, in den ich das Gold einfüllen soll!",
+        "",
+        param.customer
+    );
+    
+    var tgt := Target(param.customer);
+    If (!tgt)
+        SendSysMessagePergon(param.customer, "Abbruch", "Abort");
+        return;
+    EndIf
+    
+    If (tgt.isa(POLCLASS_NPC))
+        // Support fuer Packtiere etc.
+        tgt := tgt.backpack;
+    EndIf
+
+    If (!tgt.isa(POLCLASS_CONTAINER))
+        SendSysMessagePergon(param.customer,
+            "Das taugt nicht als Geldbeutel!"
+        );
+        return;
+    EndIf
+
+    If (!IsMine(param.customer, tgt))
+        PrintTextAbovePrivatePergon(
+            param.banker,
+            "Ich bin nicht sicher, ob das Euer Geldbeutel ist.", "",
+            param.customer
+        );
+        return;
+    EndIf
+
+    var betrag := SendTransactionGump(param.customer, "Wieviel Gold wollt Ihr abheben?", 
+      acct, "(Maximal "+acct+" Goldstücke möglich)"
+    );
+    If (!betrag)
+      If (betrag.errortext)
+        SendSysMessagePergon(param.customer, betrag.errortext);
+      EndIf
+      return;
+     EndIf
+    
+    If (GetObjProperty(param.customer, CPROP_GOLD_TRANS))
+        PrintTextAbovePrivatePergon(
+            param.banker,
+            "Es läuft doch bereits eine Transaktion!", "",
+            param.customer
+        );
+        return;
+    EndIf
+    SetObjProperty(param.customer, CPROP_GOLD_TRANS, 1);
+
+    If (!ReserveItem(tgt))
+        return;
+    EndIf
+
+    // ein wenig Muenzgeklimper
+    If (RandomInt(2))
+        PlaySoundEffectPrivate(param.banker, 0x37, param.customer);
+    Else
+        PlaySoundEffectPrivate(param.banker, 0x38, param.customer);
+    EndIf
+
+    var ausgezahlt := "0";
+    var fail := 1;
+    // solange 60000er Stacks abgebucht werden können, das tun
+    While (StrSubtraktion(betrag, "60000"))
+        betrag := StrSubtraktion(betrag, "60000");
+
+        var old_acct := acct;
+        acct :=   StrSubtraktion(acct,   "60000");
+        If (!acct)
+            // Konto zu leer zum Abziehen? Abbruch
+            acct := old_acct;
+            fail := error;
+            fail.errortext := "Account too empty";
+            break;
+        EndIf
+        var result := CreateItemInContainer(tgt, "goldcoin", 60000);
+        If (!result)
+            // kein Create, z. B. Container voll
+            acct := old_acct;
+            fail := result;
+            break;
+        EndIf
+        ausgezahlt := StrAddition(ausgezahlt, "60000");
+        // immer gleich wegsichern
+        SetObjProperty(param.bankbox, CPROP_GOLD_ACCT, acct);
+
+        // falls Verbindungsabbruch
+        If (!param.customer.connected)
+            StopTransaction(param.customer, tgt);
+            return;
+        EndIf
+
+        SleepMS(STACK_CONSUME_DELAY);
+        SendStatus(param.customer);
+
+        // Abbruch, falls Person (oder Banker) weggelaufen ist
+        If (Distance(param.banker, param.customer) >= MAXDIST_BANKCUST)
+            PrintTextAbovePrivatePergon(
+                param.banker,
+                "Wo wollt ihr denn hin? Dann behalte ich Euer Gold eben!", "",
+                param.customer
+            );
+            StopTransaction(param.customer, tgt);
+            return;
+        EndIf
+    EndWhile
+
+    // Sonderfälle abhandeln
+    If ((fail == error) and (fail.errortext == "That container is full"))
+        PrintTextAbovePrivatePergon(
+            param.banker,
+            "Ich fürchte, Euer Geldbeutel ist zu voll.", "",
+            param.customer
+        );
+    ElseIf ((fail == error) and (fail.errortext == "Account too empty"))
+        // Konto hat weniger als 60k Gold, aber Betrag >= 60k
+        var result :=
+            CreateItemInContainer(tgt, "goldcoin", CInt(acct));
+        If (result)
+            // nur bei Erfolg, vielleicht ist auch Container voll
+            ausgezahlt := StrAddition(ausgezahlt, acct);
+            acct := "0";
+        EndIf
+    ElseIf (fail == error)
+        syslog("FEHLER: "+fail.errortext);
+        PrintTextAbovePrivatePergon(
+            param.banker,
+            "Ein Unglück! Informiert bitte einen GM!", "",
+            param.customer
+        );
+    ElseIf (betrag != "0" and StrSubtraktion(acct, betrag))
+        // noch nicht alles ausgezahlt und
+        // Restbetrag ist noch auf Konto vorhanden
+        var result :=
+            CreateItemInContainer(tgt, "goldcoin", CInt(betrag));
+        If (result)
+            // nur bei Erfolg, vielleicht ist auch Container voll
+            acct :=       StrSubtraktion(acct,    betrag);
+            ausgezahlt := StrAddition(ausgezahlt, betrag);
+        EndIf
+    EndIf
+
+    SetObjProperty(param.bankbox, CPROP_GOLD_ACCT, acct);
+
+    PrintTextAbovePrivatePergon(
+        param.banker,
+        "Ihr habt "+ausgezahlt+" Goldstücke erhalten.", "",
+        param.customer
+    );
+    PrintTextAbovePrivatePergon(
+        param.banker,
+        "Euer Kontostand beträgt nun "+acct+" Goldstücke.", "",
+        param.customer
+    );
+    syslog(
+        "GOLDKONTO: Stand "+acct+" (ausgezahlt: "+ausgezahlt+") durch "+
+        param.customer.name+" ("+Hex(param.customer.serial)+")"
+    );
+    StopTransaction(param.customer, tgt);
+    return;
+EndProgram

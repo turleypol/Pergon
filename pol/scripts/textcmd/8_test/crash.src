@@ -1,0 +1,14 @@
+Use uo;
+Use polsys;
+
+Include "include/msgs";
+
+Program TextCMD_Crash(who, crash)
+  if (crash =="crash")
+    PolCore().internal(3);
+  elseif (crash == "assert")
+    PolCore().internal(4);
+  else
+    SendSysMessagePergon(who, "Unbekannter Parameter crash oder assert?");
+  endif
+EndProgram

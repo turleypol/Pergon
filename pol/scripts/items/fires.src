@@ -1,0 +1,45 @@
+//
+//  17.11.2000 - Fraggulus - Feuerresistenz
+//
+use vitals;
+use attributes;
+use util;
+use os;
+use uo;
+
+Include "include/client";
+Include "include/modifyskill";
+Include ":newspells:resistance";
+
+Const EFFECT_SPARKLE:=0x373a;
+Const SOUND_EFFECT_RES:=0x215;
+
+Program FireField(mobile, field)
+  Var boss:=SystemFindObjectBySerial(CInt(GetObjProperty(field, "creater")));
+  If (boss) // Den Erbauer der Flamme zum Angreifer machen
+    SetScriptController(boss);
+  EndIf
+
+  // 25 Grundwert, dann anteilsmaessig je nachdem wie stark man in Magie ist
+  Var schaden:=RandomInt(CInt(25*GetSkillPergon(mobile, SKILLID_MAGIE)/120))*2;
+  Var resist:=1 - CDbl(GetResistance(mobile, "fire"));	// get fire resistance of spelltarget
+  schaden*=resist;
+  
+  Var points:=0;
+  If (!mobile.isa(POLCLASS_NPC))
+    points:=10;
+  EndIf
+
+  If (CheckSkillPergon(mobile, SKILLID_MAGIERESISTENZ, 80, points)) // nur 1x
+    schaden/=2;
+  EndIf
+
+  ApplyRawDamagePergon(mobile, schaden);
+
+  While ((mobile.x==field.x) And (mobile.y==field.y))
+    schaden:=RandomInt(CInt(25*GetSkillPergon(mobile, SKILLID_MAGIE)/120))*2; // neu wuerfeln
+    schaden*=resist; // sehen wir einfach mal als konstant an
+    ApplyRawDamagePergon(mobile, schaden);
+    SleepMS(2);
+  EndWhile
+EndProgram

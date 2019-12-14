@@ -1,0 +1,6 @@
+<h3 id="performancediff">performance_diff</h3>
+
+<h4>Parameter: keiner oder <kbd>&lt;TODO&gt;</kbd></h4>
+
+<p>Zeigt Performance-Veränderungen über bestimmbaren Zeitraum
+an.</p>

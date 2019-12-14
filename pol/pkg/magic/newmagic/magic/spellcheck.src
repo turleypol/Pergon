@@ -1,0 +1,195 @@
+///////////////////////////////////////////////////////////////////////////////////////
+//
+//   Spell Checker
+//
+//        Untersucht periodisch alle Spieler auf aufrechterhaltene Sprueche und
+//         thaumaturgische Effekte
+//
+//   26.06.2003 Neuerstellung - Sebastian 'Bihinos' Giese
+//   24.03.2007 Turley - Kompletter Umbau
+//                       Eventbasiert, 2Sekunden genau, max Zeit 2h
+//                       "spell_*" Zauber per SendSpellWaiter() anmelden (spellcheck.inc)
+//   07.05.2007 Turley - Umbau auf dict -> 1s genau, keine max Zeit, "intelligente" Wartezeiten
+//
+///////////////////////////////////////////////////////////////////////////////////////
+
+// event.serial = ObjectSerial
+// event.whoserial =  Besitzer
+// event.spell =  welcher Spell
+// event.time = wann?
+// event.uniqueid = Um sicher zugehen das es noch der selbe Spruch ist, Vergleich CProp & Eventslot (ReadMilliSecondClock())
+// [event.modifystruct] = statmods,... zentral ändern, damit es kein Kollisionen gibt
+
+//////////////
+// Libraries
+//////////////
+
+Use uo;
+Use os;
+Use file;
+Use datafile;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/spellcheck";
+Include "include/msgs";
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+Var events:={};
+Var data:=OpenDataFile("spellcheckerbackup");
+Var backup;
+Var waittime;
+
+If (data)
+  backup:=data.FindElement("Events");
+EndIf
+
+
+/////////////////
+// Main Program
+/////////////////
+
+
+Program SpellChecker()
+  Var ev, nextindex;
+  Var object;
+  Var ok;
+
+  InitBackup();
+  BroadCastPergon("SpellChecker wird aktiviert...");
+  SysLog("SpellChecker wird aktiviert...");
+
+  Set_Event_Queue_Size(EVENTQUEUESIZE_SPELLCHECK);
+  Set_Script_Option(SCRIPTOPT_CAN_ACCESS_OFFLINE_MOBILES, 1);
+  SetGlobalProperty(PID_SPELLCHECK, GetPid());
+
+  If (events.keys()<>{})
+    nextindex:=events.keys()[1];
+  Else
+    nextindex:=ReadGameClock()+1800; // 30Minuten warten wenn nichts zu tun
+  EndIf
+  waittime:=CInt(Max(0,nextindex-ReadGameClock()));
+
+  While (1)
+    SleepMS(1);
+    ok:=1;
+    ev:=Wait_For_Event(waittime);
+    If (ev)
+      If (ev.modifystruct)
+        ok:=HandleModifyStruct(ev.modifystruct);
+      EndIf
+      If (ok)
+        If (events[ev.time])
+          events[ev.time].append(ev);
+        Else
+          events[ev.time]:={ev};
+        EndIf
+
+        If (events.keys()<>{}) // neue Wartezeit berechnen
+          nextindex:=events.keys()[1];
+        Else
+          nextindex:=ReadGameClock()+1800; // 30Minuten warten wenn nichts zu tun
+        EndIf
+        waittime:=CInt(Max(0,nextindex-ReadGameClock()));
+
+        backup.SetProp("spells",events); // Geänderten Queue speichern
+      EndIf
+    EndIf
+
+    If (nextindex<=ReadGameClock()) // Schon Wartezeit vergangen? Also nächsten Event wegschicken
+
+      If (events.keys()<>{}) // ist was los?
+        ForEach event in (events[events.keys()[1]])
+          If (event.serial)
+            object:=SystemFindObjectBySerial(event.serial,SYSFIND_SEARCH_OFFLINE_MOBILES);
+            If (object)
+              If (object.isA(POLCLASS_MOBILE))
+                CheckSpell(object,event);
+              ElseIf (object.isA(POLCLASS_WEAPON))
+                CheckWeaponSpell(object,event);
+              Else
+                CheckArmorSpell(object,event);
+              EndIf
+            EndIf
+          EndIf
+          SleepMS(2);
+        EndForEach
+
+        events.erase(events.keys()[1]); // Die Events sind abgearbeitet also weg damit aus der Liste
+        backup.SetProp("spells",events); // Geänderten Queue speichern
+      EndIf
+    EndIf
+
+    If (events.keys()<>{}) // Neue Wartezeit berechnen
+      nextindex:=events.keys()[1];
+    Else
+      nextindex:=ReadGameClock()+1800; // 30Minuten warten wenn nichts zu tun
+    EndIf
+    waittime:=CInt(Max(0,nextindex-ReadGameClock()));
+  EndWhile
+EndProgram
+
+Function InitBackup()
+  Var temp;
+  Var object;
+
+  If (!backup) // Noch kein Datafile
+  	If (!data)
+      data:=CreateDataFile("spellcheckerbackup", DF_KEYTYPE_STRING);
+    EndIf
+    backup:=data.CreateElement("Events");
+    events:=dictionary;
+    backup.SetProp("spells",events);
+    Return;
+  EndIf
+  
+  temp:=backup.GetProp("spells");
+  events:=dictionary;
+  ForEach time in temp
+    ForEach event in time
+      object:=SystemFindObjectBySerial(event.serial,SYSFIND_SEARCH_OFFLINE_MOBILES);
+      If (object)
+        If (object.isA(POLCLASS_MOBILE))
+          If (!CheckSpell(object,event,1))  // Serverrestart Spells?
+            If (!events.exists(_time_iter))
+              events[_time_iter]:={event};
+            Else
+              events[_time_iter].append(event);
+            EndIf
+          EndIf
+        // Im Moment werden nur who.ar_mod ,Stat/Skill_mods, hitchance_mod & evasionchance_mod nicht gespeichert
+        Else 
+          If (!events.exists(_time_iter))
+            events[_time_iter]:={event};
+          Else
+            events[_time_iter].append(event);
+          EndIf
+        EndIf
+//      ElseIf (object.isA(POLCLASS_WEAPON))
+//        If (!CheckWeaponSpell(object,event,1))  // Serverrestart Spells?
+//          If (!events.exists(_time_iter))
+//            events[_time_iter]:={event};
+//          Else
+//            events[_time_iter].append(event);
+//          EndIf
+//        EndIf
+//      Else
+//        If (!CheckArmorSpell(object,event,1))  // Serverrestart Spells?
+//          If (!events.exists(_time_iter))
+//            events[_time_iter]:={event};
+//          Else
+//            events[_time_iter].append(event);
+//          EndIf
+//        EndIf
+//      EndIf
+        EndIf
+    EndForEach
+    SleepMS(2);
+  EndForEach
+  backup.SetProp("spells",events);
+EndFunction

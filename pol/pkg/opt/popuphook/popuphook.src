@@ -1,0 +1,77 @@
+/////////////////////////////////////////////////////////
+//
+// popuphook - Packethook für Popupmenu
+//             UOFeatureEnable _muß_ auf 0x08 gesetzt werden
+//             Gepatchte cliloc00.deu und intloc00.deu nötig!
+//
+//     Author: Turley
+//
+//   Modifications:
+//     07.08.05 Turley: Check auf Geist eingefügt
+//     29.08.05 Turley: CheckLOS und Distance<3 eingefügt
+//     30.11.06 Turley: Gesplittet um zeitkritischen Ablauf loszuwerden
+//
+/////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+
+Include "include/pergonutil";
+
+Const REQUEST:=1;
+Const SELECT:=2;
+
+Program popuphook()
+  Return(1);
+EndProgram
+
+///////////////////////////////////////////////
+//  MenuRequest - Popupfenster zusammenbasteln
+///////////////////////////////////////////////
+
+Const DEBUG_COUNTER:=1;
+Const GPROP_COUNTER1:="#HookCounter_MenuRequest";
+
+Exported Function MenuRequest(character, byref packet)
+
+  If (DEBUG_COUNTER)
+    Var counter:=GetGlobalProperty(GPROP_COUNTER1);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER1, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER1, 1);
+    EndIf
+  EndIf
+
+	If (character.getprop("#Context")==1)  // AntiSpam CProp wird im gestarteten Script wieder gelöscht
+    Return(1);
+  Else
+    character.setprop("#Context",1);
+    Start_ScriptPergon(":popuphook:popupmenu", {character, packet, REQUEST});  // Ausgelagert um das Zeitkritische loszuwerden
+  EndIf
+
+  Return(1);  // Paket ignorieren
+EndFunction
+
+
+///////////////////////////////////////////////
+//  MenuSelect - Passende Antwort finden..
+///////////////////////////////////////////////
+
+Const GPROP_COUNTER2:="#HookCounter_MenuSelect";
+
+Exported Function MenuSelect(character, byref packet)
+
+  If (DEBUG_COUNTER)
+    Var counter:=GetGlobalProperty(GPROP_COUNTER2);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER2, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER2, 1);
+    EndIf
+  EndIf
+
+	Start_ScriptPergon(":popuphook:popupmenu", {character, packet, SELECT}); // Ausgelagert um das Zeitkritische loszuwerden
+  Return(1);  // Paket ignorieren
+EndFunction
+

@@ -1,0 +1,23 @@
+Include ":popuphook:popupmenu";
+
+Program Install()
+	return 1;
+EndProgram
+
+Exported Function haspopup(mobile)
+	return 1;
+	mobile := mobile;
+EndFunction
+
+Exported Function popupinfo(mobile, who)
+	return {
+	  {ID_VENDOR_BANK, CLILOC_VENDOR_BANK},
+	  {ID_VENDOR_KONTO, CLILOC_VENDOR_KONTO},
+	  {ID_VENDOR_KONTOADD, CLILOC_VENDOR_KONTOADD},
+	  {ID_VENDOR_KONTODEL, CLILOC_VENDOR_KONTODEL},
+	  {ID_VENDOR_CHEQUE, CLILOC_VENDOR_CHEQUE},
+	  {ID_VENDOR_MONDSTEIN, CLILOC_VENDOR_MONDSTEIN}
+	};
+	mobile := mobile;
+	who := who;
+EndFunction

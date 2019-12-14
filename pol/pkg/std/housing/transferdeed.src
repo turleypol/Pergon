@@ -1,0 +1,79 @@
+use storage;
+use uo;
+include "house";
+include "include/bank";
+include "include/client";
+include "include/itemnpc";
+include "include/msgs";
+
+Const UOBJECT_BRASS_SIGN := 0x0bd2;
+Const UOBJECT_WOOD_SIGN := 0x0bd0;
+
+Program ChangeHouseOwner(who, deed)
+  var infoarr    := GetObjProperty( deed, "homeinfo" );
+  Var nwx        := infoarr[1];
+  Var nwy        := infoarr[2];
+  Var sex        := infoarr[3];
+  Var sey        := infoarr[4];
+  Var signserial := infoarr[5];
+  // unused
+  // Var nwz        := infoarr[6];
+  // Var sez        := infoarr[7];
+  Var sign       := SystemFindObjectBySerial(signserial );
+  var signinfo     := GetObjProperty( sign, "homeinfo" );
+  Var owner      := signinfo[1];
+  if (owner == who.serial)
+    SendSysMessagePergon(who, "Diese Haus gehört Euch bereits!");
+    return;
+    endif
+    if ( !sign )
+	  SendSysMessagePergon( who, "Schriftstück verweist auf ein ungültiges Schild!" );
+	  return;
+    endif
+    Var bankbox := FindBankBox( who );
+    Var packkey := CreateItemInBackpackPergon( who, UOBJ_GOLD_KEY );
+    if (!packkey)
+        SendSysMessagePergon( who, "Euer Rucksack ist zu voll!");
+        return;
+    endif
+    Var bankkey := CreateItemInContainerPergon( bankbox, UOBJ_GOLD_KEY );
+    if (!bankkey)
+        SendSysMessagePergon( who, "Eure Bankbox ist zu voll!");
+        DestroyItem( packkey );
+        return;
+    endif
+    Var lockid := AllocLockId();
+    SetObjProperty( packkey, "lockid", lockid );
+    SetObjProperty( bankkey, "lockid", lockid );
+    foreach item in ListObjectsInBox( nwx, nwy, -100, sex, sey, 100,sign.realm )
+      if( ((item.objtype >= UOBJECT_DOORS_START) and (item.objtype <= UOBJECT_DOORS_END)))
+        item.locked := 1;
+        SetObjProperty(item, "lockid", lockid);
+      elseif( (item.objtype == UOBJECT_BRASS_SIGN) or (item.objtype == UOBJECT_WOOD_SIGN) )
+        SetObjProperty(item, "lockid", lockid);
+      endif
+    endforeach
+    MoveItemToContainer( deed, bankbox, x := -1, y := -1 );
+  Var newsigninfo := { };
+    newsigninfo[1]  := who.serial;
+    newsigninfo[2]  := infoarr[1];
+    newsigninfo[3]  := infoarr[2];
+    newsigninfo[4]  := infoarr[3];
+    newsigninfo[5]  := infoarr[4];
+    newsigninfo[6]  := infoarr[6];
+    newsigninfo[7]  := infoarr[7];
+    newsigninfo[8]  := infoarr[8];
+    newsigninfo[9]  := infoarr[9];
+  setobjproperty(sign,"homeinfo",    newsigninfo);
+  if (!getobjproperty(sign, PROP_HS_C_FIX_NUM))
+    setobjproperty(sign, PROP_HS_C_FIX_NUM, infoarr[8]);
+  endif
+  if (!getobjproperty(sign, PROP_HS_C_SC_NUM))
+    setobjproperty(sign, PROP_HS_C_SC_NUM,    infoarr[9]);
+  endif
+  setobjproperty(sign,"virgin", 1);
+  eraseobjproperty(sign, PROP_HS_C_FRIENDS);
+  SendSysMessagePergon( who , "Ihr seid jetzt Eigentümer dieses Hauses." );
+  SendSysMessagePergon( who , "Die Schlüssel wurden angefertigt und Ihr wurdet im Grundbuch eingetragen." );
+  SendSysMessagePergon( who , "Ihr müsst zuerst auf das Hausschild klicken, um Gegenstände zu versperren oder abzustellen. Das muss nur nach einem Eigentümerwechsel passieren." );
+endprogram

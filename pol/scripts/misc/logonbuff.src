@@ -1,0 +1,129 @@
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+//     LogonBuff - Blendet die Icons der Buff/Debuff-Anzeige nach einem Login wieder ein
+//
+//
+//////////////////////////////////////////////////////////////////////////////////////////
+
+use os;
+include "include/packets";
+include "include/modifyskill";
+
+Program logonbuff(who);
+
+	Sleep(10);
+
+	If (who.getprop("spell_dazzle"))
+		BuffSender(who, "spell_dazzle", who.getprop("spell_dazzle")[1]);
+	EndIf
+	If (who.getprop("spell_clumsy"))
+		BuffSender(who, "spell_clumsy", who.getprop("spell_clumsy")[1]);
+	EndIf
+	If (who.getprop("spell_weaken"))
+		BuffSender(who, "spell_weaken", who.getprop("spell_weaken")[1]);
+	EndIf
+	If (who.getprop("spell_cunning"))
+		BuffSender(who, "spell_cunning", who.getprop("spell_cunning")[1]);
+	EndIf
+	If (who.getprop("spell_agility"))
+		BuffSender(who, "spell_agility", who.getprop("spell_agility")[1]);
+	EndIf
+	If (who.getprop("spell_strength"))
+		BuffSender(who, "spell_strength", who.getprop("spell_strength")[1]);
+	EndIf
+	If (who.getprop("spell_protect"))
+		BuffSender(who, "spell_protect", who.getprop("spell_protect")[1]);
+	EndIf
+	If (who.getprop("spell_incognito"))
+		BuffSender(who, "spell_incognito", who.getprop("spell_incognito")[1]);
+	EndIf
+	If (who.getprop("spell_poly"))
+		BuffSender(who, "spell_poly", who.getprop("spell_poly")[1]);
+	EndIf
+	If (who.getprop("spell_aura"))
+		BuffSender(who, "spell_aura", who.getprop("spell_aura")[1]);
+	EndIf
+	If (who.getprop("spell_resist"))
+		BuffSender(who, "spell_resist", who.getprop("spell_resist")[1]);
+	EndIf
+	If (who.getprop("spell_reflect")[2] == "mirror")
+		BuffSender(who, "holy_mirror", who.getprop("spell_reflect")[1]);
+	ElseIf (who.getprop("spell_reflect")[2] == "single")
+		BuffSender(who, "mirror_single", who.getprop("spell_reflect")[1]);
+	EndIf
+	If (who.getprop("spell_bless"))
+		BuffSender(who, "spell_bless", who.getprop("spell_bless")[1]);
+	EndIf
+	If (who.getprop("spell_curse"))
+		BuffSender(who, "spell_curse", who.getprop("spell_curse")[1]);
+	EndIf
+	If (who.getprop("spell_blind"))
+		BuffSender(who, "spell_blind", who.getprop("spell_blind")[1]);
+	EndIf
+	If (who.getprop("spell_paralyze"))
+		BuffSender(who, "spell_paralyze", who.getprop("spell_paralyze")[1]);
+	EndIf
+	If (who.getprop("spell_statue"))
+		BuffSender(who, "spell_statue", who.getprop("spell_statue")[1]);
+	EndIf
+	If (who.getprop("spell_spiritspeak"))
+		BuffSender(who, "spell_spiritspeak", who.getprop("spell_spiritspeak")[1]);
+	EndIf
+	If (who.getprop("spell_soulseek"))
+		BuffSender(who, "spell_soulseek", who.getprop("spell_soulseek")[1]);
+	EndIf
+	If (who.getprop("spell_doomed"))
+		BuffSender(who, "spell_doomed", who.getprop("spell_doomed")[1]);
+	EndIf
+	If (who.getprop("spell_speed"))
+		BuffSender(who, "spell_speed", who.getprop("spell_speed")[1]);
+	EndIf
+	If (who.getprop("spell_slow"))
+		BuffSender(who, "spell_slow", who.getprop("spell_slow")[1]);
+	EndIf
+	If (who.getprop("potion_staerkend"))
+		BuffSender(who, "potion_staerkend", who.getprop("potion_staerkend")[1]);
+	EndIf
+	If (who.getprop("potion_beweglich"))
+		BuffSender(who, "potion_beweglich", who.getprop("potion_beweglich")[1]);
+	EndIf
+	If (who.getprop("potion_erhellend"))
+		BuffSender(who, "potion_erhellend", who.getprop("potion_erhellend")[1]);
+	EndIf
+	If (who.getprop("potion_feuerresistent"))
+		BuffSender(who, "potion_feuerresistent", who.getprop("potion_feuerresistent")[1]);
+	EndIf
+	If (who.getprop("potion_erdresistent"))
+		BuffSender(who, "potion_erdresistent", who.getprop("potion_erdresistent")[1]);
+	EndIf
+	If (who.getprop("potion_wasserresistent"))
+		BuffSender(who, "potion_wasserresistent", who.getprop("potion_wasserresistent")[1]);
+	EndIf
+	If (who.getprop("potion_luftresistent"))
+		BuffSender(who, "potion_luftresistent", who.getprop("potion_luftresistent")[1]);
+	EndIf
+	If (who.getprop("potion_giftresistent"))
+		BuffSender(who, "potion_giftresistent", who.getprop("potion_giftresistent")[1]);
+	EndIf
+	If (who.getprop("fish_cunning"))
+		BuffSender(who, "fish_cunning", who.getprop("fish_cunning")[1]);
+	EndIf
+	If (who.getprop("fish_agility"))
+		BuffSender(who, "fish_agility", who.getprop("fish_agility")[1]);
+	EndIf
+	If (who.getprop("fish_strength"))
+		BuffSender(who, "fish_strength", who.getprop("fish_strength")[1]);
+	EndIf
+
+EndProgram
+
+Function Buffsender(who, spell, time)
+	If ((who.getprop(SKKLASSE) != KLASSE_MAGIER) && (who.cmdlevel < CMDLEVEL_SEER))
+		time := 0;
+	Else
+		time -= ReadGameClock();
+	EndIf
+	BuffIcons(who, spell, 0, 1);
+	BuffIcons(who, spell, time);
+	SleepMS(2);
+EndFunction

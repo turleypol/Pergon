@@ -1,0 +1,153 @@
+/////////////////////////////////////////////////////////////////////////////
+// Moongate.src - Walkover Script For Pergon's Moongates
+//
+
+use os;
+use uo;
+include ":runebook:rune";
+include "include/client";
+include "include/modifyskill";
+include "include/moongate";
+
+Program Moongate(mobile)
+  // FIXME: Quickfix durch Spellchecker-Magie ersetzen
+  If (mobile.frozen or mobile.paralyzed)
+    // Freeze-Probleme vermeiden
+    return;
+  EndIf
+
+  If (mobile.isa(POLCLASS_NPC))
+    // check if mobile is PC (Critters dont use moongates)
+    return;
+  EndIf
+  If ((GetObjProperty(mobile, TYPNEWBIE)) && (mobile.cmdlevel < CMDLEVEL_SEER))
+    // Newbie
+    SendSysMessagePergon(mobile,
+      "Dieses Tor ist nicht für Euch bestimmt!",
+      "This gate is not intended for your purpose!"
+    );
+    return;
+  EndIf
+
+  var moongates := MoonSelection();
+  var layout := {
+    "page 0",  // Seite 0 (Basisseite)
+    "nodispose",
+    "gumppic   0 0 104",
+    "gumppic 245 0 122"
+  };
+  var data := {""};
+
+  var oldfrozen := mobile.frozen;
+  If (mobile.getprop("#Teleportfrozen"))
+    // Direkt auf Tor teleport, da ist freeze schon vorhanden
+    oldfrozen := 0;
+  EndIf
+
+  // gather moonstones in backpack
+  var stones := dictionary;
+  ForEach stone in (FindSubstance(mobile.backpack,0x685A,1,0,FINDSUBSTANCE_FIND_ALL))
+    var location := Lower(stone.getprop("location"));
+    // check if target is legal
+    If (moongates.exists(location))
+      // store stone if its specific for target loc
+      stones[location] := stone;
+    Else
+      // Blanko-Stein fuellt alle leeren Slots
+      ForEach location in (moongates.keys())
+        SleepMS(2);
+        If (!stones.exists(location))
+          stones[location] := stone;
+        EndIf
+      EndForEach
+    EndIf
+  EndForEach
+
+  // now fill in the gump buttons
+  ForEach location in (moongates.keys())
+    SleepMS(2);
+    If (stones.exists(location))
+      layout.append(moongates[location].button+" "+moongates[location].id);
+      layout.append(moongates[location].tip);
+    EndIf
+  EndForEach
+
+  If (stones.size())
+    // check if there are possible targets at all
+    var code;
+
+    // freeze mobile
+    mobile.frozen := 1;
+    IncRevision(mobile);
+
+    // send dialog
+    code := SendDialogGump(mobile, layout, data, 150, 50)[0];
+
+    If (code)
+      var targetgate;
+      // get target gate
+      ForEach gate in moongates
+        If (gate.id == code)
+          targetgate := _gate_iter;
+          Break;
+        EndIf
+      EndForEach
+      // get used stone
+      var stone := stones[targetgate];
+
+      // get target coordinates
+      var dest := MoonPosition(targetgate);
+      // get mobiles coordinates
+      var from_x := mobile.x;
+      var from_y := mobile.y;
+      var from_z := mobile.z;
+
+      // hide mobile
+      mobile.hidden := 1;
+
+      PlayStationaryEffect(
+        dest[1], dest[2], dest[3], FX_TELE_VANISH, 0xa, 0xa, 0, dest[4]
+      );
+
+      // wait a bit
+      Sleep(1);
+
+      // +1: bisherige Ziel-Koordinaten (vor gemeinsamer Datenhaltung fuer
+      // Tor-Bau und Tor-Nutzung) lagen immer eins unter dem Tor
+      var res := MoveObjectToLocation(
+        mobile, dest[1], dest[2]+1, dest[3], dest[4]
+      );
+      If (res)
+        SubtractAmount(stone, 1);
+      Else
+        SendSysMessagePergon(mobile,
+          "Irgendwas ging schief!", "Something went wrong!"
+        );
+        syslog(
+          "FEHLER: Moongate-Teleport nach "+targetgate+" gescheitert: "+
+          res.errortext
+        );
+      EndIf
+      PlayStationaryEffect(
+        from_x, from_y, from_z, FX_TELE_VANISH, 0xa, 0xa, 0, mobile.realm
+      );
+      PlaySoundEffect(mobile, SFX_SPELL_RECALL);
+
+      // wait another bit
+      Sleep(1);
+
+      If (mobile.hidden)
+        // show mobile
+        mobile.hidden := 0;
+      EndIf
+    EndIf
+
+    // thaw mobile
+    mobile.frozen := oldfrozen;
+    IncRevision(mobile);
+  Else
+    SendSysMessagePergon(mobile,
+      "Ihr habt keinen Mondstein!", "You need a moonstone!"
+    );
+  EndIf
+EndProgram

@@ -1,0 +1,10 @@
+<h3 id="onlinefull">onlinefull</h3>
+
+<h4>Parameter: keiner oder <kbd>&lt;Charactername&gt;</kbd></h4>
+
+<p>Erstellt, sofern man nicht allein auf dem Server ist und kein Parameter
+angegeben wurde, eine Übersicht aller Character mit Angabe von
+Aufenthaltsort und Onlinezeit. Mit Parameter verhält es sich wie
+&bdquo;online&rdquo;.</p>
+
+<p>Siehe auch: <a data-href="#online">online</a></p>

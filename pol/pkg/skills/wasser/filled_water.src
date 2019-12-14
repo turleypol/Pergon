@@ -1,0 +1,50 @@
+////////////////////////////////////////////
+// Water - System
+//
+// Author: Pauker
+//         11/2001
+
+////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+// Revision 1.8  2008/07/06 13:45:28  mehdorn
+// Aufteilung fuer Brunnen erweitert
+//
+//
+// 05.09.05 Turley:
+// Auch große Fässer möglich, Wassermenge zwischen 10 und 101 Liter
+// (Skillabhängig)
+
+use uo;
+
+include "fill";
+include "include/objtype";
+
+Program filled_water(char, myst)
+  // die Wassermenge wird ausgelesen
+  var wasser := GetObjProperty(myst, WASSERSTAND);
+  If (wasser < 1)
+    SendSysMessagePergon(char,
+      "Die Wasserader ist erschöpft.", "This water vein is excavated."
+    );
+    return;
+  EndIf
+
+  // zu fuellendes Gefaess auswaehlen
+  SendSysMessagePergon(char,
+    "Wählt das Gefäß, welches ihr füllen wollt.",
+    "Choose a vessel to fill."
+  );
+  var Gefaess := target(char, TGTOPT_CHECK_LOS);
+  If (!Gefaess)
+    SendSysMessagePergon(char, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (FuelleWasserGefaess(char, Gefaess, myst) == 0)
+    SendSysMessagePergon(char,
+      "Die Wasserader ist erschöpft.",
+      "The water vein is excavated."
+    );
+  EndIf
+EndProgram

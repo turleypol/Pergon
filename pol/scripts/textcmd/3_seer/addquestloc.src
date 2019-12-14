@@ -1,0 +1,70 @@
+//Author: Dream Weaver 6/3/99
+//Issues: Must write necessary data to file before it becomes useful.
+//
+//This command now prompts you for a location, then a description for the location. It then appends the results to questlocs.cfg
+
+use uo;
+use cfgfile;
+
+Include "include/msgs";
+
+Var quest_cfg := ReadConfigFile( "questlocs" );
+
+program questloc( character )
+    SendSysMessagePergon( character, "Wählt eine Stelle." );
+    Var where := TargetCoordinates( character );
+
+    if(!quest_cfg)
+      Print("ach! Cant find the config file!");
+    endif
+
+    // Var maxentry := GetConfigMaxIntKey(quest_cfg);
+    // Print("maxentry: " + maxentry);
+
+     Var loc_descr := RequestInputPergon(character, character.backpack, "Eingabe einer Beschreibung zur Stelle: ");
+     if (loc_descr)
+       loc_descr := CChrZ(loc_descr.uc_text);
+     endif
+
+     Var rangex := CChrZ(RequestInputPergon( character, character.backpack, "X-Reichweite: ").uc_text);
+     if (rangex)
+       rangex := CChrZ(rangex.uc_text);
+     endif
+     Var rangey := CChrZ(RequestInputPergon( character, character.backpack, "Y-Reichweite: ").uc_text);
+     if (rangey)
+       rangey := CChrZ(rangey.uc_text);
+     endif
+
+    Var elemkey := (GetConfigMaxIntKey(quest_cfg)) + 1;
+
+    Var props:= array;
+    Var prop:=struct;
+    prop .+ pname;
+    prop .+ pvalue;
+
+    prop.pname := "Name";
+    prop.pvalue := loc_descr;
+    props[1] := prop;
+
+    prop.pname := "x";
+    prop.pvalue := where.x;
+    props[2] := prop;
+
+    prop.pname := "y";
+    prop.pvalue := where.y;
+    props[3] := prop;
+
+    prop.pname := "rangex";
+    prop.pvalue := rangex;
+
+    props[4] := prop;
+
+    prop.pname := "rangey";
+    prop.pvalue := rangey;
+
+
+    AppendConfigFileElem( "questlocs", "questloc", elemkey, props );
+
+    UnloadConfigFile( "questlocs" );
+endprogram
+

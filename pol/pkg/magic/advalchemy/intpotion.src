@@ -1,0 +1,31 @@
+// Made By Charles Haustron
+// Raises int
+use util;
+
+include "drinkpotion";
+include "include/tempmod";
+include "include/modifyskill";
+
+program drink_blue (character, potion)
+    if (!checkifcandrink(character))
+      return;
+    endif
+    Var potion_strength := get_potion_strength(potion);
+
+
+    if (is_poison(potion))
+        do_poison(character, potion);
+    else
+        Var thestring := cstr(potion_strength) + "d12";
+        Var agil_gain := RandomDiceRoll( thestring );
+        empty_bottle (character, potion);
+        if (can_stat_mod(character, "int"))
+                SetIntModPergon(character, GetIntModPergon(character)+agil_gain);
+                do_temp_mod(character, "int", agil_gain, cint(potion_strength * 50));
+                allow_stat_mod(character, "int",  cint(potion_strength * 50));
+        endif
+
+    endif
+
+
+endprogram

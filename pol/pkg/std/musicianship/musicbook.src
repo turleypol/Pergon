@@ -1,0 +1,692 @@
+///////////////////////////////////////////////////////////////////////////
+// musicbook
+//
+// Verwaltung und Benutzung des Notenbuches
+
+use cfgfile;
+use polsys;
+use uo;
+use util;
+include "common";
+include "include/client";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/objtype";
+
+// falls BOOKSIZE ein Vielfaches von PAGELEN ist, wird eine (leere) Seite
+// zuviel angezeigt
+Const BOOKSIZE := 40;
+Const PAGELEN  := 16;
+Const DATAIDX  :=  4;
+
+Const PANEL_GUMP_WIDTH:=   44;   // Ausmass eines Symbols auf dem Panel
+Const PANEL_GUMP_HEIGHT:=  44;
+Const GUMP_EMPTY_EDIT:=  2152;
+Const GUMP_CUSTOM_PIC:=  0x310D;
+
+Program MusicBook(who, book) // {{{
+  If (!book.getprop("GumpProps")) // Init
+    book.setprop("GumpProps",struct{mask:={{0}},zeilen:=1,spalten:=1,transparent:=0,x:=50,y:=50});
+  EndIf
+  
+  ShowBook(who,book);
+EndProgram  
+
+Function ShowBook(who,book,edit:=0)
+  var layout := {
+    "nodispose",
+    "page 0",
+    "gumppic 30 30 500", // ein offenes Buch
+    "gumppic 80 50 50",  // die huebschen Ornamente
+    "gumppic 80 225 50",
+    "gumppic 260 50 50",
+    "gumppic 260 225 50",
+    "page 1",
+    "tilepic 250 120 3763",
+    "tilepic 360 120 3764",
+    "text 300 120 5 0",
+    "text 115 115 0 1",
+    "text 115 175 0 2",
+    "text 115 130 0 3",
+    "text 115 145 0 4",
+    "button 98 117 1209 1210 1 0 1000", // add
+    "button 98 177 1209 1210 1 0 1001", // delete
+    "button 98 132 1209 1210 1 0 1002", // Abschreiben
+    "button 98 147 1209 1210 1 0 1003", // kürzel ändern
+    "button 386 30 502 502 0 2 3000",   // zum Umblaettern auf Seite 2
+    "page 2",
+    "button 30 30 501 501 0 1 3001"     // zum Umblaettern auf Seite 1
+  
+    // "gumppic 80 50 50",
+    // "button 62 266 2462 2461 1 0 1000",
+    // "button 116 266 2463 2464 1 0 1001"   //delete
+    // "button 30 30 501 501 0 1"            // Button zurueck
+    // "text 100 50 0 1"
+  };
+  var data := {
+    "Musikbuch",
+    "Aufnehmen",
+    "Loeschen",
+    "Abschreiben",
+    "Kuerzel aendern"
+  };
+  
+  FillMusicBook(book, layout,  data);
+  var result := SendDialogGump(who, layout, data); // Buch anzeigen
+
+  If (edit)  // Wurde aufgerufen um das Panel zu belegen
+    If (result[0]<BOOKSIZE)
+      Return(result[0]);
+    Else
+      Return(0);
+    EndIf
+  EndIf
+  // irgendein Button gedrueckt?
+  If (!result[0])
+    ShowPanel(who,book);
+    return;
+  EndIf
+
+  If (result[0] == 1000)
+    AddMusic(who, book);
+  ElseIf (result[0] == 1001)
+    DeleteMusic(who, book);
+  ElseIf (result[0] == 1002)
+    WriteScroll(who, book);
+  ElseIf (result[0] == 1003)
+    SetAbbreviation(who, book);
+  ElseIf (result[0]<BOOKSIZE)
+    // Button fuer ein Lied gedrueckt -> Noten spielen
+    var lieder    := GetObjProperty(book, "musicdefs");
+    var musicname := lieder[result[0]][1];
+    var noten     := lieder[result[0]][2];
+    var liednr    := lieder[result[0]][3];
+    If (liednr)
+      // ein Bardenlied spielen
+      PlayBardSong(who, LoadBardSong(liednr));
+    Else // eine eigene Komposition spielen, ohne Wirkung
+      PlayMelody(who, musicname, noten);
+    EndIf
+  EndIf
+EndFunction // }}}
+
+// vorbereitete Notendefinition aufnehmen
+Function AppendNotesDef(who, book, notesdef) // {{{
+  var musicdefs := GetObjProperty(book, "musicdefs");
+  If (!musicdefs)
+    // Noten in frisches Buch eintragen
+    SetObjProperty(book, "musicdefs", {notesdef});
+    SendSysMessagePergon(who, "Die neuen Noten wurden eintragen.");
+    return 1;
+  EndIf
+
+  If (musicdefs.size() < BOOKSIZE)
+    // Buch ist noch nicht voll
+    musicdefs.append(notesdef);
+    SetObjProperty(book, "musicdefs", musicdefs);
+    SendSysMessagePergon(who, "Die neuen Noten wurden eintragen.");
+    return 1;
+  Else
+    SendSysMessagePergon(who, "Eurer Notenbuch ist bereits voll.");
+    return 0;
+  EndIf
+EndFunction // }}}
+
+// Ein neues Musikstück ins Buch eintragen
+Function AddMusic(who, book) // {{{
+  SendSysMessagePergon(who, "Wählt ein Lied zur Aufnahme ins Buch!");
+  var item := Target(who);
+  If (!AccessiblePergon(who, item, CHECK_LOCKEDDOWN))
+    return;
+  EndIf
+  // Extraabfrage, um angepasste Fehlermeldung ausgeben zu können.
+  If (!item.movable)
+    SendSysMessagePergon(who, "Das könnt Ihr nicht benutzen.");
+    return;
+  EndIf
+  If (item.objtype == UOBJ_MUSICSCROLL)
+    // (selbstgeschriebenes) Musikstueck
+    var notesdef := {
+      GetObjProperty(item, PROP_MUSIC_SCR_SONGNAME),
+      GetObjProperty(item, PROP_MUSIC_SCR_NOTES),
+      0 // 0, weil's kein Bardsong ist
+    };
+    If (AppendNotesDef(who, book, notesdef))
+      SubtractAmount(item, 1);
+    EndIf
+  Else
+    If (item.getprop(PROP_MUSIC_SCR_IS_COPY) != error)
+      SendSysMessagePergon(who,
+        "Diese Rolle ist eine Kopie und kann nicht eingetragen werden.",
+        "This scroll is a copy and cannot be inscribed.",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+      );
+      return;
+    EndIf
+
+    var itemdesc := ReadConfigFile("::itemdesc");
+    // Besser ist das, sollte aber nie schief laufen
+    If (!itemdesc)
+      syslog("FEHLER: Itemdesc nicht lesbar: "+itemdesc.errortext);
+      return;
+    EndIf
+
+    // Ist es irgendein Bardenlied?
+    var liednr := itemdesc[item.objtype].bardsong;
+    If (!liednr)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+
+    // Liedname ermitteln
+    var songfile := ReadConfigFile("bardsong");
+    If (!songfile)
+      syslog("FEHLER: bardsong.cfg nicht lesbar: "+songfile.errortext);
+      return;
+    EndIf
+    var song := FindConfigElem(songfile, liednr);
+    If (!song)
+      syslog("FEHLER: Eintrag zu Lied "+liednr+" fehlt in bardsong.cfg");
+      return;
+    EndIf
+
+    var notesdef := {song.name, {}, liednr};
+    If (AppendNotesDef(who, book, notesdef))
+      SubtractAmount(item, 1);
+    EndIf
+  EndIf
+EndFunction // }}}
+
+// Musikstueck aus Buch entfernen
+Function DeleteMusic(who, book) // {{{
+  var lieder := GetObjProperty(book, "musicdefs");
+  If (!lieder)
+    return;
+  EndIf
+
+  var liednr := CInt(SendTextEntryGump(who,
+      "Welches Lied wollt Ihr entfernen (1 - "+lieder.size()+") ?", 5
+  ));
+  If ((liednr > 0) && (liednr <= lieder.size()))
+    lieder.erase(liednr); // das spezielle Lied loeschen
+    SetObjProperty(book, "musicdefs", lieder);
+    SendSysMessagePergon(who, "Das Lied wurde entfernt.");
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndFunction // }}}
+
+// Leere Notenrolle finden (d. h. nicht bereits mit eigenem Noten)
+Function FindLeereNotenrolleInBackpack(who, object) // {{{
+  var found := 0;
+  ForEach item in (FindSubstance(
+      who.backpack, object, 1, 1, FINDSUBSTANCE_FIND_ALL
+  ))
+    SleepMs(2);
+    If (item.getprop(PROP_MUSIC_SCR_SONGNAME))
+      ReleaseItem(item);
+      continue;
+    EndIf
+    If (found)
+      ReleaseItem(item);
+      continue;
+    EndIf
+    found := item;
+  EndForEach
+
+  return found;
+EndFunction // }}}
+
+// Noten abschreiben
+Function WriteScroll(who, book) // {{{
+  If (!FindSubstance(who.backpack, 0xfc0, 1)) // Tinte und Feder
+    SendSysMessagePergon(who,
+      "Ihr braucht doch Tinte und Feder zum Schreiben!"
+    );
+    return;
+  EndIf
+
+  var leererolle := FindLeereNotenrolleInBackpack(who, UOBJ_BLANKMUSICSCROLL);
+  If (!leererolle) //leere Notenrollen
+    SendSysMessagePergon(who, "Ihr braucht leere Notenrollen zum Schreiben!");
+    return;
+  EndIf
+
+  var lieder := GetObjProperty(book, "musicdefs");
+  If (!lieder)
+    return;
+  EndIf
+
+  var liednr := CInt(SendTextEntryGump(who,
+      "Welches Lied wollt Ihr abschreiben (1 - "+lieder.size()+") ?", 5
+  ));
+  If ((liednr <= 0) or (liednr > lieder.size()))
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+
+  var skill := GetSkillPergon(who, SKILLID_MUSIZIEREN);
+  var lied  := GetObjProperty(book, "musicdefs")[liednr];
+  var musicname  := lied[1];
+  var noten      := lied[2]; // GetObjProperty(lieder, "noteslist")[liednr];
+  var bardenlied := lied[3];
+
+  If (musicname && bardenlied)
+    // offizielles Musikstueck
+
+    If ((bardenlied <= 0) or (bardenlied > MAXBARDSONG))
+      // ist aber falsch konfiguriert
+      syslog("FEHLER: Lied "+bardenlied+" ausserhalb der Grenzen!");
+      return;
+    EndIf
+
+    // Schwierigkeit ermitteln
+    var songfile := ReadConfigFile("bardsong");
+    If (!songfile)
+      syslog("FEHLER: bardsong.cfg nicht lesbar: "+songfile.errortext);
+      return;
+    EndIf
+    var song := FindConfigElem(songfile, bardenlied);
+    If (!song)
+      syslog("FEHLER: Eintrag zu Lied "+liednr+" fehlt in bardsong.cfg");
+      return;
+    EndIf
+
+    var diff := GetConfigReal(song, "difficulty");
+
+    If (skill + 15 < diff)
+      SendSysMessagePergon(who,
+        "Ihr wagt nicht, diese komplizierten Noten abzuschreiben.",
+        "You don't even try to copy this complicated song.",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_FAIL
+      );
+      return;
+    EndIf
+
+    // Doppelnutzung und Nutzung anderer Skills gleichzeitig vermeiden
+    If (who.getprop("#UsesSkill") > ReadGameClock())
+      SendSysMessagePergon(who,
+        "Ihr müsst noch etwas warten.",
+        "You will have to wait.",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+      );
+      return;
+    EndIf
+    who.setprop("#UsesSkill", 5+ReadGameClock());
+
+    PlaySoundEffect(who, SFX_24A);
+    Sleep(5);
+
+    If (CheckSkillPergon(who, SKILLID_MUSIZIEREN, Max(1, diff-5), diff))
+      var desc := GetItemDescriptor(0x6d00 + bardenlied - 1);
+      // als Kopie markieren
+      desc.CProps[PROP_MUSIC_SCR_IS_COPY] := 1;
+      desc.Color := 78;
+      var lied := CreateItemInContainerPergon(who.backpack, desc, 1);
+      If (lied)
+        SubtractAmount(leererolle, 1);
+        SendSysMessagePergon(who,
+          "Ihr habt "+musicname+" erfolgreich abgeschrieben!",
+          "You successfully copied "+musicname+"!",
+          _DEFAULT_TEXT_FONT, MSG_COLOR_SUCC
+        );
+      EndIf
+    Else
+      SubtractAmount(leererolle, 1);
+      SendSysMessagePergon(who,
+        "Ihr kleckst mit der Tinte. Das Notenblatt ist unleserlich.",
+        "Look at the ink stains on your sheet. It's unreadable!",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_FAIL
+      );
+      PlaySoundEffect(who, SFX_50);
+    EndIf
+    who.eraseprop("#UsesSkill");
+
+  ElseIf (musicname && noten)
+    // eigene Komposition
+
+    var itemdef := GetItemDescriptor(UOBJ_MUSICSCROLL);
+    If (!itemdef)
+      return;
+    EndIf
+
+    itemdef.cprops.insert(PROP_MUSIC_SCR_NOTES,    noten);
+    itemdef.cprops.insert(PROP_MUSIC_SCR_SONGNAME, musicname);
+
+    var notenrolle := CreateItemInBackpackPergon(who, itemdef, 1);
+    If (notenrolle)
+      notenrolle.name := "Musikstueck: "+musicname;
+      SubtractAmount(leererolle, 1);
+      SendSysMessagePergon(who, "Ihr habt "+musicname+" abgeschrieben!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Das könnt Ihr nicht abschreiben.");
+  EndIf
+EndFunction // }}}
+
+// Buch mit Eintraegen fuellen
+Function FillMusicBook(book, byref layout, byref data) // {{{
+  var musicdefs := GetObjProperty(book, "musicdefs");
+  If (!musicdefs)
+    return;
+  EndIf
+
+  var i, j;
+  For (j := 0; j <= (BOOKSIZE/PAGELEN)+1; j += 1)
+    For (i := 1; i<= PAGELEN; i += 1)
+      If (!musicdefs[j*PAGELEN+i])
+        continue;
+      EndIf
+
+      data.append(i + ": ");
+      data.append(musicdefs[j*PAGELEN+i][1]);
+
+      var col := " 0 ";
+      If (musicdefs[j*PAGELEN+i][3])
+        // Bardenlieder blau
+        col := " 5 ";
+      EndIf
+
+      If (i <= (PAGELEN/2))
+        // linke Buchseite fuellen
+        layout.append(
+          "button 60 "+(52+i*18)+" 1209 1210 1 0 "+(j*PAGELEN+i)
+        );
+        layout.append(
+          "text   76 "+(50+i*18)+" 0 "+(DATAIDX+(2*(j*PAGELEN+i)-1))
+        );
+        layout.append(
+          "text   90 "+(50+i*18)+ col +(DATAIDX+(2*(j*PAGELEN+i)))
+        );
+      Else
+        // rechte Buchseite fuellen
+        layout.append(
+          "button 405 "+(52+((i-PAGELEN/2)*18))+" 1209 1210 1 0 "+(j*PAGELEN+i)
+        );
+        layout.append(
+          "text   250 "+(50+((i-PAGELEN/2)*18))+" 0 "+(DATAIDX+(2*(j*PAGELEN+i)-1))
+        );
+        layout.append(
+          "text   265 "+(50+((i-PAGELEN/2)*18))+ col +(DATAIDX+(2*(j*PAGELEN+i)))
+        );
+      EndIf
+    EndFor
+
+    If (j > 0) // Button für "zurueck"
+      layout.append("button  30 30 501 501 0 "+(j+1)+" 3001");
+    EndIf
+    If (j <= (BOOKSIZE/PAGELEN)-1) // Button für "vor"
+      layout.append("button 386 30 502 502 0 "+(j+3)+" 3000");
+    EndIf
+    layout.append("page " + (j+3));
+  EndFor
+EndFunction // }}}
+
+Function SetAbbreviation(who, book)
+  var layout := {
+    "nodispose",
+    "page 0",
+    "gumppic 0 0 1228", // eine offene Rolle
+    "page 1",
+    "htmlgump 0 6 400 20 0 0 0",
+    "text 50 265 0 1",
+    "button 120 265 22150 22151 1 0 1000"
+   };
+  var data:= {"<center>Kuerzel festlegen</center>",
+  "Speichern"};
+  var musicdefs := GetObjProperty(book, "musicdefs");
+  If (!musicdefs)
+    Return;
+  EndIf
+  Var i;
+  Var y:=30;
+  Var page:=1;
+  For (i:=1;i<=musicdefs.size();i+=1)
+    If (!musicdefs[i][3]) //nur eigene
+      layout.append("text 50 "+y+" 0 "+data.size());
+      data.append(musicdefs[i][1]);
+      layout.append("textentry 300 "+y+" 300 20 40 " + i + " " + data.size());
+      If (musicdefs[i][4])
+        data.append(musicdefs[i][4]);
+      Else
+        data.append("Song "+i);
+      EndIf
+      y+=20;
+      If (y>=250)
+        y:=30;
+        page+=1;
+        layout.append("button 352 268 9773 9771 0 "+page+" 0");
+        layout.append("page "+page);
+        layout.append("button 356 7 9772 9770 0 "+(page-1)+" 0");
+      EndIf
+    EndIf
+  EndFor
+  Var ret:=SendDialogGump(who,layout,data,30,30);
+  If (ret[1000])
+    For (i:=1;i<=musicdefs.size();i+=1)
+      If (!musicdefs[i][3])
+        var abb:=ret[i];
+        If (Len(abb)>0)
+          abb[i+": "]:="";
+          If (Len(abb)>0)
+            musicdefs[i][4]:=abb;
+          EndIf
+        EndIf
+      EndIf
+    EndFor
+    book.setprop("musicdefs",musicdefs);
+  EndIf
+EndFunction
+
+Function ShowPanel(who,book)
+  Enum Buttons
+    BTTN_EDIT:=2,
+    BTTN_X_POS,
+    BTTN_Y_POS,
+    BTTN_ZEILEN,
+    BTTN_SPALTEN,
+    BTTN_TRANSPARENT
+  EndEnum
+  Var layoutpanel:={};
+  Var datapanel:={};
+  
+  Var gumpProps:=book.getprop("GumpProps");
+  Var bardenlieder := ReadConfigFile("bardsong");
+  Var ret,zeile,spalte,song;
+  Var edit:=0;
+  While(1) // Panel bleibt immer auf
+    Var musicdefs:=book.getprop("musicdefs");
+    If (!musicdefs)
+      Return;
+    EndIf
+    layoutpanel:={"nodispose",
+                  "nomove",
+                  "page 0"
+                 };
+    datapanel:={};
+    If (gumpProps.transparent==1) // Panel transparent anzeigen?
+      layoutpanel.append("resizepic "+gumpProps.x+" "+gumpProps.y+" 5054 "+(gumpProps.spalten*PANEL_GUMP_WIDTH+8)+" "+(gumpProps.zeilen*PANEL_GUMP_HEIGHT+8));
+      layoutpanel.append("checkertrans "+(gumpProps.x+4)+" "+(gumpProps.y+4)+" "+(gumpProps.spalten*PANEL_GUMP_WIDTH)+" "+(gumpProps.zeilen*PANEL_GUMP_HEIGHT));
+    ElseIf (gumpProps.transparent<>2)
+      layoutpanel.append("resizepic "+gumpProps.x+" "+gumpProps.y+" 5054 "+(gumpProps.spalten*PANEL_GUMP_WIDTH+8)+" "+(gumpProps.zeilen*PANEL_GUMP_HEIGHT+8));
+    EndIf
+    
+    If (!edit)
+      layoutpanel.append("button "+(gumpProps.x+gumpProps.spalten*PANEL_GUMP_WIDTH-19)+" "+
+                   (gumpProps.y+gumpProps.zeilen*PANEL_GUMP_HEIGHT-19)+" 2703 2703 1 0 "+BTTN_EDIT);
+      For (zeile:=1;zeile<=gumpProps.zeilen;zeile+=1)
+        For (spalte:=1;spalte<=gumpProps.spalten;spalte+=1)
+          song:=gumpProps.mask[zeile][spalte];
+          If (song)
+            If (musicdefs[song])
+              If (musicdefs[song][3])
+                layoutpanel.append("button "+(gumpProps.x+(spalte-1)*PANEL_GUMP_WIDTH+4)+" "+(gumpProps.y+(zeile-1)*PANEL_GUMP_HEIGHT+4)
+                            +" "+bardenlieder[musicdefs[song][3]].gump+" "+bardenlieder[musicdefs[song][3]].gump+" 1 0 "+(100+song));
+                layoutpanel.append("tooltip "+CInt(bardenlieder[musicdefs[song][3]].cliloc)); //Tooltip anzeigen
+              Else
+                layoutpanel.append("button "+(gumpProps.x+(spalte-1)*PANEL_GUMP_WIDTH+4)+" "+(gumpProps.y+(zeile-1)*PANEL_GUMP_HEIGHT+4)
+                                  +" "+GUMP_CUSTOM_PIC+" "+GUMP_CUSTOM_PIC+" 1 0 "+(100+song));
+                If (musicdefs[song][4])
+                  layoutpanel.append("htmlgump "+(2+gumpProps.x+(spalte-1)*PANEL_GUMP_WIDTH+4)+" "+(4+gumpProps.y+(zeile-1)*PANEL_GUMP_HEIGHT+4)
+                                    +" 40 40 "+datapanel.size()+" 0 0");
+                  datapanel.append("<center>"+musicdefs[song][4]+"</center>");
+                EndIf
+              EndIf
+            EndIf
+          EndIf
+        EndFor
+      EndFor
+      // muß doppelt, unterster Button zählt immer, ganz zum schluß nochmal damit optisch oben
+      layoutpanel.append("button "+(gumpProps.x+gumpProps.spalten*PANEL_GUMP_WIDTH-19)+" "+
+                   (gumpProps.y+gumpProps.zeilen*PANEL_GUMP_HEIGHT-19)+" 2703 2703 1 0 "+BTTN_EDIT);
+    Else
+      // Position des Parameterfeldes bestimmen
+      Var basis_x;
+      If (gumpProps.x<220)
+        basis_x:=gumpProps.x+(gumpProps.spalten*PANEL_GUMP_WIDTH+8)+10;
+      Else
+        basis_x:=30;
+      EndIf
+      // Layoutfeld zusammenbasteln
+      layoutpanel.append("resizepic "+basis_x+" 30 2620 210 172");
+      layoutpanel.append("checkertrans "+(basis_x+5)+" 35 200 162");
+      layoutpanel.append("text "+(basis_x+10)+" 40 5 0");
+      layoutpanel.append("text "+(basis_x+10)+" 68 40 1");
+      layoutpanel.append("text "+(basis_x+130)+" 68 5 2");
+      layoutpanel.append("button "+(basis_x+175)+" 65 2640 2641 1 0 "+BTTN_X_POS);
+      layoutpanel.append("text "+(basis_x+10)+" 88 40 3");
+      layoutpanel.append("text "+(basis_x+130)+" 88 5 4");
+      layoutpanel.append("button "+(basis_x+175)+" 85 2640 2641 1 0 "+BTTN_Y_POS);
+      layoutpanel.append("text "+(basis_x+10)+" 108 40 5");
+      layoutpanel.append("text "+(basis_x+130)+" 108 5 6");
+      layoutpanel.append("button "+(basis_x+175)+" 105 2640 2641 1 0 "+BTTN_ZEILEN);
+      layoutpanel.append("text "+(basis_x+10)+" 128 40 7");
+      layoutpanel.append("text "+(basis_x+130)+" 128 5 8");
+      layoutpanel.append("button "+(basis_x+175)+" 125 2640 2641 1 0 "+BTTN_SPALTEN);
+      layoutpanel.append("text "+(basis_x+10)+" 168 40 9");
+      layoutpanel.append("text "+(basis_x+130)+" 168 5 10");
+      layoutpanel.append("button "+(basis_x+175)+" 165 2640 2641 1 0 "+BTTN_TRANSPARENT);
+
+      // Datenfeld zusammenbasteln
+      datapanel:={"Abilitypanel", "X-Position", CStr(gumpProps.x), "Y-Position", CStr(gumpProps.y),
+        "Zeilen", CStr(gumpProps.zeilen), "Spalten", CStr(gumpProps.spalten), "Transparent?"};
+      If (gumpProps.transparent==1) // Panel transparent anzeigen?
+        datapanel.append("ja");
+      ElseIf (gumpProps.transparent==2)
+        datapanel.append("total");
+      Else
+        datapanel.append("nein");
+      EndIf
+      For (zeile:=1;zeile<=gumpProps.zeilen;zeile+=1)
+        For (spalte:=1;spalte<=gumpProps.spalten;spalte+=1)
+          song:=gumpProps.mask[zeile][spalte];
+          If (song)
+            If (musicdefs[song])
+              If (musicdefs[song][3])
+                layoutpanel.append("button "+(gumpProps.x+(spalte-1)*PANEL_GUMP_WIDTH+4)+" "+(gumpProps.y+(zeile-1)*PANEL_GUMP_HEIGHT+4)
+                              +" "+bardenlieder[musicdefs[song][3]].gump+" "+bardenlieder[musicdefs[song][3]].gump+" 1 0 "+(100+spalte+(zeile-1)*gumpProps.spalten));
+              Else
+                layoutpanel.append("button "+(gumpProps.x+(spalte-1)*PANEL_GUMP_WIDTH+4)+" "+(gumpProps.y+(zeile-1)*PANEL_GUMP_HEIGHT+4)
+                                  +" "+GUMP_CUSTOM_PIC+" "+GUMP_CUSTOM_PIC+" 1 0 "+(100+song));
+                If (musicdefs[song][4])
+                  layoutpanel.append("htmlgump "+(2+gumpProps.x+(spalte-1)*PANEL_GUMP_WIDTH+4)+" "+(4+gumpProps.y+(zeile-1)*PANEL_GUMP_HEIGHT+4)
+                                    +" 40 40 "+datapanel.size()+" 0 0");
+                  datapanel.append("<center>"+musicdefs[song][4]+"</center>");
+                EndIf
+              EndIf
+            Else
+              layoutpanel.append("button "+(gumpProps.x+(spalte-1)*PANEL_GUMP_WIDTH+12)+" "
+                            +(gumpProps.y+(zeile-1)*PANEL_GUMP_HEIGHT+12)+" "+GUMP_EMPTY_EDIT+" "+GUMP_EMPTY_EDIT+" 1 0 "+
+                            (100+spalte+(zeile-1)*gumpProps.spalten));
+            EndIf
+          Else
+            layoutpanel.append("button "+(gumpProps.x+(spalte-1)*PANEL_GUMP_WIDTH+12)+" "
+                          +(gumpProps.y+(zeile-1)*PANEL_GUMP_HEIGHT+12)+" "+GUMP_EMPTY_EDIT+" "+GUMP_EMPTY_EDIT+" 1 0 "+
+                          (100+spalte+(zeile-1)*gumpProps.spalten));
+          EndIf
+        EndFor
+      EndFor
+    EndIf
+    ret:=SendDialogGump(who,layoutpanel,datapanel,0,0);
+    If (!ret)
+      If (edit)
+        edit:=0; // Editiermodus verlassen
+      Else
+        Break;  // Komplett schließen
+      EndIf
+    ElseIf (ret[BTTN_EDIT])
+      edit:=1;
+    Else
+      var bttn:=ret.keys[ret.keys.size()];
+      If (edit)
+        If (bttn>=100)
+          Var zeile:=(bttn-100+gumpProps.spalten-1)/gumpProps.spalten;
+          Var spalte:=(bttn-100)-(zeile-1)*gumpProps.spalten;
+          song:=ShowBook(who,book,1); // Buch neuöffnen und Fähigkeit holen
+          If (song)
+            gumpProps.mask[zeile][spalte]:=song;
+          Else
+            gumpProps.mask[zeile][spalte]:=0;
+          EndIf
+        Else // Parameterändern
+          If (ret[BTTN_TRANSPARENT])
+            gumpProps.transparent+=1;
+            If (gumpProps.transparent>2)
+              gumpProps.transparent:=0;
+            EndIf
+          Else
+            Var description,maxval;
+            Case (bttn)
+              BTTN_X_POS:   description:="X-Position";maxval:=2048;
+              BTTN_Y_POS:   description:="Y-Position";maxval:=2048;
+              BTTN_ZEILEN:  description:="Zeilen";    maxval:=10;
+              BTTN_SPALTEN: description:="Spalten";   maxval:=10;
+            EndCase
+
+            Var val:=CInt(SendTextEntryGump(who, "Bitte den neuen Wert fuer '"+
+                description+"' eingeben!", TE_CANCEL_ENABLE, TE_STYLE_NUMERICAL, maxval));
+            If (val)
+              Case (bttn)
+                BTTN_X_POS:   gumpProps.x:=val;
+                BTTN_Y_POS:   gumpProps.y:=val;
+                BTTN_ZEILEN:  ChangeSize(gumpProps,gumpProps.spalten,val);
+                BTTN_SPALTEN: ChangeSize(gumpProps,val,gumpProps.zeilen);
+              EndCase
+            EndIf
+          EndIf
+        EndIf
+        book.setprop("GumpProps",gumpProps);
+      Else  // Fähigkeitanwenden
+        bttn-=100;
+        If (musicdefs[bttn])
+          Start_ScriptPergon("panelsong",{who,book,bttn});
+        EndIf
+        edit:=0;
+      EndIf
+    EndIf
+  EndWhile
+EndFunction
+
+Function ChangeSize(byref gumpProps,spalten,zeilen)
+  var mask:={};
+  var ability;
+  // Neue Matrix initialisieren
+  For zeile:=1 To zeilen
+    Var abilityzeile:={}; // Eine komplette abilityZeile
+
+    // SpellZeile fuellen
+    For spalte:=1 To spalten
+      ability:=gumpProps.mask[zeile][spalte];
+      If (ability)
+        abilityzeile.append(ability); // Wert aus der alten Matrix uebernehmen
+      Else
+        abilityzeile.append(0);
+      EndIf
+    EndFor
+
+    mask.append(abilityzeile);
+  EndFor
+  gumpProps.spalten:=spalten;
+  gumpProps.zeilen:=zeilen;
+  gumpProps.mask:=mask;
+EndFunction
+
+// vim: sw=2 sts=2

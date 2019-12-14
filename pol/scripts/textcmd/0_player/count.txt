@@ -1,0 +1,4 @@
+<h3 id="count">count</h3>
+
+<p>Zählt alle Objekte in einem Container, wobei Untercontainer
+rekursiv berücksichtigt werden. Stapel werden dabei aufsummiert.</p>

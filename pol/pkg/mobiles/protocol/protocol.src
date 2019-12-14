@@ -1,0 +1,345 @@
+///////////////////////////////////////////////////////////////////////////
+// Protocol
+//
+// protokolliert alles in Hoerweite, wenn er dazu aufgefordert wurde
+
+use file;
+use npc;
+use os;
+use uo;
+use util;
+
+Include ":housing:house";
+Include "include/animal";  // nur wegen Wait_for_EventLogging
+Include "protocol";
+
+Program Protokollant() // {{{
+	var me := Self();
+
+  If (me.name["random"])
+    If (me.gender)
+      SetName(me, AssignName(me, PROTOCOL_FEM_IDX));
+    Else
+      SetName(me, AssignName(me, PROTOCOL_MALE_IDX));
+    EndIf
+  EndIf
+
+  // nur zur Sicherheit
+  SetWarMode(0);
+
+  // Damit sie auf getarnte Buergermeister/Staff hoeren
+  me.cmdlevel := CMDLEVEL_COUNSELOR;
+
+  var clothing := me.getprop("Equipt");
+  If (clothing)
+    // bei Bedarf anziehen
+    var res := EquipNPC(me);
+    If (res)
+      // bei Erfolg weitere Anziehversuche unbinden
+      me.eraseprop("Equipt");
+    EndIf
+  EndIf
+
+  var status := GetObjProperty(me, PROP_STATUS);
+  If (status == error)
+    status := struct{
+      // schreibt er gerade Protokoll?
+      proto   := 0,
+      // Pause waehrend des Protokolls
+      pause   := 0,
+      // (Datei-)Name des Protokolls
+      logname := ProtocolName(),
+      // Hoerweite
+      range   := 10,
+      // Leute (serials), die ihm befehlen duerfen
+      masters := array{}
+    };
+  EndIf
+
+  EnableEvents(SYSEVENT_ENTEREDAREA, status.range);
+  EnableEvents(SYSEVENT_LEFTAREA,    status.range);
+  EnableEvents(SYSEVENT_SPEECH,      status.range);
+
+  syslog(
+    "HINWEIS: "+CharInfoStr(me, COORDS_REALM)+
+    " ist bereit fuer das Protokoll"
+  );
+
+  While (me)
+    SleepMs(2);
+    MainLoop(me, status);
+  EndWhile
+EndProgram // }}}
+
+Function MainLoop(byref me, byref status)
+  var ev := Wait_for_EventLogging(600);
+  If (!ev)
+      return;
+  EndIf
+
+  // nur auf Player hoeren
+  If (!IsAPlayer(ev.source))
+      return;
+  EndIf
+
+  Case (ev.type)
+  SYSEVENT_ENTEREDAREA:
+    If (status.proto)
+      LogEnterLeave(me, ev.source, ev.type, status);
+    EndIf
+    If (!status.proto and CheckLineOfSight(me, ev.source))
+      TurnToward(ev.source);
+      SayPergon(ev.source, "*zunick*");
+    EndIf
+    PerformAction(me, UACTION_NOD);
+
+  SYSEVENT_LEFTAREA:
+    If (status.proto)
+      LogEnterLeave(me, ev.source, ev.type, status);
+    EndIf
+    If (!status.proto and CheckLineOfSight(me, ev.source))
+      SayPergon(ev.source, "*wink*");
+    EndIf
+    PerformAction(me, UACTION_SALUTE);
+
+    // gucken, ob keiner mehr in Hoerweite ist
+    AutoCloseProtocol(status);
+
+  SYSEVENT_ENGAGED:
+  SYSEVENT_DAMAGED:
+    If (CheckLineOfSight(me, ev.source))
+      SayPergon(ev.source, "*knurr*");
+    EndIf
+
+  SYSEVENT_SPEECH:
+    If (!status.proto)
+      TurnToward(ev.source);
+    EndIf
+
+    // automatisch Antwort erzeugen
+    var autoanswer := 0;
+    var text       := Lower(ev.text);
+    var name       := GetRealName(ev.source);
+
+    If (CanCommand(status, ev.source))
+      // Protokollfunktionen {{{
+      If (text["protokoll oeffnen"])
+        If (status.proto)
+          SayPergon(ev.source, "Aber ich schreibe doch schon!");
+          return;
+        EndIf
+
+        status.logname := ProtocolName();
+        status.proto   := 1;
+        status.pause   := 0;
+        SetObjProperty(me, PROP_STATUS, status);
+
+        SayPergon(ev.source, "*lauscht aufmerksam*");
+        LogToFile(
+          status.logname,
+          TimeNow()+"Eroeffne Protokoll für "+name
+        );
+        return;
+
+      ElseIf (text["protokoll schliessen"])
+        If (!status.proto)
+          SayPergon(ev.source, "Ich schreibe doch gar nicht!");
+          return;
+        EndIf
+
+        status.proto := 0;
+        status.pause := 0;
+        SetObjProperty(me, PROP_STATUS, status);
+
+        SayPergon(ev.source, "*feder wegleg*");
+        LogToFile(
+          status.logname,
+          TimeNow()+"Schliesse Protokoll fuer "+name
+        );
+        return;
+
+      ElseIf (
+        text["protokoll pause"] or text["protokoll-pause"] or
+        text["protokollpause"]
+      )
+        If (!status.proto)
+          SayPergon(ev.source, "Ich schreibe doch gar nicht!");
+          return;
+        EndIf
+
+        If (!status.pause)
+          status.pause := 1;
+          SetObjProperty(me, PROP_STATUS, status);
+
+          SayPergon(ev.source, "*innehalt*");
+          LogToFile(
+            status.logname,
+            TimeNow()+"Pausiere Protokoll fuer "+name
+          );
+        Else
+          status.pause := 0;
+          SetObjProperty(me, PROP_STATUS, status);
+
+          SayPergon(ev.source, "*weiterschreib*");
+          LogToFile(
+            status.logname,
+            TimeNow()+"Setze Protokoll fort fuer "+name
+          );
+        EndIf
+        return;
+
+      // Hilfestellung
+      ElseIf (text["protokoll "])
+        PrintTextAbovePrivatePergon(me,
+          "Ich kann Protokolle 'oeffnen', 'schliessen' und "+
+          "eine 'Protokollpause' einlegen.",
+          "",
+          ev.source, me.speech_font, me.speech_color
+        );
+      // }}}
+
+      // Lauschreichweite anpassen {{{
+      ElseIf (text["rerange"] or text["setrange"])
+        SayPergon(ev.source,
+          "Wie weit soll ich meine Lauscher oeffnen?"
+        );
+        var dist := TargetCoordinates(ev.source);
+        If (!dist)
+          SayPergon(ev.source, "Dann eben nicht.");
+          return;
+        EndIf
+
+        var range := CoordinateDistance(dist.x, dist.y, me.x, me.y);
+        If (range > 100)
+          SayPergon(ev.source, "Das ist zu weit!");
+          return;
+
+        ElseIf (range > status.range)
+          SayPergon(ev.source, "Vergrößere Hörweite ...");
+
+        ElseIf (range < status.range)
+          SayPergon(ev.source, "Verkleinere Hörweite ...");
+
+        Else
+          SayPergon(ev.source, "So weit höre ich bereits.");
+          return;
+        EndIf
+
+        var northwest   := struct;
+        northwest.x     := me.x - range;
+        northwest.y     := me.y - range;
+        northwest.z     := me.z;
+        northwest.realm := me.realm;
+        var southeast   := struct;
+        southeast.x     := me.x + range;
+        southeast.y     := me.y + range;
+        southeast.z     := me.z;
+        southeast.realm := me.realm;
+        VisualizeRange(northwest, southeast);
+
+        If (status.proto)
+          LogToFile(
+            status.logname,
+            TimeNow()+"Setze Hoerweite auf "+range+" für "+name
+          );
+        EndIf
+        DisableEvents(
+          SYSEVENT_ENTEREDAREA + SYSEVENT_LEFTAREA + SYSEVENT_SPEECH
+        );
+        status.range := range;
+        EnableEvents(SYSEVENT_SPEECH,      status.range);
+        EnableEvents(SYSEVENT_ENTEREDAREA, status.range);
+        EnableEvents(SYSEVENT_LEFTAREA,    status.range);
+        SetObjProperty(me, PROP_STATUS, status);
+        return;
+      // }}}
+
+      // Master hinzufuegen/entfernen {{{
+      // auf Wunsch von Murphy fuer Spieler deaktiviert
+      ElseIf (
+        (text["addmaster"]) and
+        (ev.source.cmdlevel >= CMDLEVEL_HIGHGM)
+      )
+        If (status.proto and !status.pause)
+        	SayPergon(ev.source, "Lenkt mich nicht ab!");
+        	return;
+        EndIf
+        
+        SayPergon(ev.source, "Wer soll mir befehligen?");
+        var tgt := Target(ev.source);
+        If (tgt)
+          If (IsAPlayer(tgt))
+            var result := MasterAdd(status, tgt);
+            If (result)
+              SayPergon(ev.source, result+" darf mir befehligen.");
+              SetObjProperty(me, PROP_STATUS, status);
+              return;
+            EndIf
+          Else
+          	SayPergon(ev.source, "Wie soll mir das denn Befehle erteilen?");
+          	return;
+          EndIf
+        Else
+          SayPergon(ev.source, "Dann eben nicht...");
+          return;
+        EndIf
+
+      ElseIf (
+        (text["delmaster "] or text["deletemaster "] or
+        text["remmaster "] or text["removemaster "]) and
+        (ev.source.cmdlevel >= CMDLEVEL_HIGHGM)
+      )
+        var parts := SplitWords(text);
+        If (parts.size() <> 2)
+          SayPergon(ev.source, "Das Kommando sollte 'delmaster name' sein.");
+          return;
+        EndIf
+
+        var result := MasterDel(status, parts[2]);
+        If (result != error)
+          SayPergon(ev.source, "Auf "+result+" werde ich nicht mehr hören.");
+          SetObjProperty(me, PROP_STATUS, status);
+          return;
+        EndIf
+
+        // Fehlerbehandlung
+        Case (result.errortext)
+          ENAMEAMBIGUOUS:
+            SayPergon(ev.source, "Der Name(-nsbestandteil) ist nicht eindeutig.");
+          ENOTFOUND:
+            SayPergon(ev.source, "Ich höre auf niemanden, der so heißt.");
+        EndCase
+        return;
+
+      ElseIf (text["masters"] or text["master list"])
+        var list := MasterList(status);
+        If (list == "")
+          SayPergon(ev.source, "Hurra, ich bin frei!");
+        Else
+          SayPergon(ev.source, "Ich gehorche "+list+".");
+        EndIf
+        return;
+      // }}}
+
+      ElseIf (!status.proto)
+         autoanswer := 1;
+      EndIf
+    EndIf
+
+    If (status.proto)
+      If (!status.pause)
+        LogToFile(status.logname, TimeNow()+name+": "+ev.text);
+      EndIf
+    Else
+      autoanswer := 1;
+    EndIf
+
+    If (
+      autoanswer and
+      CheckLineOfSight(me, ev.source) and
+      Distance(me, ev.source) <= 3
+    )
+      SayPergon(ev.source, Answering(text, PlaceName(me), me));
+    EndIf
+  EndCase
+EndFunction

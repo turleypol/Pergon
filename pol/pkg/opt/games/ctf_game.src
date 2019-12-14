@@ -1,0 +1,395 @@
+//////////////////////////////////////////////////////////////////////////
+// ctf_game -- koordiniert das Spiel
+
+use os;
+use uo;
+include "common";
+include "include/eventid";
+include "include/msgs";
+include "include/packets";
+include "include/varutil";
+include ":sqlmanager:sqlmanager";
+
+// END ist nur ein Flag, der Rest sind auch gleich Eventwartezeiten
+Const GAME_END      := 1;
+Const GAME_RUNNING  := 5;
+Const GAME_SLEEPING := 300;
+// erreicht ein Team MAX_POINTS, wird die Runde beendet
+Const MAX_POINTS    := 8;
+
+Program CTF_Game(item)
+    // Init {{{
+    // gibt eigentlich nur drei Steine, aber beim Create wird Farbe
+    // eventuell verspaetet gesetzt
+    Sleep(RandomIntMinMax(5, 10));
+    If (item.color in (array{FLAG_COLOR_BLUE, FLAG_COLOR_RED}))
+        // normale Start-/Zielsteine brauchen kein ControlScript
+        exit;
+    EndIf
+    // Zielsteine suchen
+    // Farbe -> Item
+    var stones := dictionary{};
+    While (item)
+        ForEach stone in (ListItemsNearLocationOfType(
+                item.x, item.y, item.z, 3000, 0xffa5, item.realm
+        ))
+            SleepMs(2);
+            If (stone.color in (array{FLAG_COLOR_BLUE, FLAG_COLOR_RED}))
+                stones[stone.color] := stone;
+            EndIf
+        EndForEach
+        If (stones.size() >= 2)
+            // genug Steine gefunden
+            break;
+        EndIf
+        // ansonsten warten, ob die noch auftauchen
+        Sleep(RandomIntMinMax(30, 60));
+    EndWhile
+
+    // PID bekanntmachen
+    SetGlobalProperty(PROP_CAPTURE_FLAG_PID, GetPid());
+
+    // Farbe -> struct{flag -> Flag-NPC; taken -> Char; at_start := Int}
+    // taken    - folgt die Flagge gerade jemandem?
+    // at_start - steht sie auf dem Startpunkt?
+    var flags   := dictionary{};
+    // Farbe -> Punkte
+    var points  := dictionary{};
+    // Char -> Farbe
+    var players := dictionary{};
+    // }}}
+
+    var state      := GAME_SLEEPING;
+    // Checks ob Spieler leben nicht so oft machen
+    var lastchecks := ReadGameClock();
+    // ab und an Spielstand ansagen
+    var laststatus := ReadGameClock();
+    While (item)
+        SleepMs(2);
+        // syslog("DEBUG: Mainloop: "+state);
+        var ev := Wait_for_Event(state);
+
+        var now := ReadGameClock();
+        If (lastchecks + 4 <= now)
+            lastchecks := now;
+            // Respawn, Ausgeloggte herausnehmen
+            CheckPlayers(stones, flags, players, points, state);
+        EndIf
+        If (laststatus + 60 <= now and state == GAME_RUNNING)
+            laststatus := now;
+            DoScores(players, points);
+        EndIf
+
+        If (!ev)
+            // syslog("DEBUG: Kein Event");
+            continue;
+        EndIf
+        // syslog(ev);
+
+        Case (ev.type)
+        EVID_MASTER_HELLO: // Flagge bittet um Verbindung {{{
+            // merken, ...
+            var flag := struct;
+            flag.+flag     := ev.source;
+            flag.+taken    := 0;
+            flag.+at_start := 1;
+            flags[ev.source.color] := flag;
+
+            // ... Startpunkt senden und ...
+            var event := struct;
+            event.+type  := EVID_ROBOT_INIT;
+            event.+start := stones[ev.source.color];
+            SendEvent(ev.source, event);
+
+            // ... resetten
+            event.type   := EVID_TOURNAMENT_RESET;
+            SendEvent(ev.source, event);
+            break;
+        // }}}
+
+        EVID_FOLLOW: // jemand hat eine Flagge eingesammelt // {{{
+            flags[ev.source.color].taken    := ev.mobile;
+            flags[ev.source.color].at_start := 0;
+            UpdateArrows(flags, players);
+            NotifyPlayers(players,
+                ev.mobile.name+" hat die "+ev.source.name+" eingesammelt",
+                ev.mobile.name+" has taken the "+ev.source.name
+            );
+            break;
+        // }}}
+
+        EVID_TOURNAMENT_CHAR_DIED: // Flagge verloren, meist Traeger tot {{{
+            flags[ev.source.color].taken := 0;
+            UpdateArrows(flags, players);
+            NotifyPlayers(players,
+                ev.mobile.name+" hat die "+ev.source.name+" verloren",
+                ev.mobile.name+" has lost the "+ev.source.name
+            );
+            break;
+        // }}}
+
+        EVID_TOURNAMENT_RESET: // Flagge kehrt zurueck {{{
+            flags[ev.source.color].at_start := 1;
+            UpdateArrows(flags, players);
+            NotifyPlayers(players,
+                ev.source.name+" ist zurück",
+                ev.source.name+" is back"
+            );
+            break;
+        // }}}
+
+        EVID_WALK: // Flagge ist auf Ziel gelaufen {{{
+            If (!flags[ev.source.color].at_start)
+                NotifyPlayers(players,
+                    "Um einen Punkt zu machen, muss eure Flagge erst zurück sein",
+                    "You must return your own flag first to score",
+                    ev.source.color
+                );
+                break;
+            EndIf
+
+            var event := struct;
+            event.+type := EVID_TOURNAMENT_RESET;
+            SendEvent(ev.mobile, event);
+            flags[ev.mobile.color].at_start := 1;
+            UpdateArrows(flags, players);
+            var team := FlagColorToName(ev.source.color);
+            var inc  := 1+CInt(points[ev.source.color]);
+            points[ev.source.color] := inc;
+            NotifyPlayers(players,
+                "Punkt! Team "+team+" hat nun "+inc+" Punkte",
+                "Score! Team "+team+" has "+inc+" points now"
+            );
+
+            // maximale Punkte erreicht, Spiel beenden
+            If (inc >= MAX_POINTS)
+                DoScores(players, points, GAME_END);
+                // automatisch neue Runde starten
+                SetGameState(GAME_RUNNING, points, flags);
+            EndIf
+            break;
+        // }}}
+
+        EVID_ASKJOIN: // neuer Spieler/Spieler geht {{{
+            var color := ev.extra;
+            var team  := "("+FlagColorToName(color)+")";
+            If (players.exists(ev.mobile))
+                // Spieler vorhanden, also herausnehmen
+                players.erase(ev.mobile);
+                DropFlagOnLeave(ev.mobile, flags);
+                ev.mobile.eraseprop(ARENABATTLE);
+                ev.mobile.eraseprop(PROP_CAPTURE_TEAM);
+                SetQuestArrow(ev.mobile, QUESTARROW_OFF, 1, 1);
+                NotifyPlayers(players,
+                    ev.mobile.name+" hat das Spiel verlassen "+team,
+                    ev.mobile.name+" has left the game "+team
+                );
+                If (players.size() <= 0)
+                    state := SetGameState(GAME_SLEEPING, points, flags);
+                    DoScores(players, points, GAME_END);
+                EndIf
+            Else
+                If (players.size() <= 0)
+                    state := SetGameState(GAME_RUNNING, points, flags);
+                EndIf
+                players.insert(ev.mobile, color);
+                ev.mobile.setprop(ARENABATTLE, 1);
+                ev.mobile.setprop(PROP_CAPTURE_TEAM, color);
+                NotifyPlayers(players,
+                    ev.mobile.name+" hat das Spiel betreten "+team,
+                    ev.mobile.name+" has joined the game "+team
+                );
+                // zum Startpunkt
+                var stone := stones[color];
+                MoveObjectToLocation(
+                    ev.mobile, stone.x, stone.y, stone.z, stone.realm,
+                    MOVEOBJECT_FORCELOCATION
+                );
+                UpdateArrows(flags, players);
+            EndIf
+            break;
+        // }}}
+        EndCase
+    EndWhile
+EndProgram
+
+// Spielstatus aendern
+Function SetGameState(state, byref points, byref flags) // {{{
+    If (state == GAME_SLEEPING)
+        EraseGlobalProperty(PROP_CAPTURE_RUNNING);
+    ElseIf (state == GAME_RUNNING)
+        SetGlobalProperty(PROP_CAPTURE_RUNNING, 1);
+    EndIf
+
+    // Punkte loeschen
+    points := dictionary{};
+
+    // Flaggenstatus ruecksetzen
+    ForEach color in (flags.keys())
+        SleepMs(2);
+        flags[color].taken    := 0;
+        flags[color].at_start := 1;
+    EndForEach
+
+    return state;
+EndFunction // }}}
+
+// verlaesst jemand das Spiel, der noch die Flagge hat, dann Flagge
+// zum Startpunkt zurueckschicken (soll Flaggenuebergaben durch gezielte
+// Disconnects vermiesen)
+Function DropFlagOnLeave(byref leaver, byref flags) // {{{
+    ForEach color in (flags.keys())
+        SleepMs(2);
+        If (flags[color].taken == leaver)
+            // Traeger gefunden, Flagge Reset-Event schicken
+            var event := struct;
+            event.+type := EVID_TOURNAMENT_RESET;
+            SendEvent(flags[color].flag, event);
+        EndIf
+    EndForEach
+EndFunction // }}}
+
+// Nachricht an alle Spieler (wahlweise nur einer Seite)
+Function NotifyPlayers(byref players, de, en, side := 0) // {{{
+    ForEach player in (players.keys())
+        SleepMs(2);
+        If (side and players[player] <> side)
+            // Nachricht nur fuer eine Seite, aber Spieler auf falscher Seite
+            continue;
+        EndIf
+        SendSysMessagePergon(player, de, en);
+    EndForEach
+EndFunction // }}}
+
+// Spielerliste durchgehen und Tote wiederbeleben
+Function CheckPlayers(byref stones, byref flags, byref players, byref points, byref state) // {{{
+    ForEach player in (players.keys())
+        SleepMs(2);
+        // weg/ausgeloggt?
+        If (!player or !player.connected) // {{{
+            // Rest benachrichtigen
+            var team  := "("+FlagColorToName(players[player])+")";
+            NotifyPlayers(players,
+                player.name+" ist verschollen "+team,
+                player.name+" got lost "+team
+            );
+
+            // Spieler herausnehmen
+            // (Questarrow verschwindet beim Logoff selbst)
+            players.erase(player);
+            player.eraseprop(PROP_CAPTURE_TEAM);
+
+            // Spiel ggf. beenden
+            If (players.size() <= 0)
+                state := SetGameState(GAME_SLEEPING, points, flags);
+                EraseGlobalProperty(PROP_CAPTURE_RUNNING);
+                DoScores(players, points, GAME_END);
+            EndIf
+            continue;
+        EndIf
+        // }}}
+
+        // Respawn
+        If (player.dead) // {{{
+            var start := stones[players[player]];
+
+            // Zum Startstein schubsen
+            MoveObjectToLocation(
+                player, start.x, start.y, start.z, start.realm,
+                MOVEOBJECT_FORCELOCATION
+            );
+            SleepMs(100);
+            // Wiederbeleben und etwas auffrischen
+            Resurrect(player);
+            SetHPPergon(player,      GetMaxHPPergon(player));
+            SetManaPergon(player,    CInt(GetMaxManaPergon(player)/4));
+            SetStaminaPergon(player, CInt(GetMaxStaminaPergon(player)/4));
+            
+            SendSQLManager(player, SQLStatus_UpdateRegion);
+
+            // TODO:
+            // Wenn von Nichtspieler gekillt, dem eins reinwuergen
+        EndIf
+        // }}}
+    EndForEach
+EndFunction // }}}
+
+// Punktestand verschicken, bei end == GAME_END Punkte auch gleich resetten
+Function DoScores(byref players, byref points, end := 0) // {{{
+    var scores := array{};
+    ForEach color in (points.keys())
+        SleepMs(2);
+        If (points[color])
+            scores.append(FlagColorToName(color)+": "+points[color]);
+        EndIf
+    EndForEach
+    If (scores.size() >= 1)
+        scores := Join(" -- ", scores);
+        NotifyPlayers(players, "Stand: "+scores, "Scores: "+scores);
+    EndIf
+
+    If (end <> GAME_END)
+        return;
+    EndIf
+
+    ForEach color in (points.keys())
+        SleepMs(2);
+        If (points[color] == MAX_POINTS)
+            NotifyPlayers(players,
+                "Glückwunsch, euer Team hat das Spiel gewonnen!",
+                "Congratulations, your team has won the game!",
+                color
+            );
+        Else
+            NotifyPlayers(players,
+                "Leider verloren",
+                "Sorry, but you lost",
+                color
+            );
+        EndIf
+    EndForEach
+    return;
+EndFunction // }}}
+
+// herausfinden, welche Pfeilgruppen an Flaggen geschickt werden muessen --
+// und verschicken
+Function UpdateArrows(byref flags, byref players) // {{{
+    // - wenn die eigene Flagge geklaut ist, zeigen Pfeile immer hin
+    // - geht es der eigenen Flagge gut, zeigen die Pfeile zur Gegnerflagge
+
+    // leere Teamlisten vorbereiten
+    var teams := dictionary{};
+    ForEach color in (flags.keys())
+        SleepMs(2);
+        teams.insert(color, array{});
+    EndForEach
+
+    // Player nach Team einsortieren
+    ForEach player in (players.keys())
+        SleepMs(2);
+        // players[player] ist Farbe des Players
+        teams[players[player]].append(player);
+    EndForEach
+
+    // Flaggen abklappern
+    ForEach color in (flags.keys())
+        SleepMs(2);
+        var event := struct;
+        event.+type  := EVID_MASTER_HELLO;
+        event.+group := array{};
+        If (!flags[color].at_start)
+            // Hilfe, ich werde entfuehrt! (eigenes Team rufen)
+            event.group := teams[color];
+        EndIf
+
+        // ausserdem andere (freie) Teams rufen
+        var remain := flags; remain.erase(color);
+        ForEach other in (remain.keys())
+            If (flags[other].at_start)
+                // nur freie Teams
+                event.group += teams[other];
+            EndIf
+        EndForEach
+        SendEvent(flags[color].flag, event);
+    EndForEach
+EndFunction // }}}

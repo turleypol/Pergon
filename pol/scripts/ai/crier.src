@@ -1,0 +1,128 @@
+////////////////////////////////////////////////////////////////////////
+// TownCrier Script - Control script for NPC NonMerchants
+// (Barks out some crappy News)
+
+////////////////////////////////////////////////////////////////////////
+// Aenderung des Newsartikels durch Aenderung der CProp 'NewsArticle'
+// (ingame, sofort aktiv, wird aus Config gelesen)
+//
+// kurzfristige News können ueber CProp TempNews verbreitet werden
+// (ingame, sofort aktiv, wird nicht aus Config sondern aus der CProp gelesen)
+
+/////////////
+// Bibliotheken&Includes
+/////////////
+use cfgfile;
+use npc;
+use os;
+use uo;
+Include "include/itemnpc";
+Include "include/modifyskill";
+Include "include/nonmerchant";
+
+////////////////////////////
+// Crier - Initialisierung
+////////////////////////////
+
+Function SetNonMerchantType(meprototype)
+  meprototype.nonmerchanttype:="Crier";
+  meprototype.withopenclose:=0;
+  meprototype.entered_area:=1;
+  meprototype.left_area:=1;
+  meprototype.speech_name:=1;
+  meprototype.speech_default:=1;
+
+  Return (meprototype);
+EndFunction
+
+/////////////////////
+// Hook_Move_Action
+/////////////////////
+
+Function Hook_Move_Action(me, medata, ev)
+EndFunction
+
+//////////////////////
+// Hook_Entered_Area
+//////////////////////
+
+Function Hook_Entered_Area(me, medata, ev)
+  Var NewsArtikel := GetObjProperty(me, "NewsArticle");
+  If (!NewsArtikel)
+	  NewsArtikel := "Allgemein";
+  EndIf
+  BarkNews(me, ev, NewsArtikel);
+EndFunction
+
+///////////////////
+// Hook_Left_Area
+///////////////////
+
+Function Hook_Left_Area(me, medata, ev)
+  NPCSayTextTraditional(me, "Viel Glück auf Eurem Wege!", "");
+EndFunction
+
+/////////////////////
+// Hook_Speech_Open
+/////////////////////
+
+Function Hook_Speech_Open(me, medata, ev)
+EndFunction
+
+/////////////////////////
+// Hook_Speech_Sleeping
+/////////////////////////
+
+Function Hook_Speech_Sleeping(me, medata, ev)
+EndFunction
+
+/////////////////////
+// Hook_Speech_Name
+/////////////////////
+
+Function Hook_Speech_Name(me, medata, ev)
+  NPCSayTextTraditional(me, "Wie? Ihr wisset nicht, das ich "+medata.minename+" bin?", "");
+EndFunction
+
+////////////////////////
+// Hook_Speech_Default
+////////////////////////
+
+Function Hook_Speech_Default(me, medata, ev, sayed)
+  Var proceeded:=0;
+
+  If (sayed=="news")
+		Var NewsArtikel := GetObjProperty(me, "NewsArticle");
+		If (!NewsArtikel)
+			NewsArtikel := "Allgemein";
+		EndIf
+    BarkNews(me, ev, NewsArtikel);
+
+    proceeded:=1;
+  EndIf
+
+  Return (proceeded);
+EndFunction
+
+////////////////////////////////////////////////
+// BarkNews - Allgemeine Neuigkeiten erzaehlen
+////////////////////////////////////////////////
+
+Function BarkNews(me, ev, configelem)
+  If (GetObjProperty(me, "TempNews"))
+    NPCSayTextTraditional(me, GetObjProperty(me, "TempNews"), "");
+  Else
+	  Var NewsFilePath:="speech/news";
+	  Var NewsFile:=ReadConfigFile(NewsFilePath);
+	  If (NewsFile)
+	    Var NewsElem:=FindConfigElem(NewsFile, configelem);
+	    If (NewsElem)
+	      ForEach Elem in GetConfigStringArray(NewsElem, "Elem")
+	        NPCSayTextTraditional(me, Elem, "");
+	        Sleep(5);
+	      EndForeach
+	    EndIf
+	  EndIf
+    UnloadConfigFile(NewsFilePath);
+  EndIf
+EndFunction

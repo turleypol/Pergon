@@ -1,0 +1,443 @@
+///////////////////////////////////////////////////////////////////////////
+// tooltips - Hook von 0xD6
+//
+// Statt "You See:" kommt Tooltips mit mehr Infos
+// Serverspecopts: UOFeatureEnable + 0x02
+// polsys.em: IncRevision(object); muß in den Scripten ausgeführt werden
+// die Änderungen an CProps/Members vornehmen die hier abgefragt werden,
+// da sonst der Core kein neues Paket schickt
+//
+// Author: Turley
+
+///////////////////////////////////////////////////////////////////////////
+//  BYTE[1]     Cmd
+//  BYTE[2]     Length of packet
+//  BYTE[2]     0001
+//  BYTE[4]     Serial of item/creature
+//  BYTE[2]     0000
+//  BYTE[4]     Serial of item/creature in all tests. This could be the serial
+//              of the item the entry to appear over.
+//
+//  Loop of all the item/creature's properties to display in the order to
+//  display them. The name is always the first entry.
+//
+//  BYTE[4]     Cliloc ID
+//  BYTE[2]     Length of (if any) Text to add into/with the cliloc
+//  BYTE[?]     Unicode text to be added into the cliloc. Not sent if Length of
+//              text above is 0
+//  BYTE[4]     00000000 - Sent as end of packet/loop
+///////////////////////////////////////////////////////////////////////////
+
+Use os;
+Use polsys;
+Use uo;
+Include ":tooltips:alchyreags";     // Ausgelagert sonst zu unübersichtlich
+Include ":tooltips:method_include"; // Für die Farben
+Include "include/experience";
+Include "include/modifyskill";
+Include "include/poison";
+
+Enum ClilocOffsets
+  OFFSET_SERIAL  :=  5,
+  OFFSET_CLILOC  := 15,
+  OFFSET_LENGTH  := 19,
+  OFFSET_UNICODE := 21
+EndEnum
+
+Enum ClilocNumbers
+  CLILOC_DUMMY1 := 1042971,
+  CLILOC_DUMMY2 := 1070722
+EndEnum
+
+
+Program init()
+    SysLog("ToolTips ...");
+    Return(1);
+EndProgram
+
+Const DEBUG_COUNTER := 1;
+Const GPROP_COUNTER := "#HookCounter_MegaCliloc";
+
+exported Function MegaCliloc(who, byref packet) // {{{
+    Var object, name;
+
+    If (DEBUG_COUNTER)
+        Var counter:=GetGlobalProperty(GPROP_COUNTER);
+        If (counter)
+            SetGlobalProperty(GPROP_COUNTER, counter+1);
+        Else
+            SetGlobalProperty(GPROP_COUNTER, 1);
+        EndIf
+    EndIf
+
+    object:=SystemFindObjectBySerial(packet.GetInt32(OFFSET_SERIAL));
+
+    If (object)
+        // Paket kürzen damit Altdaten verschwinden
+        packet.SetSize(OFFSET_CLILOC);
+        packet.SetInt32(OFFSET_CLILOC, CLILOC_DUMMY1);
+
+        If (object.IsA(POLCLASS_MOBILE))
+            name:=CAscZ(object.name);
+            If (!name.size())  // lokal hat das deswegen mal gecrashed
+                name:=CAscZ(" ");
+            EndIf
+            packet.SetInt16(OFFSET_LENGTH, name.Size()*2);
+            packet.SetUnicodeStringFlipped(OFFSET_UNICODE, name, 0);
+
+            If (object.IsA(POLCLASS_NPC))
+                // NPC
+                // color wird automatisch vom Client gesetzt
+                GetInfosNPC(object, who, packet);
+            Else
+                // Player
+                // color wird automatisch vom Client gesetzt
+                GetInfosPlayer(object, who, packet);
+            EndIf
+
+        ElseIf (object.IsA(POLCLASS_ITEM))
+            // Items
+            // kein Farbcode, macht sonst Probleme mit AllNames Ctrl+Shift
+            name:=CAscZ(object.desc);
+            If (!name.size())  // lokal hat das deswegen mal gecrashed
+                name:=CAscZ(" ");
+            EndIf
+            packet.SetInt16(OFFSET_LENGTH, name.Size()*2);
+            packet.SetUnicodeStringFlipped(OFFSET_UNICODE, name, 0);
+            GetInfosItem(object, who, packet);
+        Else
+            Return;  // Sollte nie passieren, aber mal zur Sicherheit...
+        EndIf
+        packet.SetInt32(packet.GetSize(), 0);
+    EndIf
+
+    Return(0); // Verändertes Paket schicken
+EndFunction // }}}
+
+///////////////////////////////////////////////
+//  GetInfosPlayer - Was wird noch so alles angezeigt bei Playern {{{
+///////////////////////////////////////////////
+Function GetInfosPlayer(byref object, byref who, byref packet)
+  If ((object.getprop(HIDE_CHAR_TOOLTIP)) && (who.cmdlevel<CMDLEVEL_SEER))
+    // Wenn CProp gesetzt wird nur der Name angezeigt (.iddqd/.status)
+    // außer der Beobachter >= Seer
+    Return;
+  EndIf
+
+  If (object.cmdlevel >= CMDLEVEL_SEER)
+    var levels := array{
+      "Player", "Counselor", "QuestChar", "Seer", "GM", "HighGM", "GL",
+      "Scripter", "Developer"
+    };
+    If (
+      (who.cmdlevel >= CMDLEVEL_SEER) and
+      // Auf was isser concealed? (nur wenn abweichend von Cmdlevel)
+      (object.concealed != object.cmdlevel)
+    )
+      //<BASEFONT COLOR=#CBA300>[~1_CMDLEVEL~] (~2_CONCEALLEVEL~)
+      SetCliLocWithText(packet, 1077180, CAscZ(levels[object.cmdlevel+1]+"\t"+levels[object.concealed+1]));
+    Else
+      //<BASEFONT COLOR=#CBA300>[~1_CMDLEVEL~]
+      SetCliLocWithText(packet, 1077179, CAscZ(levels[object.cmdlevel+1]));
+    EndIf
+  EndIf
+
+  If (!object.getprop("spell_incognito"))
+    // Bei inkognito nur wenig anzeigen
+    //Stadt
+    If (object.title_suffix)
+      SetCliLocWithText(packet, 1077188, CAscZ(object.title_suffix));//<BASEFONT COLOR=#C0C0C0>~1_TITLE_SUFFIX~
+    EndIf
+    // Gildentitel
+    If (object.title_guild)
+      SetCliLocWithText(packet, 1077185, CAscZ(object.title_guild));//<BASEFONT COLOR=#008000>[~1_GUILDTAG~]
+    EndIf
+    If (object.title_prefix)
+      SetCliLocWithText(packet, 1077186, CAscZ(object.title_prefix));//<BASEFONT COLOR=#008000>~1_TITLE_PREFIX~
+    EndIf
+    If (object.title_race)
+      SetCliLocWithText(packet, 1077187, CAscZ(object.title_race));//<BASEFONT COLOR=#008000>~1_TITLE_RACE~
+    EndIf
+
+    If (object.getprop(EXPERIENCE_RANK)<>error)
+      // Umschaltbar über .status
+      If (!object.getprop(EXPERIENCE_NO_DISPLAY))
+        //<BASEFONT COLOR=#FFA500>~1_EXPERIENCE_RANK~
+        SetCliLocWithText(packet, 1077189, CAscZ(GetRankName(object, object.getprop(EXPERIENCE_RANK))));
+      EndIf
+    EndIf
+  EndIf
+
+  If ((object.frozen) || (object.paralyzed))
+    SetCliLocWithOutText(packet, 1077181);//<BASEFONT COLOR=#0099FF>(frozen)
+  EndIf
+  If (object.enabled("invul"))
+    SetCliLocWithOutText(packet, 1077182);//<BASEFONT COLOR=#0099FF>(invulnerable)
+  EndIf
+  If (object.poisoned)
+    SetCliLocWithOutText(packet, 1077183);//<BASEFONT COLOR=#0099FF>(vergiftet)
+  EndIf
+  If (object.squelched)
+    SetCliLocWithOutText(packet, 1077184);//<BASEFONT COLOR=#0099FF>(stumm)
+  EndIf
+EndFunction // }}}
+
+///////////////////////////////////////////////
+// DamageToDescription Zustandsbeschreibung aus HP-Verhältnis // {{{
+///////////////////////////////////////////////
+Function DamageToDescription(damage_in_percent)
+  If (damage_in_percent >= 100)
+    return 1077198;//<BASEFONT COLOR=#FF8000>perfekter Zustand
+  ElseIf (damage_in_percent >= 98)
+    return 1077199;//<BASEFONT COLOR=#FF8000>hervorragender Zustand
+  ElseIf (damage_in_percent >= 96)
+    return 1077200;//<BASEFONT COLOR=#FF8000>ausgezeichneter Zustand
+  ElseIf (damage_in_percent >= 94)
+    return 1077201;//<BASEFONT COLOR=#FF8000>top Zustand
+  ElseIf (damage_in_percent >= 90)
+    return 1077202;//<BASEFONT COLOR=#FF8000>sehr guter Zustand
+  ElseIf (damage_in_percent >= 85)
+    return 1077203;//<BASEFONT COLOR=#FF8000>guter Zustand
+  ElseIf (damage_in_percent > 80)
+    return 1077204;//<BASEFONT COLOR=#FF8000>weniger guter Zustand
+  ElseIf (damage_in_percent > 70)
+    return 1077205;//<BASEFONT COLOR=#FF8000>nicht mehr so guter Zustand
+  ElseIf (damage_in_percent >= 60)
+    return 1077206;//<BASEFONT COLOR=#FF8000>akzeptabler Zustand
+  ElseIf (damage_in_percent >= 40)
+    return 1077207;//<BASEFONT COLOR=#FF8000>bescheidener Zustand
+  Else
+    return 1077208;//<BASEFONT COLOR=#FF8000>schlechter Zustand
+  EndIf
+EndFunction // }}}
+
+///////////////////////////////////////////////
+//  GetInfosItem - Was wird noch so alles angezeigt bei Items {{{
+///////////////////////////////////////////////
+Function GetInfosItem(byref object, byref who, byref packet)
+  var temp;
+
+  // Hersteller/Material {{{
+  If (object.getprop(TOOLINFO))
+    temp := object.getprop(TOOLINFO);
+    If (temp.material)
+      SetCliLocWithText(packet, 1077191, CAscZ(temp.material));//<BASEFONT COLOR=#C0C0C0>~1_MATERIAL~
+    EndIf
+    If (temp.manufacturer)
+      SetCliLocWithText(packet, 1077192, CAscZ(temp.manufacturer));//<BASEFONT COLOR=#CBA300>[~1_MANUFACTURER~]
+    EndIf
+  EndIf
+  // }}}
+
+  // vergiftete Items {{{
+  If (
+    // nur bei normalen Items zeigen, nicht bei Giftfallen etc.
+    object.isa(POLCLASS_ITEM) and
+    !object.isa(POLCLASS_EQUIPMENT) and
+    !object.isa(POLCLASS_LOCKABLE) and
+    object.getprop("poison_level") and
+    (
+      // entweder ist man der Vergifter
+      (object.getprop(EV_POISONER).serial == who.serial) or
+      // oder das Ding ist wurde gekostet
+      (
+        // Traenke habe eigene Tooltips
+        (!(object.objtype in array{UOBJ_ALCHYPOTION, UOBJ_POISON_POTION})) and
+        object.getprop("AllDetected")
+      )
+    )
+  )
+    SetCliLocWithOutText(packet, 1077193);//<BASEFONT COLOR=#40A040>vergiftet
+  EndIf
+  // }}}
+
+  // Objtypebasierter Kram:
+  If (object.hasTooltip(who))
+    object.setTooltip(packet);
+  EndIf
+
+  // Spellkram {{{
+  If ((object.isA(POLCLASS_ARMOR)) || (object.isA(POLCLASS_WEAPON)))
+    If (object.getprop("spell_curse"))
+      SetCliLocWithOutText(packet, 1077194);//<BASEFONT COLOR=#8000FF>verflucht
+    EndIf
+    If (object.getprop("spell_bless"))
+      SetCliLocWithOutText(packet, 1077195);//<BASEFONT COLOR=#8000FF>gesegnet
+    EndIf
+    If (object.getprop("spell_damage"))
+      SetCliLocWithOutText(packet, 1077196);//<BASEFONT COLOR=#8000FF>verzaubert
+    EndIf
+    If (object.getprop("spell_rust"))
+      SetCliLocWithOutText(packet, 1077197);//<BASEFONT COLOR=#8000FF>verrostet
+    EndIf
+  EndIf
+  // }}}
+
+  // Alchyreag-Infos {{{
+  // wegen Skillvergleich nicht konsistent, aber Neueinloggen bewirkt
+  // Neuschicken des Pakets
+  var elements := alchyreags[CInt(object.objtype)];
+  If (elements)
+    // schnelle Variante nehmen
+    var skillwildnis := GetAttribute(who, SKILLID_WILDNISKUNDE);
+    var skillrezepte := GetAttribute(who, SKILLID_REZEPTE_SCHREIB);
+    var skillbrauen  := GetAttribute(who, SKILLID_ALCHEMIE);
+    // hat der Player einen der Skills?
+    If (
+      (HasPlayerSkill(who, SKILLID_WILDNISKUNDE)) ||
+      (HasPlayerSkill(who, SKILLID_REZEPTE_SCHREIB)) ||
+      (HasPlayerSkill(who, SKILLID_ALCHEMIE)) ||
+      (who.cmdlevel > CMDLEVEL_SEER)
+    )
+      If (
+        (skillwildnis >=  80) &&
+        (skillrezepte >= 100) &&
+        (skillbrauen  >= 100)
+      )
+      // alle
+      ElseIf (
+        (skillwildnis >= 80) &&
+        (skillrezepte >  80) &&
+        (skillbrauen  >  80)
+      )
+        If (elements.size()>3)
+          elements.shrink(3);
+        EndIf
+      ElseIf (
+        (skillwildnis<40) ||
+        (skillrezepte<40) ||
+        (skillbrauen<40)
+      )
+        If (elements.size()>1)
+          elements.shrink(1);
+        EndIf
+      Else
+        If (elements.size()>2)
+          elements.shrink(2);
+        EndIf
+      EndIf
+
+      ForEach elem in (elements)
+        SetCliLocWithOutText(packet, elem);
+      EndForEach
+    EndIf
+  EndIf
+  // }}}
+
+  // Waffen-/Rüstungs-/Werkzeugzustand {{{
+  Var Item_Prop, max_hp, damage_nbr;
+  // sichergehen, das es korrekt gesetzt ist, um Logfile nicht zu überfluten
+  If (TypeOfInt(GetObjProperty(object, "Werkzeug")) == OT_ARRAY)
+    Item_Prop := GetPropertyItemTooltip(object);
+  EndIf
+  var angeln := array{0xdbf, 0xdc0};
+  var instrumente := array{0xeb2, 0xeb3, 0xe9c, 0xe9d, 0xe9e};
+  If (
+    (object.isA(POLCLASS_ARMOR)) || (object.isA(POLCLASS_WEAPON)) ||
+    (Item_Prop.type == "t") || (object.objtype in (angeln+instrumente))
+  )
+    // Werkzeug
+    If ((Item_Prop.type == "t") || (object.objtype in angeln+instrumente))
+      damage_nbr := (Item_Prop.quality*100.0)/Item_Prop.qualityorig;
+    EndIf
+
+    // Armor/Waffe
+    If (
+      (object.isA(POLCLASS_ARMOR)) ||
+      (object.isA(POLCLASS_WEAPON))
+    )
+      If (Item_Prop)
+        //MaxHP wie sie in der CProp Werkzeug steht
+        max_hp := Item_Prop.maxhporig;
+      Else
+        //aktuelle MaxHP abhängig von der Quality cfg_max_hp*QUALITY
+        max_hp := object.maxhp;
+      EndIf
+      If (max_hp == 0)
+        max_hp := 1;
+      EndIf
+
+      // bei Werkzeugdaten zählt der schlechteste Zustand
+      If (damage_nbr)
+        damage_nbr := Min(damage_nbr, (object.hp*100.0)/max_hp);
+      Else
+        damage_nbr := (object.hp*100.0)/max_hp;
+      EndIf
+    EndIf
+
+    If (damage_nbr)
+      SetCliLocWithOutText(packet,DamageToDescription(damage_nbr));
+    EndIf
+
+    If (object.getprop(PROP_POIS_LVL))
+      SetCliLocWithOutText(packet, 1077193);//<BASEFONT COLOR=#40A040>vergiftet
+    EndIf
+  EndIf // }}}
+
+  If (object.getprop("Tooltip"))
+    SetCliLocWithText(packet, 1077220, object.getprop("Tooltip"));//<BASEFONT COLOR=#800000>~1_RUNETEXT~
+  EndIf
+EndFunction // }}}
+
+///////////////////////////////////////////////
+//  GetInfosNPC - Was wird noch so alles angezeigt bei NPCs {{{
+///////////////////////////////////////////////
+Function GetInfosNPC(byref object,byref who, byref packet)
+  // Hallus bekommen die selben Infos wie der Master, damit sie sich
+  // darüber nicht unterscheiden lassen
+  If (object.npctemplate in {"hallucinationw", "hallucinationm"})
+    GetInfosPlayer(object.master,who,packet);
+    Return;
+  EndIf
+
+  If (object.script == "enticedanimal")
+    var name;
+	var guard := object.getprop("guard");
+	If (guard)
+      name := SystemFindObjectBySerial(guard.serial).name;
+      If (name)
+        SetCliLocWithText(packet, 1077190, CAscZ(name));//<BASEFONT COLOR=#C0C0C0>beschützt ~1_MOBILE_NAME~
+	  EndIf
+	EndIf
+    If (!name)
+	  var follow := object.getprop("follow");
+	  If (follow)
+        name := SystemFindObjectBySerial(follow.serial).name;
+        If (name)
+          SetCliLocWithText(packet, 1077191, CAscZ("folgt "+name));//<BASEFONT COLOR=#C0C0C0>~1_MATERIAL~
+        EndIf
+	  EndIf
+    EndIf
+  EndIf
+
+  If ((object.frozen) || (object.paralyzed))
+    SetCliLocWithOutText(packet, 1077181);//<BASEFONT COLOR=#0099FF>(frozen)
+  EndIf
+  If (object.enabled("invul"))
+    SetCliLocWithOutText(packet, 1077182);//<BASEFONT COLOR=#0099FF>(invulnerable)
+  EndIf
+EndFunction // }}}
+
+///////////////////////////////////
+// Fixere Variante als itemnpc.inc
+///////////////////////////////////
+Function GetPropertyItemTooltip(byref item)
+  Var props:=struct{quality,qualityorig,maxhporig,type};
+  Var werkzeug:=GetObjProperty(item, "Werkzeug");
+  If (item.isa(POLCLASS_WEAPON) Or item.isa(POLCLASS_ARMOR)) // Waffe oder Ruestung
+    props.quality:=item.quality;
+    props.qualityorig:=werkzeug[1];
+    props.maxhporig:=werkzeug[2];
+    props.type:=werkzeug[3];
+  ElseIf (item.isa(POLCLASS_ITEM)) // Gegenstand
+    props.quality:=werkzeug[1];
+    props.qualityorig:=werkzeug[4];
+    props.maxhporig:=werkzeug[5];
+    props.type:=werkzeug[6];
+  Else
+    Return (0);
+  EndIf
+  Return (props);
+EndFunction
+
+// vim: sw=2 sts=2 tw=75

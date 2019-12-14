@@ -1,0 +1,33 @@
+Use uo;
+Use os;
+
+Include "include/msgs";
+Include "include/npc";
+Include ":daymoonweather:daymoonweather";
+
+Program TextCMD_Lightning(person)
+  BroadCastPergon("Ein Gewittersturm zieht auf.");
+
+  ForEach who in EnumerateOnlineCharacters()
+    SetDayLightLevel(15);
+    MoveObjectToLocation(person, who.x, who.y+1, who.z, who.realm);
+    PlayLightningBoltEffect(person);
+    Sleep(1);
+    SetDayLightLevel(0);
+    Sleep(1);
+    SetDayLightLevel(15);
+    MoveObjectToLocation(person, who.x-1, who.y+2, who.z, who.realm);
+    Sleep(1);
+    SetDayLightLevel(15);
+    PlayLightningBoltEffect(person);
+    Sleep(1);
+    SetDayLightLevel(0);
+    Sleep(1);
+    SetDayLightLevel(15);
+    MoveObjectToLocation(person, who.x+1, who.y-2, who.z, who.realm);
+    Sleep(1);
+    PlayLightningBoltEffect(who);
+    Sleep(1);
+    SetDayLightLevel(0);
+  EndForEach
+EndProgram

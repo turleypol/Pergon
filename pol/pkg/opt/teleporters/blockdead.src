@@ -1,0 +1,29 @@
+///////////////////////////////////////////////////////////////////////////
+// blockdead -- verweigert toten Playern und NPCs den Durchgang
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.2  2008/08/25 12:04:18  mehdorn
+// - Walkonaction gibt nun auch Ursprungskoordinaten weiter
+// - OneStepBack entsprechend umgebaut
+//
+// Revision 1.1  2008/08/23 21:14:55  mehdorn
+// + (unkonfigurierter) I-Stein ist nun auffaellig rot
+// - Template fuer Walk-On-Scripte namens template.src_
+// - einige Walk-On-Scripte erstellt
+//   - bis auf Frostkram sogar getestet
+// - Setupscript fuer Arenateleporter
+// - neue Konstanten eingefuehrt
+// - Goetterspendescript erzeugt nun bereits neuen I-Stein
+// + Bugfixes, Tippfehler, teilweise englische Texte eingebaut
+//
+
+include "common";
+use uo;
+
+Program BlockDead(p)
+    If (p.who.dead)
+        StepBack(p);
+    EndIf
+EndProgram

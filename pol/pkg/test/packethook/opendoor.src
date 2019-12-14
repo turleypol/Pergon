@@ -1,0 +1,54 @@
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+//   OpenDoor - Über OpenDoorMacro Türen öffnen/schließen
+//              wird über packethook.src gestartet
+//
+//   Author: Turley
+//
+//   Modifications:
+//     13.12.05 Turley - Erste "fertige" Version
+//     14.12.07 Turley - Bissle aufgeräumt
+//
+//////////////////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+Use math;
+
+Const DOOR_TIMER:=2;  // Sekunden bis zur nächsten Macronutzung
+
+Program openDoor(who)
+	who:=who[1];
+	Var items, doors:={};
+
+	If (!who.dead)
+		If (GetObjProperty(who,"#DoorMacro")>ReadGameClock())  // Man soll es ja nich übertreiben
+			Return;
+		EndIf
+		SetObjProperty(who,"#DoorMacro",ReadGameClock()+DOOR_TIMER);
+
+		items:=ListItemsNearLocationWithFlag(who.x+CInt(Sin(who.facing*0.78)*1.5),
+		                                     who.y+CInt(Cos(who.facing*0.78)*-1.5),
+		                                     who.z,1,TILEDATA_FLAG_DOOR,who.realm);
+
+		ForEach door in (items)
+			If (door.isA(POLCLASS_DOOR))
+				If (CheckLineOfSight(who,door))
+					If (door.getprop("doubledoor"))  // Gegenstück schon geöffnet?
+						If (door.getprop("doubledoor") in doors)
+							Continue;
+						EndIf
+					EndIf
+					If (door.getprop("linked"))  // ...
+						If (door.getprop("linked") in doors)
+							Continue;
+						EndIf
+					EndIf
+					UseItem(door, who);  // Öffnen/Schließen
+					doors.append(door.serial);
+				EndIf
+			EndIf
+			SleepMS(2);
+		EndForEach
+	EndIf
+EndProgram

@@ -1,0 +1,96 @@
+//////////////////////////////////////////////////////////////////////
+// Support --
+// Testen von Zweitcharsupport
+
+use uo;
+include "include/msgs";
+include "include/names";
+include "include/permissions";
+include "include/server";
+
+Program Support(who, param)
+
+  If (!AllowedToCheckIP(who))
+      SendSysMessagePergon(who,
+          "Du hast keine Erlaubnis zur Nutzung von .support.",
+          "You have no permission to use .support."
+      );
+      return;
+  EndIf
+  
+  param := CInt(param);
+  
+  // Auswahlteil
+  If (param == 1 or param == 2)
+      SendSysMessagePergon(who,
+          "Wer soll untersucht werden?", "Who do you want to examine?"
+      );
+      var player := Target(who, TGTOPT_NOCHECK_LOS);
+      If (
+          // nichts gewaehlt
+          !player or
+          // wirklich ein Spieler?
+          !player.isa(POLCLASS_MOBILE) or player.isa(POLCLASS_NPC)
+      )
+          SendSysMessagePergon(who, "Abbruch", "Abort");
+          return;
+      EndIf
+  
+      // notwendige Informationen sichern
+      var info  := struct;
+      info.name := GetRealName(player.serial);
+      info.addr := player.ip;
+      info.mail := Lower(player.acct.getprop(PLAYEREMAIL));
+      If (param == 1)
+          who.setprop(SELF_SUPPORT1, info);
+      Else
+          who.setprop(SELF_SUPPORT2, info);
+      EndIf
+      return;
+  EndIf
+  
+  // Auswertungsteil
+  var info1 := who.getprop(SELF_SUPPORT1);
+  var info2 := who.getprop(SELF_SUPPORT2);
+  
+  If (param == 0 and info1 and info2)
+      var names_de := info1.name+" und "+info2.name;
+      var names_en := info1.name+" and "+info2.name;
+  
+      If (info1.addr == info2.addr)
+          SendSysMessagePergon(who,
+              names_de+" haben die gleiche Internetadresse.",
+              names_en+" have the same internet address."
+          );
+      Else
+          SendSysMessagePergon(who,
+              names_de+" haben verschiedene Internetadressen.",
+              "The internet addresses of "+names_en+" differ."
+          );
+      EndIf
+  
+      If (info1.mail == info2.mail)
+          SendSysMessagePergon(who,
+              names_de+" haben die gleiche Mailadresse.",
+              names_en+" have the same mail address."
+          );
+      Else
+          SendSysMessagePergon(who,
+              names_de+" haben verschiedene Mailadressen.",
+              "The mail addresses of "+names_en+" differ."
+          );
+      EndIf
+  
+      return;
+  EndIf
+  
+  // Fehlermeldungen
+  SendSysMessagePergon(who,
+      "Bitte mit .support 1 und .support 2 je einen Spieler wählen.",
+      "Please use .support 1 and .support 2 to select players."
+  );
+  SendSysMessagePergon(who,
+      "Danach mit .support die Auswertung anschauen.",
+      "Then evaluate it via .support."
+  );
+EndProgram

@@ -1,0 +1,245 @@
+/////////////////////////////////////////////////////////////////
+//  Performance Befehl - gibt wahlweise übersicht über
+//     Performance Informationen als Logfile oder als SysMessage
+//     Param[1] - max_anzahl für polcore().script_profiles
+//     Param[2] - max_anzahl für  polcore().all_scripts
+//
+//     Author: Fox
+//
+/////////////////////////////////////////////////////////////////
+
+include "include/client";
+include "include/msgs";
+include "include/server";
+use file;
+use math;
+use os;
+use uo;
+
+Const bLog := 0;
+
+Program view_script_profiles(who, text)
+
+	var max_anzahl_profiles := 10;
+	var max_anzahl_all := 10;
+
+	If (text)
+      var params := SplitWords(text);
+      var Lmax_anzahl_profiles := CInt(params[1]);
+      If (Lmax_anzahl_profiles)
+      	max_anzahl_profiles := Lmax_anzahl_profiles;
+      EndIf
+      var Lmax_anzahl_all := CInt(params[2]);
+      If (Lmax_anzahl_all)
+      	max_anzahl_all := Lmax_anzahl_all;
+      EndIf
+  EndIf
+
+  //Daten Referenz holen
+  var vscript_profilesR := polcore().script_profiles;
+	var vall_scriptsR := polcore().all_scripts;
+
+	//Daten festschreiben
+	var scriptK := struct;
+	var vall_scripts := array;
+	ForEach script in vall_scriptsR
+		scriptK.pid := script.pid;
+		scriptK.name := script.name;
+		scriptK.instr_cycles := script.instr_cycles;
+		scriptK.consec_cycles := script.consec_cycles;
+		scriptK.call_depth := script.call_depth;
+		scriptK.num_globals := script.num_globals;
+		vall_scripts.append(scriptK);
+		SleepMS(2);
+	EndForEach
+
+	var scriptK2 := struct;
+	var vscript_profiles := array;
+	var sum_instr := 0;
+	ForEach script in vscript_profilesR
+		scriptK2.name := script.name;
+		scriptK2.instr := script.instr/1000.0; //mal ein paar Stellen abknappern
+		scriptK2.instr_percent := script.instr_percent;
+		scriptK2.instr_per_invoc := script.instr_per_invoc;
+		scriptK2.invocations := script.invocations;
+		vscript_profiles.append(scriptK2);
+		sum_instr += scriptK2.instr;
+		SleepMS(2);
+	EndForEach
+
+	//Prozente berechnen
+	ForEach script in vscript_profiles
+		script.instr_percent := CDbl(Ceil((script.instr*100.0/sum_instr)*10.0)/10.0);
+		SleepMS(2);
+	EndForEach
+	SendSysMessagePergon(who,"sum_instr 10^3: "+sum_instr);
+
+  //Sortieren
+  SendSysMessagePergon(who, "Anzahl Einträge vscript gesamt: "+vscript_profiles.size());
+  SendSysMessagePergon(who, "Anzahl Einträge vall gesamt: "+vall_scripts.size());
+
+  var vscript_profiles2 := GrenzSortPerformanceArray1(vscript_profiles, max_anzahl_profiles);
+  var vall_scripts2 := GrenzSortPerformanceArray2(vall_scripts, max_anzahl_all);
+
+  SendSysMessagePergon(who, "Anzahl Einträge vscript mit Grenze: "+vscript_profiles2.size());
+  SendSysMessagePergon(who, "Anzahl Einträge vall mit Grenze: "+vall_scripts2.size());
+
+	//Daten ausgeben
+	var textL := ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>";
+  If (bLog)
+		LogToFile("log/performance.log", textL);
+	Else
+		SendSysMessagePergon(who, textL);
+	EndIf
+	SendSysMessagePergon(who, " ");
+
+	 SendSysMessagePergon(who, "Uptime: "+polcore().uptime);
+
+	 SendSysMessagePergon(who, "sysload: "+polcore().sysload);
+   SendSysMessagePergon(who, "sysload_severity: "+polcore().sysload_severity);
+
+   SendSysMessagePergon(who, "bytes_sent: "+polcore().bytes_sent);
+	 SendSysMessagePergon(who, "bytes_received: "+polcore().bytes_received);
+
+	 SendSysMessagePergon(who, "itemcount: "+polcore().itemcount);
+   SendSysMessagePergon(who, "mobilecount: "+polcore().mobilecount);
+
+	 SendSysMessagePergon(who, "instr_per_min: "+polcore().instr_per_min);
+	 SendSysMessagePergon(who, "events_per_min: "+polcore().events_per_min);
+	 SendSysMessagePergon(who, "combat_operations_per_min: "+polcore().combat_operations_per_min);
+	 SendSysMessagePergon(who, "skill_checks_per_min: "+polcore().skill_checks_per_min);
+
+	textL := FormatString(60, "Name") + " | " +
+				FormatString(12, "instr") + " | " + FormatString(12, "instr_percent") + " | " +
+				FormatString(15, "instr_per_invoc")+ " | " + FormatString(11, "invocations");
+  If (bLog)
+		LogToFile("log/performance.log", textL);
+	Else
+		SendSysMessagePergon(who, textL);
+	EndIf
+
+	textL := "____________________________________________________________________________________________________________________________";
+  If (bLog)
+		LogToFile("log/performance.log", textL);
+	Else
+		SendSysMessagePergon(who, textL);
+	EndIf
+
+	ForEach script in vscript_profiles2
+		textL := FormatString(60, script.name) + " | " + FormatString(12, CStr(Ceil(script.instr*1000))) + " | "
+			+ FormatString(12, CStr(script.instr_percent))+ "%" + " | "
+			+ FormatString(15, CStr(script.instr_per_invoc))
+			+ " | " + FormatString(11, CStr(script.invocations));
+		If (bLog)
+			LogToFile("log/performance.log", textL);
+		Else
+			SendSysMessagePergon(who, textL);
+		EndIf
+		SleepMS(2);
+	EndForEach
+
+	If (bLog)
+		LogToFile("log/performance.log", " ");
+	Else
+		SendSysMessagePergon(who, " ");
+	EndIf
+
+	textL := FormatString(6, "PID") + " | " + FormatString(60, "Name") + " | " +
+				FormatString(12, "instr_cycles") + " | " + FormatString(13, "consec_cycles") + " | " +
+				FormatString(12, "call_depth") + " | " + FormatString(12, "num_globals");
+  If (bLog)
+		LogToFile("log/performance.log", textL);
+	Else
+		SendSysMessagePergon(who, textL);
+	EndIf
+
+
+	textL := "__________________________________________________________________________________________________________________________________";
+	If (bLog)
+		LogToFile("log/performance.log", textL);
+	Else
+		SendSysMessagePergon(who, textL);
+	EndIf
+
+	ForEach script in vall_scripts2
+		textL := FormatString(6, CStr(script.pid)) + " | " + FormatString(60, script.name) + " | " +
+			FormatString(12, CStr(script.instr_cycles)) + " | " + FormatString(13, CStr(script.consec_cycles)) + " | " +
+			FormatString(12, CStr(script.call_depth)) + " | " + FormatString(12, CStr(script.num_globals));
+		If (bLog)
+			LogToFile("log/performance.log", textL);
+		Else
+			SendSysMessagePergon(who, textL);
+		EndIf
+		SleepMS(2);
+	EndForEach
+
+EndProgram
+//-----------------------------------------------------
+Function FormatString(laenge, shortString)
+	If (len(shortString) >= laenge)
+		return shortString;
+	EndIf
+	var returnString := "                                                                                          ";
+	returnString := returnString[1,laenge-len(shortString)]+shortString;
+	return returnString;
+EndFunction
+
+//-----------------------------------------------------
+Function GrenzSortPerformanceArray1(byref PArray, anzahl)
+	var ergArray := array;
+	var temp := struct;
+	temp.k := 0;
+	temp.wert := -1;
+	var ArrayLen := Len(PArray);
+	If (anzahl > ArrayLen)
+		anzahl := ArrayLen;
+	EndIf
+	var i,k,f;
+	For(i := 1; i <= anzahl; i += 1)
+		For(k := 1; k <= ArrayLen; k += 1)
+			f := PArray[k];
+			If (f.instr > temp.wert)
+				temp.k := k;
+				temp.wert := f.instr;
+			EndIf
+			SleepMS(2);
+		EndFor
+		ergArray.append(PArray[temp.k]);
+		PArray.erase(temp.k);
+		ArrayLen := Len(PArray);
+		temp.k := 0;
+		temp.wert := -1;
+		SleepMS(2);
+	EndFor
+	return ergArray;
+EndFunction
+
+//-----------------------------------------------------
+Function GrenzSortPerformanceArray2(byref PArray, anzahl)
+	var ergArray := array;
+	var temp := struct;
+	temp.k := 0;
+	temp.wert := -1;
+	var ArrayLen := Len(PArray);
+	If (anzahl > ArrayLen)
+		anzahl := ArrayLen;
+	EndIf
+	var i,k,f;
+	For(i := 1; i <= anzahl; i += 1)
+		For(k := 1; k <= ArrayLen; k += 1)
+			f := PArray[k];
+			If (f.instr_cycles > temp.wert)
+				temp.k := k;
+				temp.wert := f.instr_cycles;
+			EndIf
+			SleepMS(2);
+		EndFor
+		ergArray.append(PArray[temp.k]);
+		PArray.erase(temp.k);
+		ArrayLen := Len(PArray);
+		temp.k := 0;
+		temp.wert := -1;
+		SleepMS(2);
+	EndFor
+	return ergArray;
+EndFunction

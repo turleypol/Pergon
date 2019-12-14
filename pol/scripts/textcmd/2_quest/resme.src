@@ -1,0 +1,13 @@
+use uo;
+include "include/msgs";
+include "include/modifyskill";
+include "include/vitals";
+
+Program TextCMD_ResMe(who)
+  If (who.dead)
+    ResurrectPergon(who);
+    ResPenalties(who);
+  Else
+    SendSysMessagePergon(who, "Ihr seid doch gar nicht tot!");
+  EndIf
+EndProgram

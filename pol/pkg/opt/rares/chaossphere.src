@@ -1,0 +1,352 @@
+///////////////////////////////////////////////////////////////////////////
+// chaossphere.src - um den Bereich der Chaossphäre herrscht das Chaos :)
+
+use cfgfile;
+use math;
+use os;
+use uo;
+use util;
+include ":newspells:magicpergon";
+include "include/modifyskill";
+include "include/names";
+include "include/pergonutil";
+include "include/spellcheck";
+include "include/thaumaturgy";
+
+program chaossphere(character,item)
+
+  Var rares:= ReadConfigFile("rares");                                      //Rares Config auslesen
+  Var rare:=  FindConfigElem(rares, item.objtype);
+  Var tbu:=   rare.timebetweenuses;
+  Var range:= rare.range;
+  Var dur:=   rare.duration;
+
+  if (item.movable == 0)                                                    //ist die Sphäre lose?
+    SendSysMessagePergon(character, "Ihr könnt die Sphäre nicht aufheben");
+    return;
+  endif
+
+  if (CInt(GetObjProperty(item, "lastuse") + tbu) > ReadGameClock())        //letzte Benutzung lange genug her?
+    SendSysMessagePergon(character, "Die Sphäre ist noch nicht wieder bereit");
+    return;
+  endif
+
+  SendSysMessagePergon(character, "Ziel wählen");                          //Ziel für die Sphäre
+  Var where:= TargetArea(character);
+  if(!where)
+    SendSysMessagePergon(character, "Ungültiges Ziel");
+    return;
+  endif
+
+  PlayMovingEffectXYZ(character.x, character.y, character.z+15, where.x, where.y, where.z+15, 0x36FE, 5, 2,0,character.realm);
+  
+  Var delay :=CInt(75*CoordinateDistanceEuclidean(character.x, character.y, where.x, where.y));   //umso weiter der Zielpunkt vom caster entfernt umso länger dauert es bis die Sphäre dort auftaucht
+  SleepMS(delay);
+  PlayStationaryEffect(where.x, where.y, where.z+15, 0x36FE, 5, 50,0,character.realm);
+
+  SetObjProperty(item, "lastuse", ReadGameClock());                         //Benutzung vermerken
+  Detach();
+  SetScriptController(0);                                                   //ausgeteilter Schaden kommt nicht vom Caster
+
+  SleepMS(2700);
+  Var anim1x,anim1y;
+  Var i,j:=0;
+  Var radius:=1;
+
+  PlaySoundEffectXYZ(where.x, where.y, where.z, SFX_29, where.realm);
+  PlaySoundEffectXYZ(where.x, where.y, where.z, SFX_2A, where.realm);
+
+  //Explosionseffekt
+  for(i:= 0 ; i <= 10*ConstPi() ; i+=(2*ConstPi())/20)                     //5 Kreise
+    j+=1;
+    anim1x:= CInt(where.x + radius*Sin(i) + 1);                                 //Polarkoordinaten
+    anim1y:= CInt(where.y + radius*Cos(i) + 1);
+    PlayStationaryEffect(anim1x, anim1y, where.z, 0x376a, 10, 10, 0,where.realm);
+    if ((j == 20) || (j == 40) || (j == 60) || (j == 80))
+       SleepMS(100);
+       radius+=1;
+    endif
+  endfor
+
+  for(i:= 10*ConstPi() ; i <= 16*ConstPi() ; i+=(2*ConstPi())/40)            //5-14 Kreise
+    j+=1;
+    anim1x:= CInt(where.x + radius*Sin(i) + 1);
+    anim1y:= CInt(where.y + radius*Cos(i) + 1);
+    PlayStationaryEffect(anim1x, anim1y, where.z, 0x376a, 10, 10, 0,where.realm);
+    if ((j == 120) || (j == 160) || (j == 200) || (j == 240) || (j == 280) || (j == 320))
+        SleepMS(100);
+        radius:= radius + 1;
+    endif
+  endfor
+
+  Var victims:= ListMobilesNearLocationEx(where.x,where.y,where.z, range, LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN,where.realm);
+
+  foreach victim in victims                                                       //Glitzern auf den Opfern
+    case (RandomInt(4))
+      0:  PlayObjectCenteredEffect(victim, 0x373A, 10, 100);
+      1:  PlayObjectCenteredEffect(victim, 0x374A, 10, 100);
+      2:  PlayObjectCenteredEffect(victim, 0x375A, 10, 100);
+      3:  PlayObjectCenteredEffect(victim, 0x376A, 10, 100);
+    endcase
+    if (!victim.isa(POLCLASS_NPC))
+      SendSysMessagePergon(victim, "Das Chaos durchdringt euch");
+    endif
+  endforeach
+
+  SleepMS(3000);
+
+  foreach victim in victims                                           //jedes Opfer bekommt sein Chaos :)
+    if (victim)
+      case (RandomInt(11))
+        0:  //nix
+        1:  //polymorph PC und NPC beide temporär
+            if (GetObjProperty(victim, "spell_poly"))             //ist der Player schon gepolymorphed?
+              Var shape:=RandomInt(150);
+              if ((shape==32) || (shape == 95))                 //nichtdefinierte shapes führen zum Clientabsturz
+                shape+=1;
+              endif
+              victim.graphic:= shape;
+            else
+              Var tag:= array;
+              tag[1]:= ReadGameClock() + dur;
+              tag[2]:= victim.graphic;                          // Originalshape speichern
+              tag[3]:= ReadMilliSecondClock();
+              SetObjProperty(victim, "spell_poly", tag);        // tag Opfer für spellchecker
+              SendSpellWaiter(victim, "spell_poly", dur, tag[3], victim);
+              Var shape:=RandomInt(150);
+              if ((shape==32) || (shape == 95))                 //nichtdefinierte shapes führen zum Clientabsturz
+                shape+=1;
+              endif
+              victim.graphic:= shape;                           //shape setzen
+            endif
+            PlaySoundEffect(victim, SFX_SPELL_POLYMORPH);
+
+        2:  //HP
+            Var hits:= GetMaxHPPergon(victim);
+            SetHPPergon(victim, RandomInt(hits + 1));                 //zufällig hits zwischen 1 und maxhits
+            PlaySoundEffect(victim, SFX_SPELL_MANA_VAMPIRE);
+
+        3:  //Segen + Blindheit
+            Var params:= {};
+            params[1]:= "#MOB";
+            params[2]:= victim;
+            params[3]:= 50;
+            params[4]:= victim;
+
+            Var mirror:= (GetObjProperty(victim,"spell_reflect"));                //Magischer Spiegl wird gemerkt
+            if (mirror)
+                EraseObjProperty(victim, "spell_reflect");
+            endif
+
+            //Blindheits und Bless werden gestartet
+            Start_ScriptPergon(":newspells:necromancer/blind", params);
+            Start_ScriptPergon(":newspells:cleric/bless", params);
+
+            SleepMS(500);                                                         //warten auf die Spellscripte
+            if(mirror)
+                SetObjProperty(victim, "spell_reflect", mirror);                  //Magischen Spigel wieder setzen
+            endif
+
+        4:  //teleport
+            Var oldx:= victim.x;
+            Var oldy:= victim.y;
+            Var oldz:= victim.z;
+            repeat                                                                //Opfer an einen freien Ort in der Nähe teleportieren
+                MoveObjectToLocation(victim, victim.x + RandomInt(20) - 10, victim.y + RandomInt(20) - 10, victim.z + RandomInt(50) - 10, victim.realm, MOVEOBJECT_NORMAL);
+            until (!((victim.x == oldx) && (victim.y == oldy) && (victim.z == oldz)));
+            PlaySoundEffect(victim, SFX_SPELL_TELEPORT);
+
+        5:  //crittersummon
+            Var critter;
+            Var i:=0;
+            Var j:=0;
+            Var r:=RandomInt(5);                                                  //zufällige Anzahl Monster
+            for (j:=0; j < r; j+=1)
+              repeat
+                case (RandomInt(5))
+                  0: critter:=CreateNpcFromTemplate("troll1", victim.x + RandomInt(6) - 3, victim.y + RandomInt(6) - 3, victim.z + RandomInt(30),0,victim.realm);
+                  1: critter:=CreateNpcFromTemplate("orc1", victim.x + RandomInt(6) - 3, victim.y + RandomInt(6) - 3, victim.z + RandomInt(30),0,victim.realm);
+                  2: critter:=CreateNpcFromTemplate("spider", victim.x + RandomInt(6) - 3, victim.y + RandomInt(6) - 3, victim.z + RandomInt(30),0,victim.realm);
+                  3: critter:=CreateNpcFromTemplate("gargoyle", victim.x + RandomInt(6) - 3, victim.y + RandomInt(6) - 3, victim.z + RandomInt(30),0,victim.realm);
+                  4: critter:=CreateNpcFromTemplate("giantrat", victim.x + RandomInt(6) - 3, victim.y + RandomInt(6) - 3, victim.z + RandomInt(30),0,victim.realm);
+                endcase
+                SleepMS(5);
+                i+=1;
+              until (critter || (i>10));
+              EraseObjProperty(critter, "exp"); // Exp löschen für selbstbeschworene Viecher
+            endfor
+            PlaySOundEffect(victim, SFX_SPELL_SUMMON_CREATURE);
+
+        6:  //statue
+            Var params:= {};
+            params[1]:="#MOB";
+            params[2]:=victim;
+            params[3]:=CInt(dur/60);
+            params[4]:=victim;
+
+            if (victim.isa(POLCLASS_NPC))                                           //NPCs können nicht zur Statue werden und werden deswegen gefreezed
+                params[3]:=CInt(dur/30);
+                Start_ScriptPergon(":newspells:cleric/paralyze", params);
+            else
+                Var mirror:= (GetObjProperty(victim,"spell_reflect"));              //Magischer Spiegl wird gemerkt
+                if (mirror)
+                  EraseObjProperty(victim, "spell_reflect");
+                endif
+                Start_ScriptPergon(":newspells:necromancer/statue", params); //spellscript starten
+                SleepMS(500);                                                       //warten auf das Spellscript
+                if(mirror)
+                  SetObjProperty(victim, "spell_reflect", mirror);                  //Magischen Spiegel wieder setzen
+                endif
+            endif
+
+        7:  //.jail für PCs
+            PlaySoundEffect(victim, 0xf2);
+            if (!victim.isa(POLCLASS_NPC))                              //NPC können nicht gejailt werden
+              AutoJail(victim, CInt(dur/100));
+            endif
+
+        8:  //Namesänderung
+            if (GetObjProperty(victim, "spell_incognito"))              //wenn schon incognito dann einfach Überschreibung des Namens
+                Var name:= ChaosName(victim);
+                SetNamePergon(victim, name, "Chaossphaere");
+            else
+              Var tag:= array;
+              tag[1]:= ReadGameClock() + 10;
+              tag[2]:= victim.name;                                     // Original Namen speichern
+              tag[3]:= ReadMilliSecondClock();
+              SetObjProperty(victim, "spell_incognito", tag);           // tag Opfer für spellchecker
+              SendSpellWaiter(victim, "spell_incognito", 10, tag[3], victim);
+              Var name:= ChaosName(victim);                             // besonderer Name :)
+              SetNamePergon(victim, name, "Chaossphaere");     // Name setzen
+            endif
+            PlaySoundEffect(victim, SFX_SPELL_INCOGNITO);
+
+        9:  //aufn Sack
+            Var params:= {};
+            params[1]:= "#MOB";
+            params[2]:= victim;
+            params[3]:= 10;
+            params[4]:= victim;
+
+            Var mirror:= (GetObjProperty(victim,"spell_reflect"));      //Magischer Spiegl wird gemerkt
+            if (mirror)
+              EraseObjProperty(victim, "spell_reflect");
+            endif
+
+            //zufälliges Spellscript wird gestartet
+            case (RandomInt(6))
+              0: Start_ScriptPergon(":newspells:mage/lightning", params);
+              1: Start_ScriptPergon(":newspells:mage/meteor", params);
+              2: Start_ScriptPergon(":newspells:mage/flamestrike", params);
+              3: Start_ScriptPergon(":newspells:mage/frostshock", params);
+              4: Start_ScriptPergon(":newspells:necromancer/poison", params);
+              5: Start_ScriptPergon(":newspells:necromancer/bonebreaker", params);
+            endcase
+
+            SleepMS(500);                                               //warten auf das Spellscript
+            if(mirror)
+              SetObjProperty(victim, "spell_reflect", mirror);          //Magischer Spiegel wird wieder gesetzt
+            endif
+
+        10: //einfärben
+            PlaySoundEffect(victim, 0x1f1);
+            //PCs und NPCs bekommen besonderen HK
+            if (GetObjProperty(victim, "spell_bless"))
+            	If (!victim.isA(POLCLASS_NPC))
+                SendSysMessagePergon(victim, "Da ihr gesegnet seid entgeht ihr dem Chaos");
+              EndIf
+            else
+            	If (!victim.isA(POLCLASS_NPC))
+                SendSysMessagePergon(victim, "Ihr werdet zum Heiligen Krieger..... aber irgendetwas stimmt da nicht!!");
+              EndIf
+              Var tag:= array;
+              tag[1]:= ReadGameClock() + dur;
+              tag[2]:= 0;
+              tag[3]:= "holy warrior";
+              tag[4]:= victim.color;                          // Farbe des Opfers merken
+              tag[5]:= ReadMilliSecondClock();
+              tag[6]:= "chaossphere";
+              SetObjProperty(victim, "spell_bless", tag);     // tag spelltarget for spellchecker
+              SendSpellWaiter(victim, "spell_bless", dur, tag[5], victim);
+
+              victim.color:= RandomInt(1750);                 // zufällige Farbe
+
+              Var weapon:= victim.weapon;                     // get spelltargets weapon
+              if (weapon.objtype <> 0xf020)                   // tag only if caston is armed
+                TagEquipment(weapon, tag, 0, dur, victim);                // modify and tag weapon
+              endif
+
+              Var equipped:= ListEquippedItems(victim);       // get spelltargets equipped items
+
+              foreach item in equipped                        // for each equipped item
+                if (item.isa(POLCLASS_ARMOR))                // check if item is armor piece
+                  TagEquipment(item, tag, 0, dur, victim);                // modify and tag armor
+                endif
+              endforeach
+            endif
+       endcase
+    endif
+  endforeach
+
+endprogram
+
+//leicht aus holywarrior.src
+Function TagEquipment (item, tag, change, dur, caston)                 // modifies and tags equipment
+
+   Var blesstag:= GetObjProperty(item, "spell_bless");    // get possible blessing
+   Var cursetag:= GetObjproperty(item, "spell_curse");    // get possible curse
+
+   tag[2]:= change;                                       // preserve change
+   tag[4]:= item.color;                                   // preserve item color
+
+   if (cursetag and cursetag[3] == "dead knight")         // check if item is deadly cursed
+      tag[4]:= cursetag[4];                               // get and preserve original color
+      cursetag[1]:= -1;                                   // change deadly curse to ordinary one
+      cursetag[3]:= "curse";
+      cursetag.erase(4);
+      if (item.isa(POLCLASS_WEAPON))                      // check if item is a weapon
+         cursetag.erase(5);
+      endif
+      SetObjProperty(item, "spell_curse", cursetag);      // tag item
+   endif
+
+   if (blesstag and blesstag[3] == "holy warrior")        // check if item is holy blessed
+      tag[4]:= blesstag[4];                               // get and preserve original color
+   endif
+
+   item.color:= RandomInt(1750);                          // set new item color(zufällig)
+
+   SetObjProperty(item, "spell_bless", tag);              // tag item as blessed
+   SendSpellWaiter(item, "spell_bless", dur, tag[5], caston);
+   CalcItemQualityBonus(item);                            // calcs new item bonus
+   IncRevision(item);
+EndFunction
+
+//leicht verändert aus incognito.src
+Function ChaosName(victim)
+
+  Var index:= "PC";
+  if(victim.isa(POLCLASS_NPC))
+    index:= "NPC";
+  endif
+
+  Var cfg:= ReadConfigFile("chaosnames");
+  if (!cfg)                                               // fire exeption (if necessary)
+     SendSysMessagePergon(victim, "Unable to read chaosnames.cfg");
+     SysLog("FEHLER: chaosnames.cfg not found");
+     return;
+  endif
+
+  Var elem:= FindConfigElem(cfg, index);                  // get names for characters gender
+  Var number:= GetConfigInt(elem, "Count");               // get number of names
+
+  Var dice_str:= "1d" + CStr(number);
+  Var choice:= RandomDiceRoll(dice_str);                  // choose name randomly
+  Var entry:= "Name" + choice;
+
+  Var str:= GetConfigString(elem, entry);                 // retrieve name
+
+  Var title:= PreserveTitle(victim);
+  str+=title;                                      // attach title
+  return (str);
+EndFunction

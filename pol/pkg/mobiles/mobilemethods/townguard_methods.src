@@ -1,0 +1,34 @@
+use uo;
+
+Include ":popuphook:popupmenu";
+Include ":main_ai3:include_common/main_ai";
+
+Program Install()
+	return 1;
+EndProgram
+
+Exported Function haspopup(mobile)
+	return 1;
+	mobile := mobile;
+EndFunction
+
+Exported Function popupinfo(mobile, who)
+	var info := {
+	   {ID_GUARD_HELP, CLILOC_GUARD_HELP}
+	};
+	
+	If (GetObjProperty(mobile, PROP_FOLLOW))
+		info.append({ID_NPC_STOP, CLILOC_NPC_STOP});
+	Else
+		info.append({ID_GUARD_CRIME, CLILOC_GUARD_CRIME});
+  EndIf
+  
+  info += {
+	  {ID_GUARD_PUNISHMENTS, CLILOC_GUARD_PUNISHMENTS},
+	  {ID_GUARD_PRISONERS, CLILOC_GUARD_PRISONERS}
+	};
+	
+	return info;
+	mobile := mobile;
+	who := who;
+EndFunction

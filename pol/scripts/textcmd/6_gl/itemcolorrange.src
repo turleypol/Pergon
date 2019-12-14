@@ -1,0 +1,81 @@
+//////////////////////////////////////////////////////////////////
+//
+//   ItemColorRange - Set color of all items in range
+//
+//     Author: Kimungu
+//
+//////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+use uo;
+use os;
+
+/////////////
+// Includes
+/////////////
+
+include "include/msgs";
+include "include/pergonutil";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_ItemColorRange(who, param)
+
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+  
+  If (param["?"] || !param || SplitWords(param).size() > 1 || (!param["undo"] && !IsNumeric(param)))
+    SendSysMessagePergon(who, "Usage: .ItemColorRange <color|\"undo\">");
+    return;
+  EndIf
+  
+  var pos1 := TargetCoordinates(who);
+  SendSysMessagePergon(who, "Erste Ecke wählen!");
+  If (!pos1)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+  
+  var pos2 := TargetCoordinates(who);
+  SendSysMessagePergon(who, "Zweite Ecke wählen!");
+  If (!pos2)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+  
+  var count := 0;
+  ForEach object in ListObjectsInBox(pos1.x, pos1.y, -128, pos2.x, pos2.y, 127, who.realm)
+    If (object.isa(POLCLASS_ITEM))
+      If (param["undo"])
+        If (undo(object));
+          count += 1;
+        EndIf
+      Else
+        change(object, CInt(param));
+        count += 1;
+      EndIf
+    EndIf
+  EndForEach
+  
+  SendSysMessagePergon(who, count+" Items wurden gefärbt!");
+
+EndProgram
+
+Function undo(object)
+  var color := GetObjProperty(object, "oldcolor");
+  If (color)
+    object.color := color;
+    return 1;
+  EndIf
+  return 0;
+EndFunction
+
+Function change(object, color)
+  var oldcolor := object.color;
+  SetObjProperty(object, "oldcolor", oldcolor);
+  object.color := color;
+EndFunction

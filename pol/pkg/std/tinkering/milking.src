@@ -1,0 +1,64 @@
+//////////////////////////////////////////////////
+// 2004-02-08 Zork: Kuehe melken :)
+/////////////////////////////////////////////////
+
+use attributes;
+use os;
+use math;
+use uo;
+
+Include "include/itemnpc";
+Include "include/pergonutil";
+Include "include/poison";
+Include "include/client";
+Include "include/modifyskill";
+
+CONST ITEM_FULL_MILKBOTTLE:=0xff91;
+
+
+program milking( character, item )
+
+    SendSysMessagePergon( character, "Wählt eine Kuh" );
+    var subject := Target(character);
+    if (!subject)
+        SendSysMessagePergon(character, "Ihr habt die Kuh nicht getroffen.");
+        return;
+    elseif (!CheckLineOfSight(character,subject))
+	SendSysMessagePergon(character,"Ihr könnt das Tier nicht sehen.");
+	return;
+    elseif (Distance(character, subject) >= 2 )
+        SendSysMessagePergon(character, "Ihr solltet noch etwas näher an das Tier heran.");
+        return;
+    elseif (Lower(subject.npctemplate)["cow"])
+	MilkingCow( character, subject , item);
+    else
+	SendSysMessagePergon(character,"Dieses Tier lässt sich nicht melken.");
+	return;
+    EndIf
+
+endprogram
+
+function MilkingCow( character, subject, Bottle )
+	PlaySoundEffect( character, 0x3F5 );
+	SleepMS(500);
+	PlaySoundEffect( character, 0x3F5 );
+	SleepMS(1000);
+	PlaySoundEffect( character, SFX_79  ); //MUHHHH
+	SleepMS(1000);
+	PlaySoundEffect( character, 0x3F5 );
+	SleepMS(500);
+	PlaySoundEffect( character, 0x3F5 );
+
+	Var thepoints := GetSkillDefaultPoints(SKILLID_TIERZUCHT);
+  	If (CheckSkillPergon(character, SKILLID_TIERZUCHT, 20, thepoints)) //auf 20 anstatt -1 testen, damit nicht jemand mit melken zum grossmeister skillen kann
+		SubtractAmount(Bottle, 1);
+		CreateItemInBackpackPergon(character,ITEM_FULL_MILKBOTTLE, 1);
+    		Return 1;
+  	Else
+		PerformAction(subject, 1);
+		SendSysMessagePergon(character,"Die Kuh ist nicht einverstanden.");
+    		Return 0;
+      	EndIf
+
+
+endfunction

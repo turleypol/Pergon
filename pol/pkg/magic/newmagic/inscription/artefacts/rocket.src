@@ -1,0 +1,98 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Raketen
+//
+// Rakete fliegt zum Himmel und macht Bumm (sonst nix!)
+
+//////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.13  2008/09/23 12:47:13  turley
+// PlaySoundEffectXYZ() -> PlaySoundEffectXYZ_()
+// Pol98 bekommt das als Corefunktion
+//
+// Revision 1.12  2008/09/05 20:04:21  mehdorn
+// - RandomIntMinMax-Umbau
+//
+// Revision 1.11  2008/08/31 20:29:10  mehdorn
+// - leicht ueberarbeitet
+// - Tippfehler raus
+// - teilweise Uebersetzungen vervollstaendigt/verbessert
+// - diverse unnoetige Includes entfernt
+//
+// Revision 1.10  2008/08/27 19:20:42  mehdorn
+// - ConvertDirectionToLoc* in neues Include mobile.inc verlagert
+//   - aus crazystuff.inc und main_ai.inc entfernt
+// - Scripte noetigenfalls angepasst
+//
+// Revision 1.9  2008/08/25 21:56:53  mehdorn
+// - ExplodeInCircle umgebaut
+//   - fehlerhafte Parameterreihenfolge bei PlayMovingEffectXYZ gefixt
+//   - anderes Parameterformat
+//   - bissel optimiert
+// - entsprechend Scripte angepasst
+//   - dabei GetFacingCoordinates abgeschafft
+// - Typos und sonstiger Kleinkram
+//
+// 2006-02-05 Seppel
+// angefangen
+
+include "common";
+include ":newspells:magicpergon";
+include "include/effects";
+include "include/mobile";
+include "include/modifyskill";
+use cfgfile;
+use os;
+use uo;
+use util;
+
+Program Rocket(who, item)
+  If (!ArtefactUsable(who, item))
+    return;
+  EndIf
+
+  // die neuen Raketen haben Effect in cProp gespeichert
+  var effect := GetObjProperty(item, "Effect");
+
+  // wenn keine cProp vorhanden hol den Effekt aus der config
+  If (!effect)
+    var artefacts := ReadConfigFile(":newinscription:artefacts");
+    var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+    effect := artefact.effect;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Ihr stellt die Rakete vor euch und zündet sie an",
+    "You put the rocket in front of you and light it"
+  );
+  var pos := struct{
+    x     := who.x + ConvertDirectionToLocX(who.facing),
+    y     := who.y + ConvertDirectionToLocY(who.facing),
+    z     := who.z,
+    realm := who.realm
+  };
+
+  PerformAction(who, ANIM_BOW);
+  SubtractAmount(item, 1);
+  Detach();
+  If (who.cmdlevel < CMDLEVEL_SCRIPTER)
+    // testet sich schneller
+    Sleep(3);
+  EndIf
+
+  var dx := RandomInt(5) - 2;
+  var dy := RandomInt(5) - 2;
+
+  PlayMovingEffectXYZ(
+    pos.x, pos.y, pos.z,
+    pos.x + dx, pos.y + dy, 50+pos.z,
+    0x36e4, 5, 15, 0, who.realm
+  );
+  SleepMS(600);
+
+  ExplodeInCircle(pos.x + dx, pos.y + dy, 50+pos.z, pos.realm,
+    5, 200, 50, 100, array{effect});
+  PlaySoundEffectXYZ(pos.x, pos.y, pos.z, 287, pos.realm);
+EndProgram
+
+// vim: sw=2 sts=2

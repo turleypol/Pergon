@@ -1,0 +1,560 @@
+//////////////////////////////////////////////////////////////////////////////
+//
+//   usepotion - AlchiTrank benutzen
+//
+//
+//     Author: Hotny&Turley
+//     eMail:  ham 2
+//
+//
+//   Modification:
+//     15.03.07 Turley - Init
+//
+//////////////////////////////////////////////////////////////////////////////
+
+include ":daymoonweather:daymoonweather";
+include ":drinking:common";
+include ":hungrysystem:hungrysystem";
+include ":newspells:magicpergon";
+include "include/modifyskill";
+include "include/msgs";
+include "include/npc";
+include "include/objtype";
+include "include/packets";
+include "include/poison";
+include "include/server";
+include "include/spellcheck";
+use os;
+use uo;
+
+Program usepotion(who,potion)
+  Var prop;
+  Var coords;
+  Var mobiles:={}, dist;
+  Var explpotion;
+
+  If (potion.getprop("#blow"))
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Das explodiert gleich!"),lang:="DEU"},
+                             struct{uc_text:=CAscz("It's going to explode!"),lang:="ENU"});
+    Return;
+  EndIf
+
+  If(!potion.movable)
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Das klebt irgendwie fest."),lang:="DEU"},
+                             struct{uc_text:=CAscz("You cannot move this."),lang:="ENU"});
+    Return;
+  EndIf
+  If (!AccessiblePergon(who, potion)|| (!ReserveItem(potion)))
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr kommt da nicht ran!"),lang:="DEU"},
+                             struct{uc_text:=CAscz("You cannot reach that"),lang:="ENU"});
+    Return;
+  EndIf
+
+  prop:=potion.getprop("potion");
+  If (!prop)
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr wisst nichts damit anzufangen!"),lang:="DEU"},
+                             struct{uc_text:=CAscz("You know nothing about."),lang:="ENU"});
+    Return;
+  EndIf
+
+  If (!((prop.Werfbar) && (prop.posWirk.size()==1))) // reiner Explosionstrank hat keinen Timeoutcheck
+    Var lastuse:=who.getprop("#potion");
+    If (lastuse)
+      If (lastuse > ReadGameClock() )
+        If (prop.Werfbar)
+          SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr müsst warten, bis Ihr noch einmal werfen könnt!"),lang:="DEU"},
+                                   struct{uc_text:=CAscz("You have to wait until you can throw again!"),lang:="ENU"});
+        Else
+          SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr müsst warten, bis Ihr noch einmal trinken könnt!"),lang:="DEU"},
+                                   struct{uc_text:=CAscz("You have to wait until you can drink again!"),lang:="ENU"});
+        EndIf
+        Return;
+      EndIf
+    EndIf
+    who.setprop("#potion", ReadGameClock() + 10);
+  EndIf
+
+  If (prop.Werfbar) // Werfbar?
+    If (!prop.Range)  // alter Trank bei dem Range nicht in potionbrew schon berechnet wurde
+      prop.+Range;
+      If (prop.posWirk.size()==1) // reiner Explosionstrank
+        prop.Range:=CInt(prop.posWirk[1][2]/40*1.5);
+      Else
+        ForEach wirk in (prop.posWirk)
+          If (wirk[1]=="explodierend")
+            prop.Range:=CInt(wirk[2]/40*1.5);
+            If (_wirk_iter>1)
+              prop.posWirk.erase(_wirk_iter); // löschen, damit kein Schaden gemacht wird
+            EndIf
+            Break;
+          EndIf
+        EndForEach
+      EndIf
+      prop.Range:=Max(1,Min(6,prop.Range)); //1..6
+    EndIf
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Bitte ein Ziel wählen."),lang:="DEU"},
+                             struct{uc_text:=CAscz("Select a target."),lang:="ENU"});
+
+    coords:=TargetCoordinates(who);
+    If (!coords)
+      SendSysMessagePergon(who,struct{uc_text:=CAscz("Abbruch"),lang:="DEU"},
+                               struct{uc_text:=CAscz("Abort"),lang:="ENU"});
+      Return;
+    EndIf
+    If (!CheckLosAt(who, coords.x, coords.y, coords.z))
+      SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr könnt das nicht sehen!"),lang:="DEU"},
+                               struct{uc_text:=CAscz("You can't see that!"),lang:="ENU"});
+      Return;
+    EndIf
+    // Moving Effekt
+    // von who (Hand) nach coords
+    // Effekt .objtype Hue .color Render 0
+    // Speed 1 Duration 0
+    // Fixed Direktion, ohne Explosion
+    // AreaPacket mit center who und Standartrange von 20
+    dist:=CoordinateDistance(who.x, who.y, coords.x, coords.y);
+    PlayMovingEffectXYZEx( who.x, who.y, who.z,
+                           coords.x, coords.y, coords.z+5,
+                           who.realm, potion.graphic, 1, 0, potion.color-1, 0, 1, 0, 0);
+    SleepMS(200*dist); // Wartezeit abhängig von Entfernung
+    explpotion:=CreateItemCopyAtLocation(1, 1, 1, potion, _DEFAULT_REALM); //Kopie erzeugen (erstmal am Arsch der Welt)
+    SubtractAmount(explpotion,explpotion.amount-1); // Falls es ein Stack war
+    MoveObjectToLocation(explpotion, coords.x, coords.y, coords.z, coords.realm,MOVEOBJECT_FORCELOCATION); // Einzelnen jetzt an die richtige Stelle bewegen
+    //explpotion.movable:=0;
+    explpotion.setprop("#blow",1);
+    SubtractAmount(potion,1);
+
+    Detach();
+    PrintTextAbovePergon(who, explpotion, "3", "3");
+    Sleep(1);
+    PrintTextAbovePergon(who, explpotion, "2", "2");
+    Sleep(1);
+    PrintTextAbovePergon(who, explpotion, "1", "1");
+    Sleep(1);
+
+    If (explpotion.container)
+    	var a:=explpotion.container;
+    	While (a.container)
+    		a:=a.container;
+    	EndWhile
+       mobiles:={a};
+    Else
+       mobiles:=ListMobilesNearLocationEx(explpotion.x, explpotion.y, explpotion.z, prop.Range, LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN, explpotion.realm);
+    EndIf
+
+    // Effekt der ersten Hauptwirkung am Trank
+    Effekt(explpotion,prop.posWirk[1][1],2);  // SFX (da Areasound nur einmal abspielen für alle)
+    SleepMS(50);
+    Effekt(explpotion,prop.posWirk[1][1],1);  // GFX Potion
+    //explpotion.movable:=1;
+    DestroyItem(explpotion);
+
+  Else
+    mobiles:={who};  // Trinken
+    PlaySoundEffect(who, 0x32);
+    CreateItemInBackpackPergon(who, UOBJ_EMPTY_BOTTLE, 1);
+    SubtractAmount(potion,1);
+    Sleep(1);
+    Effekt(mobiles[1],prop.posWirk[1][1],2); //SFX
+  EndIf
+
+  ForEach mobile in mobiles  // Gfx
+    SleepMS(100); // Client hat probs falls sowas quasiparallel kommt
+    If (mobile.hidden)
+      mobile.hidden:=0;
+    EndIf
+    Effekt(mobile,prop.posWirk[1][1]);  //GFX
+  EndForEach
+
+  Sleep(1);
+
+  ForEach wirk in (prop.posWirk)  // Alle positiven Wirkungen durchgehen
+    ForEach mobile in mobiles
+      Wirkung(mobile,wirk);
+      If ((_wirk_iter>1) && (wirk[1]=="explodierend"))  // Nebenwirkung Explodierend (kann nur bei nichtwerfbaren vorkommen)
+        Effekt(mobile,wirk[1],2);  // SFX
+        SleepMS(50);
+        Effekt(mobile,wirk[1]);  // GFX
+      EndIf
+      SleepMS(2);
+    EndForEach
+  EndForEach
+
+  ForEach wirk in (prop.negWirk)  // Alle negativen Wirkungen durchgehen
+    ForEach mobile in mobiles
+      Wirkung(mobile,wirk);
+      If (wirk[1]=="explodierend")  // Nebenwirkung Explodierend
+        Effekt(mobile,wirk[1],2);  // SFX
+        SleepMS(50);
+        Effekt(mobile,wirk[1]);  // GFX
+      EndIf
+      SleepMS(2);
+    EndForEach
+  EndForEach
+
+EndProgram
+
+
+///////////////////////////////
+// Wirkung - Wirkung ausführen
+///////////////////////////////
+
+Function Wirkung(char, wirk)
+  If (char.cmdlevel >= CMDLEVEL_SEER)
+    return;
+  EndIf
+
+  Var tag:={}, res;
+  Case (wirk[1])
+    "heilend":
+      If (wirk[3]<>0) // über Zeit
+        Start_ScriptPergon("timeeffect",{char,wirk[1],wirk[2],wirk[3]});
+      Else
+        SetHPPergon(char,GetHPPergon(char)+wirk[2]);
+      EndIf
+
+    "erfrischend":
+      If (wirk[3]<>0) // über Zeit
+        Start_ScriptPergon("timeeffect",{char,wirk[1],wirk[2],wirk[3]});
+      Else
+        SetStaminaPergon(char,GetStaminaPergon(char)+wirk[2]);
+      EndIf
+
+    "astralenergetisch":
+      If (wirk[3]<>0) // über Zeit
+        Start_ScriptPergon("timeeffect",{char,wirk[1],wirk[2],wirk[3]});
+      Else
+        SetManaPergon(char,GetManaPergon(char)+wirk[2]);
+      EndIf
+
+    "staerkend":
+      If (!char.getprop("potion_staerkend"))
+        AlterStrModPergon(char, wirk[2]);
+        tag[1]:=wirk[2];
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_staerkend",tag);
+        SendSpellWaiter(char, "potion_staerkend", tag[2], tag[3], char);
+      Else // Nur Zeit erhöhen
+        Set_Critical(1);
+        tag:=char.getprop("potion_staerkend");
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_staerkend",tag);
+        Set_Critical(0);
+        SendSpellWaiter(char, "potion_staerkend", tag[2], tag[3], char);
+      EndIf
+
+    "beweglich":
+      If (!char.getprop("potion_beweglich"))
+        AlterDexModPergon(char, wirk[2]);
+        tag[1]:=wirk[2];
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_beweglich",tag);
+        SendSpellWaiter(char, "potion_beweglich", tag[2], tag[3], char);
+      Else // Nur Zeit erhöhen
+        Set_Critical(1);
+        tag:=char.getprop("potion_beweglich");
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_beweglich",tag);
+        Set_Critical(0);
+        SendSpellWaiter(char, "potion_beweglich", tag[2], tag[3], char);
+      EndIf
+
+    "erhellend":
+      If (!char.getprop("potion_erhellend"))
+        AlterIntModPergon(char, wirk[2]);
+        SetCastPowerProperty(char,"Alchemie",CInt(wirk[2]/15.0*100),"","",0);
+        RefreshSpellPowerGump(char);
+        tag[1]:=wirk[2];
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_erhellend",tag);
+        SendSpellWaiter(char, "potion_erhellend", tag[2], tag[3], char);
+      Else // Nur Zeit erhöhen
+        Set_Critical(1);
+        tag:=char.getprop("potion_erhellend");
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_erhellend",tag);
+        Set_Critical(0);
+        SendSpellWaiter(char, "potion_erhellend", tag[2], tag[3], char);
+      EndIf
+
+    "explodierend":
+      ApplyRawDamagePergon(char, wirk[2]);
+
+    "leuchtend":
+      res:=CInt(Max(0,16-wirk[2]));
+      SetLightLevelPergon(char, res, wirk[3], CHECK_NOLIGHT);
+
+    "vergiftend":
+      AddPoisonLevel(char, wirk[2]);
+
+    "entgiftend":
+      AddPoisonLevel(char, -wirk[2]);
+
+    "feuerresistent":
+      If (!char.getprop("potion_feuerresistent"))
+        Set_Critical(1);
+        res:=CInt(char.getprop("resist_fire"));
+        char.setprop("resist_fire",wirk[2]+res);
+        Set_Critical(0);
+        tag[1]:=wirk[2];
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_feuerresistent",tag);
+        SendSpellWaiter(char, "potion_feuerresistent", tag[2], tag[3], char);
+        SetCastPowerProperty(char,"Alchemie",CInt(wirk[2]/3.0),"","Fire",0);
+        RefreshSpellPowerGump(char);
+        If (!char.isA(POLCLASS_NPC))
+          SendStatus(char);
+        EndIf
+      Else // Nur Zeit erhöhen
+        Set_Critical(1);
+        tag:=char.getprop("potion_feuerresistent");
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_feuerresistent",tag);
+        Set_Critical(0);
+        SendSpellWaiter(char, "potion_feuerresistent", tag[2], tag[3], char);
+      EndIf
+
+    "wasserresistent":
+      If (!char.getprop("potion_wasserresistent"))
+        Set_Critical(1);
+        res:=CInt(char.getprop("resist_water"));
+        char.setprop("resist_water",wirk[2]+res);
+        Set_Critical(0);
+        tag[1]:=wirk[2];
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_wasserresistent",tag);
+        SendSpellWaiter(char, "potion_wasserresistent", tag[2], tag[3], char);
+        SetCastPowerProperty(char,"Alchemie",CInt(wirk[2]/3.0),"","Water",0);
+        RefreshSpellPowerGump(char);
+        If (!char.isA(POLCLASS_NPC))
+          SendStatus(char);
+        EndIf
+      Else // Nur Zeit erhöhen
+        Set_Critical(1);
+        tag:=char.getprop("potion_wasserresistent");
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_wasserresistent",tag);
+        Set_Critical(0);
+        SendSpellWaiter(char, "potion_wasserresistent", tag[2], tag[3], char);
+      EndIf
+
+    "erdresistent":
+      If (!char.getprop("potion_erdresistent"))
+        Set_Critical(1);
+        res:=CInt(char.getprop("resist_earth"));
+        char.setprop("resist_earth",wirk[2]+res);
+        Set_Critical(0);
+        tag[1]:=wirk[2];
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_erdresistent",tag);
+        SendSpellWaiter(char, "potion_erdresistent", tag[2], tag[3], char);
+        SetCastPowerProperty(char,"Alchemie",CInt(wirk[2]/3.0),"","Earth",0);
+        RefreshSpellPowerGump(char);
+        If (!char.isA(POLCLASS_NPC))
+          SendStatus(char);
+        EndIf
+      Else // Nur Zeit erhöhen
+        Set_Critical(1);
+        tag:=char.getprop("potion_erdresistent");
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_erdresistent",tag);
+        Set_Critical(0);
+        SendSpellWaiter(char, "potion_erdresistent", tag[2], tag[3], char);
+      EndIf
+
+    "luftresistent":
+      If (!char.getprop("potion_luftresistent"))
+        Set_Critical(1);
+        res:=CInt(char.getprop("resist_air"));
+        char.setprop("resist_air",wirk[2]+res);
+        Set_Critical(0);
+        tag[1]:=wirk[2];
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_luftresistent",tag);
+        SendSpellWaiter(char, "potion_luftresistent", tag[2], tag[3], char);
+        SetCastPowerProperty(char,"Alchemie",CInt(wirk[2]/3.0),"","Air",0);
+        RefreshSpellPowerGump(char);
+        If (!char.isA(POLCLASS_NPC))
+          SendStatus(char);
+        EndIf
+      Else // Nur Zeit erhöhen
+        Set_Critical(1);
+        tag:=char.getprop("potion_luftresistent");
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_luftresistent",tag);
+        Set_Critical(0);
+        SendSpellWaiter(char, "potion_luftresistent", tag[2], tag[3], char);
+      EndIf
+
+    "giftresistent":
+      If (!char.getprop("potion_giftresistent"))
+        Set_Critical(1);
+        res:=CInt(char.getprop("resist_poison"));
+        char.setprop("resist_poison",wirk[2]+res);
+        Set_Critical(0);
+        tag[1]:=wirk[2];
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_giftresistent",tag);
+        SendSpellWaiter(char, "potion_giftresistent", tag[2], tag[3], char);
+        SetCastPowerProperty(char,"Alchemie",CInt(wirk[2]/3.0),"","Poison",0);
+        RefreshSpellPowerGump(char);
+        If (!char.isA(POLCLASS_NPC))
+          SendStatus(char);
+        EndIf
+      Else // Nur Zeit erhöhen
+        Set_Critical(1);
+        tag:=char.getprop("potion_giftresistent");
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_giftresistent",tag);
+        Set_Critical(0);
+        SendSpellWaiter(char, "potion_giftresistent", tag[2], tag[3], char);
+      EndIf
+
+    "versteckend":
+      char.hidden:=1;
+      char.setprop("hiding_diff", wirk[2]);
+      If (wirk[3]<>0)
+        tag[1]:=wirk[2];
+        tag[2]:=wirk[3];
+        tag[3]:=ReadMilliSecondClock();
+        char.setprop("potion_versteckend", tag);
+        SendSpellWaiter(char, "potion_versteckend", tag[2], tag[3], char);
+      EndIf
+
+    "erblindend":
+      // Dauer 20 Minuten (GM-Versammlung Sommer 2008)
+      Const dur := 20*60;
+      var tag := array{
+        dur + ReadGameClock(),
+        wirk[2],
+        ReadMilliSecondClock()
+      };
+      char.setprop("spell_blind", tag);
+      SendSpellWaiter(char, "spell_blind", dur, tag[3], char);
+      Start_ScriptPergon("::misc/blinded", char);
+
+    "hungrig":
+      If (char.isa(POLCLASS_NPC))
+        break;
+      EndIf
+      If (wirk[3]<>0) // über Zeit
+        Start_ScriptPergon("timeeffect",{char,wirk[1],wirk[2],wirk[3]});
+      Else
+        Set_Critical(1);
+        res:=char.getprop(PROP_HUNGER);
+        char.setprop(PROP_HUNGER,res-wirk[2]);
+        Set_Critical(0);
+        res:=GetHungryMsg(char.getprop(PROP_HUNGER));
+        SendSysMessagePergon(char, res[1], res[2], _DEFAULT_TEXT_FONT, CheckHungryLevel(char, char.getprop(PROP_HUNGER)));
+      EndIf
+
+    "durstig":
+      If (char.isa(POLCLASS_NPC))
+        break;
+      EndIf
+      If (wirk[3]<>0) // über Zeit
+        Start_ScriptPergon("timeeffect",{char,wirk[1],wirk[2],wirk[3]});
+      Else
+        Set_Critical(1);
+        res:=char.getprop(PROP_THIRST);
+        char.setprop(PROP_THIRST,res-wirk[2]);
+        Set_Critical(0);
+        res:=GetDrinkingMsg(char.getprop(PROP_THIRST));
+        SendSysMessagePergon(char, res[1], res[2], _DEFAULT_TEXT_FONT, CheckDrinkingLevel(char, char.getprop(PROP_THIRST)));
+      EndIf
+
+    "verdunkelnd":
+      res:=Min(26,20+wirk[2]);
+      SetLightLevelPergon(char, res, wirk[3], CHECK_NOLIGHT);
+
+  EndCase
+EndFunction
+
+
+///////////////////////////////
+// Effekt - Gfx/Sfx der Hauptwirkung
+///////////////////////////////
+
+Function Effekt(char,wirk,spezial:=0)
+  Var sfx,gfx;
+  Case (wirk)
+    "heilend":
+      gfx:={0x376a, 5, 20,1359,3,5045};
+      sfx:=0x1F3; //heal
+    "erfrischend":
+      gfx:={0x376a, 5, 20,324,3,5045};
+      sfx:=0x512; //mirrorimage
+    "astralenergetisch":
+      gfx:={0x376a, 5, 20,1283,3,5045};
+      sfx:=0x5ca; //giftofreneval
+    "staerkend":
+      gfx:={0x373a, 5, 20,1737,3,5046};
+      sfx:=0x103; //sfx17_l
+    "beweglich":
+      gfx:={0x373a, 5, 20,414,3,5046};
+      sfx:=0x28F; //agility
+    "erhellend":
+      gfx:={0x373a, 5, 20,10,2,5046};
+      sfx:=0x1EC; //cunning
+    "explodierend":
+      gfx:={0x36b0, 7, 16,0,2,9906};
+      sfx:=0x208; //explode
+    "leuchtend":
+      gfx:={0x3779, 10, 16,0,2,9510};
+      sfx:=0x3C5; //invisibl
+    "vergiftend":
+      gfx:={0x3728, 10, 13,667,4,9963};
+      sfx:=0x475; //poison
+    "entgiftend":
+      gfx:={0x3728, 10, 13,1742,3,9955};
+      sfx:=0x29A;  //archcure
+    "feuerresistent":
+      gfx:={0x37cc, 10, 25,38,4,9961};
+      sfx:=0x56E; //hydra_special1
+    "wasserresistent":
+      gfx:={0x37cc, 10, 25,103,4,9961};
+      sfx:=0x20C; //parafild
+    "erdresistent":
+      gfx:={0x37cc, 10, 25,1133,4,9961};
+      sfx:=0xF6; //sfx01
+    "luftresistent":
+      gfx:={0x37cc, 10, 25,1419,4,9961};
+      sfx:=0x294; //air5
+    "giftresistent":
+      gfx:={0x37cc, 10, 25,667,4,9961};
+      sfx:=0x20D; //posnfild
+    "versteckend":
+      gfx:={0x3818, 10, 10,931,3,5041};
+      sfx:=0x3BE; //identify
+    "erblindend":
+      gfx:={0x37c4, 5, 11,1108,4,9534};
+      sfx:=0x5BF; //forceofnature
+
+//    "hungrig": Nur Nebenwirkungen
+//    "durstig":
+//    "verdunkelnd":
+  EndCase
+  If (spezial==1) //explodierender Trank (da gleich drauf zerstört XYZ statt Objectcentered
+    PlayStationaryEffectEx( char.x,char.y,char.z,char.realm, gfx[1], gfx[2], gfx[3], gfx[4], gfx[5], gfx[6] );
+  ElseIf (spezial==2) // Brauch nur sound
+    PlaySoundEffect(char,sfx);
+  Else
+    PlayObjectCenteredEffectEx( char, gfx[1], gfx[2], gfx[3], gfx[4], gfx[5], 3, gfx[6] );
+  EndIf
+EndFunction

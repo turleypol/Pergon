@@ -1,0 +1,51 @@
+use os;
+use uo;
+include ":newspells:light";
+include ":newspells:magicpergon";
+include "include/client";
+include "include/msgs";
+include "include/npc";
+
+Program CreateLightSource(who)
+  SendSysMessagePergon(who, "Wer soll ein magisches Licht erhalten?");
+  var master := Target(who, TGTOPT_CHECK_LOS);
+  If (!master or !master.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (master.getprop(PROP_WISP))
+    If (who == master)
+      SendSysMessagePergon(who, "Ihr habt doch schon ein magisches Licht!");
+    Else
+      SendSysMessagePergon(who,
+        master.name+" hat doch schon ein magisches Licht!"
+      );
+    EndIf
+    return;
+  EndIf
+
+  var override := struct;
+  override["script"] := "enticedanimal";
+  override["CProps"] := dictionary;
+  override["CProps"]["master"]   := master.serial;
+  override["CProps"][PROP_SUMMONED] := SUMMON_BY_UNDEF;
+
+  var wisp := CreateNpcFromTemplate(
+    "magilite", master.x, master.y, master.z, override, master.realm
+  );
+  // nur 1 Wisp pro Person erlauben, damit nicht jemand Wisps als
+  // Schild nutzt
+  SetObjProperty(master, PROP_WISP, 1);
+  PlaySoundEffect(who, SFX_SPELL_SUMMON_ELEMENTAL);
+
+  // damit man beim KillNPC nicht Schuld hat
+  SetScriptController(0);
+  Detach();
+  Sleep(120);
+  SendSysMessagePergon(master, "Das magische Licht geht seiner Wege.");
+  KillNPC(wisp, "TextCMD CreateLightSource");
+  master.eraseprop(PROP_WISP);
+EndProgram
+
+// vim: sw=2 sts=2

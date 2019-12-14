@@ -1,0 +1,76 @@
+///////////////////////////////////////////////////////////////////////////
+// MageHatEquip - Magischen Hut aufsetzen, je nach Skill Boni abstauben
+//
+// Author: Mehdorn
+
+use uo;
+include ":newspells:magicpergon";
+include "common";
+include "include/itemnpc";
+include "include/modifyskill";
+
+Const EQUIP_ALLOWED := 1;
+
+Program MageHatEquip(who, hat, startup)
+    // erst einmal nur mit Extraschalter aktivierbar
+    If (!GetGlobalProperty("hatbonus"))
+        return EQUIP_ALLOWED;
+    EndIf
+
+    var bonus := ComputeBonus(who, hat);
+
+    // Intbonus ueberlebt keine Restarts, immer versuchen zu setzen
+    If (AlterIntModPergon(who, bonus))
+        hat.setprop(CPROP_HAT_BONUS_INT, bonus);
+    Else
+        hat.eraseprop(CPROP_HAT_BONUS_INT);
+    EndIf
+
+    If (startup)
+        // Castbonus überlebt
+        var castbonus := hat.getprop(CPROP_HAT_BONUS_CAST);
+        // Bonus anders? (z. B. wegen Skilländerung)
+        If (castbonus <> bonus)
+            // erst einmal löschen
+            ClearCastPowerProperty(who, "Kleidung", "", "", 0);
+            // nach Möglichkeit setzen
+            If (SetCastPowerProperty(who, "Kleidung", bonus, "", "", 0))
+                hat.setprop(CPROP_HAT_BONUS_CAST, bonus);
+            Else
+                hat.eraseprop(CPROP_HAT_BONUS_CAST);
+            EndIf
+        EndIf
+        // sonst unverändert lassen
+        return EQUIP_ALLOWED;
+    EndIf
+
+    // normal aufgesetzt
+    If (SetCastPowerProperty(who, "Kleidung", bonus, "", "", 0))
+        hat.setprop(CPROP_HAT_BONUS_CAST, bonus);
+    Else
+        hat.eraseprop(CPROP_HAT_BONUS_CAST);
+    EndIf
+
+    return EQUIP_ALLOWED;
+EndProgram
+
+Function ComputeBonus(who, hat) // {{{
+    var quality := GetPropertyItem(hat).quality;
+    // besten Skill ermitteln
+    var skill   := Max(
+        GetSkillPergon(who, SKILLID_SEGNEN), Max(
+            GetSkillPergon(who, SKILLID_MAGIE),
+            GetSkillPergon(who, SKILLID_FLUCHEN)
+        )
+    );
+
+    // auf 100 begrenzen, sonst verläuft Bonusfunktion anders
+    skill := Min(100, skill);
+
+    // dazwischen Abfall abhängig von Qualität
+    var m := (quality - 1)/ -70.0; // (Anstieg Geradengleichung)
+
+    // Verlauf der Bonus-Funktion
+    // gerundete Quality bis 30% Skill, Konstant 1 ab 100% Skill,
+    return CInt(Max(1, Min(quality, m*(skill - 30.0) + quality)));
+EndFunction // }}}

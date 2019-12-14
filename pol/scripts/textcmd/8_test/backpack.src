@@ -1,0 +1,44 @@
+///////////////////////////////////////////////////////////////////////
+//
+//    TextCMD Backpack - Legt den Zielcontainer fuer Erzeugnisse fest
+//
+//      Author: Shinigami
+//
+///////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/itemnpc";
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_Backpack(who)
+  SendSysMessagePergon(who, "Wählt den Behälter in Eurem Rucksack, der neue Erzeugnisse aufnehmen soll!");
+
+  Var item:=Target(who);
+  If (item.isa(POLCLASS_CONTAINER))
+    Var container:=item.container;
+    While (container.container)
+      container:=container.container;
+    EndWhile
+
+    If (container.serial==who.serial)
+      //
+    Else
+      SendSysMessagePergon(who, "Der Behälter muss sich in Eurem Rucksack befinden!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Dies ist kein Behälter!");
+  EndIf
+EndProgram

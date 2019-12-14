@@ -1,0 +1,330 @@
+/////////////////////////////////////////////////////////
+//
+//   debug - DebugInfos Infos des Scriptes
+//
+//           !!.dbg muß compiled werden!! (-x ecompile Flag)
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     09.11.07 Turley: Init
+//
+/////////////////////////////////////////////////////////
+// Debug Cmd's
+//  attach [pid] - Attach ..
+//  detach       - Detach ...
+//  state        - State vom Script
+//  instrace     - Nur nächste Instruction ausführen
+//  stepinto     - StepInto halt..
+//  stepover     - StepOver halt..
+//  break        - Break setzen damit Step funzt
+//  files        - Alle Sourcefiles die das Script verwendet
+//  fileline {ins} - Sourcezeile von Instruction ins oder vom aktuellen PC
+//  filecont [file] {firstline} {lastline} - von-bis source Listen
+//  localvars    - Alle lokalen Variablen namen
+//  funclist     - Alle Funktionsnamen (name, startPC,endPC,cylces)
+//  ins          - Zeigt die Instructions um den aktelle PC
+//  getlocalpacked [varnr] -  lokale Variable gepackt
+//  localvarmembers [varnr] - noch zusätzliche Infos falls Refvariable
+//  setbp [ins] -  Breakpoint setzen an Instruction
+//  clrallbp    -  Alle Breakpoints löschen
+/////////////////////////////////////////////////////////
+
+
+use uo;
+use os;
+use http;
+use polsys;
+use file;
+
+include "header";
+
+
+var debug_ctx;
+
+Program HTMLPage()
+  DoHeader("Debug Script");
+  WriteHTML("<DIV ID='container'>");
+  WriteHTML("<DIV ID='header'></DIV>");
+  WriteHTML("<DIV ID='content'>");
+
+
+  var action := QueryParam("Action");
+  var pid := CInt(QueryParam("PID"));
+  var script := GetProcess(pid);
+  If (!script)
+  	TableHeader("Debug Script");
+  	WriteHTML("<P class=warning>Script Destroyed</P>");
+  	WriteHTML("</DIV>");
+    DoFooter();
+    Return;
+  EndIf
+
+  TableHeader("Debug Script "+script.name);
+  var dbgscript;
+
+  var pidkey := "#Debug"+pid;
+  var debuggerpid := GetGlobalProperty( pidkey );
+  if (debuggerpid)
+    WriteHtml( "Debugger PID is " + debuggerpid );
+    dbgscript := GetProcess( debuggerpid );
+  else
+    dbgscript := Start_Script( "www/servmgmt/debugcontrol", pid );
+  endif
+
+  dbgscript.sendevent( GetProcess( GetPid() ) );
+  debug_ctx := Wait_For_Event( 200 );  // Auf Antwort warten
+
+  var result:="";
+
+  Case (action)
+    "InsTrace":         result:=DebugCommand("instrace").results[1];
+    "StepInto":         result:=DebugCommand("stepinto").results[1];
+    "StepOver":         result:=DebugCommand("stepover").results[1];
+    "StopDebugging":    result:=DebugCommand("detach").results[1];
+                        dbgscript.sendevent("detach");
+    "Break":            result:=DebugCommand("break").results[1];
+    "Run":              If (DebugCommand("state").results[1]=="Debugging")
+                         result:=DebugCommand("run").results[1];
+                        EndIf
+    "ClearBreakpoints": result:=DebugCommand("clrallbp").results[1];
+    "SetBreakpoint":    result:=DebugCommand("setbp "+(QueryParam("Breakpoint")).results[1]);
+    "Kill":             result:=script.kill();
+    default:
+  EndCase
+
+  WriteHTML("<P>Executing Debug Information: PID "+pid+" "+DebugCommand("state").results[1]+" -- "+CStr(result)+"</P>");
+
+  If (result=="Detached.")
+    Return;
+  EndIf
+
+  // Erstmal src Zeilen anzeigen
+  WriteHTML("<TABLE WIDTH='100%' CELLSPACING='1' CELLPADDING='2'>");
+  result:=DebugCommand("fileline").results[1];  // Wo sind wir gerade
+  var fileline := SplitWords(result);
+  var filenum := CInt(fileline[1]);
+  var linenum := CInt(fileline[2]);
+  var files:=DebugCommand("files").results;  // Welche Files gibts
+
+  WriteHTML("<TR>");
+  WriteHTML("<TH><B>"+filenum+": "+linenum+"- "+(SplitWords(files[filenum+1])[2])+"</B></TH>");
+  WriteHTML("</TR>");
+
+  var firstline := linenum-10;
+  var lastline := linenum+5;
+  if (firstline < 1)
+    firstline := 1;
+  endif
+  var curline := firstline;
+  WriteHTML("<TR><TD>");
+  WriteHTML("<PRE>");
+  Foreach line in (DebugCommand("filecont "+filenum+" "+firstline+" "+lastline).results)  // Na dann Zeig mal an
+    line:=CStr(line);
+    If (Len(line)>0)
+      line:=StrReplace(line,"<","&lt;");
+      line:=StrReplace(line,">","&gt;");
+    EndIf
+    If (curline == linenum)  // Aktuelle Rotmarkieren
+      WriteHTML("<co>"+curline+":"+line+"</co>");
+    Else
+      WriteHTML(curline+":"+line);
+    EndIf
+    curline+=1;
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</PRE>");
+  WriteHTML("</TR></TD>");
+  WriteHTML("</TABLE>");
+  WriteHTML("<BR>");
+
+  WriteHTML("<form action=debug.ecl method=GET>"
+            +"<input type=hidden name=pid value="+pid+">"
+            +"<input type=hidden name=user value="+user+">"
+            +"<input type=hidden name=pass value="+pass+">"
+            +"<input type=submit name=Action value='Refresh'>"
+            +"<input type=submit name=Action value='Break'>"
+            +"<input type=submit name=Action value='StepInto'>"
+            +"<input type=submit name=Action value='StepOver'>"
+            +"<input type=submit name=Action value='InsTrace'>"
+            +"<input type=submit name=Action value='Run'>"
+            +"<input type=submit name=Action value='StopDebugging'>"
+            +"</form>");
+
+  WriteHTML("<form action=debug.ecl method=GET>"
+            +"<input type=hidden name=pid value="+pid+">"
+            +"<input type=hidden name=user value="+user+">"
+            +"<input type=hidden name=pass value="+pass+">"
+            +"<input type=text name=BreakPoint value="+(DebugCommand("pc").results[1])+">"
+            +"<input type=submit name=Action value='SetBreakpoint'>"
+            +"<input type=submit name=Action value='ClearBreakpoints'>"
+            +"</form>");
+  WriteHTML("<BR>");
+
+
+  // Lokale und Globale Variablen anzeigen
+
+  WriteHTML("<TABLE WIDTH='100%' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='4'><B>Local Variables</B></TH>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH ALIGN='LEFT'>Name</TH>");
+  WriteHTML("<TH ALIGN='LEFT'>Type</TH>");
+  WriteHTML("<TH ALIGN='LEFT'>Size</TH>");
+  WriteHTML("<TH ALIGN='LEFT'>Value</TH>");
+  WriteHTML("</TR>");
+  var resultvar,value;
+  foreach local in ( DebugCommand("localvars").results )
+    resultvar:=DebugCommand("getlocalpacked "+(_local_iter-1)).results[1];
+    result:=DebugCommand("localvarmembers "+(_local_iter-1)).results;
+    value:=result[result.size()];
+    value["Value: "]:="";
+    resultvar["Value: "]:="";
+    resultvar:=UnPack(resultvar);
+    value:=CStr(value);
+    If (Len(value)>0)
+      value:=StrReplace(value,"<","&lt;");
+      value:=StrReplace(value,">","&gt;");
+    EndIf
+    WriteHTML("<TR>");
+    WriteHTML("<TD>"+local+"</TD>");
+    WriteHTML("<TD>"+TypeOf(resultvar)+"</TD>");
+    WriteHTML("<TD>"+SizeOf(resultvar)+"</TD>");
+    WriteHTMLRaw("<TD>"+value);
+    If (result.size()>1)
+    	If (!result[1]["x <uni"])
+        WriteHTMLRaw(": "+result[4]+", "+result[7]);
+      EndIf
+    EndIf
+    WriteHTML("</TD>");
+    WriteHTML("</TR>");
+    SleepMS(2);
+  endforeach
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='4'><B>Global Variables</B></TH>");
+  WriteHTML("</TR>");
+  foreach global in ( script.globals )
+    result:=CStr(global);
+    If (Len(result)>0)
+      result:=StrReplace(result,"<","&lt;");
+      result:=StrReplace(result,">","&gt;");
+    EndIf
+    WriteHTML("<TR>");
+    WriteHTML("<TD>"+_global_iter+"</TD>");
+    WriteHTML("<TD>"+TypeOf(global)+"</TD>");
+    WriteHTML("<TD>"+SizeOf(global)+"</TD>");
+    WriteHTMLRaw("<TD>"+result);
+    If ((TypeOf(global)["Ref"]) && (global.serial))
+      WriteHTMLRaw(": name "+global.name+", serial "+global.serial);
+    EndIf
+    WriteHTML("</TD>");
+    WriteHTML("</TR>");
+    SleepMS(2);
+  endforeach
+  WriteHTML("<TR><TH COLSPAN='4'><B>Variable Size: "+script.var_size+"</B></TH></TR>");
+  WriteHTML("</TABLE>");
+  WriteHTML("<BR>");
+
+
+  // Alle Functionen mit start/end PC und Cycles anzeigen
+  WriteHTML("<TABLE WIDTH='600' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='4'><B>Function List</B></TH>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH ALIGN='LEFT'>Name</TH>");
+  WriteHTML("<TH ALIGN='LEFT'>First PC</TH>");
+  WriteHTML("<TH ALIGN='LEFT'>Last PC</TH>");
+  WriteHTML("<TH ALIGN='LEFT'>Cycles</TH>");
+  WriteHTML("</TR>");
+  foreach func in (DebugCommand("funclist").results)
+    result:=SplitWords(func);
+    WriteHTML("<TR>");
+    WriteHTML("<TD>"+result[1]+"</TD>");
+    WriteHTML("<TD>"+result[2]+"</TD>");
+    WriteHTML("<TD>"+result[3]+"</TD>");
+    WriteHTML("<TD>"+result[4]+"</TD>");
+    WriteHTML("</TR>");
+    SleepMS(2);
+  endforeach
+  WriteHTML("</TABLE>");
+  WriteHTML("<BR>");
+
+
+  // Selbe wie .src nur halt wilder :)
+  WriteHTML("<TABLE WIDTH='100%' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH><B>Execution Point</B></TH>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR><TD>");
+  WriteHTML("<PRE>");
+  foreach ins in (DebugCommand("ins").results)
+    ins:=CStr(ins);
+    If (ins[1]==">")
+      If (Len(ins)>0)
+        ins:=StrReplace(ins,"<","&lt;");
+        ins:=StrReplace(ins,">","&gt;");
+      EndIf
+      WriteHtml("<co>"+ins+"</co>");
+    Else
+      If (Len(ins)>0)
+        ins:=StrReplace(ins,"<","&lt;");
+        ins:=StrReplace(ins,">","&gt;");
+      EndIf
+      WriteHtml(ins);
+    EndIf
+    SleepMS(2);
+  endforeach
+  WriteHTML("</PRE>");
+  WriteHTML("</TR></TD>");
+  WriteHTML("</TABLE>");
+  WriteHTML("<BR>");
+
+  // Was sind für Files geladen?
+  WriteHTML("<TABLE WIDTH='600' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='2'><B>File List</B></TH>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH ALIGN='LEFT'>Number</TH>");
+  WriteHTML("<TH ALIGN='LEFT'>Name</TH>");
+  WriteHTML("</TR>");
+  foreach func in (files)
+    If (_func_iter>1)
+      result:=SplitWords(func);
+
+      WriteHTML("<TR>");
+      WriteHTML("<TD>"+result[1]+"</TD>");
+      WriteHTML("<TD>"+result[2]+"</TD>");
+      WriteHTML("</TR>");
+    EndIf
+    SleepMS(2);
+  endforeach
+  WriteHTML("</TABLE>");
+
+  WriteHTML("<BR>");
+  WriteHTML("<form action=debug.ecl method=GET>"  // Kill button mal ganz unten hinsetzen :)
+            +"<input type=hidden name=pid value="+pid+">"
+            +"<input type=hidden name=user value="+user+">"
+            +"<input type=hidden name=pass value="+pass+">"
+            +"<input type=submit name=Action value='Kill'>"
+            +"</form>");
+
+  WriteHTML("</DIV>");
+
+  DoFooter();
+EndProgram
+
+Function DebugCommand( cmd )
+  var r := debug_ctx.process( cmd );
+  var response := struct;
+  response.+results := r;
+  response.+prompt := debug_ctx.prompt;
+
+  Return (response);
+EndFunction
+
+

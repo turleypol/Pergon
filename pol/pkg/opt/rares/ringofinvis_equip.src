@@ -1,0 +1,11 @@
+use uo;
+
+Program Ring_of_Invisibiliy_Equip(character, item, startup)
+  If (startup)
+    // nicht beim Serverstart loslegen
+    return;
+  EndIf
+
+  UseItem(item, character);
+  return 1;
+EndProgram

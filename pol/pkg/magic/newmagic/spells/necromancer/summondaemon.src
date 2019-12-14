@@ -1,0 +1,152 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file summondaemon.src
+//
+// implements spell 325 <Summon Daemon> - "Daemonenbeschwoerung"
+//
+// summons randomly choosen daemon - tamed, but not enticed
+
+use os;
+use util;
+use vitals;
+include "../magicpergon";
+
+Program cast_summondaemon(params)
+  var caster;
+  var where;
+  var power;
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  := params[3];
+    where  := struct{};
+    where.x     := params[4].x;
+    where.y     := params[4].y;
+    where.z     := params[4].z;
+    where.realm := params[4].realm;
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    where  := TargetArea(caster);
+    If (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+
+    power := GetCastPowerPergon(caster, SPELLID_NECRO_SUMMONDAEMON);
+    where := TargetArea(caster);
+    If (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  If (!caster or caster.dead)
+    // bei Zielauswahl ausgeloggt, verstorben etc.
+    return;
+  EndIf
+
+  TurnCharTo(caster, where);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  // load spell data
+  var spells := ReadConfigFile("::spells");
+  var spell := FindConfigElem(spells, SPELLID_NECRO_SUMMONDAEMON);
+
+  // calc spell duration according to casting power
+  var dur := CInt(power*spell.duration/100.0);
+  If (spell.durationmin and spell.durationmin > dur)
+    dur := CInt(spell.durationmin / 5);
+  ElseIf (spell.durationmax and spell.durationmax < dur)
+    dur := CInt(spell.durationmax / 5);
+  Else
+    dur := CInt(dur / 5);
+  EndIf
+
+  // prepare controlscript for summoned daemon
+  var parms := struct;
+  parms.+CProps := dictionary;
+  // Von NPC beschworene sind "wild"
+  If (params[1] <> "#MOB")
+    parms.+script := "tamedanimal";
+    // set tamed time
+    parms.CProps.insert("RoamsFreeAt", ReadGameClock() + dur);
+  EndIf
+  // mark critter as summoned
+  parms.CProps.insert(PROP_SUMMONED, SUMMON_BY_NECRO);
+  // für Antimagie und Exorzismus
+  parms.CProps.insert("power", CInt(power+80));
+  // Exp löschen für selbstbeschworene Viecher
+  parms.CProps.insert("exp", 0);
+  // creature is controllable
+  parms.CProps.insert("necrocontrol", 1);
+
+  // get template for daemon
+  var template;
+  If (power > 135)
+    template := 2 + RandomInt(2);
+  ElseIf (power > 120)
+    template := 1 + RandomInt(2);
+  ElseIf (power > 100)
+    template := RandomInt(2);
+  Else
+    template := 0;
+  EndIf
+
+  Case (template)
+    0: template := "HordeDaemon";
+    1: template := "ChaosDaemon";
+    2: template := "HellGuardian";
+    3: template := "Daemon";
+  EndCase
+
+  PlaySoundEffect(where, SFX_SPELL_SUMMON_DAEMON);
+  // create daemon -> critter
+  var critter := CreateNpcFromTemplate(
+    template, where.x, where.y, where.z, parms, where.realm
+  );
+  If (!critter)
+    SendSysMessagePergon(caster, "Interner Fehler. Staff wurde informiert.");
+    syslog("FEHLER: CreateNPC gescheitert mit: "+critter.errortext);
+    return;
+  EndIf
+
+  If (params[1] <> "#MOB")
+    SendSysMessagePergon(caster,
+        "Ihr beschwört einen "+critter.name, "You summon a "+critter.name
+    );
+    SendSysMessagePergon(caster,
+      "Sehet nun zu, dass Euch der Dämon nicht angreift",
+      "Now take care, that your daemon does not attack you"
+    );
+  EndIf
+
+  Detach();
+
+  // wait summa 4/5th of duration
+  var i := 0;
+  While (i < 5)
+    Sleep(dur);
+
+    If (!caster or caster.dead)
+      // Caster tot also Vieh auch
+      break;
+    EndIf
+
+    If (!critter or critter.dead)
+      // abort if critter got killed
+      return;
+    EndIf
+  EndWhile
+
+  If (critter)
+    PlaySoundEffect(critter, SFX_SPELL_MANA_VAMPIRE);
+    PlayStationaryEffect(
+      critter.x, critter.y, critter.z, FX_SMOKE, 10, 10, 0, critter.realm
+    );
+
+    // hide and kill critter
+    critter.hidden := 1;
+    KillNPC(critter, "necro-summondaemon", KILLNPC_NOCORPSE);
+  EndIf
+EndProgram

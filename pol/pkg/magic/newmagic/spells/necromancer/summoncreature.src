@@ -1,0 +1,361 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file summoncreature.src
+//
+// implements spell 309 <Summon Creature> - "Beschwoerung"
+//
+// summons randomly choosen creature - tamed, but not enticed
+
+use os;
+use util;
+use vitals;
+include "../magicpergon";
+
+Program cast_summoncreature(params)
+  var caster;
+  var where;
+  var power;
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  := params[3];
+    where  := struct{};
+    where.x     := params[4].x;
+    where.y     := params[4].y;
+    where.z     := params[4].z;
+    where.realm := params[4].realm;
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    where  := TargetArea(caster);
+    If (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+
+    power := GetCastPowerPergon(caster, SPELLID_NECRO_SUMMONCREATURE);
+    where := TargetArea(caster);
+    If (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  If (!caster or caster.dead)
+    // bei Zielauswahl ausgeloggt, verstorben etc.
+    return;
+  EndIf
+
+  TurnCharTo(caster, where);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  // load spell data
+  var spells := ReadConfigFile("::spells");
+  var spell := FindConfigElem(spells, SPELLID_NECRO_SUMMONCREATURE);
+
+  // calc spell duration according to casting power
+  var dur := CInt(power*spell.duration/100.0);
+  If (spell.durationmin and spell.durationmin > dur)
+    dur := CInt(spell.durationmin / 5);
+  ElseIf (spell.durationmax and spell.durationmax < dur)
+    dur := CInt(spell.durationmax / 5);
+  Else
+    dur := CInt(dur / 5);
+  EndIf
+
+  // prepare controlscript for summoned NPC
+  var parms := struct;
+  parms.+CProps := dictionary;
+  // Von NPC beschworene sind "wild"
+  If (params[1] <> "#MOB")
+    parms.+script := "tamedanimal";
+    // set tamed time
+    parms.CProps.insert("RoamsFreeAt", ReadGameClock() + dur);
+  EndIf
+  // mark critter as summoned
+  parms.CProps.insert(PROP_SUMMONED, SUMMON_BY_NECRO);
+  // für Antimagie und Exorzismus
+  parms.CProps.insert("power", CInt(power+50));
+  // Exp löschen für selbstbeschworene Viecher
+  parms.CProps.insert("exp", 0);
+  // creature is controllable
+  parms.CProps.insert("necrocontrol", 1);
+
+  // get template for creature
+  var template;
+  If (power > 115)
+    template := 2 + RandomInt(2);
+  ElseIf (power > 100)
+    template := 1 + RandomInt(2);
+  ElseIf (power > 80)
+    template := RandomInt(2);
+  Else
+    template := 0;
+  EndIf
+
+  // get species of summoned creature
+  var msg_de := "";
+  var msg_en := "";
+  var critgroup := RandomInt(16);
+  Case (critgroup)
+  0: 1: 2:
+    Case (template)
+    0:
+      template := "rat";
+      msg_de := "Ihr beschwört eine Ratte";
+      msg_en := "You summon a Rat";
+    1:
+      template := "giantrat";
+      msg_de := "Ihr beschwört eine Riesenratte";
+      msg_en := "You summon a Giant Rat";
+    2:
+      template := "headless";
+      msg_de := "Ihr beschwört einen Kopflosen";
+      msg_en := "You summon a Headless";
+    3:
+      template := "cyclop";
+      msg_de := "Ihr beschwört einen Zyklop";
+      msg_en := "You summon a Cyclop";
+    EndCase
+  3: 4: 5:
+    Case (template)
+    0:
+      template := "snake";
+      msg_de := "Ihr beschwört eine Schlange";
+      msg_en := "You summon a Snake";
+    1:
+      template := "giant_serpent";
+      msg_de := "Ihr beschwört eine Riesenschlange";
+      msg_en := "You summon a Giant Snake";
+    2:
+      template := "python";
+      msg_de := "Ihr beschwört einen Python";
+      msg_en := "You summon a Python";
+    3:
+      template := "anaconda";
+      msg_de := "Ihr beschwört eine Anakonda";
+      msg_en := "You summon an Anaconda";
+    EndCase
+  6: 7:
+    Case (template)
+    0:
+      template := "wolf";
+      msg_de := "Ihr beschwört einen Wolf";
+      msg_en := "You summon a Wolf";
+    1:
+      template := "direwolf";
+      msg_de := "Ihr beschwört eine Hoehlenwolf";
+      msg_en := "You summon a Cavewolf";
+    2:
+      template := "frostwolf";
+      msg_de := "Ihr beschwört eine Frostwolf";
+      msg_en := "You summon a Frostwolf";
+    3:
+      template := "darkwolf";
+      msg_de := "Ihr beschwört einen Dunkelwolf";
+      msg_en := "You summon a Darkwolf";
+    EndCase
+  8:  
+    Case (template)
+    0:
+      template := "alligator";
+      msg_de := "Ihr beschwört einen Alligator";
+      msg_en := "You summon an Alligator";
+    1:
+      template := "rocklizard";
+      msg_de := "Ihr beschwört einen Felsenechse";
+      msg_en := "You summon a Rocklizard";
+    2:
+      template := "firelizard";
+      msg_de := "Ihr beschwört einen Feuerechse";
+      msg_en := "You summon a Firelizard";
+    3:
+      template := "sandlizard";
+      msg_de := "Ihr beschwört einen Wuestenechse";
+      msg_en := "You summon a Sandlizard";
+    EndCase
+  9:
+    Case (template)
+    0:
+      template := "spider";
+      msg_de := "Ihr beschwört eine Riesenspinne";
+      msg_en := "You summon a Giant Spider";
+    1:
+      template := "rockspider";
+      msg_de := "Ihr beschwört eine Felsenspinne";
+      msg_en := "You summon a Rockspider";
+    2:
+      template := "flamingspider";
+      msg_de := "Ihr beschwört eine Schwarze Witwe";
+      msg_en := "You summon a Flaming Spider";
+    3:
+      template := "phasespider";
+      msg_de := "Ihr beschwört einen Riesenskorpion";
+      msg_en := "You summon a Phasespider";
+    EndCase
+  10:
+    Case (template)
+    0:
+      template := "lizardman1";
+      msg_de := "Ihr beschwört einen Echsenmenschen";
+      msg_en := "You summon an Lizardman";
+    1:
+      template := "lizardmandefender";
+      msg_de := "Ihr beschwört einen Echsenmenschkrieger";
+      msg_en := "You summon a Lizardmanwarrior";
+    2:
+      template := "lizardmanshaman";
+      msg_de := "Ihr beschwört einen Echsenmenschshamane";
+      msg_en := "You summon a Lizardmanshamane";
+    3:
+      template := "lizardmanking";
+      msg_de := "Ihr beschwört einen Echsenmenschkoenigin";
+      msg_en := "You summon a Lizardmanqueen";
+    EndCase
+  11:
+    Case (template)
+    0:
+      template := "orc1";
+      msg_de := "Ihr beschwört einen Ork";
+      msg_en := "You summon an Ork";
+    1:
+      template := "orcelite";
+      msg_de := "Ihr beschwört einen Orkkaempfer";
+      msg_en := "You summon an Orcwarrior";
+    2:
+      template := "orcdefender";
+      msg_de := "Ihr beschwört einen Schwarzork";
+      msg_en := "You summon an Blackorc";
+    3:
+      template := "orccleric";
+      msg_de := "Ihr beschwört einen Orckleriker";
+      msg_en := "You summon an Orc Cleric";
+    EndCase
+  12:
+    Case (template)
+    0:
+      template := "gargoyle";
+      msg_de := "Ihr beschwört einen Gargoyle";
+      msg_en := "You summon an Gargoyle";
+    1:
+      template := "stonegargoyle";
+      msg_de := "Ihr beschwört einen Steingargoyle";
+      msg_en := "You summon a Stonegargoyle";
+    2:
+      template := "flamegargoyle";
+      msg_de := "Ihr beschwört einen Feuergargoyle";
+      msg_en := "You summon a Firegargoyle";
+    3:
+      template := "frostgargoyle";
+      msg_de := "Ihr beschwört einen Frostgargoyle";
+      msg_en := "You summon a Frostgargoyle";
+    EndCase
+  13:
+    Case (template)
+    0:
+      template := "imp";
+      msg_de := "Ihr beschwört einen Imp";
+      msg_en := "You summon an Imp";
+    1:
+      template := "daemonspawn";
+      msg_de := "Ihr beschwört einen Schattendaemon";
+      msg_en := "You summon a Daemonspawn";
+    2:
+      template := "blackwisp";
+      msg_de := "Ihr beschwört einen Schattenwisp";
+      msg_en := "You summon a Shadow Wisp";
+    3:
+      template := "kobold";
+      msg_de := "Ihr beschwört einen Kobold";
+      msg_en := "You summon a Kobold";
+    EndCase
+  14:
+    Case (template)
+    0:
+      template := "troll1";
+      msg_de := "Ihr beschwört einen Troll";
+      msg_en := "You summon a Troll";
+    1:
+      template := "troll4";
+      msg_de := "Ihr beschwört einen Trollkrieger";
+      msg_en := "You summon an Trollwarrior";
+    2:
+      template := "trollmarksman";
+      msg_de := "Ihr beschwört einen Trollschuetzen";
+      msg_en := "You summon a Trollschuetzen";
+    3:
+      template := "troll_lord";
+      msg_de := "Ihr beschwört einen Troll-Lord";
+      msg_en := "You summon an Troll-Lord";
+    EndCase
+  15:
+    Case (template)
+    0:
+      template := "hellcat";
+      msg_de := "Ihr beschwört eine Hoellenkatze";
+      msg_en := "You summon a Hellcat";
+    1:
+      template := "ghost";
+      msg_de := "Ihr beschwört einen Geist";
+      msg_en := "You summon a Ghost";
+    2:
+      template := "spectre";
+      msg_de := "Ihr beschwört einen Schatten";
+      msg_en := "You summon a Spectre";
+    3:
+      template := "hellhound";
+      msg_de := "Ihr beschwört einen Hoellenhund";
+      msg_en := "You summon a Hellhound";
+    EndCase
+  EndCase
+
+  PlaySoundEffect(where, SFX_SPELL_SUMMON_CREATURE);
+  // create creature -> critter
+  var critter := CreateNpcFromTemplate(
+    template, where.x, where.y, where.z, parms, where.realm
+  );
+  If (!critter)
+    SendSysMessagePergon(caster, "Interner Fehler. Staff wurde informiert.");
+    syslog("FEHLER: CreateNPC gescheitert mit: "+critter.errortext);
+    return;
+  EndIf
+
+  If (params[1] <> "#MOB")
+    SendSysMessagePergon(caster,
+        msg_de, msg_en
+    );
+    SendSysMessagePergon(caster,
+      "Sehet nun zu, dass Euch die Kreatur auch gehorcht",
+      "Now take care, that the creature obeys you"
+    );
+  EndIf
+
+  Detach();
+
+  // wait summa 4/5th of duration
+  var i := 0;
+  While (i < 5)
+    Sleep(dur);
+
+    If (!caster or caster.dead)
+      // Caster tot also Vieh auch
+      break;
+    EndIf
+
+    If (!critter or critter.dead)
+      // abort if critter got killed
+      return;
+    EndIf
+  EndWhile
+
+  If (critter)
+    PlaySoundEffect(critter, SFX_SPELL_MANA_VAMPIRE);
+    PlayStationaryEffect(
+      critter.x, critter.y, critter.z, FX_SMOKE, 10, 10, 0, critter.realm
+    );
+
+    // hide and kill critter
+    critter.hidden := 1;
+    KillNPC(critter, "necro-summoncreature", KILLNPC_NOCORPSE);
+  EndIf
+EndProgram

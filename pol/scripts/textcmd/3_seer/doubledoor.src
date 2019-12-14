@@ -1,0 +1,57 @@
+// macht aus zwei Tueren eine Doppeltuer oder umgekehrt
+
+use uo;
+include "include/msgs";
+
+Program textcmd_where(who, param)
+    If (param and !(param["no"] or param["off"]))
+        SendSysMessagePergon(
+            who,
+            "Mit Parameter 'no' oder 'off' Doppeltüren deaktivieren, "+
+            "ohne Parameter Doppeltüren definieren.",
+            "Disable double doors via parameter 'no' or 'off', "+
+            "enable 'em without parameters."
+        );
+        return;
+    EndIf
+
+    var doors := array{};
+
+    var i;
+    For (i := 1; i <= 2; i += 1)
+        SendSysMessagePergon(
+            who, "Tür "+i+" wählen!", "Select door number "+i+"!"
+        );
+        var tgt_door := Target(who, TGTOPT_NOCHECK_LOS);
+        If (!tgt_door)
+            SendSysMessagePergon(who, "Abbruch", "Abort");
+            return;
+        EndIf
+        doors.append(tgt_door);
+    EndFor
+
+    // zur Sicherheit erstmal die Props bei den Tueren und ggf. deren
+    // Partnern loeschen
+    ForEach door in (doors)
+        If (!GetObjProperty(door, "doubledoor"))
+            continue;
+        EndIf
+
+        var partner := SystemFindObjectBySerial(
+            CInt(GetObjProperty(door, "doubledoor"))
+        );
+        If (partner)
+            EraseObjProperty(partner, "doubledoor");
+        EndIf
+        EraseObjProperty(door, "doubledoor");
+    EndForEach
+
+    // falls die Tueren nur abgeschaltet werden sollen, sind wir fertig
+    If (param["no"] or param["off"])
+        return;
+    EndIf
+
+    // Tueren koppeln
+    SetObjProperty(doors[1], "doubledoor", doors[2].serial);
+    SetObjProperty(doors[2], "doubledoor", doors[1].serial);
+EndProgram

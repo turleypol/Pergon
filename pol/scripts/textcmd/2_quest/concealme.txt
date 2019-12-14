@@ -1,0 +1,9 @@
+<h3 id="concealme">concealme</h3>
+
+<h4>Parameter: keiner oder <kbd>&lt;Level&gt;</kbd></h4>
+
+<p>Tarnt den eigenen Character für alle, die einen Command-Level
+unterhalb des angegebenen Levels haben. Der Level kann sowohl als Zahl als
+auch als Text übergeben werden. Ohne Angabe wird auf höchster
+verfügbarer Stufe, abhängig vom eigenen Command-Level,
+getarnt.</p>

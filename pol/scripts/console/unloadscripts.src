@@ -1,0 +1,7 @@
+use os;
+
+Program TextCMD_UnloadScripts()
+  Unload_Scripts();
+
+  SysLog("Der Script-Cache wurde geleert...");
+EndProgram

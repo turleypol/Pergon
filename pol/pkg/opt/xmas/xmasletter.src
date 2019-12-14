@@ -1,0 +1,25 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+// - funky xmas letter, you can change what is says and recompile it.
+// updated November 19, 2000
+//
+/////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+
+Program XMasLetter(who, xmas)
+  If (ReserveItem(xmas))
+    DestroyItem(xmas);
+
+    SendStringAsTipWindow(who,
+    "Ein Frohes Weihnachstfest und einen Guten Rutsch ins neue Jahr wünscht Euch die Göttergilde. "+
+    "Vielen Dank fuer Eure Hilfe, Eure Anregungen und Eure Geduld mit uns. Möge der Server laufen... "+
+
+    "Im Jahr 2003 hat der Weihnachtsmann ja mit der Genehmigung zur Öffnung nach 'Draussen' "+
+    "ein besonderes Geschenk für uns unter den Baum gelegt. Und seitdem waechst die Gemeinschaft "+
+    "kontinuierlich weiter und weiter. Seither ist die Welt dank Euch auch wesentlich belebter "+
+    "und interessanter geworden. Wir dürfen gespannt sein, was das nächste Jahr für Überraschungen bringt "+
+    "und wünschen Euch noch viel Spass auf einer Welt namens Pergon. "+
+    "- Euer Pergon-Staff");
+  EndIf
+EndProgram

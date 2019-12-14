@@ -1,0 +1,63 @@
+///////////////////////////////////////////////////////////////////////////
+// Dungeon Teleporter - fires when someone walks onto a dungeon teleporter
+//
+// Assumes the destination does not contain another dungeon teleporter.
+// Steps should probably be taken, somehow, to make sure the destination
+// is not blocked by something.
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// 2004/07/10 Shinigami:
+// via teleporter.inc sind Mehrfachziele fuer Teleporter definierbar
+//
+// 10.08.2006 Turley:
+// Escort Quest NPCs dürfen
+
+use os;
+use uo;
+use util;
+include "include/client";
+include "include/msgs";
+include "include/server";
+include "common";
+
+Program WalkOnSysTeleport(mobile, gate)
+  If (mobile.isa(POLCLASS_NPC))
+    If ((!mobile.getprop("quest")) && (!mobile.getprop("giver")))
+      // nur Escortquest-NPCs dürfen
+      return;
+    EndIf
+  EndIf
+
+  If (!SpecialTeleChecks(gate, mobile))
+    return;
+  EndIf
+  
+  If (!GetObjProperty(mobile, "#JustGated"))
+    var x     := GetObjProperty(gate, "DestX");
+    var y     := GetObjProperty(gate, "DestY");
+    var z     := GetObjProperty(gate, "DestZ");
+    var realm := GetObjProperty(gate, "DestRealm");
+    If (!realm)
+      realm := REALM_BRITANNIA;
+    EndIf
+
+    // Teleport mit mehreren moeglichen Zielen?
+    // (der Rest wurde bereits beim Erzeugen geprueft)
+    If (TypeOfInt(x)==OT_ARRAY)
+      var choice := 1 + RandomInt(x.size());
+      x := x[choice];
+      y := y[choice];
+      z := z[choice];
+    EndIf
+
+    var res := MoveObjectToLocation(mobile, x, y, z, realm);
+    If (res and GetObjProperty(gate, "mirrorgate"))
+      SetObjProperty(mobile, "#JustGated", 1);
+    EndIf
+  Else
+    EraseObjProperty(mobile, "#JustGated");
+  EndIf
+EndProgram
+
+// vim: sw=2 sts=2

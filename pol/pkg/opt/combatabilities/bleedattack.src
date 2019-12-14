@@ -1,0 +1,42 @@
+/////////////////////////////////////////////////////////
+//
+//   bleedattack - Fügt nochmal Schaden zu (Fleischwunde)
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     03.07.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+Use util;
+Use polsys;
+
+Include "include/modifyskill";
+Include "include/packets";
+Include "include/objtype";
+
+Program BleedAttack(params)
+  Var who:=params[1];
+  Var att:=params[2];
+  SetScriptController(att);
+  params:=0;
+  var i,dmg;
+  For (i:=5;i>0;i-=1)  // 5mal Schaden geben
+    Sleep(2);
+    dmg:=(i+RandomInt(i))*2;
+    If ((!who) || (who.dead))
+      Return;
+    EndIf
+    ApplyRawDamagePergon(who,dmg);
+    If (i%2) // alle ungeraden Blut erzeugen
+      Var blood := CreateItemAtLocationPergon(who.x, who.y, who.z, UOBJ_BLOOD, 1,who.realm);
+      blood.saveonexit:=0;
+      Start_ScriptPergon("::items/itemdestroy", {blood, 20});
+    EndIf
+  EndFor
+EndProgram

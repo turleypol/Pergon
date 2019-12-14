@@ -1,0 +1,3 @@
+Mit dem Befehl ".status" kannst du dir einige Informationen ueber deinen Character anzeigen lassen.
+
+Verwendest du ".status config", kannst du einige Voreinstellungen aendern. Probier es ruhig einmal aus.

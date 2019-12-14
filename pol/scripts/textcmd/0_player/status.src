@@ -1,0 +1,514 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD Status -
+// Zeigt paar nuetzliche Informationen ueber den Server und Spieler an,
+// erlaubt Aenderung diverser Einstellugen
+//
+// Author: Fraggulus
+
+// Bibliotheken&Includes
+use os;
+use polsys;
+use uo;
+include ":musicianship:common";
+include "include/balancing";
+include "include/clock";
+include "include/modifyskill";
+include "include/msgs";
+include "include/server";
+include ":sqlmanager:sqlmanager";
+
+// Hauptprogramm
+Program TextCMD_Status(who, params)
+    If (params)
+        ConfigureValues(who);
+        return;
+    EndIf
+
+    var mob;
+    If (who.cmdlevel < CMDLEVEL_SEER)
+        mob := who;
+    Else
+        // Seer duerfen andere Spieler auswaehlen
+        SendSysMessagePergon(who, "Spieler wählen!");
+        mob := Target(who, TGTOPT_NOCHECK_LOS);
+        If (!mob.isa(POLCLASS_MOBILE) or mob.isa(POLCLASS_NPC))
+            SendSysMessagePergon(who, "Ungültiges Ziel.");
+            return;
+        EndIf
+
+        // GM-spezifische Informationen ausgeben
+        ShowGMInfo(who);
+    EndIf
+
+    var tage    := CInt((ReadGameClock()-mob.createdat)/86400);
+    var stunden := CInt(CInt(GetObjProperty(mob, "lifetime"))/3600);
+
+    // weitere, commandlevelunabhaengige Informationen ausgeben
+    var counter := CInt(GetObjProperty(mob, "DeathCounter"));
+    If (!counter)
+        counter := 0;
+    EndIf
+
+    var passtxt;
+    var pass := GetObjProperty(mob, "pass");
+    If (pass)
+    	passtxt := " und einen Passierschein für "+pass.town+".";
+    Else
+    	passtxt := ".";
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Ihr lebt bereits "+tage+" Tage und wart dabei "+stunden+
+        " Stunden wach. Ausserdem habt Ihr "+counter+
+        " mal das Zeitliche gesegnet"+passtxt, "",
+        _DEFAULT_TEXT_FONT, FONTCOLOR_GREEN
+    );
+
+    var threatdict := GetObjProperty(mob, "threats");
+    var text;
+    var thObject;
+    // Ihr werdet von <char> seit <zeit> bedroht mit der Meldung: <text>
+    ForEach threat in threatdict
+        text := "Ihr werdet von ";
+        thObject := SystemFindObjectBySerial(threat.serial);
+        text += thObject.name;
+        text += " seit " + threat.timeS;
+        text += " bedroht mit der Meldung: ";
+        text += threat.text;
+        SendSysMessagePergon(who, text);
+    EndForEach
+    var jailTime := CInt(GetObjProperty(mob, PROP_PUNISH_JAILTIME));
+    If (jailTime)
+        jailTime := CInt(jailTime / 60);
+        SendSysMessagePergon(who,
+            "Ihr müsst noch "+
+            CInt(jailTime/60)+" Stunden und "+CInt(jailTime%60)+
+            " Minuten im Knast/am Pranger/in der Hölle bleiben."
+        );
+    EndIf
+    var stones := mob.getprop(PROP_PUNISH_STONES);
+    If (stones)
+        SendSysMessagePergon(who,
+            "Ihr müsst noch "+stones+" Steine schlagen."
+        );
+    EndIf
+
+    // Waffenregel-Neuberechnung anstossen
+    If (who.cmdlevel >= CMDLEVEL_GL)
+        CalcFaktorFight(mob, 0, "", 2, who, 1);
+    Else
+        CalcFaktorFight(mob, 0, "", 1, who, 1);
+    EndIf
+
+    If (CInt(GetGlobalProperty(PROP_WEAPON_RULES_ACTIVE)) == 111)
+        // Informationen zum Status Waffen- vs Ruestung- vs
+        // Skill-Einfluss auf den Skillzuwachs
+        SendSysMessagePergon(who, WaffenRegel(mob, who));
+    EndIf
+
+    var failedlogins := mob.acct.getprop(LOG_LOGINFAIL);
+    If (failedlogins)
+        SendSysMessagePergon(who,
+        "Bisher "+failedlogins+" fehlerhafte Passworteingaben", "",
+        _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+        );
+    EndIf
+EndProgram
+
+Function ConfigureValues(who) // {{{
+    // Optionen fuer Spieler {{{
+    var options := array{
+        struct{
+            name := "PvP",
+            desc := "Player vs. Player erlaubt",
+            prop := PROP_WANTS_PVP,
+            off  := 0
+        },
+        struct{
+            name := "Autowar",
+            desc := "Sofortiger Warmode bei Angriff",
+            prop := PROP_AUTOWAR,
+            on   := 1
+        },
+        struct{
+            name := "kein Rang",
+            desc := "eigenen Rang verstecken",
+            prop := EXPERIENCE_NO_DISPLAY,
+            on   := 1
+        },
+        struct{
+            name := "RP",
+            desc := "RP erwünscht",
+            prop := PROP_WANTS_RP,
+            on   := 1
+        },
+        struct{
+            name := "Magilite",
+            desc := "Magisches Licht nutzen",
+            prop := PROP_MAGILITE,
+            on   := 1
+        },
+        struct{
+            name := "Tanzen",
+            desc := "Tanzen, wenn Barde spielt",
+            prop := PROP_MUSIC_DANCE,
+            off  := 0
+        },
+        struct{
+            name := "Regelruhe",
+            desc := "keine Waffenregel-Hinweise anzeigen",
+            prop := PROP_NO_WEAPON_RULE_NOTICE,
+            on   := 1
+        },
+        struct{
+            name := "Ton bei Nachricht",
+            desc := "Hinweiston bei neuer Nachricht abspielen",
+            prop := PROP_NOTIFY_MESSAGE,
+            on   := 1
+        },
+        struct{
+            name := "Ton bei Brief",
+            desc := "Hinweiston bei neuem Brief abspielen",
+            prop := PROP_NOTIFY_LETTER,
+            on   := 1
+        },
+        struct{
+            name := "Onlineübersicht Beruf",
+            desc := "Beruf in der Onlineübersicht anzeigen",
+            prop := PROP_SHOW_PROF,
+            on   := 1
+        },
+        struct{
+            name := "LiveMap Visible",
+            desc := "Position auf der LiveMap anzeigen",
+            prop := PROP_LIVEMAP,
+            off  := 0
+        }
+    }; // }}}
+
+    var extraoptions := array{};
+    If (who.cmdlevel == CMDLEVEL_QUESTCHAR)
+        // Optionen ab Questchar {{{
+        extraoptions := array{
+            struct{
+                name := "kein Tooltip",
+                desc := "eigenen Tooltip verstecken",
+                prop := HIDE_CHAR_TOOLTIP,
+                on   := 1
+            },
+            struct{
+                name := "Gott-Zusatz",
+                desc := "Sonderfunktionen fuer Goetter",
+                prop := I_AM_GOD,
+                on   := 1
+            }
+        };
+        // }}}
+    EndIf
+
+    If (who.cmdlevel >= CMDLEVEL_SEER)
+        // Optionen ab Seer {{{
+        extraoptions := array{
+            struct{
+                name := "Newbie",
+                desc := "Newbie-Flag",
+                prop := TYPNEWBIE,
+                on   := 1
+            },
+            struct{
+                name := "kein Tooltip",
+                desc := "eigenen Tooltip verstecken",
+                prop := HIDE_CHAR_TOOLTIP,
+                on   := 1
+            },
+            struct{
+                name := "Gott-Zusatz",
+                desc := "Sonderfunktionen fuer Goetter",
+                prop := I_AM_GOD,
+                on   := 1
+            },
+            struct{
+                name := "Ton bei Page",
+                desc := "Hinweiston bei neuer Page abspielen",
+                prop := PROP_NOTIFY_PAGE,
+                on   := 1
+            },
+            struct{
+                name := "Taub",
+                desc := "Taub auf unbestimmte Zeit",
+                method := "deaf"
+            }
+        };
+        // }}}
+    EndIf
+
+    var length := CInt(Max(options.size(), extraoptions.size()));
+
+    Const ENTRY_SIZE := 30;
+
+    var layout := array{
+        // Hintergrund
+        "page 0",
+        "nodispose",
+        "resizepic 0 0 2620 310 "+(ENTRY_SIZE*length+112),
+        "gumppic 20 30 2621",
+        "checkertrans 5 6 300 "+(ENTRY_SIZE*length+100),
+        "text 20 10 40 0",
+        "page 1",
+        "text 20 40 40 1"
+    };
+    var data := array{
+        "Status",
+        "Einstellungen",
+        "Cmdlevel-Einstellungen"
+    };
+
+    FillInOptions(who, options, data, layout);
+
+    Const BASE_GM := 100;
+
+    If (extraoptions.size())
+        layout += array{
+            "button 280 10 2652 2711 0 2",
+            "page 2",
+            "button 280 10 2652 2711 0 1",
+            "text 20 40 40 2"
+        };
+        FillInOptions(who, extraoptions, data, layout, BASE_GM);
+    EndIf
+
+    var ret := CInt(SendDialogGump(who, layout, data, 100, 100)[0]);
+
+    If (ret == 0)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (ret >= BASE_GM)
+        If (!extraoptions.size())
+            return;
+        EndIf
+        ret -= BASE_GM;
+        var res := ToggleOption(who, ret, extraoptions);
+        SendSysMessagePergon(who,
+            "Zusatzoption '"+extraoptions[ret].name+"' "+GetToggleText(res)
+        );
+    Else
+        var res := ToggleOption(who, ret, options);
+        SendSysMessagePergon(who,
+            "Option '"+options[ret].name+"' "+GetToggleText(res)
+        );
+    EndIf
+    
+    IncRevision(who);
+    SendSQLManager(who, SQLStatus_UpdateStatus);
+EndFunction // }}}
+
+Function FillInOptions(who, options, byref data, byref layout, base := 0) // {{{
+    ForEach opt in (options)
+        SleepMs(2);
+        layout.append(
+            "text 50 "+(_opt_iter*ENTRY_SIZE+50)+" 40 "+(data.size())
+        );
+        layout.append(
+            "button 20 "+(_opt_iter*ENTRY_SIZE+50)+GetSwitch(who, opt)+
+            " 1 0 "+(base+_opt_iter)
+        );
+        data.append(opt.desc);
+    EndForEach
+EndFunction // }}}
+
+Function ToggleOption(who, num, options) // {{{
+    If (num < 1 or num > options.size())
+        SendSysMessagePergon(who, "Ungültige Auswahl!");
+        return;
+    EndIf
+
+    var opt := options[num];
+
+    var onoff := 1;
+    var stat := array{"off", "on"};
+    If (IsOn(who, opt))
+        // je nach Richtung Exitstatus und Reihenfolge der
+        // struct-Members anpassen
+        onoff := 0;
+        stat.reverse();
+    EndIf
+    
+    If (opt.?method)
+      If (opt.method == "deaf")
+        If (onoff)
+          who.deaf(-1);
+        Else
+          who.deaf(0);
+        EndIf
+        Return onoff;
+      EndIf
+    EndIf
+    // Aenderungen vornehmen
+    If (opt.exists(stat[1]))
+        EraseObjProperty(who, opt.prop);
+        return onoff;
+    ElseIf (opt.exists(stat[2]))
+        SetObjProperty(who, opt.prop, opt[stat[2]]);
+        return onoff;
+    EndIf
+
+    var ret := error;
+    ret.errortext := "Problem changing status of "+opt.prop;
+    return ret;
+EndFunction // }}}
+
+Function GetToggleText(value) // {{{
+    If (value == 1)
+        return "wurde eingeschaltet";
+    ElseIf (value == 0)
+        return "wurde ausgeschaltet";
+    ElseIf (value == error)
+        return "FEHLER: "+value.errortext;
+    EndIf
+    return "wurde unbekannt verändert; ein Fehler ist aufgetreten";
+EndFunction // }}}
+
+Function GetSwitch(who, opt) // {{{
+    If (IsOn(who, opt))
+        // an -> aus
+        return " 2648 2709 ";
+    Else
+        // aus -> an
+        return " 2708 2649 ";
+    EndIf
+EndFunction // }}}
+
+Function IsOn(who, opt) // {{{
+    If (opt.?method)
+      If (opt.method == "deaf")
+        Return (who.deafed);
+      EndIf
+    EndIf
+    var prop := GetObjProperty(who, opt.prop);
+    If (opt.exists("on"))
+        If (opt["on"] == prop)
+            return 1;
+        Else
+            return 0;
+        EndIf
+    EndIf
+    If (opt.exists("off"))
+        If (opt["off"] == prop)
+            return 0;
+        Else
+            return 1;
+        EndIf
+    EndIf
+
+    var ret := error;
+    ret.errortext := "Problem getting status of "+opt.prop+" (";
+    If (prop == error)
+        ret.errortext += prop.errortext+")";
+    Else
+        ret.errortext += prop;
+    EndIf
+    return ret;
+EndFunction // }}}
+
+Function ShowGMInfo(who) // {{{
+    var system := PolCore();
+    SendSysMessagePergon(who,
+        "Server: "+system.verstr, "", _DEFAULT_TEXT_FONT, 38
+    );
+    SendSysMessagePergon(who,
+        "Uptime: "+Format_Time(system.uptime), "", _DEFAULT_TEXT_FONT, 38
+    );
+    SendSysMessagePergon(who,
+        "Global: "+system.itemcount+" Items und "+system.mobilecount+
+        " Mobiles", "", _DEFAULT_TEXT_FONT, 68
+    );
+
+    var realmsvar := Realms();
+    ForEach realm in (realmsvar.keys())
+        var realmname := realm;
+        realmname[1] := Upper(realmname[1]);
+        SendSysMessagePergon(who,
+            realmname+": "+realmsvar[realm].toplevel_item_count+
+            " Items und "+realmsvar[realm].mobile_count+" Mobiles.", "",
+            _DEFAULT_TEXT_FONT, 68
+        );
+    EndForEach
+
+    If (who.multi)
+        SendSysMessagePergon(who,
+            "Die Serial des Multis, auf dem Ihr Euch befindet, lautet: "+
+            Lower(Hex(who.multi.serial)), "", _DEFAULT_TEXT_FONT
+        );
+    EndIf
+EndFunction // }}}
+
+Function WaffenRegel(mob, who) // {{{
+    var faktor_array := array{
+        CalcFaktorFight(mob, 0, SKILLID_SCHILDKAMPF, 4, who, 0),
+        CalcFaktorFight(mob, 0, SKILLID_TAKTIK,      4, who, 0),
+        CalcFaktorFight(mob, 0, SKILLID_ANATOMIE,    4, who, 0),
+        CalcFaktorFight(mob, 0, SKILLID_AUSWEICHEN,  4, who, 0)
+    };
+    // Waffe suchen
+    var equipment1 := GetEquipmentByLayer(mob, LAYER_HAND1);
+    var equipment2 := GetEquipmentByLayer(mob, LAYER_HAND2);
+    var weapon;
+    If (equipment1.isa(POLCLASS_WEAPON))
+        weapon := equipment1;
+    ElseIf (equipment2.isa(POLCLASS_WEAPON))
+        weapon := equipment2;
+    EndIf
+    faktor_array.append(
+        CalcFaktorFight(mob, 0, weapon.attribute,    4, who, 0)
+    );
+
+    var min_faktor := 100;
+    var max_faktor := 0;
+    ForEach wert in faktor_array
+        If (wert > max_faktor)
+            max_faktor := wert;
+        EndIf
+        If (wert < min_faktor)
+            min_faktor := wert;
+        EndIf
+    EndForEach
+
+    var faktor_descr := "";
+    If (min_faktor == max_faktor)
+        Faktor_2_String(min_faktor, faktor_descr);
+        return "Ihr erhaltet die Erfahrung für eure Kampfskills "+
+            faktor_descr+".";
+    EndIf
+
+    var text := "zwischen ";
+    Faktor_2_String(min_faktor, faktor_descr);
+    text := text+faktor_descr+" und ";
+    Faktor_2_String(max_faktor, faktor_descr);
+    text := text+faktor_descr;
+    return "Ihr erhaltet die Erfahrung für eure Kampfskills "+text+".";
+EndFunction // }}}
+
+Function Faktor_2_String(faktor_nbr, byref faktor_descr) // {{{
+    faktor_nbr := faktor_nbr*100.0;
+    If (faktor_nbr >= 100)
+        faktor_descr := "vollständig";
+    ElseIf (faktor_nbr >= 90)
+        faktor_descr := "nicht ganz vollständig";
+    ElseIf (faktor_nbr >= 80)
+        faktor_descr := "größstenteils";
+    ElseIf (faktor_nbr >= 70)
+        faktor_descr := "reduziert";
+    ElseIf (faktor_nbr >= 60)
+        faktor_descr := "stark reduziert";
+    ElseIf (faktor_nbr >= 50)
+        faktor_descr := "halbiert";
+    ElseIf (faktor_nbr >= 40)
+        faktor_descr := "eingeschränkt";
+    ElseIf (faktor_nbr > 0)
+        faktor_descr := "kaum merklich";
+    Else
+        faktor_descr := "gar nicht";
+    EndIf
+EndFunction // }}}

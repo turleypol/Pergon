@@ -1,0 +1,703 @@
+/////////////////////////////////////////////////////////////////////////////
+// RitualNPC --
+// NPC arbeitet eine vorgegebene Folge von Befehlen und Aktionen ab
+//
+// Entwurf:  Fraggulus
+
+/////////////////////////////////////////////////////////////////////////////
+// Der NPC bekommt mit dem Template in der Npcdesc.cfg eine CProp
+// 'RiteToCelebrate' uebergeben. Diese bestimmt, welcher Ablauf (Ritus) in
+// der RitualNPC.cfg gewaehlt wird.
+//
+// Es ist moeglich, dem NPC nachfolgende Anweisungen aufzutragen:
+//   - sich zu einer Position gehend, rennend oder teleportierend bewegen
+//   - einen Text sprechen
+//   - einen Text emotional sprechen
+//   - sich zu dem Player umzudrehen
+//   - eine Aktion performen
+//   - einen Sound von sich geben
+//   - einen Effekt abspielen
+//   - ein oder mehrere Items erzeugen
+//   - eine Wartezeit einlegen
+//   - Tueren in der Umgebung zu oeffnen
+//   - sich selbst ins Jenseits (Knast/Vernichter) befoerdern
+//
+// (naehere Erlaeuterungen zu den einzelnen Befehlen gibt's in der
+// RitualNPC.cfg)
+//
+// Desweiteren stehen drei Configeintraege zur Verfuegung, die
+//   - das Wort darstellen, mit dem der NPC angesprochen wird,
+//   - einen zusaetzlichen Begruessungstext definieren und
+//   - einen Verabschiedungstext definieren
+
+use cfgfile;
+use math;
+use npc;
+use os;
+use uo;
+use util;
+include "include/animal";
+include "include/client";
+include "include/clock";
+include "include/eventid";
+include "include/itemnpc";
+include "include/msgs";
+include "include/names";
+include "include/npc";
+include "include/place";
+include "include/vetement";
+
+// how close before he barks?
+Const SENSE_RANGE := 3;
+// Laufen oder Rennen
+Const DO_RUN      := 1;
+// Wie weit ist das Ritual erledigt?
+Const PROP_STATUS  := "mystatus";
+// Maximale Wartezeit, wenn Spieler nicht nachkommt (in Sekunden)
+Const WAIT_MAX := 600;
+// Abstand fuer Warten/Weitermachen
+Const DISTWAIT   := 6;
+Const DISTRESUME := 2;
+
+var me := Self();
+
+Program RitualNPC() // {{{1
+    SetObjProperty(me, "serial", me.serial);
+
+    EnableEvents(SYSEVENT_SPEECH + SYSEVENT_ENGAGED, SENSE_RANGE);
+    EnableEvents(SYSEVENT_ENTEREDAREA + SYSEVENT_LEFTAREA, SENSE_RANGE);
+
+    SetWarMode(0);
+    set_priority(10);
+    me.frozen := 0;
+    IncRevision(me);
+
+    var minename;
+    If (me.name["<random>"])
+      // ist neu erzeugt
+      minename := RandomName(me);
+      SetName(me, minename);
+
+      // Random Clothing
+      Habille(me, GetObjProperty(me, "Equipt"));
+    Else
+      minename := me.name;
+    EndIf
+
+    var pos := Find(minename, ",", 1);
+    If (pos)
+        minename := minename[1, pos-1];
+    EndIf
+    SetObjProperty(me, "myname", minename);
+
+    // TODO: Warum?
+    me.setmaster(me);
+    // ending configure of npc and starting ai
+
+    // Das Wort auslesen, mit dem man den NPC anspricht und das Ritual startet
+    var ritualcfg := ReadConfigFile("::ritualnpc");
+    var cfgelem := ritualcfg[GetObjProperty(me, "RiteToCelebrate")].powerword;
+
+    // Gleichzeitig eventuell angegebenen Begruessungstext auslesen, der
+    // bei einem ENTEREDAREA abgelassen wird
+    var BegruessungsText;
+    If (!ritualcfg[GetObjProperty(me, "RiteToCelebrate")].nohello)
+        BegruessungsText :=
+            ritualcfg[GetObjProperty(me, "RiteToCelebrate")].hellotext;
+    EndIf
+
+    // Gleichzeitig eventuell angegebenen Verabschiedungstext auslesen, der
+    // bei einem LEFTAREA abgelassen wird
+    var VerabschiedungsText :=
+        ritualcfg[GetObjProperty(me, "RiteToCelebrate")].byetext;
+    // UnloadConfigFile("::ritualnpc");
+    // Ende der Ausles-Anweisungen, die zur Initialisierung dienen
+
+    If ((!cfgelem) || (!GetObjProperty(me, "RiteToCelebrate")))
+        SetObjProperty(me, "PowerWord", "hilfe");
+        syslog("HINWEIS: Kein Powerword/Eintrag fuer '" +
+            GetObjProperty(me, "RiteToCelebrate") + "' definiert."
+        );
+    Else
+        SetObjProperty(me, "PowerWord", lower(CStr(cfgelem)));
+    EndIf
+
+    var textcolor := CInt(
+        ritualcfg[GetObjProperty(me, "RiteToCelebrate")].textcolor
+    );
+    If (!textcolor)
+        textcolor := _DEFAULT_TEXT_COLOR;
+    EndIf
+
+    me.speech_color := textcolor;
+    me.speech_font  := FONT_NORMAL;
+
+    // bei Restart erst einmal Ritual abschliessen
+    var status := me.getprop(PROP_STATUS);
+    If (status)
+        InitRitual(me, SystemFindObjectBySerial(
+                status.who, SYSFIND_SEARCH_OFFLINE_MOBILES
+        ));
+    EndIf
+
+    var ev;
+    While (me and !me.dead)
+        PerformAction(me, UACTION_LOOK_AROUND);
+        ev := Wait_for_EventLogging(120);
+        // PerformAction(me, UACTION_LOOK_AROUND);
+
+        If (!ev or ev.source.isa(POLCLASS_NPC) or ev.source.dead)
+            // try again if nothing happened
+            continue;
+        EndIf
+
+        TurnToward (ev.source);
+        Case (ev.type)
+        SYSEVENT_SPEECH:
+            var sayed := ev.text;
+            var talktome := 1;
+            var wordarray := SplitWords(sayed);
+            var word1 := wordarray[1];
+
+            // Speechevent für Questnpc
+            If (
+                (GetObjProperty(Me, "questnpc")) &&
+                (lower(sayed) == "auftrag")
+            )
+                If (!GetObjProperty(Me, "master"))
+                    var parms := {};
+                    parms[1] := Me;
+                    parms[2] := ev.source;
+                    Start_ScriptPergon(":questsystem:questsystem", parms);
+                EndIf
+            EndIf
+
+            If (lower(word1) == lower(minename))
+                SetObjProperty(ev.source, "talkto", minename);
+                sayed := wordarray[2];
+                If (wordarray[3])
+                    sayed += " " + wordarray[3];
+                EndIf
+            EndIf
+            SleepMS(10);
+            If (
+                GetObjProperty(ev.source, "talkto") &&
+                GetObjProperty(ev.source, "talkto") != minename
+            )
+                talktome := 0;
+            EndIf
+            If (!talktome)
+                continue;
+            EndIf
+
+            If (!CheckLosAt(me, ev.source.x, ev.source.y, ev.source.z+16))
+                var text;
+                Case (RandomInt(5)+1)
+                1: text := "Huh? Wer spricht da?";
+                2: text := "Meint Ihr mich?";
+                3: text := "Wo seid Ihr?";
+                4: text := "Nanu? Wo kommt die Stimme her?";
+                5: text := "Geisterstimmen ... zu Hilfeee";
+                EndCase
+                If (me.concealed == 0)
+                    // nur labern falls sichtbar
+                    SayPergon(me, text);
+                EndIf
+                continue;
+            EndIf // von !Check_LOS
+
+            // extra If-Abfrage, da Variablen nicht in Case-Anweisungen
+            // abgefragt werden können
+            If (lower(sayed)[lower(GetObjProperty(me, "PowerWord"))])
+                InitRitual(me, ev.source);
+                continue;
+            EndIf
+
+            If (me.concealed <> 0)
+                // weitere Reaktionen unterdruecken, falls getarnt
+                continue;
+            EndIf
+
+            sayed := lower(sayed);
+            If (
+                (sayed["hallo"]) || (sayed["gruess"])
+            )
+                SayPergon(ev.source, "Hallo!");
+            ElseIf (sayed["zeit"])
+                SayPergon(ev.source, "Es ist " + GetPergonTimeOfDay());
+            ElseIf ((sayed["wo"]) && (sayed["ort"]))
+                SayPergon(ev.source, "Ihr seid in " + PlaceName(me));
+            ElseIf (sayed["name"])
+                SayPergon(ev.source, "Man nennt mich " + minename + ".");
+            // ElseIf (sayed["hilfe"])
+            //     InitRitual(me, ev.source);
+            Else
+                SayPergon(ev.source, "Hmmm ... Aha!");
+            EndIf
+
+        SYSEVENT_ENGAGED:
+            // Angreifer wird fuer 10 Minuten ins Gefaengnis geworfen
+            If (ev.source.cmdlevel >= CMDLEVEL_SEER)
+                continue;
+            EndIf
+
+            SayPergon(me, "Zu Hilfe! VERBRECHEN!", "HELP ME. CRIME.");
+            SleepMS(1000);
+            SayPergon(me, "Man greift mich an!", "I'm attacked!");
+            SleepMS(2500);
+
+            SayPergon(me, "Sofort hinfort mit Euch und lernt Eure Lektion!", "Go away and learn your lection!");
+            SleepMS(500);
+            SendSysMessagePergon(ev.source,
+                "Ihr wurdet wegen Angriffs auf einen NPC strafeingekerkert!",
+                "You were imprisoned due to a attack on a NPC."
+            );
+            syslog(
+                "STRAFE: "+CharInfoStr(ev.source, COORDS_REALM)+
+                " wurde wegen Angriffs auf Ritual-NPC "+CharInfoStr(me)+
+                " fuer 10 Minuten eingesperrt."
+            );
+            AutoJail(ev.source, 10);
+
+        SYSEVENT_ENTEREDAREA:
+            If (me.concealed == 0)
+                Case (RandomInt(2) + 1)
+                    1: SayPergon(ev.source, "Seid gegrüßt.");
+                    2: SayPergon(ev.source, "Ich grüße Euch.");
+                EndCase
+
+                If (BegruessungsText)
+                    SayPergon(ev.source, BegruessungsText);
+                EndIf
+            EndIf
+
+        SYSEVENT_LEFTAREA:
+            If (VerabschiedungsText and (me.concealed == 0))
+                SayPergon(ev.source, VerabschiedungsText);
+            EndIf
+
+            If (GetObjProperty(ev.source, "talkto") == minename)
+                EraseObjProperty (ev.source, "talkto");
+            EndIf
+        EndCase // (ev.type)
+    EndWhile
+    syslog("WARNUNG: "+CharInfoStr(me)+" beim Warten verstorben");
+EndProgram
+
+
+Function InitRitual(me, who) /// {{{1
+    var MeinRitual := GetObjProperty(me, "RiteToCelebrate");
+    If (!MeinRitual)
+        SayPergon(me, "Hm, ich glaub, ich hab vergessen, was ich tun soll.", "I forgot what to do.");
+        Sleep(2);
+        SayPergon(me, "Ruft meinen Gott, auf dass er es wieder richtet.", "Call my god to get things right.");
+        syslog(
+            "WARNUNG: RitualNPC "+CharInfoStr(me, COORDS_REALM)+
+            " hat keine RiteToCelebrate-Property!"
+        );
+        return;
+    EndIf
+
+    var RitualCfg := ReadConfigFile("::ritualnpc");
+
+    If (!RitualCfg)
+        SayPergon(me, "Oh Oh!", "Oh oh.");
+        Sleep(1);
+        SayPergon(me, "Ich finde meine Liste nicht!", "I don't find my list.");
+        Sleep(2);
+        SayPergon(me, "Ruft meinen Gott, auf dass er es wieder richtet.", "Call my god to get things right.");
+
+        syslog("WARNUNG: Kann Cfg-File nicht finden.");
+        // UnloadConfigFile("::ritualnpc");
+        return;
+    EndIf
+
+    var RitualCfgEntry := FindConfigElem(RitualCfg, MeinRitual);
+
+    If (!RitualCfgEntry)
+        SayPergon(me, "Hm, ich glaub, ich hab vergessen, was ich tun soll.", "I forgot what to do.");
+        Sleep(2);
+        SayPergon(me, "Ruft meinen Gott, auf dass er es wieder richtet.", "Call my god to get things right.");
+        syslog("WARNUNG: Cfg-Eintrag '" + MeinRitual + "' fehlt!");
+        // UnloadConfigFile("::ritualnpc");
+        return;
+    EndIf
+
+    // alle Events ausser ENGAGED disablen, damit event-queue nicht ueberlaeuft
+    // (oder nicht so schnell), events werden danach wieder enabled
+    DisableEvents(SYSEVENT_SPEECH + SYSEVENT_ENTEREDAREA + SYSEVENT_LEFTAREA);
+    // TODO: statt Speech abschalten, auf Worte wie "langsam" und
+    // "schnell" hoeren, um Textgeschwindigkeit zu veraendern
+
+    var emotecolor := GetConfigInt(RitualCfgEntry, "EmoteColor");
+    If (!emotecolor)
+        emotecolor := 0x2e;
+    EndIf
+
+    // fuer Restartsicherheit
+    var status := struct{
+        who      := who.serial,
+        autowait := 0
+    };
+    var oldstatus := me.getprop(PROP_STATUS);
+    If (oldstatus)
+        status.autowait := oldstatus.autowait;
+    Else
+        oldstatus := struct{
+            count := 0
+        };
+    EndIf
+    var allparts := GetConfigStringArray(RitualCfgEntry, "part");
+
+    ForEach currpart in (allparts)
+        If (_currpart_iter < oldstatus.count)
+            // ggf. Aufholen auf aktuellen Index vor Restart
+            SleepMs(2);
+            continue;
+        EndIf
+
+        If (!me or me.dead)
+            syslog("WARNUNG: "+CharInfoStr(me)+" beim Ritual verstorben");
+            return;
+        EndIf
+
+        DoAutoWait(who, me, status, emotecolor);
+
+        // Splitten
+        // Definiert Art der kommenden Aktion, zB Sprache, Bewegung o.ae.
+        var action := lower(SplitWords(currpart)[1]);
+
+        // Definiert Inhalt der Aktion, zB den Sprachtext, Koordinaten o.ae.
+        var actioncontent :=
+            // Aktion selbst abschneiden
+            currpart[1+Find(currpart, " ", 1), Len(currpart)];
+
+        // Aktion ausfuehren
+        Case (lower(action))
+        "action":
+            Fkt_Action(me, actioncontent);
+        "autowait":
+            status.autowait := CInt(actioncontent);
+        "create":
+            Fkt_Create(me, actioncontent);
+        "effect":
+            Fkt_Effect(me, actioncontent);
+        "emote":
+            Fkt_Emote(me, emotecolor, actioncontent);
+        "killme":
+            Fkt_KillMe(me);
+            Break;
+        "tele":
+            Fkt_Tele(me, actioncontent);
+        "move":
+        "walk":
+            Fkt_Move(me, actioncontent, who, status, emotecolor);
+        "run":
+            Fkt_Move(me, actioncontent, who, status, emotecolor, DO_RUN);
+        "sound":
+            Fkt_Sound(me, actioncontent);
+        "speak":
+            Fkt_Speak(me, actioncontent);
+        "turn":
+            Fkt_Turn(who);
+        "opendoors":
+            Fkt_OpenDoors(me);
+        "face":
+            Fkt_Facing(me, actioncontent);
+        "hide":
+            Fkt_Hide(me, actioncontent);
+        "wait":
+            Fkt_Wait(actioncontent);
+        default:
+            syslog(
+                "HINWEIS: Unbekannte Aktion '" + Action +
+                "' in RitualNPC.cfg."
+            );
+        EndCase
+
+        // Zustand nach Abschluss der Aktion sichern
+        status.count := _currpart_iter;
+        me.setprop(PROP_STATUS, status);
+    EndForEach
+
+    // alles erledigt, keine Restartsicherheit mehr noetig
+    me.eraseprop(PROP_STATUS);
+
+    // UnloadConfigFile("::ritualnpc");
+
+    // Events wieder enablen, falls der NPC noch weiterlebt
+    EnableEvents(SYSEVENT_SPEECH + SYSEVENT_ENGAGED, SENSE_RANGE);
+    EnableEvents(SYSEVENT_ENTEREDAREA + SYSEVENT_LEFTAREA, SENSE_RANGE);
+EndFunction
+
+// TeleForce - Zwangsteleport an Ziel (fuer Move/Run bei Wegblockade) {{{1
+Function TeleForce(me, dest)
+    If (me.concealed == 0)
+        // Effekte nur im enttarnten Zustand
+        PlayStationaryEffect(
+            me.x, me.y, me.z, 0x3728, 10, 10, 0, me.realm
+        );
+        PlayStationaryEffect(
+            dest.x, dest.y, dest.z, 0x3728, 10, 10, 0, dest.realm
+        );
+        PlaySoundEffect(me, 0x1ff);
+    EndIf
+    MoveObjectToLocation(
+        me, dest.x, dest.y, dest.z, dest.realm, MOVEOBJECT_FORCELOCATION
+    );
+EndFunction
+
+// Fkt_Create - Erzeugt ein Item der angegebenen Item-Nr und Menge an der
+// Im folgenden: Funktionen, die die einzelnen Aktionen kontrollieren und
+// ausfuehren
+
+// DoAutoWait - Warten, wenn Spieler nicht nachkommt {{{1
+Function DoAutoWait(who, me, byref status, emotecolor)
+    // soll gewartet werden?
+    If (!status.autowait)
+        return;
+    EndIf
+
+    // existiert die Person noch?
+    If (!who)
+        return;
+    EndIf
+
+    // ist sie auch online?
+    If (who.connected)
+        // da, weitergehen, wenn nah genug
+        If (Distance(who, me) <= DISTWAIT)
+            return;
+        EndIf
+    EndIf
+
+    // warten, wenn zu weit weg
+    If (Distance(who, me) > DISTRESUME)
+        Fkt_Emote(me, emotecolor, "wart");
+
+        var resumetime := WAIT_MAX + ReadGameClock();
+        var lastemote  := ReadGameClock();
+        While (Distance(who, me) > DISTRESUME)
+            Sleep(1 + RandomInt(3));
+            If (ReadGameClock() > resumetime)
+                // Warten nach gewisser Zeit aufgeben
+                status.autowait := 0;
+                break;
+            EndIf
+
+            If (lastemote + RandomIntMinMax(45, 60) < ReadGameClock())
+                lastemote := ReadGameClock();
+                Case (RandomInt(3))
+                0:
+                    Fkt_Emote(me, emotecolor, "gaehn");
+                1:
+                    Fkt_Emote(me, emotecolor, "wart");
+                2:
+                    Fkt_Emote(me, emotecolor, "seufz");
+                EndCase
+            EndIf
+        EndWhile
+    EndIf
+EndFunction
+
+// Fkt_Create - Erzeugt ein Item der angegebenen Item-Nr und Menge an der
+// Im folgenden: Funktionen, die die einzelnen Aktionen kontrollieren und
+// ausfuehren
+
+// Fkt_Action - Fuehrt eine Aktion durch (PerformAction) {{{1
+Function Fkt_Action(me, ActionNr)
+    var ActionToPerform := CInt(ActionNr);
+    If (ActionToPerform)
+        PerformAction(me, ActionToPerform);
+    EndIf
+EndFunction
+
+// Fkt_Create - Erzeugt ein Item der angegebenen Item-Nr und Menge an der
+// Fkt_Create - Erzeugt Item an Position des NPC {{{1
+Function Fkt_Create(me, ItemCreate)
+    var ItemStr := SplitWords(ItemCreate);
+    var ItemNr := CInt(ItemStr[1]);
+    var ItemAmt := CInt(ItemStr[2]);
+
+    If (ItemNr == 0)
+        return;
+    EndIf
+
+    // Anzahl zwischen 1 und 32, damit nicht (ungewollt) riesige Itemhaufen
+    // entstehen, die zu Lags fuehren. Reine Vorsichtsmassnahme :o)
+    ItemAmt := CInt(max(1, min(ItemAmt, 32)));
+
+    var i;
+    For (i := 1; i <= ItemAmt; i += 1)
+        CreateItemAtLocationPergon(me.x, me.y, me.z, ItemNr, 1, me.realm);
+    EndFor
+EndFunction
+
+// Fkt_Effect - Erzeugt den angegebenen Effekt einmalig {{{1
+Function Fkt_Effect(me, EffectNr)
+    var EffectToPerform := CInt(EffectNr);
+    If (EffectToPerform)
+        PlayStationaryEffect(
+            me.x, me.y, me.z, EffectToPerform, 1, 10, 0, me.realm);
+    EndIf
+EndFunction
+
+// Fkt_KillMe - Bringt NPC in den Knast zum Vernichter, der den erledigt {{{1
+Function Fkt_KillMe(me)
+    MoveObjectToLocation(
+        me, 5272, 1190, 0, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+    );
+EndFunction
+
+// Fkt_Tele - Teleportiert den NPC, wenn moeglich, zum angegebenen Punkt {{{1
+Function Fkt_Tele(me, Koords)
+    var splitted := SplitWords(Koords);
+
+    var dest := CheckCoords(CIntArray(splitted), 0, me.realm);
+    If (!dest)
+        return;
+    EndIf
+
+    // zum Ziel bewegen
+    If (MoveObjectToLocation(
+            me, dest.x, dest.y, dest.z, dest.realm, MOVEOBJECT_NORMAL
+    ))
+        return;
+    EndIf
+
+    // falls das nicht geklappt hat, es irgendwo in der Naehe probieren
+    var testx, testy;
+    For (testx := dest.x - 1; testx <= dest.x + 1; testx += 1)
+        For (testy := dest.y - 1; testy <= dest.y + 1; testy += 1)
+            SleepMS(2);
+            If (MoveObjectToLocation(
+                    me, testx, testy, dest.z, dest.realm, MOVEOBJECT_NORMAL
+            ))
+                return;
+            EndIf
+        EndFor
+    EndFor
+
+    // offenbar hat es noch immer nicht geklappt, Position erzwingen
+    MoveObjectToLocation(
+        me, dest.x, dest.y, dest.z, dest.realm, MOVEOBJECT_FORCELOCATION
+    );
+EndFunction
+
+// Fkt_Move - Bewegt den NPC mit maximaler Anzahl Versuche {{{1
+// zum angegebenen Punkt, ggf. rennend
+Function Fkt_Move(me, koords, who, byref status, emotecolor, running := 0)
+    var splitted := SplitWords(Koords);
+
+    var dest := CheckCoords(CIntArray(splitted), 0, me.realm);
+    If (!dest)
+        return;
+    EndIf
+
+    // max. Anzahl Versuche, die der NPC machen soll, die Endposition zu
+    // erreichen, abhaengig von Entfernung berechnen; immer 20 oder mehr
+    // Versuche ansetzen
+    var Versuche := CInt(Max(
+            20,
+            2 * CoordinateDistance(me.x, me.y, dest.x, dest.y)
+    ));
+
+    While (Versuche > 0)
+        // ggf. Warten beim Weglaufen
+        DoAutoWait(who, me, status, emotecolor);
+
+        If (running)
+            RunTowardLocation(dest.x, dest.y);
+        Else
+            WalkTowardLocation(dest.x, dest.y);
+        EndIf
+        Versuche -= 1;
+        If (CoordinateDistance(me.x, me.y, dest.x, dest.y) <= 0)
+            break;
+        EndIf
+    EndWhile
+
+    If (Versuche == 0)
+        // NPC hat Endposition innerhalb der Versuchsanzahl nicht
+        // erreicht können und wird 'gewaltsam' dorthin befoerdert
+        TeleForce(me, dest);
+    EndIf
+EndFunction
+
+// Fkt_Sound - Gibt den angegebenen Laut ab {{{1
+Function Fkt_Sound(me, SoundNr)
+    var SoundToPerform := CInt(SoundNr);
+    If (SoundToPerform)
+        PlaySoundEffect(me, SoundToPerform);
+    EndIf
+EndFunction
+
+// Fkt_Speak - Laesst den NPC etwas sprechen {{{1
+Function Fkt_Speak(me, text)
+    SayPergon(me, text);
+EndFunction
+
+// Fkt_Emote - Wie 'Speak', nur mit geaenderter Farbe {{{1
+Function Fkt_Emote(me, color, text)
+    PrintTextAbovePergon(me, me, "*"+text+"*", me.speech_font, color);
+EndFunction
+
+// Fkt_Turn - Laesst den NPC Richung Player schauen {{{1
+Function Fkt_Turn(who)
+    If (who and who.connected)
+        TurnToward(who);
+    EndIf
+EndFunction
+
+// Fkt_OpenDoors - Laesst den NPC Tueren in Umgebung oeffnen {{{1
+Function Fkt_OpenDoors(me)
+    ForEach item in (
+        ListItemsNearLocation(me.x, me.y, LIST_IGNORE_Z, 1, me.realm)
+    )
+        SleepMS(10);
+        If (
+            item.isa(POLCLASS_DOOR) and
+            // darf nicht abgeschlossen sein, aber auch nicht offen
+            (!item.locked) and (!item.isopen())
+        )
+            UseItem(item, me);
+        EndIf
+    EndForEach
+EndFunction
+
+// Fkt_Hide - NPC verstecken/sichtbar machen {{{1
+Function Fkt_Hide(me, args)
+    var hideshow := SplitWords(args);
+    If (hideshow[1] == "1")
+        me.concealed := 1;
+    Else
+        me.concealed := 0;
+    EndIf
+EndFunction
+
+// Fkt_Facing - NPC in bestimmte Richtung drehen {{{1
+Function Fkt_Facing(me, args)
+    var dir := lower(SplitWords(args)[1]);
+    var x := me.x;
+    var y := me.y;
+
+    If (dir["w"])
+        x -= 1;
+    ElseIf (dir["o"] or dir["e"])
+        x += 1;
+    EndIf
+
+    If (dir["n"])
+        y -= 1;
+    ElseIf (dir["s"])
+        y += 1;
+    EndIf
+
+    TurnTowardLocation(x, y);
+EndFunction
+
+// Fkt_Wait - Wartet die angegebene Zeit Millisekunden {{{1
+Function Fkt_Wait(MSeconds)
+    var TimeToWait := CInt(MSeconds);
+    SleepMS(TimeToWait);
+EndFunction

@@ -1,0 +1,44 @@
+
+
+
+ Mobile Scripting Object Members
+
+
+ mobile.reportables: returns an array of reportable killers for this mobile
+   each array element contains a structure: { serial, killer, gameclock }
+     serial is the serial number of the killer.
+     killer is an 'offline mobile reference' to the killer
+     gameclock is the game time when the death occurred.
+   A SystemFindObject call is made for each killer in this list when read
+
+
+ mobile.SetPoisoned( ispoisoned := 1 )
+     If the poisoned flag was changed, and the script has a controller
+         If poisoned was SET,
+             apply RepSystem rules (Mobile damages Mobile)
+         else poisoned was CLEARED, so
+             apply RepSystem rules (Mobile helps Mobile)
+
+
+ mobile.SetParalyzed( isparalyzed := 1 )
+     If the paralyzed flag was changed, and the script has a controller
+         if paralyzed was SET,
+             apply RepSystem rules (Mobile damages Mobile)
+         else paralyzed was CLEARED, so
+             apply RepSystem rules (Mobile heals Mobile)
+
+
+ mobile.SetCriminal( level := 1 )
+   if level is 0, clears the CriminalTimer
+
+ mobile.SpendGold( amount )
+     if mobile has 'amount' gold, spends it.
+     otherwise, spends nothing and returns an error("Insufficient funds")
+
+
+ mobile.SetMurderer( ismurderer : boolean = true ) // Set or Clear Murderer Flag
+
+
+ mobile.RemoveReportable( serial, gameclock )
+    Remove a killer from this mobile's Reportables list
+

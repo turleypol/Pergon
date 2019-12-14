@@ -1,0 +1,236 @@
+///////////////////////////////////////////////////////////////////////////////
+// digtreasure.src
+//
+// Fires when the tool that was created when you decode a treasuremap
+// is double clicked. Target the map you want to dig from and then a
+// ground tile. If you are close enough to the chest coords (chestx, y, z
+// in the map) according to your mining skill, a chest is created and
+// yummy loot is placed in it according to the map's level. The chest
+// should be locked and trapped. The map and the digging tool are
+// deleted after the chest is 'found'. The chest decays in 30 minutes.
+//
+// Author: Racalac, 4/24/99
+
+use os;
+use uo;
+include "include/client";
+include "include/modifyskill";
+include "include/objtype";
+include "include/starteqp";
+include "treasurechest";
+
+Program dig_treasure(who)
+    // Karte waehlen, pruefen und Daten laden {{{
+    SendSysMessagePergon(who,
+        "Wählt die Schatzkarte aus.", "Choose a treasure map."
+    );
+    var map := Target(who);
+    If (!map)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (map.objtype != UOBJ_MAP1)
+        SendSysMessagePergon(who,
+            "Ihr müsst eine Schatzkarte auswählen.",
+            "You have to choose a treasure map."
+        );
+        return;
+    EndIf
+
+    var chestloc := struct;
+    chestloc.x := GetObjProperty(map, "chestx");
+    chestloc.y := GetObjProperty(map, "chesty");
+    chestloc.z := GetObjProperty(map, "chestz");
+    // FIXME: sollte an Karte gespeichert werden
+    chestloc.realm := who.realm;
+
+    If (!chestloc.x or !chestloc.y) // z might be 0!
+        SendSysMessagePergon(who,
+            "Das ist keine Schatzkarte.", "This is no treasure map."
+        );
+        return;
+    EndIf
+    // }}}
+
+    // Ort merken, falls Sucher wegrennt
+    var dig   := struct;
+    dig.x     := who.x;
+    dig.y     := who.y;
+    dig.z     := who.z;
+    dig.realm := who.realm;
+
+    // Schatz liegt rechts aussen, aber Sucher ist auf der normalen Karte
+    If ((chestloc.x > 5120) && (dig.x < 5120)) // {{{
+        var pname := Lower(PlaceName(chestloc));
+
+        If (pname["goetter"])
+            SendSysMessagePergon(who,
+                "Wo dieser Schatz liegt, wissen nur die Götter. "+
+                "Besucht ihre heiligen Hallen!",
+                "Only the gods know where to find this treasure. "+
+                "Go to their holy temples!"
+            );
+            return;
+        EndIf
+
+        If (pname["lostlands"])
+            SendSysMessagePergon(who,
+                "Der Schatz ist offenbar in den Lostlands vergraben. "+
+                "Sucht dort!",
+                "The treasure is hidden in the lost lands. "+
+                "Dig there!"
+            );
+            return;
+        EndIf
+
+        SendSysMessagePergon(who,
+            "Der Schatz scheint in einer Höhle vergraben zu sein. "+
+            "Beginnt Eure Suche dort.",
+            "It seems to be the treasure was buried in a dungeon. "+
+            "Start your search for it there."
+        );
+        return;
+    EndIf // }}}
+
+    // Grabeanimation etc. {{{
+    SendSysMessagePergon(who,
+        "Ihr grabt eine Weile ...", "You begin digging ..."
+    );
+    For i := 1 To 3
+        PerformAction(who, UACTION_PICK);
+        PlaySoundEffect(who, 0x3a4);
+        Sleep(2);
+
+        If (who.x <> dig.x or who.y <> dig.y)
+            SendSysMessagePergon(who,"Abbruch", "Abort");
+            return;
+        EndIf
+    EndFor
+    // }}}
+
+    // nah genug an der Kiste?
+    var distn := CoordinateDistance(dig.x, dig.y, chestloc.x, chestloc.y);
+    var range := GetRange(who);
+    If (distn <= range) // Schatz finden {{{
+        // s/gfx
+        PlaySoundEffect(who, SFX_CHEST_FOUND);
+        var custom := GetObjProperty(map, CHEST_CUSTOM_CPROP);
+        var level  := GetObjProperty(map, "level");
+        var chest := CreateTreasureChest(
+            level,
+            chestloc.x, chestloc.y, chestloc.z - 20, chestloc.realm,
+            custom
+        );
+        var i;
+        For (i := chest.z; i <= chestloc.z; i += 2)
+            MoveObjectToLocation(
+                chest, chest.x, chest.y, i, chest.realm,
+                MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+            );
+            SleepMs(250);
+        EndFor
+
+        SendSysMessagePergon(who,
+            "Ihr findet einen Schatz!", "You found some treasure!"
+        );
+        PlaySoundEffect(chest, SFX_140);
+        SubtractAmount(map, 1);
+
+        // Kiste nach einer Weile verschwinden lassen
+        Detach();
+        chest.saveonexit := 0;
+        Sleep(1200); // 20 min
+        var destroy := DestroyItem(chest);
+        // bleiben in letzter Zeit oft da
+        If (!destroy)
+            syslog(
+                "FEHLER: "+ItemInfoStr(chest, COORDS_REALM)+
+                " nicht zerstoert wegen "+destroy.errortext
+            );
+        EndIf
+        return;
+    EndIf // }}}
+
+    // nicht gefunden; Hinweise zum Finden {{{
+    If (distn <= 10)
+        SendSysMessagePergon(who,
+            "Ihr könnt den Schatz beinahe riechen, so nah seid Ihr.",
+            "You feel the treasure is near."
+        );
+    EndIf
+
+    // noch zu weit weg, grob die Richtung angeben
+    var dirns := "None", dirns_e := "None";
+    var direw := "None", direw_e := "None";
+    If (dig.y > chestloc.y)
+        dirns := "Nord";
+        dirns_e := "north";
+    EndIf
+    If (dig.y < chestloc.y)
+        dirns := "Süd";
+        dirns_e := "south";
+    EndIf
+    If (dig.x < chestloc.x)
+        direw := "Ost";
+        direw_e := "east";
+    EndIf
+    If (dig.x > chestloc.x)
+        direw := "West";
+        direw_e := "west";
+    EndIf
+
+    If (direw == "None")
+        SendSysMessagePergon(who,
+            "Ihr habt das Gefühl, der Schatz liege mehr im "+dirns+"en.",
+            "You feel the treasure is buried in "+dirns_e+"ern direction."
+        );
+        return;
+    EndIf
+
+    If (dirns == "None")
+        SendSysMessagePergon(who,
+            "Ihr habt das Gefühl, der Schatz liege mehr im "+direw+"en.",
+            "You feel the treasure is buried in "+direw_e+"ern direction."
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Ihr habt das Gefühl, der Schatz liege mehr im "+
+        dirns+"-"+direw+"en.",
+        "You feel the treasure is buried in "+
+        dirns_e+direw_e+"ern direction."
+    );
+    // }}}
+EndProgram
+
+// Kistenfindeabstand auf Basis der Skills ermitteln
+Function GetRange(who) // {{{
+    var skill := max(
+        GetSkillPergon(who, SKILLID_WILDNISKUNDE),
+        GetSkillPergon(who, SKILLID_KARTOGRAPHIE)
+    );
+
+    If (skill >= 100)
+        return 10;
+    ElseIf (skill >= 90)
+        return 9;
+    ElseIf (skill >= 80)
+        return 8;
+    ElseIf (skill >= 70)
+        return 7;
+    ElseIf (skill >= 60)
+        return 6;
+    ElseIf (skill >= 50)
+        return 5;
+    ElseIf (skill >= 40)
+        return 4;
+    ElseIf (skill >= 30)
+        return 3;
+    ElseIf (skill >= 20)
+        return 2;
+    Else
+        return 1;
+    EndIf
+EndFunction // }}}

@@ -1,0 +1,52 @@
+//////////////////////////////////////////////////
+// TextCMD SetGlobal - globale Property setzen
+//
+// Author: Shinigami
+
+include "include/logutil";
+include "include/modifyskill";
+
+Program TextCMD_SetGlobal(who, text)
+  var params := SplitWords(text);
+  If (params.size() <> 2)
+    SendSysMessagePergon(who, "Benutzung: .setglobal <prop> <wert>");
+    return;
+  EndIf
+
+  // Ist der Zugriff auf die Properties gestattet?
+  If (IGNORE_GLOBAL_PROPS[" "+params[1]+" "])
+    SendSysMessagePergon(who,
+      "Properties dieser Art dürfen nicht verändert werden!"
+    );
+    return;
+  EndIf
+
+  var value := GetGlobalProperty(params[1]);
+  If (value == error)
+    SendSysMessagePergon(who,
+      "Die globale Property "+params[1]+" wird neu angelegt!"
+    );
+    syslog(
+      CharInfoStr(who)+" initialisiert die globale Property '"+
+      params[1]+"' auf '"+params[2]+"'"
+    );
+  Else
+    SendSysMessagePergon(who,
+      "Die globale Property "+params[1]+" wird von "+value+" auf "+
+      params[2]+" gesetzt."
+    );
+    syslog(
+      CharInfoStr(who)+" aendert die globale Property "+params[1]+
+      " von '"+value+"' auf '"+params[2]+"'"
+    );
+  EndIf
+
+  // wenn numerisch, dann auch numerisch speichern
+  If (Lower(CStr(CInt(params[2]))) == Lower(params[2]))
+    params[2] := CInt(params[2]);
+  EndIf
+
+  SetGlobalProperty(params[1], params[2]);
+EndProgram
+
+// vim: sw=2 sts=2

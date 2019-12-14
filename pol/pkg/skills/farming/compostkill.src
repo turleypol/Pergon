@@ -1,0 +1,87 @@
+use uo;
+include ":farming:farm";
+include "include/eventid";
+include "include/msgs";
+
+Program CompostKill(who, fork)
+    If (!ToolEquipped(who, fork))
+        SendSysMessagePergon(who,
+            "Ihr müsst die Heugabel in die Hand nehmen.",
+            "You have to take the pitchfork in your hand."
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Welchen Komposthaufen wollt Ihr umgraben?",
+        "Which compost heap to remove?"
+    );
+    var heapitem := Target(who);
+    If (!heapitem)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    // Hauptitem
+    var controller := 0;
+
+    If (heapitem.objtype == 0xda0f)
+        // Dummy gewaehlt, Kontrollitem suchen
+        var controlserial := heapitem.getprop(PROP_CONTROLLER);
+        If (!controlserial)
+            NoCompost(who);
+        EndIf
+        controller := SystemFindObjectBySerial(controlserial);
+        If (!controller)
+            NoCompost(who);
+        EndIf
+    ElseIf (heapitem.objtype == 0xda25)
+        // direkt Kontrollitem gewaehlt
+        controller := heapitem;
+    EndIf
+
+    If (!controller)
+        NoCompost(who);
+    EndIf
+
+    var pid := controller.getprop("#pid");
+    If (!pid)
+        syslog(
+            "FEHLER: "+ItemInfoStr(controller)+" hat offenbar kein Script"
+        );
+        SomethingWrong(who);
+        return;
+    EndIf
+
+    var script := GetProcess(pid);
+    If (!script)
+        syslog(
+            "FEHLER: "+ItemInfoStr(controller)+" hat offenbar kein Script"
+        );
+        SomethingWrong(who);
+        return;
+    EndIf
+
+    var event := struct{
+        source := who,
+        tool   := fork,
+        type   := EVID_SELF_KILL
+    };
+    script.sendevent(event);
+EndProgram
+
+Function NoCompost(who)
+    SendSysMessagePergon(who,
+        "Das ist kein Komposthaufen.",
+        "That's no compost heap."
+    );
+    exit;
+EndFunction
+
+Function SomethingWrong(who)
+    SendSysMessagePergon(who,
+        "Da ging etwas schief. Staff wurde informiert.",
+        "Something went wrong. Staff has been informed."
+    );
+    exit;
+EndFunction

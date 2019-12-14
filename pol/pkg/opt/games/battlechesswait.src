@@ -1,0 +1,71 @@
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+//   BattleChessWait - Schachgump während des gegnerischen Zuges
+//
+//   Author: Turley
+//
+//   Modifications:
+//     30.10.05 Turley - Erste "fertige" Version
+//
+//////////////////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+
+Const start:=40;    // x/y Startpunkt
+Const modfeld:=55;  // Größe eines Feldes
+Const modx_f:=20;   // xMod für Figur relativ zur Oberkante des Feldes
+Const mody_f:=10;   // yMod ".."
+
+
+Program WaitGump(params)
+  Var who:=params[1],board:=params[2],layout:=params[3],data:=params[4],Figuren:=params[5];
+  Var layout2,ret,i;
+  For (i:=1;i<=layout.size();i+=1)  // Checkboxes löschen
+    If (splitwords(layout[i])[1] == "checkbox")
+      layout[i]:="";
+    EndIf
+  EndFor
+  layout[4]:="";  //OK Button löschen
+  SetObjProperty(board,"GumpPID",GetPID());
+  layout2:=ShowFiguren(layout,Figuren);
+  ret:=SendDialogGump(who,layout2,data);
+  If (ret[0]==100)  //Cancel
+    SetObjProperty(board,"canceled",1);
+  EndIf
+EndProgram
+
+Function ShowFiguren(layout,Figuren)
+  Var i,j,x,y,figur;
+
+  layout.append("page 1");
+  x:=start;
+  y:=start;
+
+  For (i:=1;i<=8;i+=1)
+    For (j:=1;j<=8;j+=1)
+      Case (Figuren[i][j][4,2])
+        "ST": figur:=2340;
+        "SS": figur:=2342;
+        "SL": figur:=2339;
+        "SK": figur:=2341;
+        "SD": figur:=2344;
+        "SB": figur:=2343;
+        "WT": figur:=2333;
+        "WS": figur:=2335;
+        "WL": figur:=2332;
+        "WK": figur:=2334;
+        "WD": figur:=2337;
+        "WB": figur:=2336;
+        default: figur:=0;
+      EndCase
+      If (figur)
+        layout.append("gumppic "+(x+modx_f)+" "+(y+mody_f)+" "+figur+" hue=0");
+      EndIf
+      x+=modfeld;
+    EndFor
+    x:=start;
+    y+=modfeld;
+  EndFor
+  Return(layout);
+EndFunction

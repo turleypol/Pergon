@@ -1,0 +1,46 @@
+Gesteuert wird ein Boot durch den Besitzer oder den Nächsten zum Tillerman, wenn man sich gut genug mit Karten auskennt.
+
+Befehle:
+
+voraus/forward
+zurueck/backward
+rechts/right/steuerbord
+links/left/backbord
+langsam / slow
+schnell / fast
+
+mehrere befehle gleichzeitig sind auch möglich:
+Bsp: "voraus rechts schnell" (schnief nach vorne rechts)
+
+ruder steuerbord / turn right : "seitwärtsbewegen"
+ruder backbord / turn left
+
+steuerbord / right : Boot nach steuerbord drehen
+backbord / left
+
+wenden / come by : Boot wenden
+
+halt / stop
+anker lichten / raise anchor
+anker werfen / drop anchor
+
+status : Tillerman informiert über den aktuellen Status (cmdlvl bekommen mehr infos)
+weitere Informationen bekommt man wenn man den Tillerman benutzt
+
+Trockendock: Boot wird zerstört und ein Spielzeugboot entsteht, später zB fürs Reparieren
+
+Ein Schiff bekommt ständig einen Konstanten Schaden abhängig von der Geschwindigkeit und natürlich bei Kollisionen.
+Ab einem gewissen Schadenslevel kann das Schiff nur noch maximal mit halber Fahrt fahren und irgendwann wird das Schiff sinken und die Passagiere müssen an Land schwimmen..
+
+Wenn man den Anker bei einer Stadt wirft, kommt ein kleiner Goldbetrag der Hafenkasse zugute, Außnahme ist der Heimathafen, den man über den Tillerman wählen kann.
+
+
+
+Erstellt wird ein Schiff über die Fähigkeit Schiffsbau, oder aber:
+
+Bauplan kleines Schiff: 0x6027
+kleines Drachenschiff: 0x6028
+Boot: 0x6029
+Drachenschiff: 0x602A
+großes Boot: 0x602B
+großes Drachenboot: 0x602C

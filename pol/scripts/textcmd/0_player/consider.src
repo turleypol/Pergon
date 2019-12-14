@@ -1,0 +1,32 @@
+// Consider your sins - informs player of murder status
+//
+// TODO: Move to be a text listener on the player's pack instead of a txtcommand
+//
+// Author:Racalac, 8/20/00
+// Shinigami
+
+use uo;
+include "include/msgs";
+
+Program TextCMD_Consider(who)
+  var longc  := CInt(GetObjProperty(who, "longmurders"));
+  var shortc := CInt(GetObjProperty(who, "shortmurders"));
+
+  var mesg;
+  If (GetObjProperty(who, TYPKILLER))
+    mesg := "Ihr seid im ganzen Land als mordender Wegelagerer bekannt.";
+  EndIf
+
+  If ((longc == 0) And (shortc == 0))
+    mesg := "Seid ohne Furcht, Ihr habt nie einem Unschuldigen etwas angetan.";
+  ElseIf ((longc>0) And (shortc == 0))
+    mesg := "Ihr habt seit langem keinen Unschuldigen etwas angetan. Doch Eure Greueltaten sind noch nicht vergessen.";
+  ElseIf ((shortc>0) And (shortc<5))
+//    mesg := "Although thou hast slain the innocent, thy deeds shall not bring retribution upon thy return to the living.";
+    mesg := "Obgleich Ihr Unschuldige getötet habt, sollen Eure Heldentaten keine Vergeltung bringen.";
+  ElseIf ((shortc>4))
+    mesg := "Falls Ihr jemals ins Reich der Lebenden zurückkehret, sollen Euch die Unschuldigen Verderben über Eure Seele bringen.";
+  EndIf
+
+  SendSysMessagePergon(who, mesg);
+EndProgram

@@ -1,0 +1,124 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file dispel.src
+//
+// implements spell 204 <Dispel> - "Bann"
+//
+// destroys summoned creature
+
+use util;
+include "../magicpergon";
+
+Program cast_dispel(params)
+  var caster;
+  var caston;
+  var power;
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  := params[3];
+    caston := params[4];
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+
+    power := GetCastPowerPergon(caster, SPELLID_CLERIC_DISPEL);
+    caston := TargetThing(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  If (!caster or caster.dead)
+    // bei Zielauswahl ausgeloggt, verstorben etc.
+    return;
+  EndIf
+
+  // check if spelltarget is summoned by Necro
+  If (CInt(GetObjProperty(caston, PROP_SUMMONED)) == SUMMON_BY_NECRO)
+    var resist := GetObjProperty(caston, "power");
+    PlaySoundEffect(caston, SFX_SPELL_DISPEL);
+
+    If (power+40 - resist + 25 < RandomInt(51))
+      SendSysMessagePergon(caster,
+        "Euch gelingt es nicht, diese Kreatur zu vernichten",
+        "You do not succeed in dispelling this creature"
+      );
+      return;
+    EndIf
+
+    // spelltarget is dispelled
+    PlayStationaryEffect(
+      caston.x, caston.y, caston.z, FX_SMOKE, 10, 10, 0, caston.realm
+    );
+    // hide and kill spelltarget
+    caston.hidden := 1;
+    KillNPC(caston, "cleric-dispel", KILLNPC_NOCORPSE);
+    return;
+  EndIf
+
+  If (
+    // Test auf Magisches Feld
+    CInt(GetObjProperty(caston, "f") and
+    // and if caster can see it
+    CheckLineOfSight(caster, caston))
+  )
+    PlaySoundEffect(caston, SFX_SPELL_DISPEL);
+    var diff := CInt(GetObjProperty(caston, "f"));
+
+    // check if caster can destroy item
+    If (
+      (power - diff + 25 >= RandomInt(51)) or
+      (GetObjProperty(caston, "creator") == caster.serial)
+    )
+      // destroy item
+      PlayStationaryEffect(
+        caston.x, caston.y, caston.z, FX_SMOKE, 10, 10, 0, caston.realm
+      );
+      DestroyItem(caston);
+      return;
+    EndIf
+  EndIf
+
+  If (
+    // check if its a magic gate
+    (caston.objtype == UOBJ_BLUE_MOONGATE) and
+    // and if caster can see it
+    CheckLosAt(caster, caston.x, caston.y, caston.z)
+  )
+
+    PlaySoundEffect(caston, SFX_SPELL_DISPEL);
+    var diff := CInt(GetObjProperty(caston, "GatePower"));
+
+    // check if caster can destroy item
+    If (
+      (power - diff + 25 >= RandomInt(51)) or
+      (GetObjProperty(caston, "caster") == caster.serial)
+    )
+      // get destination gate
+      var dest := SystemFindObjectBySerial(GetObjProperty(caston, "GateDestItem"));
+
+      // destroy both gates
+      PlayStationaryEffect(
+        caston.x, caston.y, caston.z, FX_SMOKE, 10, 10, 0, caston.realm
+      );
+      PlayStationaryEffect(
+        dest.x, dest.y, dest.z, FX_SMOKE, 10, 10, 0, dest.realm
+      );
+      SysLog(CharInfoStr(caster)+" zerstoert "+ItemInfoStr(caston, COORDS_REALM)+" nach "+ItemInfoStr(dest, COORDS_REALM));
+      DestroyItem(caston);
+      DestroyItem(dest);
+      return;
+    EndIf
+  EndIf
+
+  SendSysMessagePergon(caster,
+    "Das könnt ihr nicht bannen", "You can't ban this"
+  );
+EndProgram

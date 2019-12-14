@@ -1,0 +1,13 @@
+use uo;
+include "include/bank";
+include "include/msgs";
+
+Program TextCMD_HideBankBoxes(who, param)
+  If (!param)
+    HideBankBoxes();
+    SendSysMessagePergon(who, "Die Bankboxen der Spieler wurden versteckt.");
+  Else
+    UnHideBankBoxes();
+    SendSysMessagePergon(who, "Die Bankboxen der Spieler wurden zurückgeholt.");
+  EndIf
+EndProgram

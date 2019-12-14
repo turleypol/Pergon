@@ -1,0 +1,92 @@
+//**************************************************************************************************
+// Script file protection.src
+//
+//    implements spell 10 <Protection> - "Schutz"
+//
+//	increases ar of spelltarget
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 27.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+Include "include/spellcheck";
+Include "../magicpergon";
+
+program cast_protection (params)
+
+   Var caster;
+   Var caston;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_COMMON_PROTECTION);
+   Var amnt:=    spell.primary;
+   Var minamnt:= spell.primarymin;
+   Var maxamnt:= spell.primarymax;
+   Var dur:=     spell.duration;
+   Var mindur:=  spell.durationmin;
+   Var maxdur:=  spell.durationmax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_COMMON_PROTECTION);
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+
+   PlaySoundEffect(caston, SFX_SPELL_PROTECTION);
+   PlayObjectCenteredEffect(caston, FX_BLESS_EFFECT, 7, 7);
+
+   if (GetObjProperty(caston, "spell_protect"))				// check if spelltarget can be manipulated
+      SendSysMessagePergon(caster, "Euer Ziel verfügt bereits über magischen Schutz",
+                                   "Your target is already magically protected");
+      return;
+   endif
+
+   amnt:= CInt(power*amnt/100.0);						// calc amount/duration according to casting power
+   dur:=  CInt(power*dur/100.0);
+
+   if (minamnt and minamnt > amnt)
+      amnt:= minamnt;
+   elseif (maxamnt and maxamnt < amnt)
+      amnt:= maxamnt;
+   endif
+
+   if (mindur and mindur > dur)
+      dur:= mindur;
+   elseif (maxdur and maxdur < dur)
+      dur:= maxdur;
+   endif
+   
+   caston.ar_mod:=caston.ar_mod+amnt;  			// deal amount
+
+   Var tag:= array;
+
+   tag[1]:= ReadGameClock() + dur;
+   tag[2]:= amnt;
+   tag[3]:= ReadMilliSecondClock();
+
+   SetObjProperty(caston, "spell_protect", tag);	// tag spelltarget for spellchecker
+   SendSpellWaiter(caston, "spell_protect", dur, tag[3], caston);
+
+endprogram

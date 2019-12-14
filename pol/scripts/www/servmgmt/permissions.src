@@ -1,0 +1,310 @@
+use datafile;
+use uo;
+use http;
+use os;
+
+include "header";
+include "include/onlinesearch";
+include "include/server";
+include "include/permissions";
+
+Program HTMLPage()
+  DoHeader("Permissions");
+  WriteHTML("<div id='container'>");
+  WriteHTML("<div id='header'></div>");
+  WriteHTML("<div id='content'>");
+  TableHeader("Permissions");
+  
+  DenyAccess(isALLOWED_STRICT || AllowedToChangePermissions(user));
+
+  var permission     := QueryParam("Permission");
+  var changeminlevel := QueryParam("ChangeMinLevel");
+  var changeperm     := QueryParam("EditAccts");
+  
+  If (permission)
+    If (changeminlevel)
+      ChangeMinCMDLevel(CInt(QueryParam("minLevel")), UnPack(permission));
+    EndIf
+    If (changeperm)
+      var acctname := QueryParam("Account");
+      var selected := QueryParam("EnableDisable");
+      If (acctname)
+        var acct := FindAccount(acctname);
+        If (!acct and !Compare(selected, "Delete"))
+          WriteHTML(
+            "<p class='warning'>Account '"+acctname+"' does not exist!</p>"
+          );
+          DoFooter();
+          return;
+        EndIf
+      EndIf
+      ChangePermission(UnPack(permission), QueryParam("EnableDisable"), acctname);
+    EndIf
+    ShowDataElem(UnPack(permission));
+  Else
+    ShowDataFile();
+  EndIf
+
+  WriteHTML("</div>");
+
+  DoFooter();
+EndProgram
+
+Function ChangeMinCMDLevel(level, permission)
+  
+  var who;
+  If (TypeOfInt(user) == OT_STRING)
+    var account := FindAccount(user);
+    If (account)
+      who := GetMaxAccountCmdChar(account);
+    EndIf
+  EndIf
+  
+  If (!AllowedToChangePermissions(who) && QueryIP() != "127.0.0.1")
+    return 0;
+  EndIf
+
+  var permdata := OpenDataFile("::Permissions");
+  var currentlevel := permdata.FindElement(permission).getprop("minLevel");
+  If (currentlevel != level)
+    permdata.FindElement(permission).setprop("minLevel", level);
+  EndIf
+  
+  SysLog(
+    CharInfoStr(who)+" aendert das minLevel von "+permission+" auf "+GetCMDLevelTitle(level)
+  );
+  
+EndFunction
+
+Function ChangePermission(permission, selected, account)
+  account := Lower(account);
+  
+  var permdata := OpenDataFile("::Permissions");
+  // Informationen fürs Logging
+  var permname := permission;
+  
+  var who;
+  If (TypeOfInt(user) == OT_STRING)
+    var acct := FindAccount(user);
+    If (acct)
+      who := GetMaxAccountCmdChar(acct);
+    EndIf
+  EndIf
+  
+  If (!AllowedToChangePermissions(who) && QueryIP() != "127.0.0.1")
+    return 0;
+  EndIf
+  
+  var whom;
+  var acct := FindAccount(account);
+  If (acct)
+    whom := GetMaxAccountCmdChar(acct);
+    If (whom == -1)
+      // Falls auf dem Account keine Chars mehr sind, wird der Accountname geloggt
+      whom := acct;
+    EndIf
+  EndIf
+
+  permission := permdata.FindElement(permission);
+  
+  var enabled := permission.GetProp("enabled");
+  If (!enabled)
+    enabled := {};
+  EndIf
+  
+	var disabled := permission.getprop("disabled");
+  If (!disabled)
+    disabled := {};
+  EndIf
+  
+  Case (selected)
+    "Enabled":
+      If (!(account in enabled))
+        enabled.append(account);
+        permission.setprop("enabled", SortArrayABC(enabled));
+        
+        If (account in disabled)
+          ForEach acct in disabled
+            If (Compare(acct, account))
+              disabled.erase(_acct_iter);
+              permission.setprop("disabled", disabled);
+              break;
+            EndIf
+          EndForEach
+        EndIf
+        
+        Syslog(
+          CharInfoStr(who)+" gewaehrt "+CharInfoStr(whom)+" die Berechtigung "+permname
+        );
+      EndIf
+    "Disabled":
+      If (!(account in disabled))
+        disabled.append(account);
+        permission.setprop("disabled", SortArrayABC(disabled));
+        
+        If (account in enabled)      
+          ForEach acct in enabled
+            If (Compare(acct, account))
+              enabled.erase(_acct_iter);
+              permission.setprop("enabled", enabled);
+              break;
+            EndIf
+          EndForEach
+        EndIf
+        
+        Syslog(
+          CharInfoStr(who)+" entzieht "+CharInfoStr(whom)+" die Berechtigung "+permname
+        );
+        
+      EndIf
+    "Delete":
+      If (account in enabled+disabled)
+        If (account in enabled)      
+          ForEach acct in enabled
+            If (Compare(acct, account))
+              enabled.erase(_acct_iter);
+              permission.setprop("enabled", enabled);
+              break;
+            EndIf
+          EndForEach
+          
+          Syslog(
+            CharInfoStr(who)+" entzieht "+CharInfoStr(whom)+" die Erlaubnis fuer die Berechtigung "+permname
+          );        
+          
+        EndIf
+        If (account in disabled)
+          ForEach acct in disabled
+            If (Compare(acct, account))
+              disabled.erase(_acct_iter);
+              permission.setprop("disabled", disabled);
+              break;
+            EndIf
+          EndForEach
+        
+          Syslog(
+            CharInfoStr(who)+" hebt die Beschraenkung von "+CharInfoStr(whom)+" fuer die Berechtigung "+permname+" auf"
+          );
+          
+        EndIf
+      EndIf
+  EndCase
+  
+EndFunction
+
+Function ShowDataElem(permission)
+  var permdata := OpenDataFile("::Permissions");
+  var currentperm := permdata.FindElement(permission);
+  If (!currentperm)
+    WriteHTML(
+      "<p class=warning>Unable to open '::Permissions' '"+permission+"' -&gt; "+currentperm.errortext+"</p>"
+    );
+    return;
+  EndIf
+  
+  var commandlevels := {
+    CMDLEVEL_PLAYER, CMDLEVEL_COUNSELOR, CMDLEVEL_QUESTCHAR, CMDLEVEL_SEER, CMDLEVEL_GM,
+    CMDLEVEL_HIGHGM, CMDLEVEL_GL, CMDLEVEL_SCRIPTER, CMDLEVEL_DEVELOPER
+  };
+
+  WriteHTML(
+    "<h2><a href='?"+A_PARAM+"'>Permissions</a></h2>"
+  );
+  WriteHTML("<h3>"+permission+"</h3>");
+
+  WriteHTML("<table>");
+  WriteHTML("<tr>");
+  WriteHTML("<th>Property</th><th>Value</th>");
+  WriteHTML("</tr>");
+  var off := "disabled";
+  If (AllowedToChangePermissions(user) || QueryIP() == "127.0.0.1")
+    off := "";
+  EndIf  
+  
+  var enabled := currentperm.getprop("enabled");
+  If (!enabled)
+    enabled := {};
+  EndIf
+  
+  var disabled := currentperm.getprop("disabled");
+  If (!disabled)
+    disabled := {};
+  EndIf
+
+  WriteHTML("<tr>");
+  WriteHTML("<td>Enabled</td>");
+  WriteHTML("<td>"+EscapeHTML(", ".join(enabled))+"</td>");
+  WriteHTML("</tr>");
+  
+  WriteHTML("<tr>");
+  WriteHTML("<td>Disabled</td>");
+  WriteHTML("<td>"+EscapeHTML(", ".join(disabled))+"</td>");
+  WriteHTML("</tr>");
+
+  WriteHTML("<tr>");
+  WriteHTML("<td>minLevel</td>");
+  WriteHTML("<form = 'get'>");
+  WriteHTML("<td>");
+  WriteHTML("<select "+off+" name = 'minLevel'>");
+  ForEach commandlevel in (commandlevels)
+    var value := GetCMDLevelTitle(commandlevel);
+    var selected := "";
+    If (commandlevel == currentperm.GetProp("minLevel"))
+      selected := "selected";
+    EndIf
+    WriteHTML("<option "+selected+" value='"+commandlevel+"'>"+value+"</option>");
+  EndForEach
+  WriteHTML("</select>");
+  WriteHTML("<input "+off+" type='submit' name='ChangeMinLevel' value='Submit'>");
+  WriteHTML("<input type='hidden' name='Permission' value='"+Pack(permission)+"'>");
+  WriteHTML("<input type='hidden' name='user' value='"+user+"'>");
+  WriteHTML("<input type='hidden' name='pass' value='"+pass+"'>");
+  WriteHTML("</td></form>");
+  WriteHTML("</tr>");
+  SleepMS(2);
+  
+  WriteHTML("<form method='get'><th colspan='3'>Account");
+  WriteHTML("<input "+off+" type='text' name='Account'>");
+  
+  WriteHTML("<select "+off+" name = 'EnableDisable'>");
+  WriteHTML("<option value='Enabled'>Enabled</option>");
+  WriteHTML("<option value='Disabled'>Disabled</option>");
+  WriteHTML("<option value='Delete'>Delete</option>");
+  WriteHTML("</select>");
+  
+  WriteHTML("<input "+off+" type='submit' name='EditAccts' value='Submit'>");
+  WriteHTML("<input type='hidden' name='Permission' value='"+Pack(permission)+"'>");
+  WriteHTML("<input type='hidden' name='user' value='"+user+"'>");
+  WriteHTML("<input type='hidden' name='pass' value='"+pass+"'>");
+  
+  WriteHTML("</form>");
+  WriteHTML("</th>");
+  WriteHTML("</table>");
+EndFunction
+
+Function ShowDataFile()
+  var permdata := OpenDataFile("::Permissions");
+  If (!permdata)
+    WriteHTML(
+      "<p class='warning'>Unable to open '::Permissions' -&gt; "+
+      permdata.errortext+"</p>"
+    );
+    return;
+  EndIf
+
+  WriteHTML("<h2>Permissions</h2>");
+
+  WriteHTML("<table style='width:auto'>");
+  WriteHTML("<tr>");
+  WriteHTML("<th>Elementlist</th>");
+  WriteHTML("</tr>");
+  ForEach permission in (permdata.keys())
+    WriteHTML("<tr>");
+    WriteHTML(
+      "<td><a href='?Permission="+Pack(permission)+"&"+
+      A_PARAM+"'>"+permission+"</a></td>");
+    WriteHTML("</tr>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</table>");
+EndFunction

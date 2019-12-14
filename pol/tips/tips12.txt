@@ -1,0 +1,5 @@
+Mit .handbuch wird das Handbuch im Browser geoeffnet. Es enthaelt viele nuetzliche Befehle und die Regeln.
+
+Mit .map kannst du dir Karte von Pergon anschauen. Wenn du den Befehl eingibst, oeffnet sich dein eingestellter Browser und zeigt dir [removed] an.
+
+Die Dateien mit "region" am Anfang sind Ausschnittskarten der jeweiligen Region. Die beiden Karten mit "pergon" am Anfang sind grosse Gesamtkarten.

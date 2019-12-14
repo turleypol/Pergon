@@ -1,0 +1,49 @@
+//
+// Fraggulus' Edition
+//
+// Stand: 3. September 2000
+//
+
+use os;
+use uo;
+use util;
+
+include "drinkpotion";
+include "include/tempmod";
+include "include/modifyskill";
+
+program drink_red (character, potion)
+	if (!checkifcandrink(character))
+		return;
+	endif
+	Var potion_strength := get_potion_strength(potion);
+
+
+	if (is_poison(potion))
+		do_poison(character, potion);
+	else
+		empty_bottle(character, potion);
+		Var stamina_amount := (RandomInt(12) + 1) * potion_strength;
+
+//           PlaySoundEffect( character,  SOUND_EFFECT_HEAL );
+
+		SetStaminaPergon(character, GetStaminaPergon(character)+stamina_amount);
+
+		If (GetManaPergon(character)>GetMaxManaPergon(character))
+			SetManaPergon(character, GetMaxManaPergon(character));
+		EndIf
+
+		If (GetHPPergon(character)>GetMaxHPPergon(character))
+			SetHPPergon(character, GetMaxHPPergon(character));
+		EndIf
+
+		If (GetStaminaPergon(character)>GetMaxStaminaPergon(character))
+			SetStaminaPergon(character, GetMaxStaminaPergon(character));
+		EndIf
+
+		detach();
+		sleep(10);
+		candrink(character);
+    endif
+
+endprogram

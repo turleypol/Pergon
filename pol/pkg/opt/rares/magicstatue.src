@@ -1,0 +1,127 @@
+///////////////////////////////////////////////////////////////////////////
+// magicstatue.src -
+// Magische Statue erzeugt Wesen je nach Objekttyp der Statue
+
+use cfgfile;
+use os;
+use uo;
+use util;
+use vitals;
+include ":newspells:magicpergon";
+include "include/modifyskill";
+
+program magicstatue(character,item)
+
+  Var statue:=item.objtype;
+
+  Var rares:=   ReadConfigFile("rares");                                //Rares Config auslesen
+  Var rare:=    FindConfigElem(rares, statue);
+  Var dur:=     rare.duration;
+  Var tbu:=     rare.timebetweenuses;
+  Var powrand:= rare.powerrandom;
+  Var diff:=    rare.difficulty;
+  Var crittertype:= rare.critter;
+
+  if (item.container || item.movable == 0)                              //Item muss auf dem Boden stehen und lose sein
+    case (RandomInt(4))
+      0: SendSysMessagePergon(character, "So wird das nichts");
+      1: SendSysMessagePergon(character, "Hmmm");
+      2: SendSysMessagePergon(character, "Das muss irgendwie anders gehen");
+      3: SendSysMessagePergon(character, "Da stimmt was nicht");
+    endcase
+    return;
+  endif
+
+  Var lastuse:= GetObjProperty(item, "lastuse");                        //letzte Benutzung lange genug her?
+  if (CInt(lastuse + tbu) > ReadGameClock())
+    SendSysMessagePergon(character, "Ihr könnt die Statue nicht schon wieder benutzen!");
+    return;
+  endif
+
+  SendSysMessagePergon(character, "Da tut sich was");
+  item.movable:=0;
+  PlaySoundEffect(item, 0x22C);
+  Var x:= item.x;
+  Var y:= item.y;
+  Var z:= item.z + 1;
+  Var statuex:= item.x;                                                 //Statueposition initialisieren mit alter Position
+  Var statuey:= item.y;
+  Var statuez:= item.z;
+  var statuerealm:=character.realm;
+
+  Var graphic:=item.graphic;                                            //itemgraphic merken für Animation
+  SleepMS(3000);
+  PlaySoundEffect(item, 0x1D7);
+  DestroyItem(item);
+  Var i,j:=0;
+  for (i:=0; i<10; i+=1)                                              //Statue schwebt
+    PlayStationaryEffect(x,y,z+i, graphic, 1, 6,0,statuerealm);
+    SleepMS(100);
+  endfor
+
+  PlayStationaryEffect(x,y,z, 0x3728, 10,40,0,statuerealm);
+  SleepMS(2000);
+  PlaySoundEffectXYZ(x,y,z+10, 0x306,statuerealm);
+
+  //Explosion
+  for(j:=0; j<5;  j+=1)
+    for(i:=0; i<30; i+=1)
+        PlayMovingEffectXYZ(x,y,z + 5, x + RandomInt(6) - 3, y + RandomInt(6) - 3, z , 0x3728, 1, 10,0,statuerealm);
+        SleepMS(5);
+        if((i%3) == 0)
+          PlayMovingEffectXYZ(x,y,z + 5, x + RandomInt(20) - 10, y + RandomInt(20) - 10, z + RandomInt(5), 0x3728, 10, 1,0,statuerealm);
+        endif
+    endfor
+    SleepMS(100);
+  endfor
+
+  DestroyItem(item);
+
+  Detach();
+
+  Var power:= CInt(GetIntPergon(character) + GetDexPergon(character) + GetStrPergon(character));    //Stärke des Benutzers bestimmen
+  power:= CInt(power + RandomInt(powrand));
+
+  Var parms:=struct;
+  parms.+CProps:=dictionary;                  //Vorbereiten des Controlscripts
+  if (power > diff)                           //wenn Benutzer stark genug wird critter beherrscht
+    parms.+script:= "enticedanimal";
+    parms.+Master:=character.serial;
+    parms.CProps.insert("master",character.serial); // setze Benutzer als master
+    parms.CProps.insert("RoamsFreeAt", ReadGameClock() + 1000);  // setze 'enticed time'
+  endif
+  parms.Cprops.insert(PROP_SUMMONED, SUMMON_BY_UNDEF);
+  parms.CProps.insert("exp",0); // Exp löschen für selbstbeschworene Viecher
+
+  Var critter:=CreateNpcFromTemplate(crittertype, x, y, z, parms,statuerealm);
+  if (parms.script <> "enticedanimal")
+    PrintTextAbovePergon(critter, critter, "Du wagst es mich zu wecken? Dafür wirst du leiden!", "", _DEFAULT_TEXT_FONT, 33);
+  else
+    PrintTextAbovePergon(critter, critter, "Zu Befehl Meister");
+  endif
+
+  i:=0;
+
+  repeat
+    i+=1;
+    if (critter)                                                    //merken der Position des Critters
+      statuex:=critter.x;
+      statuey:=critter.y;
+      statuez:=critter.z;
+    endif
+    SleepMS(1000);
+  until (!critter || i>dur);
+
+  if(critter)                                                             //lebt Critter nach abgelaufener Zeit noch?
+    PrintTextAbovePergon(critter,critter, "Ich muss nun gehen!");
+    SleepMS(4000);
+    PlaySoundEffect(critter, 0x2C2);
+    SleepMS(1500);
+    KillMobile(critter, "MagicStatue");                                               //töte Critter
+  endif
+
+  Var newstatue:=CreateItemAtLocationPergon(statuex, statuey, statuez+1, statue,1,statuerealm);   //neue Statue an letzter bekannter Stelle erstellen
+  SetObjProperty(newstatue, "lastuse", ReadGameClock());                              //Benutzung an Statue merken
+  newstatue.movable:=1;
+
+endprogram

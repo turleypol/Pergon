@@ -1,0 +1,88 @@
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD LogScriptInfo - Gibt moeglichst viele Informationen ueber alle laufenden Scripte aus
+//
+//     Author: Shinigami
+//
+//   Modification:
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use file;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_LogScriptInfo()
+  Var all_scripts:=Dictionary;
+  Var npc_scripts:=Dictionary;
+  Var common_list:=Dictionary;
+
+  // Erstmal die beiden Listen fuellen
+  ForEach script in (polcore().all_scripts)
+    all_scripts[script.pid]:=script;
+  EndForEach
+
+  ForEach npc in ListObjectsInBox(0, 0, -128, 6143, 4095, 127)
+    If (npc.isa(POLCLASS_NPC))
+      If (npc.process)
+        npc_scripts[npc.process.pid]:=npc.process;
+      EndIf
+    EndIf
+  EndForEach
+
+  // Nun die Trennung durchfuehren
+  ForEach script in all_scripts
+    If (npc_scripts[script.pid]) // Kommt das Script in beiden Listen vor?
+      common_list[script.pid]:=script;
+
+      all_scripts.erase(script.pid);
+      npc_scripts.erase(script.pid);
+    EndIf
+  EndForEach
+
+  // Und jetzt den ganzen Spass ausgeben
+  FileLog("All_Scripts ("+all_scripts.size()+" Stueck / "+SizeOf(all_scripts)+")");
+  FileLog("");
+  FileLog("Name;Call_Depth;Consec_Cycles;SizeOf(Globals);Instr_Cycles;Num_Globals;PC;PID;Sleep_Cycles;State;Var_Size");
+  ForEach script in all_scripts
+    FileLog(script.name+";"+script.call_depth+";"+script.consec_cycles+";"+script.globals+";"+SizeOf(script.globals)+";"+
+      script.instr_cycles+";"+script.num_globals+";"+script.pc+";"+script.pid+";"+script.sleep_cycles+";"+script.state+";"+script.var_size);
+  EndForEach
+  FileLog("");
+  FileLog("");
+
+  FileLog("NPC_Scripts ("+npc_scripts.size()+" Stueck / "+SizeOf(npc_scripts)+")");
+  FileLog("");
+  FileLog("Name;Call_Depth;Consec_Cycles;SizeOf(Globals);Instr_Cycles;Num_Globals;PC;PID;Sleep_Cycles;State;Var_Size");
+  ForEach script in npc_scripts
+    FileLog(script.name+";"+script.call_depth+";"+script.consec_cycles+";"+SizeOf(script.globals)+";"+script.instr_cycles+";"+
+      script.num_globals+";"+script.pc+";"+script.pid+";"+script.sleep_cycles+";"+script.state+";"+script.var_size);
+  EndForEach
+  FileLog("");
+  FileLog("");
+
+  FileLog("Common ("+common_list.size()+" Stueck / "+SizeOf(common_list)+")");
+  FileLog("");
+  FileLog("Name;Call_Depth;Consec_Cycles;SizeOf(Globals);Instr_Cycles;Num_Globals;PC;PID;Sleep_Cycles;State;Var_Size");
+  ForEach script in common_list
+    FileLog(script.name+";"+script.call_depth+";"+script.consec_cycles+";"+SizeOf(script.globals)+";"+script.instr_cycles+";"+
+      script.num_globals+";"+script.pc+";"+script.pid+";"+script.sleep_cycles+";"+script.state+";"+script.var_size);
+  EndForEach
+  FileLog("");
+  FileLog("");
+EndProgram
+
+//////////////////////////////////////////
+// FileLog - Zeile ins LogFile schreiben
+//////////////////////////////////////////
+
+Function FileLog(line)
+  LogToFile("log/scriptlog.log", line);
+EndFunction

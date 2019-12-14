@@ -1,0 +1,15 @@
+Magie
+- 16 neue Artefakte (flakons)
+- 9 neue Artefaktreags
+- mehr Möglichkeiten in der Magie :)
+- Spellchecker komplett umgebaut
+- Magieumbau auf BaseInt
+- Balancing von Necro vs Cleric
+- Statue&Todesritter auf NPCs des Necros
+- eigene Magische Wände & Tore  werden immer gebannt
+
+- 4 neue Monster
+
+- negative Resis werden jetzt auch angezeigt
+- Vogelfrei Extra Farbe (Reputationsystem FarbHook)
+- 3 Zusätzliche Buttons in der Statusbar zur Definition vom Statabzug, selbe Funktionalität wie die 3 im skillwin

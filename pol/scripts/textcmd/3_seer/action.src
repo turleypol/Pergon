@@ -1,0 +1,16 @@
+//
+// Cause another to perform an action by number
+//
+
+use uo;
+
+Include "include/msgs";
+
+program textcmd_action( who, action )
+    SendSysMessagePergon( who, "Wen wollt Ihr diese Aktion ausführen lassen?" );
+
+    Var performer := Target( who, TGTOPT_NOCHECK_LOS );
+    if (performer)
+        PerformAction( performer, CInt(action));
+    endif
+endprogram

@@ -1,0 +1,82 @@
+/////////////////
+// Bibliotheken
+/////////////////
+
+use os;
+use math;
+use uo;
+
+//////////////////////////////////////////////////
+// Use_SpellBook - Doppelklick auf das Spellbook
+//////////////////////////////////////////////////
+
+
+Program Use_SpellBook(who, spellbook)
+  Var spells:=EnumerateItemsInContainer(spellbook);
+  Var spellbookserial:=DoubleWordPaket(spellbook.serial);
+
+  Var paket:="24"+spellbookserial+"FFFF3C"+
+    WordPaket(spells.size()*19+5)+WordPaket(spells.size());
+
+  spellbookserial:="0048007D"+spellbookserial+"0000";
+
+  Var spellid;
+  ForEach spell in spells
+    If ((0x1f2d<=spell.objtype) And (spell.objtype<=0x1f6c))
+      spellid:=spell.objtype-0x1f2c;
+      If (spellid<8)
+        If (spellid==1)
+          spellid:=7;
+        Else
+          spellid-=1;
+        EndIf
+      EndIf
+    Else
+      // Nur temporaer wegens Testen drinne!!!
+      Case (spell.objtype)
+        0x1160: spellid:=90;
+        0x1161: spellid:=120;
+        0x1162: spellid:=193;
+        0x1163: spellid:=91;
+      EndCase
+    EndIf
+
+    paket+=DoubleWordPaket(spell.serial)+"1F2D0000"+BytePaket(spellid)+spellbookserial;
+  EndForEach
+
+  SysLog(paket);
+  SendPacket(who, paket);
+EndProgram
+
+//////////////////////////////////////
+// BytePaket - Wandelt um in ByteHex
+//////////////////////////////////////
+
+Function BytePaket(byte)
+  Var paket:=Hex(byte);
+  paket:="00"+paket[3, Len(paket)-2];
+
+  Return (paket[Len(paket)-1, 2]);
+EndFunction
+
+//////////////////////////////////////
+// WordPaket - Wandelt um in WordHex
+//////////////////////////////////////
+
+Function WordPaket(word)
+  Var paket:=Hex(word);
+  paket:="0000"+paket[3, Len(paket)-2];
+
+  Return (paket[Len(paket)-3, 4]);
+EndFunction
+
+//////////////////////////////////////////////////
+// DoubleWordPaket - Wandelt um in DoubleWordHex
+//////////////////////////////////////////////////
+
+Function DoubleWordPaket(doubleword)
+  Var paket:=Hex(doubleword);
+  paket:="00000000"+paket[3, Len(paket)-2];
+
+  Return (paket[Len(paket)-7, 8]);
+EndFunction

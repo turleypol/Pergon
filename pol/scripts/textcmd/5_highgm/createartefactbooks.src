@@ -1,0 +1,12 @@
+//use uo;
+
+//Include "include/itemnpc";
+//Include "include/objtype";
+//Include "include/msgs";
+Include ":newinscription:artefactbook";
+
+program textcmd_artefactbook( who )
+    CreateNewBookInBackpack(who, UOBJ_ARTEFACTBOOK_MAGE);
+    CreateNewBookInBackpack(who, UOBJ_ARTEFACTBOOK_CLERIC);
+    CreateNewBookInBackpack(who, UOBJ_ARTEFACTBOOK_NECRO);
+endprogram

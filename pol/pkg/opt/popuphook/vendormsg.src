@@ -1,0 +1,107 @@
+/////////////////////////////////////////////////////////
+//
+// vendormsg - Nachrichten bei Playervendoren hinterlassen/abrufen/löschen
+//             Gestartet durch popupmenu.src
+//
+//     Author: Turley
+//
+//   Modifications:
+//
+/////////////////////////////////////////////////////////
+
+use uo;
+include "include/client";
+include "include/clock";
+include "include/msgs";
+
+Program vendormsg(params);
+  var who, vendor, what;
+  who:=params[1];
+  vendor:=params[2];
+  what:=params[3];
+
+  Case (what)
+    "send":    vendorsend(who, vendor);
+    "receive": vendorreceive(who, vendor);
+    "delete":  vendordelete(who, vendor);
+  EndCase
+EndProgram
+
+///////////////////////////////////////////////
+//  vendorsend - Nachricht hinterlassen
+///////////////////////////////////////////////
+
+Function vendorsend(who, vendor)
+  var msgs:={}, nachricht;
+
+  If (!GetObjProperty(vendor, "#msgs"))
+    SetObjProperty(vendor, "#msgs", 1);
+
+    nachricht:=RequestInputPergon(who, who.backpack, Struct{uc_text:=CAscZ("Welche Nachricht wollen Sie hinterlassen?"), lang:="DEU"},
+                                                     Struct{uc_text:=CAscZ("Wich message do you want to leave?"), lang:="ENU"});
+    If (nachricht)
+      msgs:=GetObjProperty(vendor, "msgs");
+      If (!msgs)
+        msgs:={};
+      EndIf
+      msgs.append({who.name, GetDateTimeStr(0), nachricht});
+      SetObjProperty(vendor, "msgs", msgs);
+
+      SendSysMessagePergon(who, "Ihr habt eine Nachricht hinterlassen.");
+    Else
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+
+    EraseObjProperty(vendor, "#msgs");
+  Else
+    SendSysMessagePergon(who, "Es schreibt bereit jemand eine Nachricht, versuchen Sie es später nochmal.");
+  EndIf
+EndFunction
+
+///////////////////////////////////////////////
+//  vendorreceive - Nachricht abrufen
+///////////////////////////////////////////////
+
+Function vendorreceive(who, vendor)
+  var msgs:={}, i;
+
+  msgs:=GetObjProperty(vendor, "msgs");
+ // print(msgs);
+  If (msgs)
+    For (i:=1; i<=len(msgs); i+=1)
+      SendSysMessagePergon(who, msgs[i][1]+ " hinterlies am "+msgs[i][2]+ ":","", FONT_ITALIC, FONTCOLOR_REDBROWN);
+      SendSysMessagePergon(who, msgs[i][3], msgs[i][3], FONT_ITALIC, FONTCOLOR_REDBROWN);
+    EndFor
+  Else
+    SendSysMessagePergon(who, "Es wurden keine Nachrichten hinterlassen.");
+  EndIf
+EndFunction
+
+///////////////////////////////////////////////
+//  vendordelete - Nachrichten löschen
+///////////////////////////////////////////////
+
+Function vendordelete(who, vendor)
+  var msgs:={};
+
+  If (!GetObjProperty(vendor, "#msgs"))
+    SetObjProperty(vendor, "#msgs", 1);
+
+    msgs:=GetObjProperty(vendor, "msgs");
+    If (msgs)
+      EraseObjProperty(vendor, "msgs");
+
+      If (len(msgs>1))
+        SendSysmessagePergon(who, "Es wurden "+ len(msgs) +" Nachrichten gelöscht.");
+      Else
+        SendSysmessagePergon(who, "Es wurde eine Nachricht gelöscht.");
+      EndIf
+    Else
+     SendSysMessagePergon(who, "Es liegen keine Nachrichten vor.");
+    EndIf
+
+    EraseObjProperty(vendor, "#msgs");
+  Else
+    SendSysMessagePergon(who, "Es wird gerade eine Nachricht hinterlassen.");
+  EndIf
+EndFunction

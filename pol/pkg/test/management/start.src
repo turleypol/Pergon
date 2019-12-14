@@ -1,0 +1,30 @@
+//////////////////////////////////
+//
+//   Management - Start
+//
+//     Author: Shinigami
+//
+//   Modification
+//
+//////////////////////////////////
+
+//////////////
+// Libraries
+//////////////
+
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+//Include "include/pergonutil";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program Management()
+  // DEAKTIVIERT siehe cycle.src
+  //Start_ScriptPergon("cycle");
+EndProgram

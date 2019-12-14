@@ -1,0 +1,49 @@
+// Made By Charles Haustron
+// Raise str, int and dex
+use os;
+use uo;
+use util;
+
+Include "drinkpotion";
+Include "include/tempmod";
+Include "include/modifyskill";
+
+program drink_bless (character, potion)
+if (!checkifcandrink(character))
+        return;
+endif
+    Var potion_strength := get_potion_strength(potion);
+
+
+    if (is_poison(potion))
+        do_poison(character, potion);
+    else
+        Var thestring := cstr(potion_strength) + "d12+4";
+        Var str_mod := RandomDiceRoll( thestring );
+        Var dex_mod := RandomDiceRoll( thestring );
+        Var int_mod := RandomDiceRoll( thestring );
+        empty_bottle (character, potion);
+
+        if (can_stat_mod(character, "dex"))
+                SetDexModPergon(character, GetDexModPergon(character)+dex_mod);
+                do_temp_mod(character, "dex", dex_mod, cint(90));
+                allow_stat_mod(character, "dex",  cint(90));
+        endif
+
+        if (can_stat_mod(character, "int"))
+                SetIntModPergon(character, GetIntModPergon(character)+int_mod);
+                do_temp_mod(character, "int", int_mod, cint(90));
+                allow_stat_mod(character, "int",  cint(90));
+        endif
+
+        if (can_stat_mod(character, "str"))
+                SetStrModPergon(character, GetStrModPergon(character)+str_mod);
+                do_temp_mod(character, "str", str_mod, cint(90));
+                allow_stat_mod(character, "str",  cint(90));
+        endif
+
+		detach();
+		sleep(10);
+		candrink(character);
+    endif
+endprogram

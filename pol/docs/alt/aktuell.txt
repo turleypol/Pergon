@@ -1,0 +1,75 @@
+History:
+  2000/06/16 - Neue SkillCap-Version aktiviert (cutted vornehmlich kleine Skills)
+               Skillanstiegsanzeige aktiviert
+               EigenstÑndiges StatCap-Pkg deaktiviert
+               Config's rÅbergeschoben
+  2000/06/17 - ChrDeath... BroadCast beim Tod / Das Pferd unter einem drunter Åberlebt
+               Mounting Åberarbeitet
+               Bug beim PackHorse entfernt (wenn man schon auf einem Pferd sitzt)
+               Bug bei Carthographie erstmal "verhindert" (beim SkillWin hat der net
+                 nachgeschaut, ob leere Karte da is)
+               textcmd/player/copybook fÅr blkhawk gebastelt
+               include/riding.inc, selbiges eingebunden in
+                 /ai/tamed.src
+                 /misc/dblclickself.src
+                 /misc/chrdeath.src
+  2000/06/18 - Recall-Cast auch vom Buch aus
+               SpawnNet 096 auf Barney... ma schaun
+               Poinsoncontrolscripte
+  2000/06/19 - LogOffTest auf 7 sekunden gesetzt
+               Cartography gefixt
+               Stealing eingebaut
+               Necromancer.. CheckSkillPergon hat noch gefehlt
+               Tinkering... die gebauten Items sind jetzt deutsch
+               Barber... sollte nun funzen
+  2000/06/20 - UnterstÅtzung fÅr den GameFinder
+  2000/06/21 - Grillen *g*
+  2000/06/22 - NoneClassSkills zu normalen Skills degradiert
+               GuildMaster hinsichtlich Berufswechsel gefixt
+
+  2000/06/26 - MessageOfTheDay erweitert (nur 1x anzeigen)
+               ShutDownMessage eingebaut
+               Getamte Viechers beim Ausloggen gefixt
+               Player-TextCommando Msg ueberarbeitet
+               GM-TextCommando Goto ueberarbeitet
+               WWW-Online ueberarbeitet
+               Player-TextCommando Online ueberarbeitet
+               Stealing-Skill... Fehler: "Alles bestehlbar" entfernt
+               Spezielle énderung zum Taming-Skill-Test (skilladv.src)
+               Angefangen, den Healer umzuschreiben
+  2000/07/14 - PlayerMerchant - "aufsteigen" & "absteigen" eingebaut
+               Taming... die Viechers werden aus dem SpawnNet rausgenommen
+  2000/07/20 - /pkg/opt/guildstone - aufgenommen, muss noch fertsch uebersetzt werden
+               RuneBook -> beim SkillVerfehlen wird Rune net gelîscht
+                           Gate funzt jetzt wie Rune
+               /pkg/opt/help - eingebaut, aber noch nicht angepasst, ma schaun
+  2000/07/21 - Angefangen mit Configurierbarkeit der TextCommandos
+  2000/07/22 - KillPcs werden jetzt bei Bedarf mit Vetement eingekleidet
+               2 neue TextCMDs: itemsample & nuke
+  2000/08/01 - pkg/opt/zuluitems/cannon - eingebaut
+
+  2000/08/17 - Crafting & Lightning kombiniert...
+
+--------------------------------
+
+Ueberarbeitet
+  2000/08/04 - pkg/std/magic (*.src & *.inc)
+  2000/08/04 - pkg/std/spells (angefangen)
+  2000/08/05 - TextCMD_AddGoLoc
+
+--------------------------------
+
+ToDo:
+  Wieso macht der beim Tinkern englische Bezeichnungen ?
+  Barber - fixen
+  Daves_Healer sollen kleinkram verkaufen kînnen (nicht kaufen) und
+    Healing trainieren
+  ChrDeath - Ghost -> Skillverlust (au·er Arena) ?
+* ChrDeath... aufgesattelt
+  SpawnNet... fixen
+  GUARDS... rewrite
+  BÅchers... fixen
+  Packviechers beim Stablemaster
+  Konvertierung der noch fehlenden Human-NPC
+  Getamte Viechers... rewrite
+  Berufsgilden

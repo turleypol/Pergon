@@ -1,0 +1,8 @@
+use os;
+use uo;
+
+Include "include/msgs";
+
+program textcmd_rpm( who )
+    SendSysMessagePergon( who, "RPM: " + system_rpm() );
+endprogram

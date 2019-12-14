@@ -1,0 +1,30 @@
+////////////////////////////////////////////////////////////////
+//
+//   StaticsCheckExport - Calls StaticsCheck and StaticsExport
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonutil";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_StaticsCheckExport(who, params)
+  Run_Script_to_CompletionPergon("textcmd/6_gl/staticscheck", {who, params});
+  Run_Script_to_CompletionPergon("textcmd/8_test/staticsexport", {who, params});
+EndProgram

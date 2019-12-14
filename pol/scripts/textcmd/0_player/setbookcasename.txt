@@ -1,0 +1,6 @@
+<h3 id="setbookcasename">setbookcasename</h3>
+
+<h4>Parameter: <kbd>&lt;Name&gt;</kbd></h4>
+
+<p>Falls der Spieler ein Bibliothekar oder Seer ist, kann er mit diesem
+Befehl ein Bücherregal umbenennen.</p>

@@ -1,0 +1,44 @@
+////////////////////////////////////////////////////
+// TextCMD GetGlobal - globale Property auslesen
+//
+// Author: Shinigami
+
+use os;
+use uo;
+include "include/modifyskill";
+include "include/msgs";
+
+Program TextCMD_GetGlobal(who, propname)
+  // Ist der Zugriff auf die Properties gestattet?
+  If (IGNORE_GLOBAL_PROPS[" "+propname+" "])
+    SendSysMessagePergon(who,
+      "Properties dieser Art dürfen nicht eingesehen werden!"
+    );
+    return;
+  EndIf
+
+  var value := GetGlobalProperty(propname);
+  If (value == error)
+    SendSysMessagePergon(who, "Die globale Property "+propname+" gibt es nicht!");
+    return;
+  EndIf
+
+  If (propname == "RawTestSammler")
+    var keys := value.keys();
+    ForEach key in keys
+      SendSysMessagePergon(who, key+" org="+value[key].org+" new="+value[key].new);
+    EndForEach
+  Else
+    If (TypeOfInt(value) == OT_ARRAY)
+      SendSysMessagePergon(who, "Globale Property "+propname+":");
+      var count := 1;
+      ForEach val in (value)
+        SleepMs(2);
+        SendSysMessagePergon(who, count+": "+val);
+        count += 1;
+      EndForEach
+    Else
+      SendSysMessagePergon(who, "Globale Property "+propname+": "+value);
+    EndIf
+  EndIf
+EndProgram

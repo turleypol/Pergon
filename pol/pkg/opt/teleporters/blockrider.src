@@ -1,0 +1,66 @@
+///////////////////////////////////////////////////////////////////////////
+// blockrider -- Reiter nicht durchlassen
+
+include "include/animal";
+include "include/client";
+include "include/logutil";
+include "include/msgs";
+include "include/pergonutil"; // AutoJail
+include "include/resources";
+include "common";
+use os;
+use uo;
+
+Const PUNISH_PUSHOFF  := 1;
+Const PUNISH_AUTOJAIL := 2;
+Const JAIL_TIME       := 10;
+
+Program BlockRider(p)
+    If (!GetEquipmentByLayer(p.who, LAYER_MOUNT))
+        return;
+    EndIf
+
+    // im strikten Modus?
+    If (!p.item.getprop("strict"))
+        // da sieht man nicht, ob sie ein Reittier haben
+        If (!IsElfOrHuman(p.who))
+            return;
+        EndIf
+    EndIf
+
+    PrintTextAbovePergon(p.who, p.who,
+        p.who.name+" ist unfähig, das Reittier an der rechten "+
+        "Position abzustellen!",
+        p.who.name+" is unable to park the mount in the right place."
+    );
+    
+    var punish := p.item.getprop("punish");
+    Case (punish)
+    PUNISH_PUSHOFF: // mehrere Felder zurueck und vom Tier schubsen
+        StepBack(p, 4);
+        PrintTextAbovePergon(p.who, p.who, "*patsch*", "*slap*");
+        PetDismount(p.who, p.who);
+
+    PUNISH_AUTOJAIL: // ab in den Knast
+        // manche Leute schaffen es, gleich mehrfach einzureiten
+        var oldfrozen := p.who.frozen;
+        p.who.frozen := 1;
+        syslog(
+            "STRAFE: "+CharInfoStr(p.who)+" wurde wegen Gebaeudereitens "+
+            "automatisch für "+JAIL_TIME+" Minuten inhaftiert"
+        );
+        AutoJail(p.who, JAIL_TIME);
+        Sleep(3);
+        If (p.who.frozen)
+            p.who.frozen := oldfrozen;
+        EndIf
+        SendSysMessagePergon(p.who,
+            "Nun habt Ihr Zeit, darüber nachzudenken.",
+            "Now you've time to think about it."
+        );
+    default:
+        StepBack(p);
+    EndCase
+
+    return;
+EndProgram

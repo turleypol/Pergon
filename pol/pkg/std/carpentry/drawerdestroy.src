@@ -1,0 +1,9 @@
+use uo;
+
+Program DrawerDestroy(who, drawer)
+    DestroyItem(drawer);
+    return;
+
+    // Compiler ruhigstellen
+    who := who;
+EndProgram

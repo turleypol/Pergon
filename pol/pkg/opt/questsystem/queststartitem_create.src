@@ -1,0 +1,22 @@
+/////////////////////////////////////////////////////////
+// queststartitem_create
+// WÃhlt zufällig ein Quest aus
+// Setzt dementsprechen Cprop, Name, Grafik
+//
+// Author: Turley
+
+/////////////////////////////////////////////////////////
+// Modifications:
+// 23.04.08 Turley: Init
+
+use cfgfile;
+use uo;
+
+Program queststartitem_create()
+  // Var cfg:=ReadConfigFile(":questsystem:quests");
+  // Itemquest zufällig wählen
+  // item.graphic:=;
+  // SetName(item,"");
+  // item.setprop("quest",Nummer);
+  return 1;
+EndProgram

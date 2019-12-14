@@ -1,0 +1,158 @@
+//
+// barkeeper.src - versuch einer barkeeper-ai
+//
+//
+// version: alphalpha 0.001
+
+use os;
+use uo;
+use npc;
+
+Include "include/names";
+Include "include/utility";
+Include "include/eventid";
+Include "include/animal";
+Include "include/modifyskill";
+
+Var me := Self();
+
+EnableEvents(SYSEVENT_SPEECH,15);
+
+SetName(me,"Bernhard, der Barkeeper");
+
+// setzt bounding-box fuer "Zum besoffenen Avatar"
+// xxxxxxxx
+//  xx  xx
+MakeBoundingBox("2458 397 2464 403 2465 397 2471 411 2472 397 2480 403 2481 397 2487 411 2488 397 2495 403");
+// wow, ein ganz schoener brocken...
+
+Var naechster_schritt:=ReadGameClock()+5;
+
+// the array that can be initialized with array_init(length) and read with array_read(m,n)
+Var ere:=struct;
+ere.+length;
+ere.+d:=array();
+
+while (1)
+  Var ev := Wait_for_EventLogging( 10 );
+  if (ev)
+    case (ev.type)
+      SYSEVENT_SPEECH:
+        case (ev.text)
+          "dreh dich her":
+            SayPergon(ev.source, "Ich dreh mich in Richtung "+ev.source.name);
+            TurnToward(ev.source);
+          "komm her":
+            SayPergon(ev.source, "Ich komme zu "+ev.source.name);
+            walk_to_him(ev.source);
+          "super komm her":
+            SayPergon(ev.source, "Ich komm super her");
+            super_walk_to_him(ev.source);
+          "super komm position":
+            Var warX:=ev.source.x,warY:=ev.source.y;
+            SayPergon(ev.source, "Gleich lauf ich los zu "+warX+", "+warY);
+            Var i:=3;
+            while (i>0)
+              SayPergon(ev.source, i);
+              sleep(1);
+              i:=i-1;
+            endwhile
+            super_walk_to_it(ev.source, warX,warY);
+          "bring dich bitte um":
+            SayPergon(ev.source, "Okay...tschüs Welt...");
+            sleep(1);
+            RevokePrivilege( me, "invul" );
+            SetObjProperty(me, "guardkill", 1);
+            KillMobile(me, "barkeeper");
+          "mach matrix":
+            SayPergon(ev.source, "Ok");
+            matrix_make(ev.source);
+          "mach array":
+            SayPergon(ev.source, "ok");
+            array_init(100);
+            SayPergon(ev.source, array_read(10,1));
+            SayPergon(ev.source, array_read(100,100));
+        endcase
+    endcase
+  endif
+endwhile
+
+function nahdranObjekt(zielperson)
+  if (Distance(me,zielperson)<=1)
+    return 1;
+  else
+    return 0;
+  endif
+endfunction
+
+function nahdranOrt(x,y)
+  if (me.x==x and me.y==y)
+    return 1;
+  else
+    return 0;
+  endif
+endfunction
+
+function walk_to_him(zielperson)
+  TurnToward(zielperson);
+  Var zuSagen:="Jetzt bin ich bei "+zielperson.name+" angekommen";
+  repeat
+    WalkToward(zielperson);
+  until (nahdranObjekt(zielperson));
+  SayPergon(zielperson, zuSagen);
+endfunction
+
+function super_walk_to_him(zielperson)
+  repeat
+    WalkToward(zielperson);
+  until(nahdranObjekt(zielperson));
+  SayPergon(zielperson, "Bin da, wer noch?");
+endfunction
+
+function super_walk_to_it(who, x,y)
+  TurnTowardLocation(x,y);
+  while (!nahdranOrt(x,y))
+    WalkTowardLocation(x,y);
+  endwhile
+  SayPergon(who, "Angekommen!");
+endfunction
+
+function matrix_make(who)
+  SayPergon(who, "function begonnen");
+  Var mata:=array;
+  Var i;
+  Var j;
+  Var k:=0;
+  SayPergon(who, "erstes for-gebilde");
+  for (i:=0;i<=10;i+=1)
+    for (j:=1;j<=11;j+=1)
+      mata[(i*11)+j]:=k;
+      k+=1;
+    endfor
+  endfor
+  SayPergon(who, "ende erstes for");
+  for (i:=0;i<=10;i+=1)
+    j*=11;
+    SayPergon(who, mata[j+1]+" "+mata[j+2]+" "+mata[j+3]+" "+mata[j+4]+" "+mata[j+5]+" "+mata[j+6]+" "+mata[j+7]+" "+mata[j+8]+" "+mata[j+9]+" "+mata[j+10]+" "+mata[j+11]);
+  endfor
+  SayPergon(who, "länge: "+len(mata));
+  SayPergon(who, mata[1]);
+  SayPergon(who, "matrix dingelchen fertig");
+endfunction
+
+// initializes array ere with length x length (square)
+function array_init(length)
+ere.length:=length;
+Var i,j;
+for (i:=1;i<=length;i+=1)
+  for (j:=1;j<=length;j+=1)
+    ere.d[((i-1)*ere.length)+j]:=((i-1)*ere.length)+j;
+  endfor
+endfor
+endfunction
+
+// reads ere[m,n] in a unidimensional array ere[] <g>
+// oh, it is line m and column y
+function array_read(m,n)
+return ere.d[((m-1)*ere.length)+n];
+endfunction

@@ -1,0 +1,48 @@
+///////////////////////////////////////////////////////////////////////////
+// blockfrost
+//
+// Prueft, ob Covetous-Eingangs-Frage korrekt beantwortet
+//
+// Soll Ueber-Frage-Stein-Teleporten verhindern, daher
+// grossflaechig dahinter verteilen
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.1  2008/08/23 21:14:55  mehdorn
+// + (unkonfigurierter) I-Stein ist nun auffaellig rot
+// - Template fuer Walk-On-Scripte namens template.src_
+// - einige Walk-On-Scripte erstellt
+//   - bis auf Frostkram sogar getestet
+// - Setupscript fuer Arenateleporter
+// - neue Konstanten eingefuehrt
+// - Goetterspendescript erzeugt nun bereits neuen I-Stein
+// + Bugfixes, Tippfehler, teilweise englische Texte eingebaut
+//
+
+include "include/msgs";
+include "common";
+use uo;
+
+Program BlockFrost(p)
+    If (p.who.isa(POLCLASS_NPC) or p.cmd or p.who.dead)
+        return;
+    EndIf
+
+    If (!GetObjProperty(p.who, PROP_FROST_DUNG))
+        // Rauswerfen bis ans Covetous-Ende
+        MoveObjectToLocation(p.who,
+            2545, 856, 0, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+        );
+        PrintTextAbovePrivatePergon(
+            p.who, "Versucht es anderweitig!", "Try another way.", p.who
+        );
+        PlaySoundEffect(p.who, SFX_1F9);
+
+        syslog(
+            "HINWEIS: "+CharInfoStr(p.who, COORDS_REALM)+" wurde um "+
+            ReadGameClock()+" aus dem Covetous geworfen "+
+            "(unerlaubter Zutritt)"
+        );
+    EndIf
+EndProgram

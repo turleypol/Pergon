@@ -1,0 +1,25 @@
+///////////////////////////////////////////////////////////////////////////////////////////////
+//
+//  Artefaktrollenscript
+//
+//
+//    2005-07-10  -  Seppel
+//
+///////////////////////////////////////////////////////////////////////////////////////////////
+
+use uo;
+
+Include "artefactbook";
+Include ":newspells:magicpergon";
+
+Program Click_ArtefactScroll(who, artefactScroll)
+
+  Var artefactBook:= TargetThing(who);
+  If(who.serial == GetObjProperty(artefactBook, "owner"))
+    AddArtefactToBook(who, artefactBook, artefactScroll);
+  Else
+    SendSysMessagePergon(who, "Das ist nicht euer Buch!", "This is not your book!");
+  EndIF
+
+
+EndProgram

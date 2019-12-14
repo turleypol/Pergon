@@ -1,0 +1,25 @@
+///////////////////////////////////////////////////////////////////////////
+// logonwarning -- Ueber Adressprobleme beim Login benachrichtigen
+
+use uo;
+include "common";
+include "include/server";
+
+Program logonwarning(who)
+    var mail := GetMailAddress(who, MAIL_ACCEPT_INVALID);
+    If (mail == error and GetGlobalProperty(BAUSERVER))
+        // Bauserver ist normalerweise nicht mit Adressen bestueckt
+        return;
+    EndIf
+
+    If (IsInvalidMailAddress(mail))
+        var oldmail := MailAddressOldFromInvalid(mail);
+        SendStringAsTipWindow(who,
+            "Das Senden einer E-Mail an deine Adresse <"+oldmail+
+            "> ist fehlgeschlagen. Bitte wende dich an den Staff "+
+            "(per Page oder E-Mail an <"+MADDR_STAFF+">), um das "+
+            "Problem zu klaeren bzw. eine neue Adresse eintragen "+
+            "zu lassen."
+        );
+    EndIf
+EndProgram

@@ -1,0 +1,122 @@
+/////////////////////////////////////////////////////////////////////
+// TextCMD ThreatMsg
+// Schickt eine Droh-Nachricht an einen Spieler, wird speziell geloggt
+//
+//     Usage: .threatmsg [playername]
+//              Sends a Message to a Player. If Player is not given
+//              a Menu will open and prompt you to choose one.
+//
+//     based on Msg - TextCommand by Racalac
+//
+//     Author: Shinigami
+
+/////////////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+// Revision 1.12  2009/10/10 11:05:17  mehdorn
+// - unnoetige Includes entfernt
+//
+// Revision 1.11  2008/09/28 12:40:44  mehdorn
+// - Bug behoben: .msg und .threatmsg wieder unterschiedliche Farben
+// - Farben geaendert
+//
+// Revision 1.10  2008/09/27 14:07:17  mehdorn
+// - zuschaltbare Klangbenachrichtigungen
+//
+// Revision 1.9  2008/09/03 02:38:35  mehdorn
+// - onlinesearch so umgebaut, dass Hausschild ohne globale Variablen
+//   zugreifen kann
+//   - andere Scripte entsprechend angepasst
+// - IsInHouse zentralisiert in signcontrol.inc zwecks Verwendbarkeit
+//   ausserhalb
+//
+// Revision 1.8  2008/08/04 04:27:50  mehdorn
+// - einige serverrelevante Konstanten aus modifyskill nach server verschoben
+// - fast alle Textcmds aus 0_player umgestellt
+// - diverse Includes dabei angepasst
+//
+// Revision 1.7  2008/06/04 11:45:34  mehdorn
+// Logging zum Finden des Beweisbugs eingebaut
+//
+//
+// 20.12.05 Fox:
+// Drohungen werden nun auch als CProp für Beweise gespeichert
+//
+// 09.12.05 Fox:
+// threatmsg ist eine Kopie von msg,
+// Erweitert um rote Schrift und loggen in lootitems.log
+//
+
+/////////////
+// Bibliotheken&Includes
+/////////////
+include "include/msgs";
+include "include/onlinesearch";
+include "include/pergonstatistik";
+include "include/quests";
+include "include/server";
+use file;
+use os;
+use uo;
+
+//////////////////////
+// Gump-Definitionen
+//////////////////////
+
+var layout := {
+  "page 0",                       // Seite 0 (Basisseite)
+  "nodispose",
+  "resizepic 10 10 2620 310 590",
+  "gumppic 30 40 2621",
+  "checkertrans 15 16 300 578",
+
+  "text 30 19 40 0",
+  "text 234 19 40 1"
+};
+
+var data := {"Spielername", "Nachricht"};
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_ThreatMsg(who, eingabe)
+  If (who.squelched)
+    SendSysMessagePergon(who, "Ihr seit verstummt.", "");
+    return;
+  EndIf
+
+  If (eingabe)
+    var empfaenger := SearchForOnlineCharacter(who, eingabe);
+    If (!empfaenger)
+      SendSysMessagePergon(who,
+        eingabe+" konnte nicht gefunden werden.",
+        "Unable to find "+eingabe+"."
+      );
+      return;
+    EndIf
+
+    SendMessagePlayer(who, empfaenger, IS_THREAT);
+
+  Else
+    // Liste mit {char.name, char}
+    var playerinfo := FillInOnlineCharacterInfo(
+      layout, data, who, DONT_LIST_ME
+    );
+    If (!playerinfo)
+      SendSysMessagePergon(who,
+        "Es ist gerade kein weiterer Character online.",
+        "No other character is online."
+      );
+      return;
+    EndIf
+
+    var nummer := SendDialogGump(who, layout, data)[0];
+    If (!nummer)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+
+    SendMessagePlayer(who, playerinfo[nummer][2], IS_THREAT);
+  EndIf
+EndProgram

@@ -1,0 +1,75 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file magicuntrap.src
+//
+// implements spell 22 <Magic Untrap> - "Entschaerfen"
+//
+// magically untraps spelltarget
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 27.06.2003 Sebsatian 'Bihinos' Giese - ueberarbeitet
+//
+///////////////////////////////////////////////////////////////////////////
+
+include "../magicpergon";
+include ":traps:traps";
+include "include/poison";
+use util;
+
+Program cast_magicuntrap(params)
+  var caster;
+  var caston;
+  var power;
+
+  If (params[1] == "#SCROLL")
+    caster := params[2];
+    power := params[3];
+    caston := TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power := GetCastPowerPergon(caster, SPELLID_COMMON_MAGICUNTRAP);
+    caston := TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  If (Distance(caster, caston) > 2) // check if caster is close enough
+    SendSysMessagePergon(caster,
+      "Ihr müsst schon etwas näher heran, um die Falle "+
+      "entschärfen zu können",
+      "You have to be somewhat closer to be able to disarm a trap"
+    );
+    return;
+  EndIf
+
+  // check if spelltarget is trapped
+  If (!GetObjProperty(caston, "trap_strength"))
+    SendSysMessagePergon(caster,
+      "Das ist nicht mit einer Falle versehen", "There is no trap here"
+    );
+    return;
+  EndIf
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  // get trap's skill
+  var trapskill := CInt(GetObjProperty(caston, "buildersskill") * 2/3);
+  // get caster's skill
+  var skill := CInt(power * 2/5);
+
+  // (skill has to be within range of +/- 20 of trapskill)
+  If (skill - trapskill + 20 >= RandomInt(40) + 1)
+    PlaySoundEffect(caster, SFX_SPELL_MAGIC_UNTRAP);
+    // call removal from traps.inc
+    UnTrapSuccess(caster, caston);
+  Else // failure
+    // call failure from traps.inc
+    UnTrapFail(caster);
+  EndIf
+EndProgram

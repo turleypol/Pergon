@@ -1,0 +1,74 @@
+//**************************************************************************************************
+// Script file flamestrike.src
+//
+//    implements spell 109 <Flame Strike> - "Flammenschlag"
+//
+//	fires flamestrike on spelltarget - deals more fire damage
+//		 [ Reflected / Resisted (Elemental - Fire) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 30.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use vitals;
+
+Include "../magicpergon";
+Include "../resistance";
+Include "../spellattack";
+Include "include/packets";
+
+program cast_flamestrike (params)
+
+   Var caster;
+   Var caston;
+   Var spelltarget;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldamage
+   Var spell:=  FindConfigElem(spells, SPELLID_MAGE_FLAMESTRIKE);
+   Var resist;
+   Var dmg:=    spell.primary;
+   Var mindmg:= spell.primarymin;
+   Var maxdmg:= spell.primarymax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+      send_attack(caston, caster, 109);
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_MAGE_FLAMESTRIKE);
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+																	// get spelltarget -> possible spell reflection
+   spelltarget:= ReflectSpell(caster, caston, dmg, 1, FX_EXPLODE_3, 10, 10, 0, SFX_SPELL_FLAME_STRIKE);
+
+   if (spelltarget)
+      resist:= 1 - CDbl(GetResistance(spelltarget, "fire"));	// get fire resistance of spelltarget
+      dmg:= CInt(power*resist*dmg/100.0);								// calc and alter spell damage
+      if (mindmg and mindmg > dmg)
+         dmg:= mindmg;
+      elseif (maxdmg and maxdmg < dmg)
+         dmg:= maxdmg;
+      endif
+      ApplyRawDamagePergon(spelltarget, dmg);								// apply damage to spelltarget
+   endif
+
+endprogram

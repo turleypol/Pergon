@@ -1,0 +1,24 @@
+Use uo;
+use os;
+
+Include "include/msgs";
+
+Program TextCMD_SetScript(who, script)
+  SendSysMessagePergon(who, "Wählt ein Object!");
+
+  Var object:=Target(who);
+  If (object.isa(POLCLASS_NPC))
+    object.script:=script;
+    RestartScript(object);
+
+    SendSysMessagePergon(who, "NPC wurde mit dem Script '"+object.script+"' restartet.");
+   //Logging
+   SysLog( "GMCMD: " + who.acctname +":" + who.name + "(" + who.x + " " + who.y + " " + who.z + ")" + " hat " + object.name + " mit script " + object.script + " gerestarted " );
+  ElseIf (object.isa(POLCLASS_ITEM))
+    object.usescript:=script;
+
+    SendSysMessagePergon(who, "Item benutzt jetzt das Script '"+object.usescript+".");
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

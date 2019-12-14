@@ -1,0 +1,11 @@
+<h3 id="create">create</h3>
+
+<h4>Parameter: keiner oder <kbd>&lt;ObjType/Name&gt; (&lt;Anzahl&gt;
+(&lt;Farbe&gt;))</kbd></h4>
+
+<p>Erzeugt über die Anzahl bis zu 500 Objekte des angegebenen Typs in
+der gewählten Farbe an der eigenen Position. Ohne Angabe öffnet
+sich ein Auswahlmenü. Die Items werden vom Löschscript
+erfaßt. <strong>Hinweis:</strong>Wegen Mißbrauch muß man
+derzeit außerdem High-GM sein. Ausnahme: Seer dürfen
+&bdquo;gateoflife&rdquo; aufstellen.</p>

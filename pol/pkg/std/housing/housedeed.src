@@ -1,0 +1,522 @@
+/*
+ *  UseScript für einen Bauplan zum Hausbau durch einen berechtigten GM
+ 
+ FIXME:
+ Kristall zwar noch ungenutzt, aber kann man ja schonmal hier vorsehen (was auch immer da für nen Material genommen werden soll
+ */
+
+include "include/msgs";
+include "include/resources";
+
+///////////////
+// Konstanten
+///////////////
+Const UOBJ_BRASS_SIGN := 0x0bd2;
+Const UOBJ_WOOD_SIGN  := 0x0bd0;
+Const UOBJ_TENT_CHEST := 0x0e43;
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+var barren;
+var bretter;
+var granit;
+var kristall;
+var leder;
+var lehm;
+var marmor;
+var sandstein;
+var staemme;
+var stroh;
+var tuecher;
+
+// Buttons für die Positionsbestimmung
+Enum Buttons
+  BTN_OKAY := 10,
+  BTN_CANCEL,
+  BTN_XUP,
+  BTN_XDOWN,
+  BTN_YUP,
+  BTN_YDOWN
+EndEnum
+
+Program UseHouseDeed(who, deed)
+  
+  If (!AllowedToHouse(who))
+    ShowMaterials(who, deed);
+    return;
+  EndIf
+  
+  SendSysMessagePergon(who, "Wählt den zukünftigen Eigentümer des Hauses oder den Bauplan für Materialinformationen!");
+  var owner := Target(who, TGTOPT_NOCHECK_LOS);
+  If (!owner)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+  
+  If (!owner.isa(POLCLASS_MOBILE) || owner.isa(POLCLASS_NPC))
+    If (owner.serial == deed.serial)
+      ShowMaterials(who, deed);
+    Else
+      SendSysMessagePergon(who, "Ihr müsst einen Spieler oder den Bauplan auswählen!");
+    EndIf
+    return;
+  EndIf
+  
+  var itemdesc := ReadConfigFile("::itemdesc");
+  If (!itemdesc)
+    SendSysMessagePergon(who, "Es ist ein Fehler aufgetreten: "+itemdesc.errortext);
+    return;
+  EndIf
+  
+  // Wenn das schief geht, dann sollte der Bauplan gar nicht existieren
+  var deeddesc := itemdesc[deed.objtype];
+  
+  If (PlaceNoHouse(who))
+    SendSysMessagePergon(who, "Hinweis: In dieser Region darf nicht gebaut werden!", "", _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE);
+    Sleep(2);
+  EndIf
+  
+  // Sind alle Materialien vorhanden?
+  If (!GetAllMaterial(who, owner, deed, deeddesc))
+    return;
+  EndIf
+  
+  SendSysMessagePergon(who, "Wählt den Platz für das Gebäude aus!");
+  var place := TargetMultiPlacement(who, deeddesc.houseobjtype, CRMULTI_IGNORE_ALL);
+  If (!place)
+    SendSysMessageTwice(who, owner, struct{ger := "Abbruch", eng := "Abort"});
+    return;
+  EndIf
+  
+  var ret, house;
+  Repeat
+    house := CreateMultiAtLocation(place.x, place.y, place.z+1, deeddesc.houseobjtype, CRMULTI_IGNORE_ALL, who.realm);
+    If (!house)
+      SendSysMessagePergon(who, "Das Haus kann an dieser Stelle nicht gebaut werden!");
+    EndIf
+    ret := SendDialogGump(who, getLayout(), getData(place.x, place.y), 150, 150);
+    If (ret[BTN_XUP])
+      place.x += 1;
+    ElseIf (ret[BTN_XDOWN])
+      place.x -= 1;
+    ElseIf (ret[BTN_YUP])
+      place.y += 1;
+    ElseIf (ret[BTN_YDOWN])
+      place.y -= 1;
+    EndIf
+    DestroyMulti(house);
+  Until (ret[BTN_OKAY] || ret[BTN_CANCEL]);
+  
+  If (ret[BTN_CANCEL])
+    SendSysMessageTwice(who, owner, struct{ger := "Abbruch", eng := "Abort"});
+    return;
+  EndIf
+
+  If (HausBauen(who, owner, deed, deeddesc, place)) // Haus bauen
+    DestroyAllMaterial(deeddesc);
+    SendSysMessageTwice(who, owner, "Das Haus wurde gebaut.");
+  EndIf
+EndProgram
+
+// Auswahl eines Containers, in dem sich die Baumaterialien befinden
+Function GetAllMaterial(who, owner, deed, deeddesc)
+  If (!(deeddesc.barren || deeddesc.bretter || deeddesc.granit || deeddesc.kristall || deeddesc.leder || deeddesc.lehm || deeddesc.marmor ||
+      deeddesc.sandstein || deeddesc.staemme || deeddesc.stroh || deeddesc.tuecher) && !deeddesc.name["Leerer"]
+    )
+    SendSysMessagePergon(who, "Da hat jemand beim Bauplan gepfuscht!");
+    SysLog("FEHLER: Bauplan "+LHex(deed.objtype)+" fehlen Material-Eintraege");
+    return 0;
+  EndIf
+
+  If (who.serial == owner.serial)
+    return 1;
+  EndIf
+  
+  var tgt, container := {};
+  SendSysMessageTwice(who, owner, owner.name+" wählt nun die Behälter mit den Materialien", "Wählt die Behälter mit den Materialien!\n(Fertig = Esc)");
+  While (1)
+    tgt := Target(owner);
+    If (!tgt)
+      break;
+    EndIf
+    
+    If (tgt.isa(POLCLASS_MOBILE))
+      If (tgt.serial != owner.serial)
+        If (!tgt.npctemplate["Pack"])
+          SendSysMessageTwice(who, owner, "Das ist kein Packtier!");
+          continue;
+        ElseIf (!tgt.master || tgt.master.serial != owner.serial)
+          SendSysMessageTwice(who, owner, owner.name+" hat ein Packtier gewählt, welches nicht ihm gehört", "Das ist nicht euer Tier!");
+          continue;
+        EndIf
+      EndIf
+      tgt := tgt.backpack;
+    EndIf
+    If (tgt.isa(POLCLASS_CONTAINER))
+      If (!ReserveItem(tgt))
+        SendSysMessageTwice(who, owner, "Der gewählte Behälter ist bereits in Benutzung!");
+        continue;
+      ElseIf (Distance(owner, tgt) > 2)
+        SendSysMessageTwice(who, owner, "Der gewählte Behälter ist zu weit entfernt!");
+        continue;
+      ElseIf (tgt in container)
+        SendSysMessageTwice(who, owner, "Der gewählte Behälter ist bereits gespeichert!");
+        continue;
+      EndIf
+    Else
+      SendSysMessageTwice(who, owner, owner.name+" hat keinen gültigen Behälter gewählt", "Ihr müsst einen gültigen Behälter auswählen!");
+      continue;
+    EndIf
+    container.append(tgt);
+    SendSysMessageTwice(who, owner, owner.name+" hat "+container.size()+" Behälter ausgewählt", container.size()+". Behälter gespeichert\n(Fertig = Esc)");
+  EndWhile
+  
+  If (!container.size())
+    SendSysMessageTwice(who, owner, struct{ger := "Abbruch", eng := "Abort"});
+    return;
+  EndIf
+
+  If (deeddesc.barren)
+    barren := GetMaterial(container, GetUobjMetalle(), deeddesc.barren);
+    If (!barren)
+      SendSysMessageTwice(who, owner, owner.name+" hat nicht genügend Barren...", "Ihr habt nicht genügend Barren, ihr benötigt "+deeddesc.barren);
+      return;
+    EndIf
+  EndIf
+
+  If (deeddesc.bretter)
+    bretter := GetMaterial(container, GetUobjBretter(), deeddesc.bretter);
+    If (!bretter)
+      SendSysMessageTwice(who, owner, owner.name+" hat nicht genügend Bretter...", "Ihr habt nicht genügend Bretter, ihr benötigt "+deeddesc.bretter);
+      return;
+    EndIf
+  EndIf
+
+  If (deeddesc.granit)
+    granit := GetMaterial(container, {UOBJ_GRANITSTONE}, deeddesc.granit);
+    If (!granit)
+      SendSysMessageTwice(who, owner, owner.name+" hat nicht genügend Granit...", "Ihr habt nicht genügend Granit, ihr benötigt "+deeddesc.granit);
+      return;
+    EndIf
+  EndIf
+
+  /* TODO: Kristallhäuser und Kristall als Baumaterial einführen
+  If (deeddesc.kristall)
+    kristall := GetMaterial(container, {UOBJ_CRYSTAL}, deeddesc.kristall);
+    If (!kristall)
+      SendSysMessageTwice(who, owner, owner.name+" hat nicht genügend Kristall...", "Ihr habt nicht genügend Kristall, ihr benötigt "+deeddesc.kristall);
+      return;
+    EndIf
+  EndIf*/
+
+  If (deeddesc.leder)
+    leder := GetMaterial(container, GetUobjLeder(), deeddesc.leder);
+    If (!leder)
+      SendSysMessageTwice(who, owner, owner.name+" hat nicht genügend Leder...", "Ihr habt nicht genügend Leder, ihr benötigt "+deeddesc.leder);
+      return;
+    EndIf
+  EndIf
+
+  If (deeddesc.lehm)
+    lehm := GetMaterial(container, {UOBJ_CLAY}, deeddesc.lehm);
+    If (!lehm)
+      SendSysMessageTwice(who, owner, owner.name+" hat nicht genügend Lehm...", "Ihr habt nicht genügend Lehm, ihr benötigt "+deeddesc.lehm);
+      return;
+    EndIf
+  EndIf
+
+  If (deeddesc.marmor)
+    marmor := GetMaterial(container, {UOBJ_MARBLESTONE}, deeddesc.marmor);
+    If (!marmor)
+      SendSysMessageTwice(who, owner, owner.name+" hat nicht genügend Marmor...", "Ihr habt nicht genügend Marmor, ihr benötigt "+deeddesc.marmor);
+      return;
+    EndIf
+  EndIf
+
+  If (deeddesc.sandstein)
+    sandstein := GetMaterial(container, {UOBJ_SANDSTONE}, deeddesc.sandstein);
+    If (!sandstein)
+      SendSysMessageTwice(who, owner, owner.name+" hat nicht genügend Sandstein...", "Ihr habt nicht genügend Sandstein, ihr benötigt "+deeddesc.sandstein);
+      return;
+    EndIf
+  EndIf
+
+  If (deeddesc.staemme)
+    staemme := GetMaterial(container, GetUobjHoelzer(), deeddesc.staemme);
+    If (!staemme)
+      SendSysMessageTwice(who, owner, owner.name+" hat nicht genügend Stämme...", "Ihr habt nicht genügend Stämme, ihr benötigt "+deeddesc.staemme);
+      return;
+    EndIf
+  EndIf
+
+  If (deeddesc.stroh)
+    stroh := GetMaterial(container, {UOBJ_STRAW}, deeddesc.stroh);
+    If (!stroh)
+      SendSysMessageTwice(who, owner, owner.name+" hat nicht genügend Stroh...", "Ihr habt nicht genügend Stroh, ihr benötigt "+deeddesc.stroh);
+      return;
+    EndIf
+  EndIf
+
+  If (deeddesc.tuecher)
+    tuecher := GetMaterial(container, GetUobjTuecher(), deeddesc.tuecher);
+    If (!tuecher)
+      SendSysMessageTwice(who, owner, owner.name+" hat nicht genügend Tücher...", "Ihr habt nicht genügend Tücher, ihr benötigt "+deeddesc.tuecher);
+      return;
+    EndIf
+  EndIf
+  
+  return 1;
+EndFunction
+
+// bestimmtes Material suchen und ggf. amount mehrerer Stacks aufsummieren
+Function GetMaterial(container, objtypes, amount)
+  var stacks := struct{items:={}, amount:=0};
+  ForEach cont in (container)
+    ForEach item in (EnumerateItemsInContainer(cont))
+      If (item.objtype in objtypes)
+        If (stacks.amount < amount)
+          If (ReserveItem(item))
+            stacks.items.append(item);
+            stacks.amount += item.amount;
+          EndIf
+        EndIf
+      EndIf
+    EndForEach
+  EndForEach
+  If (stacks.amount >= amount)
+    return stacks.items;
+  EndIf
+EndFunction
+
+// gefundes Material zerstören
+Function DestroyAllMaterial(deeddesc)
+  If (barren)
+    DestroyMaterial(barren, deeddesc.barren);
+  EndIf
+  If (bretter)
+    DestroyMaterial(bretter, deeddesc.bretter);         
+  EndIf
+  If (granit)
+    DestroyMaterial(granit, deeddesc.granit);
+  EndIf
+  If (kristall)
+    DestroyMaterial(kristall, deeddesc.kristall);
+  EndIf
+  If (leder)
+    DestroyMaterial(leder, deeddesc.leder);
+  EndIf
+  If (lehm)
+    DestroyMaterial(lehm, deeddesc.lehm);
+  EndIf
+  If (marmor)
+    DestroyMaterial(marmor, deeddesc.marmor);
+  EndIf
+  If (sandstein)
+    DestroyMaterial(sandstein, deeddesc.sandstein);
+  EndIf
+  If (staemme)
+    DestroyMaterial(staemme, deeddesc.staemme);
+  EndIf
+  If (stroh)
+    DestroyMaterial(stroh, deeddesc.stroh);
+  EndIf
+  If (tuecher)
+    DestroyMaterial(tuecher, deeddesc.tuecher);
+  EndIf
+EndFunction
+
+// bestimmtes Material abhängig von der gebrauchten amount zerstören
+Function DestroyMaterial(material, remaining)
+  ForEach item in (material)
+    remaining -= item.amount;
+    If (remaining >= 0)
+      DestroyItem(item);
+    Else
+      SubtractAmount(item, (item.amount+remaining));
+    EndIf
+  EndForEach
+EndFunction
+
+// Haus bauen und ggf. Eigentumsnachweis und Schlüssel erstellen
+Function HausBauen(who, owner, deed, deeddesc, place)
+  var bankbox, packkey, bankkey, builtdeed;
+  If (!deeddesc.noKeys || !deeddesc.noDeed)    
+    bankbox := FindBankBox(owner);
+    If (!bankbox)
+      SendSysMessageTwice(who, owner, "Die Bankbox von "+owner.name+" ist unauffindbar!", "Eure Bankbox ist unauffindbar!");
+      SysLog("FEHLER: Bankbox von "+CharInfoStr(who)+" konnte nicht gefunden werden!");
+      return;
+    EndIf
+    
+    If (!deeddesc.noKeys)
+      packkey := CreateItemInBackpackPergon(owner, UOBJ_GOLD_KEY); // Hauptschluessel erzeugen        
+      bankkey := CreateItemInContainerPergon(bankbox, UOBJ_GOLD_KEY); // Zweitschluessel erzeugen
+      If (!bankkey)
+        SendSysMessageTwice(who, owner, "Der Schlüssel passt nicht mehr in die Bankbox von "+owner.name, "Der Schlüssel passt nicht mehr in Eure Bankbox!");
+        DestroyItem(packkey);
+        return;
+      EndIf
+    EndIf
+    
+    If (!deeddesc.noDeed)
+      builtdeed := CreateItemInContainerPergon(bankbox, UOBJ_HOUSE_DEED1); // Eigentumsnachweis erzeugen
+      If (!builtdeed)
+        SendSysMessageTwice(who, owner, "Der Eigentumsnachweis passt nicht mehr in die Bankbox von "+owner.name, "Der Eigentumsnachweis passt nicht mehr in Eure Bankbox!");
+        DestroyItem(bankkey);
+        DestroyItem(packkey);
+        return;
+      EndIf
+    EndIf
+  EndIf        
+        
+  var house := CreateMultiAtLocation(place.x, place.y, place.z+1, deeddesc.houseobjtype, CRMULTI_IGNORE_ALL, who.realm); // Haus errichten
+  If (house)
+    // Haus-Properties initialisieren
+    SetObjProperty(house, PROP_HS_C_FIX_NUM, deeddesc.numlockdowns);
+    SetObjProperty(house, PROP_HS_C_SC_NUM,  deeddesc.numsecure);
+    SetObjProperty(house, PROP_HS_C_OWNER,   owner.serial);
+    SetObjProperty(house, PROP_HS_C_ACCOUNT, owner.acctname);
+    
+    var houseplaceinfo := EntferneA(deed.desc)+" bei "+PlaceName(house)+" ("+house.x+", "+house.y+")";
+    houseplaceinfo[1, Find(houseplaceinfo, " ", Find(houseplaceinfo, " ", 1)+1)] := ""; // "aktiver Bauplan" entfernen
+    If (builtdeed)
+      SetObjProperty(house, "deedserial", builtdeed.serial);
+      SetObjProperty(builtdeed, "builtserial", house.serial);
+      SetName(builtdeed, EntferneA(builtdeed.desc)+" "+houseplaceinfo);
+    EndIf
+    
+    var lockid := AllocLockId();
+    If (packkey || bankkey)
+      // Schluessel initialisieren      
+      SetObjProperty(packkey, "lockid", lockid);
+      SetObjProperty(bankkey, "lockid", lockid);      
+      SetName(packkey, EntferneA(packkey.desc)+" "+houseplaceinfo);
+      SetName(bankkey, EntferneA(bankkey.desc)+" "+houseplaceinfo);
+    EndIf
+
+    // Bereits vorhandene Gegenstaende initialisieren
+    ForEach item in (house.components)
+      SysLog("Bau: Haus-Komponente "+EntferneA(item.desc)+" ("+item.x+", "+item.y+", "+item.z+")");
+
+      If (((UOBJECT_DOORS_START<=item.objtype) And (item.objtype<=UOBJECT_DOORS_END)) Or (item.objtype==UOBJ_TENT_CHEST))
+        SetObjProperty(item, "lockid", lockid);
+        item.locked := 1;
+      ElseIf (item.objtype in {UOBJ_BRASS_SIGN, UOBJ_WOOD_SIGN})
+        SetObjProperty(item, "lockid", lockid);
+      EndIf
+    EndForEach
+    
+    DestroyItem(deed);
+    
+    return 1;
+  Else
+    SendSysMessageTwice(who, owner, "Das Haus kann an dieser Stelle nicht gebaut werden!");
+    return;
+  EndIf
+EndFunction
+
+Function ShowMaterials(who, deed)
+  var itemdesc := ReadConfigFile("::itemdesc");
+  If (!itemdesc)
+    SendSysMessagePergon(who, "Es ist ein Fehler aufgetreten: "+itemdesc.errortext);
+  EndIf
+  
+  var deeddesc := itemdesc[deed.objtype];
+  detach(); // damit man, während das Gump offen ist, noch andere Sachen machen kann
+  SendDialogGump(who, {
+    "Page 0",
+    "ResizePic 0 0 9270 200 350",
+    "CheckerTrans 10 10 180 330",
+    "HTMLGump 10 15 180 20 0 0 0",
+    
+    "TilePic 15 35 "+UOBJ_BOARD,
+    "Text 50 40 "+FONTCOLOR_WHITE+" 1",
+    "Text 120 40 "+FONTCOLOR_WHITE+" 2",
+    "TilePic 145 65 "+UOBJ_LOGS,
+    "Text 50 70 "+FONTCOLOR_WHITE+" 3",
+    "Text 120 70 "+FONTCOLOR_WHITE+" 4",
+    "TilePicHue 0 100 "+itemdesc[UOBJ_SANDSTONE].graphic+" "+itemdesc[UOBJ_SANDSTONE].color,
+    "Text 50 100 "+FONTCOLOR_WHITE+" 5",
+    "Text 120 100 "+FONTCOLOR_WHITE+" 6",
+    "TilePicHue 145 130 "+itemdesc[UOBJ_GRANITSTONE].graphic+" "+itemdesc[UOBJ_GRANITSTONE].color,
+    "Text 50 130 "+FONTCOLOR_WHITE+" 7",
+    "Text 120 130 "+FONTCOLOR_WHITE+" 8",
+    "TilePicHue 0 160 "+itemdesc[UOBJ_MARBLESTONE].graphic+" "+itemdesc[UOBJ_MARBLESTONE].color,
+    "Text 50 160 "+FONTCOLOR_WHITE+" 9",
+    "Text 120 160 "+FONTCOLOR_WHITE+" 10",
+    "TilePicHue 145 190 "+itemdesc[UOBJ_CLAY].graphic+" "+itemdesc[UOBJ_CLAY].color,
+    "Text 50 190 "+FONTCOLOR_WHITE+" 11",
+    "Text 120 190 "+FONTCOLOR_WHITE+" 12",
+    "TilePic 12 195 "+UOBJ_STRAW,
+    "Text 50 220 "+FONTCOLOR_WHITE+" 13",
+    "Text 120 220 "+FONTCOLOR_WHITE+" 14",
+    "TilePic 155 245 "+UOBJ_FOLDED_CLOTH,
+    "Text 50 250 "+FONTCOLOR_WHITE+" 15",
+    "Text 120 250 "+FONTCOLOR_WHITE+" 16",
+    "TilePicHue 15 280 "+itemdesc[UOBJ_EISEN_BARREN].graphic+" "+itemdesc[UOBJ_EISEN_BARREN].color,
+    "Text 50 280 "+FONTCOLOR_WHITE+" 17",
+    "Text 120 280 "+FONTCOLOR_WHITE+" 18",
+    "TilePic 145 300 "+itemdesc[UOBJ_LEATHER].graphic,
+    "Text 50 310 "+FONTCOLOR_WHITE+" 19",
+    "Text 120 310 "+FONTCOLOR_WHITE+" 20"
+  }, {
+    "<BASEFONT COLOR="+HTML_WHITE+"><CENTER>benoetigte Materialien</CENTER></BASEFONT>",
+    "Bretter:",
+    deeddesc.bretter,
+    "Staemme:",
+    deeddesc.staemme,
+    "Sandstein:",
+    deeddesc.sandstein,
+    "Granit:",
+    deeddesc.granit,
+    "Marmor:",
+    deeddesc.marmor,
+    "Lehm:",
+    deeddesc.lehm,
+    "Stroh:",
+    deeddesc.stroh,
+    "Tuecher:",
+    deeddesc.tuecher,
+    "Barren:",
+    deeddesc.barren,
+    "Leder:",
+    deeddesc.leder
+  }, 50, 50);
+EndFunction
+
+// Layout für die Positionsbestimmung
+Function getLayout()
+  var layout := {
+    "Page 0",
+    "NoDispose",
+    "NoClose",
+    "ResizePic 10 10 9270 150 150",
+    "CheckerTrans 20 20 130 130",
+    "HTMLGump 20 25 130 20 0 0 0",
+    
+    "Page 1",
+    "Text 50 50 "+FONTCOLOR_WHITE+" 1",
+    "Button 30 45 9700 9701 1 0 "+BTN_XUP,
+    "Button 30 60 9704 9705 1 0 "+BTN_XDOWN,
+    "Text 50 80 "+FONTCOLOR_WHITE+" 2",
+    "Button 30 75 9700 9701 1 0 "+BTN_YUP,
+    "Button 30 90 9704 9705 1 0 "+BTN_YDOWN,
+    "Button 30 120 2071 2072 1 0 "+BTN_CANCEL,
+    "Button 95 120 2074 2075 1 0 "+BTN_OKAY
+  };
+  
+  return layout;
+EndFunction
+
+// Data für die Positionsbestimmung
+Function getData(x, y)
+  var data := {
+    "<BASEFONT COLOR="+HTML_WHITE+"><CENTER>Position anpassen</CENTER></BASEFONT>",
+    "X = "+x,
+    "Y = "+y
+  };
+  
+  return data;
+EndFunction

@@ -1,0 +1,273 @@
+TextCommandos
+  Player
+    arm
+    consider
+    copybook
+    count
+    disable          - Privilegien deaktivieren
+    disarm
+    enable           - Privilegien aktivieren
+    grab
+    hairdye
+    homepage         - Homepage aufrufen (analg Help-Button)
+    lookup
+    msg              - Nachricht an Spieler schreiben (per Menue oder Name)
+    online           - Wer ist grad eingeloggt?
+    onlinefull       - Wer ist grad eingeloggt (vollstaendige Uebersicht) ?
+    page
+    pvp
+    reg
+    skillinfo
+    testprop
+    wetter           - Wettereffekte ein-/ausschalten
+
+  Coun
+    baumarkt         - Zum Baumarkt bewegen (ggf. Itemnummer uebergeben) und Item identifizieren
+    bcast            - BroadCast verschicken
+    concealme        - CMDLevel-Char concealen
+    counpage
+    go               - Zu einer vorgegebenen Location gehen (per Menue oder Name)
+    goto             - Zu einem Spieler gehen (per Menue oder Name)
+    gotoold
+    info             - Informationen ueber den Spieler/NPC anzeigen/aendern
+    licht            - Licht ein-/ausschalten ("1")
+    mtele
+    ngoto
+    tele             - Zu einer anklickbaren Postition bewegen
+    time             - Wie spaet ist es grade (UO-Zeit) ?
+    unconcealme      - CMDLevel-Char unconcealen
+
+  Seer
+    addgoloc
+    bank             - Das eigene Bankfach oeffnen
+    bcastas
+    create           - Item erzeugen (ObjType)
+    createat
+    createnpc        - NPC erzeugen (Template-Name, gemaess npcdesc.cfg)
+    createstack      - Itemhaufen im Backpack erzeugen (ObjType und Anzahl)
+    critter
+    critterspawn
+    critter_spawn
+    despawn
+    destroy          - Item zerstoeren
+    dungeontrash
+    equipt
+    freeze           - Spieler/NPC einfrieren
+    getprop          - Eigenschaft eines Objekts ermitteln (sehr universell)
+    globalhide
+    globalprop
+    globalshow
+    gm               - Den eigenen Character wieder in einen Stino-GM verwandeln (falls 'n Test schiefgelaufen ist...)
+    goxyz            - Zu einer bestimmten Position bewegen (X, Y, Z)
+    hideme
+    hiderune
+    hidespawn
+    keyword
+    lockradius       - Items in einem Radius verankern (Radius und dann Mittelpunkt klickern)
+    lockrange        - Items in einem Rechteck verankern (X1 Y1 X2 Y2)
+    music
+    mx
+    my
+    mz
+    peoplespawn
+    placeinfo        - Informationen ueber den aktuellen Standort ausgeben (regions.cfg)
+    playmidi
+    powerup
+    price            - NPC-Preise fuer einen Gegenstand ermitteln
+    px
+    py
+    pz
+    questloc
+    refreshme
+    regspawn
+    rename
+    runego
+    sayabove         - Irgendwas ueber irgendwas sagen/anzeigen (Text)
+    sayabovepvt      - Irgendwas ueber irgendwas sagen/anzeigen, privat, d.h. sieht nur derjenige (Text)
+    setbook
+    setitemxyz
+    setlight
+    setmovable
+    setnewchar
+    setobjproperty
+    setprop          - Eigenschaft eines Objekts setzen (sehr universell)
+    setwordofpower
+    showrune
+    showspawn
+    skillwin         - SkillWin eines Spielers anzeigen
+    spawn
+    spawncontainer
+    spawngo
+    spawnitem
+    status           - Einige Infos ueber den Server anzeigen
+    tame             - NPC abrichten
+    teleto
+    thaw             - Spieler/NPC auftauen
+    unlockradius     - Items in einem Radius verschiebbar machen (Radius und dann Mittelpunkt klickern)
+    unlockrange      - Items in einem Rechteck verschiebbar machen (X1 Y1 X2 Y2)
+    what
+    where
+    wildlife
+    wildlife_spawn
+    wildlifespawn
+
+  GM
+    action
+    addpath
+    addset
+    addteleporter
+    attack
+    bow
+    boxkill
+    buzz
+    conceal
+    contcheck
+    createcannon
+    createstone
+    createsumpfitem
+    delall
+    destroyboat
+    ebene            - Items in einem Radius auf das gleiche Level heben (Radius, Z)
+    ekill
+    equip
+    eraseglobal
+    eraseobjproperty
+    erasep           - Selbstdefinierte (CProp) Eigenschaft eines Objekts loeschen
+    erasepath
+    findnpc          - NPCs gemaess Template in der Welt suchen
+    forgive          - Spieler aus dem Knast entlassen
+    getacctp
+    getclose
+    getglobal
+    getopen
+    getp             - Selbstdefinierte (CProp) Eigenschaft eines Objekts ermitteln
+    globalizebook
+    gmi
+    gmpage
+    goforce          - Garantiert zu einer bestimmten Position bewegen (X, Y, Z)
+    gonpc
+    gsh
+    hidenode
+    houseowner
+    ident
+    itemcount
+    iteminfo         - Informationen ueber das Item anzeigen/aendern
+    itemsample
+    jail             - Spieler in den Knast befoerdern
+    jehova           - Die gleichnamige Strafe auf Spieler/NPC anwenden
+    kick             - Den Spieler vom Server schmeissen
+    kill             - Spieler/NPC ohne Leiche toeten
+    light
+    lightning
+    lkill
+    loadequip
+    lock             - Tuer/Kiste verschliessen
+    looktreasuremap
+    los
+    makedoors
+    makekey
+    makeregs
+    makeset
+    makeshipdeed
+    makeswarm
+    maketele
+    massattack
+    moveitem
+    movetocont
+    myform
+    nuke             - Items in einem Radius (raeumlich) loeschen (VORSICHT!!!)
+    nukekoord        - Items in einem Radius (raeumlich) an einer bestimmten Position loeschen (VORSICHT!!! - FernNuke)
+    nuketype
+    openpack
+    playstateffect
+    recreate
+    rekey
+    reloadequip
+    relock
+    res              - Jemanden wiederbeleben
+    resme            - Sich selbst wiederbeleben
+    runeprop
+    runewipe
+    savenow          - Spielstand speichern (wie der WorldSave-Zyklus)
+    seeinvis
+    setacctp
+    setboundbox
+    setclose
+    setglobal
+    setmaxpages
+    setnpcpath
+    setopen
+    setquests        - TownQuests verwalten (Dialog)
+    setp             - Selbstdefinierte (CProp) Eigenschaft eines Objekts setzen
+    setscript
+    setskill
+    setwetter
+    sfx
+    shave
+    showcprops
+    shownode
+    showscript
+    showstats
+    showtele
+    skt
+    speechmod
+    spellbooknew     - Neue vollgeschriebene Spellbooks erzeugen
+    spellbook        - Altes vollgeschriebenes Spellbook erzeugen
+    squelch
+    staticdeed
+    storybook
+    summon           - Einen Spieler zu sich heranholen
+    testnlootgroup
+    teststarteqp
+    tete
+    thawme
+    toggledoor
+    unequip
+    unlock           - Tuer/Kiste aufschliessen
+    untergang        - Desolation-Mode ein-/ausschalten (nur optisch)
+    useskill
+    whereship
+    wipebank
+    writebook
+    writequip
+
+  Admin
+    addcharacter     - Daten fuer einen Character dem Account hinzufuegen (VORSICHT!!!)
+    ban              - Den Spieler vom Server schmeissen und den Account deaktivieren
+    buildguards
+    convtusacct
+    convtuschar
+    convtusitem
+    createaccount    - Einen neuen Account anlegen (VORSICHT!!!)
+    delaccount
+    destroymulti     - Multi (z.B. Haus) zerstoeren
+    feuer
+    getplayerskills
+    grantpriv
+    itemwipe
+    makedungtele
+    makemoongates
+    mounttest
+    npcwipe          - Alle NPCs toeten
+    npcwipetype      - Alle NPCs eines Typs (Template) toeten
+    recreateall
+    recreatemerchant
+    restart          - Script eines NPCs restarten
+    restartall       - Scripte aller NPCs restarten
+    restartspecial
+    revokepriv
+    rpm
+    sendpacket       - Datenpaket direkt zum Client schicken (VORSICHT!!!)
+    setcmdlevel      - Jemanden auf ein bestimmtes CMDLevel setzen
+    setopentimeall
+    setrawskill
+    shutdown         - Server mit Zeit-CountDown runterfahren (VORSICHT!!!)
+    skills
+    staticsmove      - Items in einem Rechteck verschieben
+    storagewipe
+    test
+    trial
+    unloadall        - Alle Scripte aus dem Cache schmeissen, ReLoad von Platte erzwingen
+    unloadcfg        - Config-Datei aus dem Cache schmeissen, ReLoad von Platte erzwingen
+    unloadscript     - Spezielles Script aus dem Cache schmeissen, ReLoad von Platte erzwingen
+    wipeguards

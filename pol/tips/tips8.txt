@@ -1,0 +1,3 @@
+Im Journal (Alt-J) kannst du die zuletzt gesagten Text und erhaltene Systemmeldungen nachlesen. Mit dem blauen Knopf am unteren Zipfel kannst du die Groesse des Journalfensters aendern.
+
+Zum Blaettern im Journal benutze das rote Band oder die Pfeilen rechts. Um das automatische Durchlaufen des Journals zu reaktivieren, druecke auf das Schloss-Symbol.

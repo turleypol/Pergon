@@ -1,0 +1,52 @@
+///////////////////////////////////////////////////////////////////////////
+// blocknonnude -- Test, ob nackt (fuer Badehaus)
+
+include "include/client"; // LAYER_*
+include "include/msgs";
+include "common";
+use os;
+use uo;
+
+Program BlockNonNude(p)
+    If (p.who.isa(POLCLASS_NPC))
+        return;
+    EndIf
+
+    // Tote duerfen immer
+    If (p.who.dead)
+        return;
+    EndIf
+
+    // Rucksack, Schmuck und Haar
+    var ignorelayers := array{
+        LAYER_BEARD, LAYER_EARS, LAYER_HAIR, LAYER_NECK, LAYER_PACK,
+        LAYER_RING, LAYER_WRIST
+    };
+    // Bademantel (konkret eine Robe)
+    var bademantel := array{
+        0x1f03, 0x1f04
+    };
+
+    ForEach item in ListEquippedItems(p.who)
+        SleepMs(2);
+        If (
+            // bestimmte Layer ignorieren
+            (item.layer in (ignorelayers)) or
+            // Bademantel zulassen
+            (item.objtype in (bademantel))
+        )
+            continue;
+        EndIf
+
+        SendSysMessagePergon(p.who,
+            "Habt Ihr nicht vergessen, Euch Eurer Kleider zu entledigen?",
+            "Have you forgotten to undress?"
+        );
+        SendSysMessagePergon(p.who,
+            "Oder habt Ihr gar vor, hindurch zu reiten?",
+            "Or have you even tried to ride in here?"
+        );
+        StepBack(p);
+        return;
+    EndForEach
+EndProgram

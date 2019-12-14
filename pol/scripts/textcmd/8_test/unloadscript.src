@@ -1,0 +1,17 @@
+Use uo;
+Use os;
+
+Include "include/msgs";
+
+Program TextCMD_UnloadScript(who, filename)
+  Var res:=Unload_Scripts(filename);
+  If (res==error)
+    SendSysMessagePergon(who, "Fehler beim Entfernen des Scripts: "+res.errortext);
+  ElseIf (res<0)
+    SendSysMessagePergon(who, "Dieses Script war nicht geladen!");
+  ElseIf (res==1)
+    SendSysMessagePergon(who, "1 Script-Referenz aus dem Cache entfernt.");
+  Else
+    SendSysMessagePergon(who, res+" Script-Referenzen aus dem Cache entfernt.");
+  EndIf
+EndProgram

@@ -1,0 +1,89 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  Forestfire - Waldbrände
+//
+//  Dieses Script soll mal, wenn es denn funktioniert, Waldbrände und weiterverbreiten
+//  
+//  2006.02.12  Unforgiven:	Erstanlage
+//  2006.03.03  Unforgiven:	Änderung von "PlayStationaryEffect" auf Objekt
+//  
+// 
+/////////////////////////////////////////////////////////////////////////////
+
+use vitals;
+use os;
+use uo;
+use util;
+
+Include "include/objtype";
+Include "include/msgs";
+Include "include/itemnpc";
+Include "include/set";
+Include "include/client";
+Include ":newspells:resistance";
+
+
+Program burnforest (item)
+
+  var pause := 5 + randomint(10);
+
+  var feuer:=CreateItemAtLocation(item.x, item.y, item.z+6, 0x3709, 1,item.realm);
+  SetObjProperty(item, "script", "burnforest");
+  sleep( pause );
+
+  // hier beginnt das "Anstecken" des Waldes um den Baum herum
+
+  // 100% Warscheinlichkeit des Ansteckens des nächsten Baumes, 
+  //  50%                   auf überspringen 1 Feld (2 Objekte betroffen)
+  If (!item)
+  	DestroyItem(feuer);
+  	Return;
+  EndIf
+  ForEach tree in ListItemsNearLocation( item.x, item.y, ((GetStandingHeight(item.x,item.y,-10,item.realm).z ) > 0), 2,item.realm ) // Baum direkt neben Baum brennt garantiert
+     If ( GetObjProperty(tree, "evo" ) == 2 )
+        If ( GetObjProperty(tree, "script" ) == "forestscript")
+         If     (distance(item, tree) == 1)
+              Start_ScriptPergon("burnforest", tree);
+           ElseIf ((distance(item, tree) == 2) AND ( randomint(100)< 25 ))
+              Start_ScriptPergon("burnforest", tree);
+           EndIf
+        EndIf
+     EndIf
+  EndForEach 
+
+  var startzeit := ReadGameClock() ;
+  var endzeit   := startzeit + 20 + randomint(20);
+  var res ;
+  var hit ;
+  
+  Var mobiles:=ListMobilesNearLocation(item.x, item.y, item.z, 2,item.realm); // get possible victims
+
+      while (mobiles.size() And item And (endzeit > ReadGameClock()) )
+        foreach mobile in mobiles
+          if (!mobile.dead)															// no damage to ghosts
+            res:= 1 - CDbl(GetResistance(mobile, "fire")); 	// get fire resistance of mobile
+            If     (distance(item, mobile) == 1)
+                hit:= CInt(10 * res);                    		// alter damage
+            ElseIf (distance(item, mobile) == 2)
+                hit:= CInt(5 * res);                    		// alter damage
+            EndIf
+            If (!mobile.dead)
+               ApplyRawDamagePergon(mobile, hit);            	// apply damage to mobile
+            EndIf
+          endif
+        endforeach
+
+        SleepMS(100); // sleep interval
+      
+        mobiles:= ListMobilesNearLocation(item.x, item.y, item.z, 0,item.realm); // get possible victims again
+      endwhile
+
+  var set:= GetObjProperty(item, "set" );
+  var fserial:= GetObjProperty(item, "fserial" );
+  // DestroySet(set, fserial);
+  DestroySet(fserial);
+
+  DestroyItem(feuer);
+
+
+EndProgram

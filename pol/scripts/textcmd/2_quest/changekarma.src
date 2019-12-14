@@ -1,0 +1,53 @@
+////////////////////////////////////////////////////////////////////
+// TextCMD ChangeKarma - Schaltet zwischen dem Karma hin und her
+//
+// Author: Shinigami
+
+use file;
+use uo;
+include "include/msgs";
+include "include/quests";
+
+Program TextCMD_ChangeKarma(who, karma)
+  Case (Lower(karma))
+  "m": "e": // Elementarmagier haben keins
+    EraseObjProperty(who, "karma");
+  "c": "s": // cleric/segnen
+    SetObjProperty(who, "karma", 1);
+  "n": "f": // necro/fluchen
+    SetObjProperty(who, "karma", -1);
+  default:
+    If (!karma)
+      // durchwechseln
+      If (GetObjProperty(who, "karma")==1)
+        SetObjProperty(who, "karma", -1);
+      ElseIf (GetObjProperty(who, "karma")==-1)
+        EraseObjProperty(who, "karma");
+      Else
+        SetObjProperty(who, "karma", 1);
+      EndIf
+    Else
+      SendSysMessagePergon(who,
+        "Parameter: 'E'lementar'm'agie, 'S'egnen oder 'F'luchen",
+        "Parameters: 'M'age, 'C'leric or 'N'ecromant"
+      );
+      Return;
+    EndIf
+  EndCase
+
+  If (GetObjProperty(who, "karma")==1)
+    SendSysMessagePergon(who,
+      "Ihr bekennt euch zum Segnen.", "You profess to Clerics."
+    );
+  ElseIf (GetObjProperty(who, "karma")==-1)
+    SendSysMessagePergon(who,
+      "Ihr bekennt euch zum Fluchen.", "You profess to Necromancy."
+    );
+  Else
+    SendSysMessagePergon(who,
+      "Ihr bekennt euch zur Elementarmagie.", "You profess to Magery."
+    );
+  EndIf
+
+  QuestCharLog(who, "TextCMD ChangeKarma");
+EndProgram

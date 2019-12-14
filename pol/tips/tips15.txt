@@ -1,0 +1,3 @@
+Mit .wiki kommst du zum Pergon-Wiki. Dort wurden einige nuetzliche Tabellen, Listen und Uebersichten zusammengetragen.
+
+(dieser Befehl oeffnet einen Browser mit der passendem URL)

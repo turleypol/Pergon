@@ -1,0 +1,214 @@
+// $Log: not supported by cvs2svn $
+// Revision 1.12  2010/04/18 22:58:55  RcCluster
+// Tooltip Texte für die Gump-Knöpfe
+//
+// Revision 1.11  2010/04/13 16:43:11  RcCluster
+// += geht ja auch
+//
+// Revision 1.10  2010/04/13 16:36:45  RcCluster
+// Aus DestroySet in set.inc den Parameter set_name entfernt.
+//
+// Revision 1.9  2010/04/12 21:12:33  RcCluster
+// createset-gump ordentlich gefüllt wenn datafile leer
+// destroyset geht nur noch wenn item/mobile auch zu einem set gehört
+//
+// Revision 1.8  2010/04/11 22:57:26  RcCluster
+// destroyset jetzt ohne angabe eines sets. diese angabe wird sowieso nicht gebraucht.
+// alle cprops der mobiles werden im set gespeichert und created
+//
+// Revision 1.7  2010/04/11 19:06:50  RcCluster
+// ein paar print befehle entfernt
+// löschen eines sets im creategump hinzugefügt
+//
+// Revision 1.6  2010/04/11 15:33:46  RcCluster
+// createset hat jetzt ein gump wenn keine parameter angegeben werden.
+// bezeichnung bei items durch item.desc statt item.name
+//
+// Revision 1.5  2010/03/21 16:34:20  RcCluster
+// neuer Parameter für .createset items/mobiles/both
+//
+// Revision 1.4  2008/06/27 14:48:22  mehdorn
+// etwas ueberarbeitet
+//
+
+use cfgfile;
+use uo;
+include "include/itemnpc";
+include "include/msgs";
+include "include/set";
+
+Enum Buttons
+  BTN_CREATE := 1000,
+  BTN_DELETE := 1001,
+  BTN_INFO   := 1002,
+  BTN_RETURN := 1003,
+  TE_SETNR   := 2001
+EndEnum
+
+Program TextCMD_MakeSet(who, params)
+    params:=SplitWords(params);
+    var createKind := dictionary{
+        "items"  -> 1,
+        "mobiles"-> 2,
+        "both"   -> 3};
+    var createKindString;
+    
+    Case (createKind[params[2]])
+        1 :
+            createKind := 1;
+            createKindString := "Items";
+            break;
+        2 :
+            createKind := 2;
+            createKindString := "Mobiles";
+            break;
+        3 :
+            createKind := 3;
+            createKindString := "Both";
+            break;
+        default:
+            createKind := 0;
+            createKindString := "Standard/alt";
+    EndCase
+            
+    If (!params[1])
+        Var SetsDataFile := OpenDataFile("sets");
+        if (SetsDataFile)
+            Var ListeAllerSets := SetsDataFile.FindElement("allsets");
+            If (ListeAllerSets)
+                var Seite0 := {"page 0",               // Seite 0 (Basisseite)
+                    "nodispose",
+                    "resizepic 0 0 3600 350 490", // Hintergrund
+                    "resizepic 15 15 5054 320 35",
+                    "resizepic 15 55 5054 320 380",
+                    "resizepic 15 440 5054 320 35",
+                    "htmlgump 15 20 320 20 0 0 0" // Platz für Überschrift
+                };
+                var Gump1Layout := Seite0 + {"page 1",
+                    "htmlgump 20 60 310 370 1 0 1", // Liste mit den Sets
+                    "gumppic 30 447 2444", // Hintergrund für die Eingabe der Zahl
+                    "TextEntry 36 448 45 15 0 " + TE_SETNR + " 2", // Setnummer für die Auswahl
+                    "button 100 447 4023 4024 1 0 " + BTN_CREATE, // create 0xFB7
+              	    "Tooltip 1012011", // Text "Wähle dein Ziel"
+                    "button 200 447 4020 4021 1 0 " + BTN_DELETE,  // delete 0xFB4
+              	    "Tooltip 3000154", // Text "löschen"
+                    "button 300 447 4005 4006 1 0 " + BTN_INFO,  // info 0xFA5
+              	    "Tooltip 3000098" // Text "Informationen"
+                };
+                var Gump2Layout := Seite0 + {"page 1",
+                    "htmlgump 20 60 310 370 1 0 1", // Feinanzeige des Sets
+                    "button 30 447 4014 4015 1 0 " + BTN_RETURN  // info 0xFAE
+                };
+                var zuende := 0;
+                var neuEinlesen := 1;
+                var his_choice;
+                var HtmlListe := "";
+                var SetNamen;
+                var i;
+                var Auswahl := 1;
+                while (!zuende)
+                    if (neuEinlesen)
+                        SetNamen := ListeAllerSets.PropNames();
+                        SetNamen.sort();
+                        if (SetNamen.size() > 0)
+                            HtmlListe := "";
+                            for (i := 1; i <= SetNamen.size(); i += 1)
+                                HtmlListe := HtmlListe + i + " - " + SetNamen[i] + "<br>";
+                            EndFor
+                            HtmlListe := HtmlListe[1, len(HtmlListe)-4];
+                        Else
+                            HtmlListe := "Keine Sets vorhanden";
+                        EndIf
+                        neuEinlesen := 0;
+                    EndIf
+                    var Gump1Data := {"<basefont color="+HTML_WHITE+"><center>Sets DataFile Content</center>",
+                        HtmlListe,
+                        Auswahl
+                    }; // data
+                    his_choice := SendDialogGump( who, Gump1Layout, Gump1Data);
+                    Case (his_choice[0])
+                        BTN_CREATE:
+                            // Dialog beenden
+                            zuende := 1;
+                            // Zuerst prüfen, ob ne gültige Auswahl vorliegt.
+                            var MonsterSetNummer := his_choice[TE_SETNR];
+                            // Am Anfang steht was von 2001: 
+                            MonsterSetNummer[1,6] := "";
+                            MonsterSetNummer := CInt(MonsterSetNummer);
+                            if (MonsterSetNummer > 0 && MonsterSetNummer <= SetNamen.size())
+                                Auswahl := MonsterSetNummer;
+                                // Methode both wählen
+                                createKind := 3;
+                                createKindString := "Both";
+                                params[1] := SetNamen[MonsterSetNummer];
+                            Else
+                                // Script beenden.
+                                return;
+                            EndIf
+                            break;
+                        BTN_DELETE:
+                            // Zuerst prüfen, ob ne gültige Auswahl vorliegt.
+                            var MonsterSetNummer := his_choice[TE_SETNR];
+                            // Am Anfang steht was von 2001: 
+                            MonsterSetNummer[1,6] := "";
+                            MonsterSetNummer := CInt(MonsterSetNummer);
+                            if (MonsterSetNummer > 0 && MonsterSetNummer <= SetNamen.size())
+                                Auswahl := MonsterSetNummer;
+                                // das entsprechende Set löschen
+                                ListeAllerSets.EraseProp(SetNamen[MonsterSetNummer]);
+                                SendSysMessagePergon(who, "Das Set '" + SetNamen[MonsterSetNummer] + "' wurde gelöscht.");
+                                //Für das neue darstellen die Liste neu lesen.
+                                neuEinlesen := 1;
+                            EndIf
+                            break;
+                        BTN_INFO:
+                            // Zuerst prüfen, ob ne gültige Auswahl vorliegt.
+                            var MonsterSetNummer := his_choice[TE_SETNR];
+                            // Am Anfang steht was von 2001: 
+                            MonsterSetNummer[1,6] := "";
+                            MonsterSetNummer := CInt(MonsterSetNummer);
+                            //print(MonsterSetNummer + "<=" + SetNamen.size() + ". " + (MonsterSetNummer <= SetNamen.size()));
+                            if (MonsterSetNummer > 0 && MonsterSetNummer <= SetNamen.size())
+                                Auswahl := MonsterSetNummer;
+                                var Monster := ListeAllerSets.GetProp(SetNamen[MonsterSetNummer]);
+                                //print("Anzahl Monster: " + Monster.size());
+                                var HtmlMonsterListe := "";
+                                var mobile;
+                                for (i := 1; i <= Monster.size(); i += 1)
+                                    mobile := Monster[i];
+                                    HtmlMonsterListe := HtmlMonsterListe + mobile.kind + " - " + mobile.type + " - " + mobile.name + "<br>";
+                                EndFor
+                                HtmlMonsterListe := HtmlMonsterListe[1, len(HtmlMonsterListe)-4];
+                                var Gump2Data := { 
+                                    "<basefont color="+HTML_WHITE+"><center>Set: " + SetNamen[MonsterSetNummer] + "</center>",
+                                    HtmlMonsterListe };
+                                SendDialogGump(who,Gump2Layout, Gump2Data);
+                            Else
+                                SendSysMessagePergon(who, "Keine gültige Auswahl.");
+                            EndIf
+                            break;
+                        default:
+                            // Skript beenden
+                            return;
+                    EndCase 
+                endwhile
+            EndIf
+        EndIf
+    EndIf
+
+    SendSysMessagePergon(who, "Wählt den Startpunkt aus!");
+
+    Var startloc := TargetCoordinates(who);
+    If (!startloc)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (MakeSet(startloc, params[1],0 , createKind))
+        SendSysMessagePergon(who, "Das Set '"+params[1]+"' wurde erzeugt mit der Methode: '"+createKindString+"'.");
+    Else
+        SendSysMessagePergon(
+            who, "Das Set '"+params[1]+"' konnte nicht erzeugt werden!"
+        );
+    EndIf
+EndProgram

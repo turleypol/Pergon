@@ -1,0 +1,421 @@
+///////////////////////////////////////////////////////////////////////////
+// StaticsExport - Extract Items to make Static
+//
+// Author: Shinigami
+
+use cfgfile;
+use math;
+use os;
+use uo;
+include "include/importexport";
+include "include/msgs";
+include "include/varutil";
+
+var IGNORE_ITEMS := {
+  // Ambosse
+  0x0faf, 0x0fb0,
+  // Werkbank
+  0x19f9, 0x19fc,
+  // Guillotine
+  0xff11, 0xff12
+};
+var STATISIZE_ITEMS := {
+  // Baeume
+  0x0c9a, 0x0ccd, 0x0cd6, 0x0cda, 0x0ce0, 0x0ce6, 0x0cf8, 0x0d43, 0x0d94,
+  0x0d9c, 0x0da4, 0x0e57, 0x12b8, 0x12b9, 0x12ba, 0x12bb, 0x224a, 0x224b,
+  0x224c, 0x224d, 0x2471, 0x247a, 0x247d, 0x247e, 0x26ed, 0x26f3
+};
+
+Program TextCMD_StaticsExport(who, params)
+  // Called by StaticsCheckExport
+  If (TypeOfInt(who) == OT_ARRAY)
+    params := who[2];
+    who    := who[1];
+  EndIf
+
+  params := SplitWords(params);
+  If (params.size() < 4)
+    SendSysMessagePergon(who,
+      "Parameter: "+
+      "[(no)destroy] "+
+      "[(no)force] "+
+      "[(no)ignoremultis] "+
+      "[(no)ignoreplayer] "+
+      "[(no)movable] "+
+      "[(no)statmultis "+
+      "[marker=ObjType] "+
+      "[name=Name] "+
+      "X1 Y1 X2 Y2"
+    );
+    SendSysMessagePergon(who,
+      "Wird ein ObjType bei 'marker' angeben, werden nur Objekte dieses "+
+      "Typs exportiert.",
+      "If an Objtype given as 'marker', only object of this type will be "+
+      "exported."
+    );
+    SendSysMessagePergon(who,
+      "Mit 'name' kann man einen Namen für die Export-Dateien vergeben.",
+      "You can name the export files with the 'name' option."
+    );
+    return;
+  EndIf
+
+  // get coordinates and remove them
+  var begin := params.size() - 3;
+  var xlow  := Min(CInt(params[begin+0]), CInt(params[begin+2]));
+  var xhigh := Max(CInt(params[begin+0]), CInt(params[begin+2]));
+  var ylow  := Min(CInt(params[begin+1]), CInt(params[begin+3]));
+  var yhigh := Max(CInt(params[begin+1]), CInt(params[begin+3]));
+  If (!CheckRealm(who, xlow, ylow, xhigh, yhigh))
+    SendSysMessagePergon(who,
+      "Koordinaten sind für aktuelles Realm ungültig.",
+      "Invalid coordinates for current realm."
+    );
+    return;
+  EndIf
+  params.shrink(begin);
+
+  // re-combine rest of parameters and extract options
+  var options := GetOptions(Join(" ", params));
+
+  If (options["ignoremultis"])
+    SendSysMessagePergon(who,
+      "Items auf/in Multis werden nicht exportiert.",
+      "Items on/in multis will not be exported."
+    );
+  Else
+    SendSysMessagePergon(who,
+      "Items auf/in Multis werden exportiert.",
+      "Items on/in multis will be exported."
+    );
+  EndIf
+
+  If (options["statmultis"])
+    SendSysMessagePergon(who,
+      "Multis werden exportiert.",
+      "Multis will get exported."
+    );
+  Else
+    SendSysMessagePergon(who,
+      "Multis werden nicht exportiert.",
+      "Multis will not get exported."
+    );
+  EndIf
+
+  If (options["ignoreplayer"])
+    SendSysMessagePergon(who,
+      "Player-Items werden ignoriert.",
+      "Player items will be ignoriert."
+    );
+  Else
+    SendSysMessagePergon(who,
+      "Player-Items werden exportiert.",
+      "Player items will be exported."
+    );
+  EndIf
+
+  If (options["force"])
+    SendSysMessagePergon(who,
+      "Alle berücksichtigten Items werden statisch gemacht.",
+      "All considered items will be made static."
+    );
+  EndIf
+
+  If (options["movable"])
+    SendSysMessagePergon(who,
+      "Lose Items werden berücksichtigt.",
+      "Movable items will be considered."
+    );
+  Else
+    SendSysMessagePergon(who,
+      "Lose Items werden ignoriert.",
+      "Movable items will be ignored."
+    );
+  EndIf
+
+  If (options["destroy"])
+    SendSysMessagePergon(who,
+      "Items werden exportiert und gelöscht.",
+      "Items will get exported and deleted."
+    );
+  Else
+    SendSysMessagePergon(who,
+      "Items werden nur kopiert.",
+      "Items will get copied only."
+    );
+  EndIf
+  SendSysMessagePergon(who,
+    "Bereich ("+xlow+", "+ylow+") - ("+xhigh+", "+yhigh+")",
+    "Area ("+xlow+", "+ylow+") - ("+xhigh+", "+yhigh+")"
+  );
+
+  If (!SendYesNoGump(who, "Export ausfuehren/Start export?", 100, 25))
+    SendSysMessagePergon(who, "Abbruch", "Cancelled");
+    return;
+  EndIf
+
+  SendSysMessagePergon(who, "Export aktiviert ...", "Export started ...");
+
+  ExportArea(who, xlow, ylow, xhigh, yhigh, options);
+
+  SendSysMessagePergon(who, "Export beendet.", "Export done.");
+EndProgram
+
+// Koordinaten validieren
+Function CheckRealm(who, xlow, ylow, xhigh, yhigh) // {{{
+  var realm := Realms(who.realm);
+  If (!realm)
+    return realm;
+  EndIf
+
+  If (xlow < 0 or ylow < 0 or xhigh > realm.width or yhigh > realm.height)
+    return error{errortext := "Invalid Coordinates for Realm"};
+  EndIf
+
+  return 1;
+EndFunction // }}}
+
+// ExportArea - Extrahiert die Items
+Function ExportArea(who, x1, y1, x2, y2, options) // {{{
+  var name := "";
+  If (options["name"])
+    name := options["name"];
+  EndIf
+
+  var name_statics := FileStatics(name);
+  var file_statics := ReadConfigFile(name_statics);
+  var counter      := GetNextCounterNumber(file_statics);
+
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+  If (options["statmultis"])
+    ForEach item in ListStaticsInBox(
+      x1, y1, -128, x2, y2, 127, ITEMS_IGNORE_STATICS, who.realm
+    )
+      var elem := {};
+      elem.append({"NAME",  "#"});
+      elem.append({"ID",    item.objtype});
+      elem.append({"X",     item.x});
+      elem.append({"Y",     item.y});
+      elem.append({"Z",     item.z});
+      elem.append({"COLOR", 0});
+      elem.append({"CONT",  -1});
+      elem.append({"TYPE",  255});
+      AppendConfigFileElem(
+        name_statics, "SECTION", "WORLDITEM "+counter, elem
+      );
+
+      counter += 1;
+    EndForEach
+  EndIf
+
+  var itemdesc  := ReadConfigFile("::itemdesc");
+
+  var name_movable := FileMovable(name);
+  var file_movable := ReadConfigFile(name_movable);
+  var counterno    := GetNextCounterNumber(file_movable);
+
+  ForEach item in ListObjectsInBox(x1, y1, -128, x2, y2, 127, who.realm)
+    var iteminfo := itemdesc[item.objtype];
+    If (!iteminfo) // dummy definition aller genutzter members wenn das item keinen Eintrag hat
+      iteminfo := struct;
+      iteminfo.+saveonexit := 1;
+      iteminfo.+controlscript:="";
+      iteminfo.+script:="";
+      iteminfo.+usescript:="";
+      iteminfo.+walkonscript:="";
+      iteminfo.+graphic:=item.graphic;
+      iteminfo.+desc:=item.name;
+    Endif
+    // nicht zum Export geeignete Items ganz ueberspringen
+    If (
+      // Mobiles
+      item.isa(POLCLASS_MOBILE) or
+      // unsichtbare Dinge (Teleporter etc.)
+      item.invisible or
+      // Dinge, die eh beim Shutdown verschwinden sollen
+      item.saveonexit == 0 or
+      iteminfo.saveonexit == 0
+    )
+      continue;
+    EndIf
+
+    If (options["marker"] and item.objtype <> options["marker"])
+      // wenn nur Marker exportiert werden, andere Items ignorieren
+      continue;
+    EndIf
+
+    If (
+      options["ignoreplayer"] and
+      // vom Player festgemacht         Hauscontainer
+      (item.getprop(PROP_HS_C_FIXED) or item.getprop(PROP_HS_C_SC_BOX))
+    )
+      // Player-Items ignorieren
+      continue;
+    EndIf
+
+    If (item.movable and !options["movable"])
+      // lose Items ignorieren
+      continue;
+    EndIf
+
+    If (item.multi and options["ignoremultis"])
+      // Items auf/in Multis ignorieren
+      continue;
+    EndIf
+
+    var result := ShouldMakeStatic(item, iteminfo, options);
+    If (result.makestatic)
+      var elem := {};
+      elem.append({"NAME",  "#"});
+      elem.append({"ID",    item.graphic});
+      elem.append({"X",     item.x});
+      elem.append({"Y",     item.y});
+      elem.append({"Z",     item.z});
+      elem.append({"COLOR", item.color});
+      elem.append({"CONT",  -1});
+      elem.append({"TYPE",  255});
+      AppendConfigFileElem(
+        name_statics, "SECTION", "WORLDITEM "+counter, elem
+      );
+      counter += 1;
+
+    Else // nicht statisieren
+      var elem := {};
+      elem.append({"ObjType", Hex(item.objtype)});
+      elem.append({"X",       item.x});
+      elem.append({"Y",       item.y});
+      elem.append({"Z",       item.z});
+      elem.append({"Color",   item.color});
+      If (item.movable)
+        elem.append({"Movable", 1});
+      EndIf
+      If (result.name)
+        elem.append({"Name",  result.name});
+      EndIf
+      If (result.type<>"")
+        elem.append({"Type", result.type});
+      EndIf
+      If (result.graphic)
+        elem.append({"Graphic", result.graphic});
+      EndIf
+      If (result.usescript)
+        elem.append({"UseScript", result.usescript});
+      EndIf
+      If (result.script)
+        elem.append({"Script", result.script});
+      EndIf
+      If (result.walkonscript)
+        elem.append({"WalkOnScript", result.walkonscript});
+      EndIf
+      If (result.controlscript)
+        elem.append({"ControlScript", result.controlscript});
+      EndIf
+      AppendConfigFileElem(
+        name_movable, "SECTION", "WORLDITEM "+counterno, elem
+      );
+
+      counterno += 1;
+    EndIf
+
+    If (options["destroy"])
+      DestroyItem(item);
+    EndIf
+  EndForEach
+
+  UnloadConfigFile(FileStatics(name));
+  UnloadConfigFile(FileMovable(name));
+
+  SendSysMessagePergon(who,
+    "Bereich wurde exportiert.",
+    "Area has been exported."
+  );
+EndFunction // }}}
+
+// GetNextCounterNumber - Die naechste Nummer ermitteln
+Function GetNextCounterNumber(datafile) // {{{
+  var counter := GetConfigStringKeys(datafile);
+  If (Len(counter))
+    return (Len(counter));
+  Else
+    return 0;
+  EndIf
+EndFunction // }}}
+
+// ShouldMakeStatic - Kann man das Item statisch machen?
+Function ShouldMakeStatic(item, iteminfo, options) // {{{
+  var result := struct;
+  result.+controlscript := iteminfo.controlscript;
+  result.+script        := iteminfo.script;
+  result.+usescript     := item.usescript;
+  result.+walkonscript  := iteminfo.walkonscript;
+  If (item.graphic <> iteminfo.graphic)
+    // graphic ggf. mitsichern, wenn abweichend
+    result.+graphic := item.graphic;
+  EndIf
+  // interne Bezeichnung fuer WorldForge etc.
+  result.+type          := "";
+  // per Default wird Statisieren angenommen
+  result.+makestatic    := 1;
+
+  // Folgendes wird nicht festgemacht {{{
+  // Abschliessbares - Container, Tueren
+  If (item.isa(POLCLASS_LOCKABLE))
+    result.type := result.type+"Lockable ";
+    result.makestatic := 0;
+  EndIf
+
+  // Multis          - Haeuser, Boote
+  If (item.isa(POLCLASS_MULTI))
+    result.type := result.type+"Multi ";
+    result.makestatic := 0;
+  EndIf
+
+  // SpawnNet        - SpawnRunen, gespawnte Gegenstaende
+  If (item.getprop("spawnnet"))
+    result.type := result.type+"SpawnNet ";
+    result.makestatic := 0;
+  EndIf
+
+  // Name            - Gegenstaende mit unueblichem Namen
+  If (item.name and (item.name <> iteminfo.desc))
+    result.+name := item.name;
+    result.makestatic := 0;
+  EndIf
+
+  If (
+    // ControlScript   - Gegenstaende mit ControlScript
+    result.controlscript or
+    // Script          - Gegenstaende mit Script
+    result.script or
+    // UseScript       - Gegenstaende mit UseScript
+    result.usescript or
+    // WalkOnScript    - Gegenstaende mit WalkOnScript
+    result.walkonscript or
+    // IGNORE_ITEMS    - Sonstiges
+    (item.graphic in IGNORE_ITEMS)
+  )
+    result.makestatic := 0;
+  EndIf
+  // }}}
+
+  // alles in STATISIZE_ITEMS wird immer festgemacht
+  If (item.objtype in (STATISIZE_ITEMS))
+    result.makestatic := 1;
+  EndIf
+
+  // Marker-Override -- nur Items mit Marker exportieren
+  If (options["marker"])
+    If (item.objtype == options["marker"])
+      result.makestatic := 1;
+    EndIf
+  EndIf
+
+  // festmachen wurde erzwungen
+  If (options["force"])
+    result.makestatic := 1;
+  EndIf
+
+  return result;
+EndFunction // }}}
+
+// vim: sw=2 sts=2

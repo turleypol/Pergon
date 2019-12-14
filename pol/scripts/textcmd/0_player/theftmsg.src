@@ -1,0 +1,135 @@
+/////////////////////////////////////////////////////////
+// theftmsg - basiert auf letterbox
+//
+// Nachrichten an Diebe verschicken
+
+/////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.2  2008/07/14 17:17:40  mehdorn
+// - Umbau wegen Include-Umbenennung
+//   - daher Entfernung stringutil.inc
+// - Diebesliste um GetThieves erweitert
+// - theftmsg nun benutzbar
+//
+// Revision 1.1  2008/06/30 01:22:42  mehdorn
+// mal eingecheckt, damit ich daheim weiterbasteln kann
+//
+
+use uo;
+include "include/diebesliste";
+include "include/logutil";
+include "include/msgs";
+include "include/pergonutil";
+include "include/varutil";
+include ":letterbox:gumps";
+
+Program theftmsg(who)
+    var mail := ComposeEmail(who);
+    If (!mail)
+        If (who)
+            SendSysMessagePergon(who, "Abbruch", "Abort");
+        EndIf
+        return;
+    EndIf
+
+    var thieves := GetThieves(who);
+
+    // Script soll nicht verraten, ob man beklaut wurde, daher ggf. Senden
+    // ueberspringen und trotzdem Erfolgsmeldung bringen
+    If (thieves.size()>0)
+        var result := Start_ScriptPergon(
+            ":letterbox:email",
+            array{
+                who, who.serial, join(" ", thieves),
+                mail.subject, mail.message, SEND_NO_STATUS
+            }
+        );
+        If (!result)
+            SendSysMessagePergon(
+                who,
+                "Fehler beim Verschicken: "+result.errortext,
+                "Error on sending: "+result.errortext
+            );
+            return;
+        EndIf
+        syslog(
+            CharInfoStr(who)+" hat TheftMsg an "+join(" ", thieves)+
+            " geschickt: "+mail.subject+"/"+mail.message
+        );
+    Else
+        syslog(
+            CharInfoStr(who)+" wollte TheftMsg senden, hat derzeit aber "+
+            "keine Diebe in der Liste."
+        );
+    EndIf
+
+    SendSysMessagePergon(
+        who,
+        "Nachricht verschickt",
+        "Message sent"
+    );
+EndProgram
+
+Function ComposeEmail(mobile)
+    var subject := "Diebstahl von ";
+    var message := array{
+        "Seid gegruesst!",
+        ""
+    };
+
+    While (mobile.connected)
+        var gump := BuildComposeGump("An die Diebe", subject, message);
+        // Empfaengerzeile ersetzen
+        gump[1][7] := "";
+        gump[1][8] := "text 110 22 2100 7";
+        // Adressbuchbutton entfernen
+        gump[1][9] := ""; gump[1][10] := "";
+        // "Mehrere Empfaenger ..."-Text ersetzen
+        gump[2][4] := "<basefont color=#FFF8DC size=5>"+
+            "Denkt an eine genaue Beschreibung des Diebesgutes!";
+
+        var input := SendDialogGump(mobile, gump[1], gump[2], 50, 50);
+
+        If (CLOSE_EMAIL_BTN in input.keys)
+            var ret := error;
+            ret.errortext := "Cancelled";
+            return ret;
+        EndIf
+
+        // Retrieve gump input data and word-wrap
+        subject :=input[SUBJECT_TXT];
+        subject[1,Len(CStr(SUBJECT_TXT))+2]:="";
+        If (!subject)
+            subject := "";
+        EndIf
+
+        var temp_string := "";
+        var i;
+        For (i := 1; i <= message.Size(); i += 1)
+            var temp_data := input[message[i]];
+            temp_data[1,Len(CStr(TXT_START))+2] := "";
+            If (temp_data)
+                temp_string += " "+temp_data;
+            EndIf
+            SleepMS(2);
+        EndFor
+
+        message := GFWordWrap(temp_string, 595);
+
+        // Process buttons other than cancellation.
+        // Address book will be ignored
+        If (input[SEND_EMAIL_BTN])
+            var ret := struct;
+            ret.+subject := subject;
+            ret.+message := join(" ", message);
+            return ret;
+        EndIf
+
+        SleepMS(2);
+    EndWhile
+
+    var ret := error;
+    ret.errortext := "Connection lost";
+    return ret;
+EndFunction

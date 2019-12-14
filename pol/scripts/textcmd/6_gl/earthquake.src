@@ -1,0 +1,76 @@
+//////////////////////////////////////////////////////////////////////////////////////////////
+//
+//  TextCMD Earthquake - Versetzt alle Spieler, die online sind, in Erdbebenstatus
+//
+//    Usage: .EarthQuake Staerke [all]
+//                       Staerke: Ausmass des Erdbebens
+//                       all:     bestimmt, dass auch umstehende Npcs einbezogen werden (optional; erst ab CmdLvl Admin verfuegbar)
+//
+//  13.05.2003 - Fraggulus
+//
+//  Modification:
+//
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use util;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonutil";
+Include "include/msgs";
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_Earthquake(who, params)
+
+    params := splitwords(params);
+
+    // Staerke des Bebens ermitteln
+    Var EQ_Strength := CInt(params[1]);
+    If (!EQ_Strength || EQ_Strength < 1)
+        EQ_Strength := 1;
+    ElseIf (EQ_Strength > 10)
+        EQ_Strength := 10;
+    EndIf
+
+    // ermitteln, ob auch Npcs einbezogen werden sollen // erst ab CmdLevel Admin moeglich
+    Var QUAKE_ALL := 0;
+
+    If (lower(params[2]) == "all")
+        If (who.cmdlevel >= CMDLEVEL_GL)
+            QUAKE_ALL := 1;
+            SendSysMessagePergon(who, "HINWEIS: Online-Spieler _und_ umstehende Npcs spüren das Erdbeben!");
+        EndIf
+    EndIf
+
+    // Onlinechars bestimmen
+    Var Onliners := EnumerateOnlineCharacters();
+    Var OnlineNpcs;
+
+    Detach();
+
+    ForEach Char in Onliners
+        SendSysMessagePergon(Char, "Ein Erdbeben der Stärke " + EQ_Strength + " erschüttert das Land!");
+        Start_ScriptPergon("::misc/quake", {Char, EQ_Strength});
+        If (QUAKE_ALL)
+            OnlineNpcs := ListMobilesNearLocation(Char.x, Char.y, Char.z, 15,Char.realm);
+            ForEach NpcChar in OnlineNpcs
+                If ((NpcChar != Char) && (!GetObjProperty(NpcChar, "#earthquake")))
+                    Start_ScriptPergon("::misc/quake", {NpcChar, EQ_Strength});
+                EndIf
+            EndForEach
+        EndIf
+    EndForEach
+
+EndProgram

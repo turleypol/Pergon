@@ -1,0 +1,97 @@
+/////////////////////////////////////////////////////////////////////////////////////
+//
+//  identifiy.src   -   Magische Lupe mit der man magische Gegenstände identifizieren kann
+//
+//    v0.9  -   10.04.05  -   Seppel  (Grossteil aus pkg/std/itemid/itemid.src übernommen)
+//    v1.0  -   13.04.05  -   Seppel  -   leichte Änderungen und Abschluss für v1.0
+//
+/////////////////////////////////////////////////////////////////////////////////////
+
+use os;
+use math;
+use uo;
+use cfgfile;
+
+Include "include/modifyskill";
+
+program identify(character, item)
+
+  Var rares:=   ReadConfigFile("rares");                                    //Rares Config auslesen
+  Var rare:=    FindConfigElem(rares, item.objtype);   
+  Var tbu:=     rare.timebetweenuses;
+
+  if(item.movable == 0);                                                    //ist die Lupe lose?
+    SendSysMessagePergon(character, "Ihr könnt die Lupe nicht bewegen");
+    return;
+  endif
+
+  if ((GetObjProperty(item, "lastuse") + tbu) > ReadGameClock())            //letzte Benutzung lange genug her?
+      SendSysMessagePergon(character, "Die Lupe braucht noch Zeit zum regenerieren");
+      return;
+  endif
+
+  SendSysMessagePergon(character, "Wählt ein Objekt");
+  Var the_item := target(character, TGTOPT_CHECK_LOS);
+  if (!the_item)
+      SendSysMessagePergon(character, "Zielen abgebrochen");
+      return;
+  endif
+
+  If (!the_item.isa(POLCLASS_ITEM))
+     SendSysMessagePergon(character, "Das könnt ihr nicht untersuchen");
+     return;
+  EndIf
+
+  if (GetObjProperty(the_item, "IDed"))                                           // no macro exploits, please
+      SendSysMessagePergon(character, "Dieser Gegenstand wurde bereits identifiziert.");
+      return;
+  endif
+  
+  Var true_name := GetObjProperty(the_item, "tname");                             // This block is DW's check for enchanting.
+  Var ncharges;
+  
+  if (true_name != error)                                                         // It's similar to the check for magic
+        SendSysMessagePergon (character, true_name);                              // weapons and armor, but not good enough
+        // I'd like to put a friendlier message like "that is a ..." but          // to reuse the code.
+        // I don't want to check for vowels!
+        if (GetObjProperty(the_item, "charges"))
+            ncharges := GetObjProperty(the_item, "charges");
+            if (ncharges)
+                SendSysMessagePergon(character, "Charges: " + ncharges);
+            endif
+        endif
+        Setname(the_item, true_name);
+
+   elseif (GetObjProperty(the_item, "prefix") || GetObjProperty(the_item, "suffix"))         // The item is some kinda magic
+        if (GetObjProperty(the_item, "prefix"))                                              // if 'prefix' magic
+           Var space := find(the_item.desc, "[magisch]", 1);                                 // Anm.:     in [magisch] geaendertes prefix suchen
+           Var currdesc := the_item.desc;                                                    //  find "a magic" and strip it off
+           Var newname := currdesc[space+9,len(the_item.desc)];                              //
+           SetName(the_item, GetObjProperty(the_item, "prefix") + newname);                  // new name is prefix str plus old name
+           EraseObjProperty(the_item, "prefix");                                             // delete the prefix prop
+
+           if( GetObjProperty(the_item, "suffix"))                                           // Might also have a suffix prop
+                Var currdesc := the_item.desc;
+                SetName(the_item, currdesc + " " + GetObjProperty(the_item, "suffix"));       // new name is old name plus suffix str
+                EraseObjProperty(the_item, "suffix");                                         // delete the suffix prop
+           endif
+         elseif( GetObjProperty(the_item, "suffix"))                                           // only a suffix prop
+             Var space := find(the_item.desc, "[magisch]", 1);
+             Var currdesc := the_item.desc;                                                    //  find "a magic" and strip it off
+             Var newname := currdesc[space+9,len(the_item.name)];                              // /
+             SetName(the_item, newname + " " + GetObjProperty(the_item, "suffix"));            // new name is old name plus suffix str
+             EraseObjProperty(the_item, "suffix");                                             // delete the suffix prop
+         endif
+         
+         SendSysMessagePergon(character, "Die Lupe fängt an zu glühen");
+         PlayObjectCenteredEffect(character, 0x373A, 10, 0);
+         PlaySoundEffect(character, SFX_SPELL_REVEAL);
+         SleepMS(1000);
+         SendSysMessagePergon(character, "Ihr identifiziert: " + the_item.desc);                     // user message
+         SetObjProperty(the_item, "IDed" , 1); 
+         SetObjProperty(item, "lastuse", ReadGameClock());                                           // check this prop later to combat exploits
+    else
+         SendSysMessagePergon(character, "Ihr schaut euch den Gegenstand genau an.");                // no magic props were found
+    endif   
+    
+endprogram

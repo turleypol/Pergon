@@ -1,0 +1,17 @@
+use uo;
+use os;
+
+Include "include/msgs";
+Include "include/client";
+Include "include/party";
+
+Program OnLogoff(who)
+  // Spieler hat sich fertig wieder-eingeloggt
+  SysLog(CStr(who.name)+" (Account: "+CStr(who.acctname)+" / IP: "+who.ip+") hat sich um "+ReadGameClock()+" reconnected.");
+
+//  // Partyinfo an Spieler schicken
+//  Var leader:=SendPartyInfo(who);
+//  If (leader)
+//    SendSysMessagePergon(who, "Ihr seid noch in der Party von "+leader.name+".", "", _DEFAULT_TEXT_FONT, FONTCOLOR_GREEN);
+//  EndIf
+EndProgram

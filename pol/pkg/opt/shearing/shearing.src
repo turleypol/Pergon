@@ -1,0 +1,170 @@
+// $Log: not supported by cvs2svn $
+// Revision 1.4  2008/07/15 13:21:41  mehdorn
+// - ueberarbeitet
+// + nachwachsend Wolle (25 Wolle/Stunde)
+//
+//
+// 08.07.2003 Fraggulus: Schaf wird bis zum Ende kahlrasiert
+
+use os;
+use uo;
+use util;
+
+include "include/modifyskill";
+include "include/objtype";
+
+Const UACTION_SHEAR     := 0x0020;
+// Menge der Wolle am Schaf
+Const SHEEP_WOOL_PROP   := "wool";
+// maximal nachwachsende Wollmenge FIXME: aus npcdesc auslesen
+Const WOOL_MAX          := 25;
+// Wollnachwachszeit
+Const WOOL_REGEN_TIME   := 60*60; // eine Stunde
+// Zeitpunkt der letzten Scherung
+Const LAST_SHEAR_PROP   := "lastshear";
+
+Program UseKnife(who, knife) // {{{
+    If (IsThingOnHand(who))
+        SendSysMessagePergon(who, "Zum Scheren braucht Ihr freie Hände!");
+        return;
+    EndIf
+
+    If (!ReserveItem(knife))
+        return;
+    EndIf
+
+    var sheep := SheepNearby(who);
+    If (!sheep)
+        ReleaseItem(knife);
+        return;
+    EndIf
+
+    ReWool(sheep);
+
+    DoWool(who, knife, sheep);
+EndProgram // }}}
+
+Function ReWool(sheep) // {{{
+    var lasttime := GetObjProperty(sheep, LAST_SHEAR_PROP);
+    If (!lasttime)
+        // nie geschoren -> hat noch Wolle
+        return;
+    EndIf
+
+    var bonus := GetObjProperty(sheep, "Generation");
+    If (!bonus)
+        bonus := 0;
+    Else
+        bonus := CInt(Max(bonus/3, 10));
+    EndIf
+
+    If (ReadGameClock() >= lasttime + WOOL_REGEN_TIME)
+        SetObjProperty(sheep, SHEEP_WOOL_PROP, WOOL_MAX + bonus);
+    EndIf
+EndFunction // }}}
+
+Function DoWool(who, knife, sheep) // {{{
+    var sheepwool := CInt(GetObjProperty(sheep, SHEEP_WOOL_PROP));
+    If (!sheepwool)
+        SendSysMessagePergon(who,
+            "Das Schaf hat noch nicht genug Wolle. Scheren lohnt sich nicht."
+        );
+        ReleaseItem(knife);
+        return;
+    EndIf
+
+    SendSysMessagePergon(who, "Ihr beginnt zu scheren ...");
+
+    While (sheepwool)
+        var num_wools := RandomInt(3) + 2;
+        var i;
+        For (i := 1; i <= num_wools; i += 1)
+            PerformAction(who, UACTION_SHEAR);
+            PlaySoundEffect(who, 0x249);
+            Sleep(1);
+            If (Distance(who, sheep) > 1)
+                SendSysMessagePergon(who, "Ihr hört auf zu scheren.");
+                ReleaseItem(knife);
+                return;
+            EndIf
+        EndFor
+
+        If (!CheckSkillPergon(
+            who, SKILLID_TIERZUCHT, WOOL_MAX - sheepwool, 100
+        ))
+            SendSysMessagePergon(who,
+                "Ihr schafft es nicht, etwas Wolle zu scheren."
+            );
+            SetWerkzeugSchaden(who, knife,
+                "Euer Schergerät hat gelitten.",
+                "Euer Schergerät ist beschädigt.",
+                "Euer Schergerät ist zerbrochen."
+            );
+            ReleaseItem(knife);
+            return;
+        EndIf
+
+        // kleiner Bonus am Rande
+        If (Randomint(100) == 0)
+            If (CreateItemInBackpack(who, UOBJ_SCHWARZE_PERLE, 1))
+                SendSysMessagePergon(who,
+                    "Ihr findet eine schwarze Perle!"
+                );
+            EndIf
+        EndIf
+
+        var wool_amount := CInt(Min(RandomInt(4) + 2, sheepwool));
+        If (CreateItemInBackpackPergon(who, 0xdf8, wool_amount))
+            sheepwool -= wool_amount;
+            SetObjProperty(sheep, LAST_SHEAR_PROP, ReadGameClock());
+            SetObjProperty(sheep, SHEEP_WOOL_PROP, sheepwool);
+            SendSysMessagePergon(who,
+                "Ihr legt etwas Wolle in Euren Rucksack."
+            );
+        EndIf
+    EndWhile
+
+    If (!sheepwool)
+        SendSysMessagePergon(who, "Das Schaf ist nun kurzgeschoren.");
+    EndIf
+
+    ReleaseItem(knife);
+EndFunction // }}}
+
+Function SheepNearBy(who) // {{{
+    SendSysMessagePergon(who, "Wählt ein Schaf zum Scheren aus!");
+
+    var sheep := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!sheep)
+        SendSysMessagePergon(who, "Das ist kein Schaf.");
+        return 0;
+    EndIf
+
+    If (Distance(who, sheep) > 1)
+        SendSysMessagePergon(who, "Das ist zu weit weg.");
+        return 0;
+    EndIf
+
+    If (IsSheep(sheep))
+        return sheep;
+    EndIf
+
+    SendSysMessagePergon(who, "Da könnt Ihr keine Wolle scheren.");
+    return 0;
+EndFunction // }}}
+
+Function IsSheep(sheep) // {{{
+    If (sheep.objtype == 0xcf)
+        return 1;
+    EndIf
+
+    return 0;
+EndFunction // }}}
+
+Function IsThingOnHand(who) // {{{
+    If (GetEquipmentByLayer(who, 1) or GetEquipmentByLayer(who, 2))
+        return 1;
+    EndIf
+
+    return 0;
+EndFunction // }}}

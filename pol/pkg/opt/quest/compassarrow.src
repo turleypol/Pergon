@@ -1,0 +1,81 @@
+///////////////////////////////////////////////////////////////////////////
+// compassarrow
+//
+// Kompass, der bei Doppelklick QuestArrow zum Ziel anzeigt
+
+use uo;
+include "include/msgs";
+include "include/packets";
+include "include/server";
+
+Const COMPASS_CONFIG := "coords";
+
+Program CompassArrow(who, compass);
+    // Daten laden
+    var config := compass.getprop(COMPASS_CONFIG);
+    If (!config)
+        // noch nicht eingerichtet?
+        If (who.cmdlevel >= CMDLEVEL_QUESTCHAR)
+            // Staff darf Kompass einrichten
+            CompassConfigure(who, compass);
+        Else
+            SendSysMessagePergon(who,
+                "Der Kompass ist defekt. Wendet Euch an einen Gott!",
+                "The magic compass is brokon. As a god for help!"
+            );
+        EndIf
+        return;
+    EndIf
+
+    // Kompass benutzen
+    CompassUse(who, config);
+EndProgram
+
+// Kompass benutzen
+Function CompassUse(who, config) // {{{
+    If (who.getprop(PROP_COMPASS))
+        // schon aktiv
+        SendSysMessagePergon(who,
+            "Ihr deaktiviert den Kompass.", "You turn the compass off."
+        );
+        SetQuestArrow(who, 0, who.x, who.y);
+        who.eraseprop(PROP_COMPASS);
+        return;
+    EndIf
+
+    // noch nicht aktiv
+    If (who.realm != config.realm)
+        // Gegend passt nicht und QuestArrow ist realmlos
+        SendSysMessagePergon(who,
+            "Ihr seid im falschen Realm. Begebt euch nach "+UCFirst(config.realm),
+            "You are in the wrong realm. Go to "+UCFirst(config.realm)
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Der magische Kompass zeigt auf ein Ziel!",
+        "The magic compass displays a direction!"
+    );
+    SetQuestArrow(who, 1, config.x, config.y);
+    who.setprop(PROP_COMPASS, 1);
+    return;
+EndFunction // }}}
+
+// Kompass auf Ziel einrichten
+Function CompassConfigure(who, compass) // {{{
+    var doconfig := SendYesNoGump(
+        who, "Soll der Kompass auf eure Position eingestellt werden?", 100, 20
+    );
+    If (!doconfig)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    var config := struct;
+    config.x     := who.x;
+    config.y     := who.y;
+    config.realm := who.realm;
+    compass.setprop(COMPASS_CONFIG, config);
+    SendSysMessagePergon(who, "Position gesetzt", "Position set");
+EndFunction // }}}

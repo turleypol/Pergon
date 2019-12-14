@@ -1,0 +1,32 @@
+//   Modifications
+//     2007/04/10 Shinigami: Containerinhalt wird auch behandelt
+
+Use uo;
+
+Include "include/msgs";
+
+Program TextCMD_UnLockRadius(who, radius)
+  radius:=CInt(radius);
+  If (radius)
+    ForEach item in ListItemsNearLocation(who.x, who.y, who.z, radius,who.realm)
+      If (item.isa(POLCLASS_ITEM))
+        If (item.isa(POLCLASS_CONTAINER))
+          ForEach subitem in EnumerateItemsInContainer(item, ENUMERATE_IGNORE_LOCKED)
+            subitem.movable:=1;
+          EndForEach
+        EndIf
+
+        item.movable:=1;
+
+        If (item.multi)
+          SysLog("GMCMD: "+who.name+" ["+who.acctname+" / "+Lower(Hex(who.serial))+"] bei "+who.x+" "+who.y+" "+who.z+" aendert die Prop movable bei "+item.desc+" ["+Lower(Hex(item.serial))+"] von 0 auf 1");
+        EndIf
+      EndIf
+    EndForEach
+
+    SendSysMessagePergon(who, "Alles in der Kugel mit Radius "+radius+" ist wieder verschiebbar.");
+  Else
+    SendSysMessagePergon(who, "Entweder Ihr gebt einen Radius an, oder Ihr benutzt '.unlockrange'"+
+      " für rechteckige Bereiche bei voller Höhe.");
+  EndIf
+EndProgram

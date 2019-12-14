@@ -1,0 +1,207 @@
+/////////////////////////////////////////////////////////
+// healing.src
+//
+// Heals hit points if:
+//  * the patient is human
+//  * a skill check is made
+//
+// Resurrects if:
+//  * The patient is human
+//  * The patient is dead
+//  * a skill check is made
+//  * a random roll is made
+//
+// Author: Dream Weaver
+// Modified by: Racalac, 4/16/99
+//
+//  26.09.2000 Fraggulus: Blutige Bandagen nach erfolgreicher Heilung
+//  16.12.2003 Fraggulus: Abfragen korrigiert; allg. Aufraeumen
+//  06.01.2004 Fraggulus: Abfrage bei Tod und Berechnung korrigiert
+//  08.12.2004 Turley: Überprüfung auf Verdammung
+//  03.06.2005 Turley: Verdammungscheck an neue Magie angepasst
+//  03.12.2006 Turley: Unterstützung für packethook des BandageSelf/
+//                     Target Macros
+
+use attributes;
+use os;
+use uo;
+use util;
+use vitals;
+include "include/client";
+include "include/modifyskill";
+include "include/vitals";
+
+Program UseBandages(who, bandage)
+  var patient;
+  If (who.size()==3)  // gestartetes Script? (packethook)
+    bandage := who[2];
+    patient := who[3];
+    who     := who[1];
+  EndIf
+  ReserveItem(bandage);
+  If (!patient)
+    SendSysMessagePergon(who, "Wen möchtet Ihr heilen?");
+    patient := Target(who, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+  EndIf
+  If (!patient)
+      SendSysMessagePergon(who, "Zielen abgebrochen");
+      return;
+  ElseIf (Distance(who, patient) > 1)
+      SendSysMessagePergon(who, "Der Patient ist zu weit weg.");
+      return;
+  ElseIf (!CheckLineOfSight(who, patient))
+    SendSysMessagePergon(who, "Ihr könnt Euren Patienten nicht finden.");
+    return;
+  ElseIf (patient.isa(POLCLASS_CORPSE))
+    var parms := {};
+    parms[1] := patient;
+    parms[2] := who;
+    parms[3] := bandage;
+    Start_ScriptPergon(":veterinary:vet", parms);
+    return;
+  ElseIf (!patient.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(who, "So etwas könnt Ihr nicht heilen.");
+    return;
+  ElseIf (!patient.dead && (GetHPPergon(patient) == GetMaxHPPergon(patient)))
+    SendSysMessagePergon(who, "Euer Patient ist bereits kerngesund.");
+    return;
+  ElseIf (GetObjProperty(patient, "spell_doomed"))
+    SendSysMessagePergon(who, "Euer Patient ist dazu verdammt unter den Toten zu wandeln.");
+    return;
+  EndIf
+
+  // zeigt an, ob eine Heilung erfolgte oder nicht (wg. bloody bandages)
+  var success;
+
+  // Patient ist ein Spieler
+  If ((patient.isa(POLCLASS_MOBILE)) && (!patient.isa(POLCLASS_NPC)))
+    If (patient.dead)
+      // Wiederbelebungsversuch {{{
+      var healing := GetSkillPergon(who, SKILLID_GESEGNETEGEGENST);
+      var anatomy := GetSkillPergon(who, SKILLID_ANATOMIE);
+      If ((Healing < 80) || (Anatomy < 80))
+        SendSysMessagePergon(who,
+          "Ihr seid nicht gut genug, um jemanden wiederauferstehen zu lassen."
+        );
+        return;
+      EndIf
+      Sleep(10);
+      If (Distance(who, patient) > 1)
+        SendSysMessagePergon(who, "Euer Patient ist zu weit entfernt.");
+        return;
+      ElseIf (!Patient.dead)
+        SendSysMessagePergon(who, "Euer Patient ist bereits wieder lebendig.");
+        return;
+      ElseIf (!CheckLineOfSight(who, patient))
+        SendSysMessagePergon(who,
+          "Ihr habt Euren Patienten aus den Augen verloren."
+        );
+        return;
+      EndIf
+
+      SubtractAmount(bandage, 1);
+      success := ReSurrectPC(who, patient);
+      // }}}
+
+    Else // noch nicht tot
+      // Heilungsversuch {{{
+      If (patient.serial == who.serial)
+        SendSysMessagePergon(who, "Ihr beginnt, Euch selbst zu verarzten.");
+        Sleep(15);
+      Else
+        SendSysMessagePergon(who, "Ihr beginnt, "+patient.name+" zu heilen.");
+        SendSysMessagePergon(patient, who.name+" verarztet Euch gerade.");
+        Sleep(5);
+      EndIf
+
+      If (!patient)
+        SendSysMessagePergon(who,
+          "Euer Patient weilt nicht mehr auf dieser Welt."
+        );
+        return;
+      ElseIf (Distance(who, patient) > 1)
+        SendSysMessagePergon(who, "Euer Patient ist zu weit entfernt.");
+        return;
+      ElseIf (patient.dead)
+        SendSysMessagePergon(who,
+          "Euer Patient weilt nicht mehr unter den Lebenden."
+        );
+        return;
+      ElseIf (!CheckLineOfSight(who, patient))
+        SendSysMessagePergon(who, "Ihr könnt Euren Patienten nicht sehen.");
+        return;
+      EndIf
+
+      SubtractAmount(bandage, 1);
+      success := Heal(who, patient);
+      // }}}
+    EndIf
+
+  ElseIf ( // kein Spieler gewaehlt
+    (patient.script in (array{"enticedanimal", "tamed"})) or
+    (patient.isa(POLCLASS_CORPSE))
+  )
+    var parms := {};
+    parms[1] := patient;
+    parms[2] := who;
+    parms[3] := bandage;
+    Start_ScriptPergon(":veterinary:vet", parms);
+    return;
+  Else
+
+    SendSysMessagePergon(who, "Das könnt Ihr nicht heilen.");
+    return;
+  EndIf
+
+  If (success) // blutige Bandagen
+    If (RandomInt(100) > 80)
+      // mit 80%er Wahrscheinlichkeit noch zu gebrauchen
+      CreateItemInBackpackPergon(who, 0x0e20);
+    EndIf
+  EndIf
+EndProgram
+
+Function Heal(who, patient) // {{{
+    var diff := Min(110, GetMaxHPPergon(patient) - GetHPPergon(patient));
+
+    If (CheckSkillPergon(who, SKILLID_GESEGNETEGEGENST, diff, diff*5))
+      var healing := GetSkillPergon(who, SKILLID_GESEGNETEGEGENST);
+      var anatomy := GetSkillPergon(who, SKILLID_ANATOMIE);
+      var minheal := CInt((anatomy/5.0) +(healing/5.0) +  3);
+      var maxheal := CInt((anatomy/5.0) +(healing/2.0) + 10);
+      var points_healed := RandomIntMinMax(minheal, maxheal);
+      HealDamage(patient, points_healed);
+      SendSysMessagePergon(who,
+        "Ihr regeneriert Eurem Patienten " + points_healed + " Lebenspunkte."
+      );
+      return(1);
+    Else
+      SendSysMessagePergon(who,
+        "Ihr konntet Euren Patienten nicht heilen."
+      );
+    EndIf
+EndFunction // }}}
+
+Function ReSurrectPC(who, patient) // {{{
+  If (!CheckSkillPergon(who, SKILLID_GESEGNETEGEGENST, 90, 500))
+    SendSysMessagePergon(who,
+      "Ihr scheitert bei dem Versuch, Euren Patienten wiederzubeleben."
+    );
+    return 0;
+  EndIf
+
+  // Rueckfrage an Patienten
+  If (ResNow(patient) == 1)
+    ResurrectPergon(patient);
+    ResPenalties(patient);
+    SendSysMessagePergon(who,
+      "Ihr habt es geschafft, Euren Patienten wiederauferstehen zu lassen."
+    );
+    return 1;
+  EndIf
+
+  SendSysMessagePergon(who, "Euer Patient verweigert die Wiederbelebung.");
+  return 0;
+EndFunction // }}}
+
+// vim: sw=2 sts=2

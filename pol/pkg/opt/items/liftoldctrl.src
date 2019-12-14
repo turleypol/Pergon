@@ -1,0 +1,22 @@
+///////////////////////////////////////////////////////////////////////////
+// liftoldctrl --
+// faehrt Lift nach Serverrestart gegebenenfalls auf Startpos zurueck
+//
+//  Author: Fraggulus
+
+use uo;
+
+Program LiftControl(lift)
+  var old_height := GetObjProperty(lift, "hoehe_alt");
+  If (old_height == error)
+    // Erststart, noch keine Hoehe gesetzt -> Hoehe sichern
+    SetObjProperty(lift, "hoehe_alt", lift.z);
+    return;
+  EndIf
+
+  // in Ausgangsposition schieben
+  MoveObjectToLocation(
+    lift, lift.x, lift.y, old_height, lift.realm,
+    MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+  );
+EndProgram

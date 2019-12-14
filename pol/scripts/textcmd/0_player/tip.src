@@ -1,0 +1,149 @@
+///////////////////////////////////////////////////////////////////////////
+// tip - Tips anzeigen bzw. anzeige an/ausschalten
+
+use basic;
+use uo;
+include "include/msgs";
+include "include/server";
+include "include/varutil";
+
+// Dateiname wird aus PREFIX, laufender Nummer und SUFFIX zusammengebaut
+Const TIP_FILE_PREFIX := "tips/tips";
+Const TIP_FILE_SUFFIX := ".txt";
+
+Const ERR_NOTIPFILE := "Tip file not found";
+
+Program Tip(who, param)
+    // automatische Tipauswahl?
+    var automatic := 1;
+    // aktuelle Tip-Nummer
+    var tipnum    := CInt(who.acct.getprop(ACCT_TIP_LAST)) + 1;
+
+    // externer Aufruf (Logon)
+    If (TypeOfInt(who) == OT_STRUCT)
+        who := who.who;
+    Else
+        // manueller Aufruf
+        // Parameter auswerten {{{
+        If (param)
+            If (param in (array{"?", "help", "hilfe"}))
+                // Hilfe ausgeben
+                SendSysMessagePergon(who,
+                    "Parameter: an, aus, hilfe, <nr>",
+                    "Parameters: on, off, help, <nr>"
+                );
+                return;
+
+            // ein- bzw. ausschalten der Tips
+            ElseIf (param in (array{"an", "ein", "on"}))
+                who.acct.eraseprop(ACCT_TIP_DISABLED);
+                SendSysMessagePergon(who,
+                    "Tips beim Login aktiviert", "Tips on logon enabled"
+                );
+                return;
+
+            ElseIf (param in (array{"aus", "off"}))
+                who.acct.setprop(ACCT_TIP_DISABLED, 1);
+                SendSysMessagePergon(who,
+                    "Tips beim Login deaktiviert", "Tips on logon disabled"
+                );
+                return;
+
+            EndIf
+
+            If (IsNumeric(param))
+                // manuelle Auswahl, gezielt einen Tip anzeigen lassen
+                tipnum    := CInt(param);
+                automatic := 0;
+            EndIf
+        EndIf
+        // }}}
+    EndIf
+
+    SendTip(who, automatic, tipnum);
+EndProgram
+
+Function SendTip(who, automatic, tipnum) // {{{
+    // Tip-Datei suchen {{{
+    // Numerierung beginnt erst bei 2
+    var filename := GetTipFilename(tipnum);
+    If (!filename)
+        If (automatic)
+            // Wrap-Around
+            tipnum := 1;
+            SendSysMessagePergon(who,
+                "Letzter Tip erreicht, beginne von vorn ...",
+                "Last tip reaching, showing the first again ..."
+            );
+        Else
+            SendSysMessagePergon(who,
+                "Tip Nr. "+tipnum+" wurde nicht gefunden",
+                "Tip No. "+tipnum+" not found"
+            );
+            return;
+        EndIf
+
+        // neuer Versuch
+        filename := GetTipFilename(tipnum);
+        If (!filename)
+            SendSysMessagePergon(who, "Kein Tip gefunden", "No tip found");
+            return;
+        EndIf
+    EndIf
+    // }}}
+
+    // Tip schicken und ggf. merken {{{
+    var tiptext := GetTipText(filename, tipnum);
+    If (!tiptext)
+        SendSysMessagePergon(who,
+            "Tip nicht ladbar: "+tiptext.errortext,
+            "Could not load tip: "+tiptext.errortext
+        );
+    EndIf
+
+    If (SendStringAsTipWindow(who, tiptext))
+        If (automatic)
+            // bei Erfolg merken
+            who.acct.setprop(ACCT_TIP_LAST, tipnum);
+        EndIf
+    EndIf
+    // }}}
+EndFunction // }}}
+
+Function GetTipFilename(tipnum) // {{{
+    var filename;
+    If (tipnum == 1)
+        filename := TIP_FILE_PREFIX+TIP_FILE_SUFFIX;
+    Else
+        filename := TIP_FILE_PREFIX+tipnum+TIP_FILE_SUFFIX;
+    EndIf
+
+    If (FileExists(filename))
+        return filename;
+    EndIf
+
+    return error{errortext := ERR_NOTIPFILE};
+EndFunction // }}}
+
+Function GetTipText(filename, tipnum) // {{{
+    // Datei laden
+    var content := ReadFile(filename);
+    If (content == error)
+        return content;
+    EndIf
+
+    // Tip-Nummer hinzufuegen
+    content := array{"Tip Nr. "+tipnum, ""} + content;
+
+    // Array fuer SendStringAsTipWindow vorformatieren
+    var separator := CChr(0x0d)+CChr(0x0d);
+    var index;
+    For (index := 1; index <= content.size(); index += 1)
+        SleepMs(2);
+        If (content[index] == "")
+            content[index] := separator;
+        EndIf
+    EndFor
+
+    return Join(" ", content);
+EndFunction // }}}

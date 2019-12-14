@@ -1,0 +1,110 @@
+// Autot: 		Peter -pJOTTR- Straube
+// Date:		26.02.2004
+//
+//
+//
+
+
+use util;
+use os;
+use uo;
+use cfgfile;
+
+Include "include/poison";
+Include "traps";
+
+
+Program luretrap(trapon)
+	// Var cfg:=ReadConfigFile("create");
+	// Var buildersdex:=GetObjProperty(trapon, "buildersdex");
+	// Var buildersserial:=GetObjProperty(trapon, "buildersserial");
+	Var buildersskill:=GetObjProperty(trapon, "buildersskill");
+	// Var trap_strength:=GetObjProperty(trapon, "trap_strength");
+	// Var trapid:=GetObjProperty(trapon, "trap");
+	// Var trap:=FindConfigElem( cfg, trapid);            //Fallenwerte aus der traps.cfg auslesen
+	Var expiretime:=trapon.decayat;                    //lebensdauer der Fallen auslesen
+	Var traprange:=5;                                  // umkreis um die Falle darf nichts stehen
+	Var sleeptimetocheck:=5;                           //warten bis naechsten Respawn  ??5min (300sec.)??
+	Var where:="landaggressive";
+
+
+	Sleep(sleeptimetocheck);
+	While(expiretime > ReadGameClock())
+		Var mobiles:=ListMobilesNearLocationEx(trapon.x, trapon.y, trapon.z, traprange, LISTEX_FLAG_NORMAL,trapon.realm);
+		If ((mobiles.size()>=2) AND (GetObjProperty(trapon, "lure")))  			//mehr als ein Tier und Koeder an der Falle
+			Sleep(sleeptimetocheck);
+			syslog("zu viel los um die falle.");
+		ElseIf ((mobiles.size()==1) AND (GetObjProperty(trapon, "lure")))		//ein Tier und Koeder an der Falle
+			ForEach mobile in mobiles
+				If (GetObjProperty(mobile, "creatingtrap")!=trapon.serial)	//Tier bei der Falle gehoert NICHT zur Falle
+					EraseObjProperty(trapon, "lure");
+					syslog("Das neben der Falle ist kein Koeder.");
+					Sleep(sleeptimetocheck);
+				Else    							//Tier bei der Falle gehoert zur Falle
+					viech(trapon, "create", buildersskill, where);
+                                        KillMobile(mobile, "luretrap");
+
+				EndIf
+			EndForEach
+		ElseIf (mobiles.size()==0)							//Falle ist nicht scharf und niemand anwesend
+			syslog("Nix los um die Falle.");
+		Else										//Falle ist nicht scharf
+			syslog("Falle noch nicht aktiv!");
+		EndIf
+
+		//falls die Falle abgebaut wurde soll auch das Script aufhoeren.
+		If(!trapon)
+			return;
+		EndIf
+		Sleep(sleeptimetocheck);
+	EndWhile
+        DestroyItem(trapon);
+EndProgram
+
+
+// Aus der Config der zu erschaffenden Viechers wird eins ausgewaehlt
+Function viech(trapon, file, skill, type)
+	Var chance :=(randomint(CInt(skill)) + 1);
+	Var entry;
+	Var cfg := ReadConfigFile(file);
+	If (!cfg)
+		SysLog("Fehler: Konnte Configfile "+file+" nicht laden.");
+		Return;
+	EndIf
+	Var cfgkeys := GetConfigIntKeys(cfg);
+	Var choosenviech:=0;
+	Var createdviech:=0;
+
+	//durchforsten der config bis das tier mit dem hoechsten eintrag gefunden wurde
+	Foreach vieh in cfgkeys
+		entry := cfg[vieh];
+		If(entry.type == type)
+			If(entry.skill < chance)
+                                choosenviech:=entry;
+				Sleepms(10);
+			EndIf
+		EndIf
+	EndForEach
+	If(!choosenviech)
+		 choosenviech.NpcTemplate:="wolf";
+	EndIf
+
+	createdviech:=CreateNPCFromTemplate(CStr(choosenviech.NpcTemplate), trapon.x-1, trapon.y-1, GetMapInfo(trapon.x,trapon.y,trapon.realm).z,0,trapon.realm);
+        If (!createdviech)
+        	syslog("luretrap: NPC-Template ist nicht in der npcdesc!!!");
+		EraseObjProperty(trapon, "lure");
+	EndIf
+
+	syslog("Erschaffenes Viech: " + CStr(choosenviech.NpcTemplate));
+	//damits nicht abhaut oder abgereift
+	createdviech.frozen:=1;
+	IncRevision(createdviech);
+
+	// damit das destroysctipt die viecher sauber identvizieren kann
+	SetObjProperty(createdviech,"creatingtrap",trapon.serial);
+
+        //Falle wird wieder als ohne Koeder markiert
+	EraseObjProperty(trapon, "lure");
+
+	return;
+EndFunction

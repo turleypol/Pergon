@@ -1,0 +1,261 @@
+//
+//  Autor:    Hotny & Turley
+//  Date:     28.10.2007
+//
+//  Controllskript für Feld Nr. 27
+
+//      Aufgaben:
+//                - Initialisierung
+//                - Feldkontrolle
+//                  - Boss wird Ändert seine Resis
+//
+//  Modifikation:
+//
+
+Use uo;
+Use os;
+Use cfgfile;
+Use util;
+
+Include ":dyndungeon:dyndungeon";  // Konstanten
+Include "include/starteqp";
+Include "include/eventid";
+Include "include/eventwaiter";
+Include "include/modifyskill";
+
+CONST FIELD_NR:=27;
+
+CONST COLOR_ARMOR :=0;
+CONST COLOR_EARTH :=0;
+CONST COLOR_WATER :=0;
+CONST COLOR_AIR   :=0;
+CONST COLOR_POISON:=0;
+CONST COLOR_FIRE  :=0;
+
+CONST MINTIMECHANGE  :=20;//sekunden
+CONST TIMECHANGERANGE:=30;//sekunden
+
+Program FieldControl(param)
+  Var Difficulty:=param[1];
+  Var Manager:=param[2];
+  Var Restart:=param[3];
+  param:=0;
+  var Boss;
+  var Mobs:={};
+
+   //Als erstes mal kurz warten
+  SleepMS(250);
+  Var oDungeonConfig:=ReadConfigFile(":dyndungeon:dungeon");
+  Var oFieldConfig  :=FindConfigElem(oDungeonConfig,FIELD_NR);
+
+  var DungeonX1:=CInt(SplitWords(oFieldConfig.Corner1)[1]);
+  var DungeonY1:=CInt(SplitWords(oFieldConfig.Corner1)[2]);
+  var DungeonX2:=CInt(SplitWords(oFieldConfig.Corner2)[1]);
+  var DungeonY2:=CInt(SplitWords(oFieldConfig.Corner2)[2]);
+
+  //Spawnen wir zu ersteinmal den Boss Persönlich
+  var SpawnBoss:=GetConfigString(oFieldConfig,"SpawnBoss");
+  If (!Restart)
+    Boss:=Spawn(SpawnBoss,Difficulty);
+    GrantPrivilege(Boss, "invul");
+    Boss.enable("invul");
+  Else  // Boss finden
+    Boss:=FindBossAfterRestart(DungeonX1,DungeonY1,DungeonX2,DungeonY2);
+  EndIf
+  If (Boss)
+    Boss.setprop(CPMOB_CONTROL,GetPID());
+  EndIf
+
+  var SpawnMobs:=GetConfigStringArray(oFieldConfig,"SpawnNPC");
+  If (!Restart)
+    ForEach Mob In SpawnMobs
+      var npc_:=Spawn(Mob,Difficulty);
+      If (npc_)
+        npc_.setprop(CPMOB_CONTROL,GetPID());
+        Mobs.Append(npc_);
+      EndIf
+      SleepMS(2);
+    EndForEach
+  Else  // Mobs finden
+    FindMobsAfterRestart(DungeonX1,DungeonY1,DungeonX2,DungeonY2, Mobs);
+  EndIf
+
+  If (!Restart) // Special's gibts nur einmal
+    var SpawnSpecials:=GetConfigStringArray(oFieldConfig,"SpawnSpecial");
+    ForEach Special in SpawnSpecials
+      SpawnSpecial(Special,Difficulty);
+      SleepMS(2);
+    EndForEach
+  EndIf
+
+  var event;
+  var Aktiv:=0;
+  var player:={};
+  var temp:={};
+  SendEventWaiter(GetProcess(GetPid()), MINTIMECHANGE+RandomInt(TIMECHANGERANGE) , EVID_DUNGEONTIMECONTROL);
+  While(Boss)
+    //So lange der Boss noch lebt
+
+    event:=Wait_For_Event(9999);
+    If (event)
+      //Ich habe ein Event bekommen -> schauen wir mal was es ist
+      Case (event.type)
+        EVID_NPC_DIED:
+          If (!Boss)
+            //mal so aus Sicherheit
+            Return;
+          EndIf
+        EVID_DUNGEONBOSSFIELDAKTIV:
+          Aktiv:=1;
+        EVID_DUNGEONTIMECONTROL:
+          If (Aktiv)
+            ChangeDamagePosibility(Boss);
+          EndIf
+          SendEventWaiter(GetProcess(GetPid()), MINTIMECHANGE+RandomInt(TIMECHANGERANGE) , EVID_DUNGEONTIMECONTROL);
+      EndCase
+    EndIf
+
+    // Manager nach Anzahl der Player fragen
+    Manager.sendevent(struct{type:=EVID_DUNGEONASKFORPLAYER,
+                             source:=GetProcess(GetPID()),
+                             fieldid:=FIELD_NR});
+    While (1)
+      event:=Wait_For_Event(2);
+      If (event)
+        If (event.type==EVID_DUNGEONASKFORPLAYER)
+          player:=event.players;
+          Break;
+        Else  // falls blöderweise was dazwischenkommt
+          Case (event.type)
+            EVID_NPC_DIED:
+              If (!Boss)
+                //mal so aus Sicherheit
+                Return;
+              EndIf
+            EVID_DUNGEONBOSSFIELDAKTIV:
+              Aktiv:=1;
+            EVID_DUNGEONTIMECONTROL:
+              ChangeDamagePosibility(Boss);
+              SendEventWaiter(GetProcess(GetPid()), MINTIMECHANGE+RandomInt(TIMECHANGERANGE) , EVID_DUNGEONTIMECONTROL);
+          EndCase
+        EndIf
+      EndIf
+    EndWhile
+
+    //Jetzt schauen wir mal auf Invul-Targets der Targets unserer Kämpfer
+    If (player.size())
+      If (boss.opponent.enabled("Invul"))
+        ForceOpponentChange(boss, SystemFindObjectBySerial(player.randomentry()));
+      EndIf
+      ForEach Mob in Mobs
+        If (Mob.opponent.enabled("Invul"))
+          ForceOpponentChange(Mob, SystemFindObjectBySerial(player.randomentry()));
+        EndIf
+        SleepMS(1);
+      EndForEach
+    EndIf
+
+    If (Aktiv)
+      //Der Dungeon ist noch aktiv -> schauen ob alle da sind, ansonsten Timeout zurücksetzen
+      If (player=={})
+        //keine Player mehr da -> alles zurücksetzen
+        //Boss -> alle Werte hochsetzen
+        SetHPPergon(Boss,GetMaxHPPergon(Boss));
+        SetManaPergon(Boss,GetMaxManaPergon(Boss));
+        SetStaminaPergon(Boss,GetMaxStaminaPergon(Boss));
+        temp:=Boss.getprop(CPMOB_COORDS);
+        MoveObjectToLocation(Boss,temp[1],temp[2],temp[3],REALM_MALAS);
+        //Jeden Scherken auf MaxWerte zurücksetzen
+        ForEach Mob in Mobs
+          SetHPPergon(Mob,GetMaxHPPergon(Mob));
+          SetManaPergon(Mob,GetMaxManaPergon(Mob));
+          SetStaminaPergon(Mob,GetMaxStaminaPergon(Mob));
+          temp:=Mob.getprop(CPMOB_COORDS);
+          MoveObjectToLocation(Mob,temp[1],temp[2],temp[3],REALM_MALAS);
+          SleepMS(2);
+        EndForEach
+        //Jetzt die fehlenden Scherken nachspawnen
+        var i;
+        For (i:=1;i<=Mobs.size();i+=1)
+          If (!Mobs[i])
+            //Den Typen gibt es nicht mehr -> dann nachspawnen
+            Mobs[i]:=Spawn(SpawnMobs[i],Difficulty);
+          EndIf
+        EndFor
+        Aktiv:=0;
+      EndIf
+    EndIf
+  EndWhile
+EndProgram
+
+Function ChangeDamagePosibility(who)
+  var Posibility:=RandomInt(10); //zu 40%Wahrscheinlichkeit Physischer Schaden
+  var npc_ := GetNPCConfig(who.npctemplate);
+  Case (Posibility)
+    0: //Hier wird Physischer Schaden ermöglicht
+       who.AR:=npc_.AR/3;
+       who.setprop("resist_poison",npc_.resist_poison);
+       who.setprop("resist_water",npc_.resist_water);
+       who.setprop("resist_fire",npc_.resist_fire);
+       who.setprop("resist_earth",npc_.resist_earth);
+       who.setprop("resist_air",npc_.resist_air);
+       who.color:=COLOR_ARMOR;
+       break;
+    1: //Hier wird Erdschaden ermöglicht
+       who.AR:=npc_.AR;
+       who.setprop("resist_poison",npc_.resist_poison);
+       who.setprop("resist_water",npc_.resist_water);
+       who.setprop("resist_fire",npc_.resist_fire);
+       who.setprop("resist_earth",(npc_.resist_earth/3));
+       who.setprop("resist_air",npc_.resist_air);
+       who.color:=COLOR_EARTH;
+       break;
+    2: //Hier wird Wasserschaden ermöglicht
+       who.AR:=npc_.AR;
+       who.setprop("resist_poison",npc_.resist_poison);
+       who.setprop("resist_water",(npc_.resist_water/3));
+       who.setprop("resist_fire",npc_.resist_fire);
+       who.setprop("resist_earth",npc_.resist_earth);
+       who.setprop("resist_air",npc_.resist_air);
+       who.color:=COLOR_WATER;
+       break;
+    3: //Hier wird Luftschaden ermöglicht
+       who.AR:=npc_.AR;
+       who.setprop("resist_poison",npc_.resist_poison);
+       who.setprop("resist_water",npc_.resist_water);
+       who.setprop("resist_fire",npc_.resist_fire);
+       who.setprop("resist_earth",npc_.resist_earth);
+       who.setprop("resist_air",(npc_.resist_air/3));
+       who.color:=COLOR_AIR;
+       break;
+    4: //Hier wird Giftschaden ermöglicht
+       who.AR:=npc_.AR;
+       who.setprop("resist_poison",(npc_.resist_poison/3));
+       who.setprop("resist_water",npc_.resist_water);
+       who.setprop("resist_fire",npc_.resist_fire);
+       who.setprop("resist_earth",npc_.resist_earth);
+       who.setprop("resist_air",npc_.resist_air);
+       who.color:=COLOR_POISON;
+       break;
+    5: //Hier wird Feuerschaden ermöglicht
+       who.AR:=npc_.AR;
+       who.setprop("resist_poison",npc_.resist_poison);
+       who.setprop("resist_water",npc_.resist_water);
+       who.setprop("resist_fire",(npc_.resist_fire/3));
+       who.setprop("resist_earth",npc_.resist_earth);
+       who.setprop("resist_air",npc_.resist_air);
+       who.color:=COLOR_FIRE;
+       break;
+    default:
+        //Hier wird Physischer Schaden ermöglicht
+       who.AR:=npc_.AR/3;
+       who.setprop("resist_poison",npc_.resist_poison);
+       who.setprop("resist_water",npc_.resist_water);
+       who.setprop("resist_fire",npc_.resist_fire);
+       who.setprop("resist_earth",npc_.resist_earth);
+       who.setprop("resist_air",npc_.resist_air);
+       who.color:=COLOR_ARMOR;
+       break;
+  EndCase
+  IncRevision(who);
+EndFunction

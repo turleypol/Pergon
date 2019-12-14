@@ -1,0 +1,262 @@
+//////////////////////////////////////////////////////
+// SQLManager - Zentrale SQL Datenverwaltung
+//
+// Author: Turley
+
+Use uo;
+Use os;
+Use polsys;
+Use cfgfile;
+Use sql;
+
+Include "include/onlinesearch";
+Include "include/modifyskill";
+Include "sqlmanager";
+Include "sql_server";
+Include "sql_players";
+Include "sql_map";
+
+Var SERVERNAME:="Pergon";
+If (GetGlobalProperty(BAUSERVER))
+  SERVERNAME:="MapServer";
+EndIf
+
+Program StartSQL()
+  Var ev, object;
+  If (!GetGlobalProperty(BAUSERVER) && !GetGlobalProperty(PERGON))
+    Return;
+  EndIf
+  SysLog("SQLManager wird aktiviert...");
+
+  Set_Event_Queue_Size(EVENTQUEUESIZE_SQLMANAGER);
+  Set_Script_Option(SCRIPTOPT_CAN_ACCESS_OFFLINE_MOBILES, 1);
+  SetGlobalProperty(PID_SQLMANAGER, GetPid());
+
+  Var connection_cfg := ReadConfigFile(":sqlmanager:sql");
+  If (!GetConfigStringKeys( connection_cfg ))
+    connection_cfg := 0;
+    UnloadConfigFile( ":sqlmanager:sql" );
+    SysLog("FEHLER: keine sql verbindung definiert");
+    Return; // beenden
+  EndIf
+  Var waittime_small := 1*60; // alle 1minuten (kleinen) status abschicken
+  Var waittime_big := 15*60; // alle 15minuten status abschicken
+  Var next_update_small := ReadGameClock()+waittime_small;
+  Var next_update_big := ReadGameClock()+waittime_big;
+  Var connection := ConnectToDatabase(connection_cfg);
+  If (connection)
+    reset_up_players(connection);
+    server_start_update(connection);
+    update_server_full(connection);
+    server_create_account(connection);
+    server_set_non_applied_names(connection);
+    If (GetGlobalProperty(PERGON))
+      update_golocs(connection);
+    EndIf
+  EndIf
+  While (1)
+    SleepMS(1);
+    ev:=Wait_For_Event(waittime_small);
+    If (ev)
+      If (ev.serial)
+        object := SystemFindObjectBySerial(ev.serial,SYSFIND_SEARCH_OFFLINE_MOBILES);
+        If (!object)
+          SysLog("FEHLER: SQLManager ungueltige serial: "+object);
+          Continue;
+        ElseIf (!object.isA(POLCLASS_MOBILE) || object.isA(POLCLASS_NPC))
+          SysLog("FEHLER: SQLManager ungueltiger serial typ: "+object + " " + ev.serial);
+          Continue;
+        EndIf
+      EndIf
+      If (!connection)
+        If (!connection_cfg)
+          continue;
+        EndIf
+        SysLog("WARNUNG: sql connection lost");
+        connection := ConnectToDatabase(connection_cfg);
+        If (!connection)
+          SysLog("FEHLER: sql connection completly lost");
+          Continue;
+        Else
+        	reset_after_reconnect(connection);
+        EndIf
+      EndIf
+      If (ev.serial)
+        Case (ev.status)
+          SQLStatus_Logon:
+            logon_player(connection, object);
+            Break;
+          SQLStatus_LogOff:
+            logoff_player(connection, object);
+            Break;
+          SQLStatus_UpdateName:
+            update_name_player(connection, object);
+            Break;
+          SQLStatus_UpdateRegion:
+            update_region_player(connection, object);
+            Break;
+          SQLStatus_Concealed:
+            update_concealedlvl_player(connection, object);
+            Break;
+          SQLStatus_UpdateStatus:
+            update_status_player(connection, object);
+            Break;
+          SQLStatus_NewName:
+            update_name_table(connection, object, ev.detail);
+            Break;
+          default:
+            SysLog("FEHLER: invalid sql status request "+ev.status);
+        EndCase
+      Else
+        Case (ev.status)
+          SQLStatus_SetShutdownMsg:
+            server_set_shutdown_msg(connection);
+            Break;
+          SQLStatus_Shutdown:
+            mysql_close(connection);
+            Return;
+          SQLStatus_CreateAccount:
+            server_create_account(connection);
+            Break;
+          SQLStatus_CharDeleted:
+            mark_deleted_name_table(connection, ev.detail);
+            Break;
+          SQLStatus_Trigger_Sync:
+            update_server_full(connection);
+            server_create_account(connection);
+            server_set_non_applied_names(connection);
+            Break;
+          default:
+            SysLog("FEHLER: SQLManager ungueltiger status typ ohne serial: "+ev.status);
+        EndCase
+      EndIf
+    EndIf
+    If (!connection)
+      If (!connection_cfg)
+        continue;
+      EndIf
+      SysLog("WARNUNG: sql connection lost");
+      connection := ConnectToDatabase(connection_cfg);
+      If (!connection)
+        SysLog("FEHLER: sql connection completly lost");
+        Continue;
+      Else
+      	reset_after_reconnect(connection);
+      EndIf
+    EndIf
+    If (ReadGameClock() >= next_update_big)
+      next_update_big := ReadGameClock()+waittime_big;
+      next_update_small := ReadGameClock()+waittime_small;
+      update_server_full(connection);
+      server_create_account(connection);
+      server_set_non_applied_names(connection);
+    ElseIf (ReadGameClock() >= next_update_small)
+      next_update_small := ReadGameClock()+waittime_small;
+      update_server(connection);
+    EndIf
+  EndWhile
+EndProgram
+
+Function ConnectToDatabase(connection_cfg)
+  Var def := GetConfigStringKeys( connection_cfg )[1];
+  If (!def)
+    Return(0);
+  EndIf
+  Var elem := FindConfigElem( connection_cfg, def );
+  Var time := ReadMilliSecondClock();
+  Var connection := mysql_connect(elem.Server,elem.User,elem.Password);
+  If (connection)
+    If (!mysql_select_db(connection,elem.Database))
+      mysql_close(connection);
+    Else
+      SQLDebugLog("Connected to server: {}".format(ReadMilliSecondClock()-time));
+      Return(connection);
+    EndIf
+  EndIf
+  SQLDebugLog("Failed to connection: {} {}".format(ReadMilliSecondClock()-time, connection));
+  Return(0);
+EndFunction
+
+Function reset_up_players(byref connection)
+  Var time := ReadMilliSecondClock();
+  Var res := mysql_query(connection,"SELECT Serial FROM HP_OnlineCharacters_{}".format(SERVERNAME));
+  SQLDebugLog("Query clean_up player: {}".format(ReadMilliSecondClock()-time));
+  If (res)
+    var serials:={};
+    For i:=1 To (mysql_num_rows(res))
+      var rows := mysql_fetch_row(res);
+      serials.append(rows[1]);
+    EndFor
+    ForEach serial in (serials)
+      SleepMs(1);
+      var char := SystemFindObjectBySerial(serial,SYSFIND_SEARCH_OFFLINE_MOBILES);
+      If (char)
+        If (char.ip)
+          mysql_query(connection,"UPDATE HP_OnlineCharacters_{} SET Online=1 WHERE Serial={}".format(SERVERNAME,serial));
+        Else
+          mysql_query(connection,"UPDATE HP_OnlineCharacters_{} SET Online=0 WHERE Serial={}".format(SERVERNAME,serial));
+        EndIf
+        continue;
+      EndIf
+      mysql_query(connection,"DELETE FROM HP_OnlineCharacters_{} WHERE Serial={}".format(SERVERNAME,serial));
+    EndForEach
+  Else
+    SQLDebugLog("FEHLER: sqlmanager clean_up "+res);
+    SysLog("FEHLER: sqlmanager clean_up "+res);
+    mysql_close(connection);
+  EndIf
+EndFunction
+
+Function reset_after_reconnect(byref connection)
+  // hier nur minimale updates, über die Zeit aktualisiert sich der Rest eh
+
+  // PolCrashTeamInformed Flagge zurück setzen
+  Var time := ReadMilliSecondClock();
+  If (!exists_server(connection))
+    server_add(connection);
+  EndIf
+  Var update_q := ("UPDATE HP_OnlineSystem SET "+
+    "PolCrashTeamInformed=0"
+    +" WHERE Name='{}'").format(SERVERNAME);
+  Var res := mysql_query(connection,update_q);
+  If (!res)
+    SQLDebugLog("FEHLER: sqlmanager reconnect reset System "+res);
+    SysLog("FEHLER: sqlmanager reconnect reset System"+res);
+    mysql_close(connection);
+    Return;
+  EndIf
+
+  // Online status zurücksetzen
+  // erstmal alle auf Offline setzen
+  // alle die gerade online sind Flagge und Zeit setzen, der Rest erledigt sich auch über die Zeit
+  res := mysql_query(connection, "UPDATE HP_OnlineCharacters_{} SET Online=0 WHERE Online=1".format(SERVERNAME));
+  If (res)
+    ForEach char in (EnumerateOnlineCharacters())
+      SleepMs(1);
+      If (exists_player(connection, char))
+        var gameclock := ReadGameClock();               // gameclock zeit in systime umrechnen
+        var logon_time := CInt(char.getprop("LastLog")); // gameclock wird bei worldsaves angehalten
+        var sys_time := PolCore().systime;              // aber besser als nix
+        If (logon_time > 0 )
+          sys_time -= (gameclock - logon_time);
+        EndIf
+        res := mysql_query(connection, "UPDATE HP_OnlineCharacters_{} SET Online=1, LogonTime={} WHERE Serial={}".format(
+          SERVERNAME,
+          sys_time,
+          char.serial));
+      Else // den gabs noch nicht, dann halt nen full update
+        res := logon_add_player(connection, char);
+      EndIf
+      If (!res)
+        Break;
+      EndIf
+    EndForEach
+  EndIf
+  If (!res)
+    SQLDebugLog("FEHLER: sqlmanager reconnect reset "+res);
+    SysLog("FEHLER: sqlmanager reconnect reset "+res);
+    mysql_close(connection);
+    Return;
+  EndIf
+  SQLDebugLog("Reset after reconnect: {}".format(ReadMilliSecondClock()-time));
+EndFunction

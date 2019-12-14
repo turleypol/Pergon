@@ -1,0 +1,81 @@
+// Ambientsteinregistrierscript --
+// initialisiert Event beim Controlscript
+
+// $Log: not supported by cvs2svn $
+
+use os;
+use uo;
+use util;
+include "include/eventid";
+include "ambientstonecommons";
+
+Const DEBUG := 0;
+
+Program Register(amb_stone)
+    If (PolCore().uptime<60)
+        // beim Serverstart nicht alle gleichzeitig initialisieren
+        Sleep(RandomInt(300) + 1);
+    EndIf
+
+    // auf Controlscript warten
+    var pid;
+    While (1)
+        Sleep(RandomInt(5) + 1);
+        If (!amb_stone)
+            // falls Stein inzwischen vernichtet wurde
+            return;
+        EndIf
+
+        // PID besorgen
+        var pidprop := GetGlobalProperty(AMBIENTCTL_PID_PROP);
+        If (!pidprop)
+            If (DEBUG)
+                syslog(
+                    "FEHLER: GProp "+AMBIENTCTL_PID_PROP+" nicht gefunden."
+                );
+            EndIf
+            continue;
+        EndIf
+        // Prozesshandle holen
+        pid := GetProcess(pidprop);
+        If (pid)
+            break;
+        EndIf
+        If (DEBUG)
+            syslog(
+                "FEHLER: Ambientcontrol-PID nicht verfuegbar: "+pid.errortext
+            );
+        EndIf
+    EndWhile
+
+    // registrieren
+    While (1)
+        If (!amb_stone)
+            // falls Stein inzwischen vernichtet wurde
+            return;
+        EndIf
+
+        var result := pid.sendevent(struct{
+            type    := EVID_MASTER_HELLO,
+            serial  := amb_stone.serial,
+            wait    := RandomInt(60)
+        });
+        If (result)
+            // solange probieren bis Erfolg
+            break;
+        EndIf
+        If (DEBUG)
+            syslog(
+                "FEHLER: Registrierung fehlgeschlagen: "+result.errortext
+            );
+        EndIf
+        Sleep(RandomInt(10) + 1);
+    EndWhile
+
+    If (DEBUG)
+        syslog(
+            "HINWEIS: Habe mich ["+Hex(amb_stone.serial)+
+            "] erfolgreich registiert"
+        );
+    EndIf
+EndProgram

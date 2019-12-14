@@ -1,0 +1,47 @@
+//////////////////////////////////
+//
+//   Management - Cycle
+//
+//     Author: Shinigami
+//
+//   Modification
+//
+//////////////////////////////////
+
+/////////////
+// Includes
+/////////////
+include "include/clock";
+include "include/npc";
+include "include/onlinesearch";
+include "include/pergoninfos";
+include "include/server";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program ManagementCycle()
+  // DEAKTIVIERT!
+  // Geht nun per SQL
+//  BroadcastPergon("Management-Zyklus wird aktiviert...", "Management-cycle activated...");
+//  SysLog("Management-Zyklus wird aktiviert...");
+//
+//  Var server_mode;
+//
+//  While (1)
+//    server_mode:=SERVER_ONLINE;
+//
+//    // Server in der letzten Minute vorsichtshalber als Offline anzeigen
+//    If (GetGlobalProperty(PROP_SHUTDOWN_RUNNING))
+//      If (GetGlobalProperty(PROP_SHUTDOWN_RUNNING)-ReadGameClock()<60)
+//        server_mode:=SERVER_OFFLINE;
+//      EndIf
+//    EndIf
+//
+//    ListOnlineCharacterInfos(LIST_FILE, server_mode); // Erstellt eine Liste der eingeloggten Character
+//    GetServerInfos(LIST_FILE);                        // Erstellt eine Datei mit bestimmten Server-Informationen
+//
+//    Sleep(60);
+//  EndWhile
+EndProgram

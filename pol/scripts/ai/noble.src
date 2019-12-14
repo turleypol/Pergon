@@ -1,0 +1,74 @@
+////////////////////////////////////////////////////////////////////////
+// Noble-TownPerson Script - Control script for NPC NonMerchants
+//
+
+/////////////
+// Bibliotheken&Includes
+/////////////
+use npc;
+use os;
+include "include/nonmerchant";
+include "include/itemnpc";
+include "include/modifyskill";
+
+////////////////////////////
+// Noble - Initialisierung
+////////////////////////////
+
+Function SetNonMerchantType(meprototype)
+  meprototype.nonmerchanttype:="Noble";
+  meprototype.withopenclose:=0;
+  meprototype.speech_name:=1;
+
+  Return (meprototype);
+EndFunction
+
+/////////////////////
+// Hook_Move_Action
+/////////////////////
+
+Function Hook_Move_Action(me, medata, ev)
+EndFunction
+
+//////////////////////
+// Hook_Entered_Area
+//////////////////////
+
+Function Hook_Entered_Area(me, medata, ev)
+EndFunction
+
+///////////////////
+// Hook_Left_Area
+///////////////////
+
+Function Hook_Left_Area(me, medata, ev)
+EndFunction
+
+/////////////////////
+// Hook_Speech_Open
+/////////////////////
+
+Function Hook_Speech_Open(me, medata, ev)
+EndFunction
+
+/////////////////////////
+// Hook_Speech_Sleeping
+/////////////////////////
+
+Function Hook_Speech_Sleeping(me, medata, ev)
+EndFunction
+
+/////////////////////
+// Hook_Speech_Name
+/////////////////////
+
+Function Hook_Speech_Name(me, medata, ev)
+  NPCSayTextTraditional(me, "Wer seid Ihr nur? Ich bin als "+medata.minename+" im Lande bekannt", "");
+EndFunction
+
+////////////////////////
+// Hook_Speech_Default
+////////////////////////
+
+Function Hook_Speech_Default(me, medata, ev, sayed)
+EndFunction

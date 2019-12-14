@@ -1,0 +1,557 @@
+<?xml version="1.0"?>
+<Clilocs xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" LanguageType="DEU">
+  <Clilocs>
+    <Cliloc Number="600000">
+      <String>Essen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600001">
+      <String>Trinken</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600002">
+      <String>Verwirrung</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600003">
+      <String>Missgeschick</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600004">
+      <String>Schwäche</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600005">
+      <String>Magischer Pfeil</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600006">
+      <String>Telekinese</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600007">
+      <String>Zahn der Zeit</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600008">
+      <String>Licht</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600009">
+      <String>Schutz</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600010">
+      <String>Kleine Heilung</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600011">
+      <String>Scharfsinn</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600012">
+      <String>Geschicklichkeit</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600013">
+      <String>Kraft</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600014">
+      <String>Hinken</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600015">
+      <String>Rennen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600016">
+      <String>Magisches Schloss</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600017">
+      <String>Magische Falle</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600018">
+      <String>Enthüllung</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600019">
+      <String>Reperatur</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600020">
+      <String>Magischer Schlüssel</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600021">
+      <String>Entschärfen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600022">
+      <String>Zurückkehren</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600023">
+      <String>Mana Dieb</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600024">
+      <String>Magischer Spiegel</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600025">
+      <String>Unsichtbarkeit</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600026">
+      <String>Mauer</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600027">
+      <String>Merken</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600028">
+      <String>Inkognito</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600029">
+      <String>Teleportation</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600030">
+      <String>Magisches Tor</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600031">
+      <String>Polymorph</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600032">
+      <String>Feuerball</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600033">
+      <String>Eiszapfen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600034">
+      <String>Steinsplitter</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600035">
+      <String>Stromschlag</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600036">
+      <String>Waffe Entflammen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600037">
+      <String>Waffe Vereisen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600038">
+      <String>Waffe Versteinern</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600039">
+      <String>Waffe Aufladen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600040">
+      <String>Flammenschlag</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600041">
+      <String>Frostschock</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600042">
+      <String>Meteor</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600043">
+      <String>Blitz</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600044">
+      <String>Wasserresistenz</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600045">
+      <String>Feuerfeld</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600046">
+      <String>Blizzard</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600047">
+      <String>Steinhagel</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600048">
+      <String>Blitzfeld</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600049">
+      <String>Erdresistenz</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600050">
+      <String>Flammenaura</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600051">
+      <String>Eisaura</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600052">
+      <String>Felsaura</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600053">
+      <String>Blitzaura</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600054">
+      <String>Feuerresistenz</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600055">
+      <String>Luftresistenz</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600056">
+      <String>Feuerelementar</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600057">
+      <String>Wasserelementar</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600058">
+      <String>Erdelementar</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600059">
+      <String>Luftelementar</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600060">
+      <String>Vulkan</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600061">
+      <String>Charybdis</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600062">
+      <String>Erdbeben</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600063">
+      <String>Gewitter</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600064">
+      <String>Heilung</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600065">
+      <String>Gegengift</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600066">
+      <String>Nebel</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600067">
+      <String>Bann</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600068">
+      <String>Grosse Heilung</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600069">
+      <String>Erzgegengift</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600070">
+      <String>Gegenfluch</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600071">
+      <String>Augen Öffnen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600072">
+      <String>Erzheilung</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600073">
+      <String>Segen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600074">
+      <String>Rüstungssegen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600075">
+      <String>Waffensegen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600076">
+      <String>Antimagie</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600077">
+      <String>Gesundheit</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600078">
+      <String>Paralyse</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600079">
+      <String>Erzschutz</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600080">
+      <String>Exorzismus</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600081">
+      <String>Opferschlag</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600082">
+      <String>Erzsegen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600083">
+      <String>Schmelzen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600084">
+      <String>Paralysefeld</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600085">
+      <String>Elementarresistenz</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600086">
+      <String>Meditation</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600087">
+      <String>Geisteskampf</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600088">
+      <String>Rufe Engel</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600089">
+      <String>Wiedererwecken</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600090">
+      <String>Heiliger Krieger</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600091">
+      <String>Heiliger Spiegel</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600092">
+      <String>Immunität</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600093">
+      <String>Opfer</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600094">
+      <String>Geistersprache</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600095">
+      <String>Heiliger Geist</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600096">
+      <String>Erwecke Skelett</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600097">
+      <String>Gift</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600098">
+      <String>Verfluchen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600099">
+      <String>Wegstossen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600100">
+      <String>Erwecke Untoten</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600101">
+      <String>Erzfluch</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600102">
+      <String>Gegenstand Verfluchen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600103">
+      <String>Erblinden</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600104">
+      <String>Beschwörung</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600105">
+      <String>Erzgift</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600106">
+      <String>Dunkelheit</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600107">
+      <String>Halluzination</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600108">
+      <String>Beherrschung</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600109">
+      <String>Erwecke Golem</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600110">
+      <String>Giftfeld</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600111">
+      <String>Giftresistenz</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600112">
+      <String>Seelen Spüren</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600113">
+      <String>Knochenbrecher</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600114">
+      <String>Manavampir</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600115">
+      <String>Giftnebel</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600116">
+      <String>Klingendämon</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600117">
+      <String>Entlassen</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600118">
+      <String>Leichenschändung</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600119">
+      <String>Blutrausch</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600120">
+      <String>Dämonenbeschwörung</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600121">
+      <String>Giftelementar</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600122">
+      <String>Hauch des Todes</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600123">
+      <String>Statue</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600124">
+      <String>Verdammung</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600125">
+      <String>Todesritter</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600126">
+      <String>Kreaturenopfer</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="600127">
+      <String>Armageddon</String>
+      <Flag>Custom</Flag>
+    </Cliloc>
+    <Cliloc Number="1011034">
+      <String>Nujelm</String>
+      <Flag>Modified</Flag>
+    </Cliloc>
+    <Cliloc Number="1042971">
+      <String>~1_NOTHING~</String>
+      <Flag>Modified</Flag>
+    </Cliloc>
+    <Cliloc Number="3000579">
+      <String>~1~</String>
+      <Flag>Modified</Flag>
+    </Cliloc>
+    <Cliloc Number="3000580">
+      <String>Leiche bergen</String>
+      <Flag>Modified</Flag>
+    </Cliloc>
+    <Cliloc Number="3000581">
+      <String>Nachricht hinterlassen</String>
+      <Flag>Modified</Flag>
+    </Cliloc>
+    <Cliloc Number="3000582">
+      <String>Nachricht abholen</String>
+      <Flag>Modified</Flag>
+    </Cliloc>
+    <Cliloc Number="3000583">
+      <String>Nachrichten löschen</String>
+      <Flag>Modified</Flag>
+    </Cliloc>
+    <Cliloc Number="3000584">
+      <String>Zauberbuch kaufen</String>
+      <Flag>Modified</Flag>
+    </Cliloc>
+    <Cliloc Number="3000585">
+      <String>Karma</String>
+      <Flag>Modified</Flag>
+    </Cliloc>
+    <Cliloc Number="3000586">
+      <String>Monster looten</String>
+      <Flag>Modified</Flag>
+    </Cliloc>
+  </Clilocs>
+</Clilocs>

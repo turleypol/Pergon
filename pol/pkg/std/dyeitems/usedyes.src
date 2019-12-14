@@ -1,0 +1,36 @@
+use uo;
+
+Include "include/msgs";
+Include "include/itemnpc";
+Include "include/modifyskill";
+
+program use_dyes( who, dyes )
+
+    if (!ReserveItem( dyes ))
+        SendSysMessagePergon( who, "Those dyes are already in use." );
+        return;
+    endif
+
+    SendSysMessagePergon( who, "Select a dye tub to use the dyes on." );
+
+    Var dyetub := Target( who, TGTOPT_CHECK_LOS );
+
+    if (!ReserveItem(dyetub))
+        SendSysMessagePergon( who, "That is already in use." );
+        return;
+    endif
+
+    if (!AccessiblePergon( who, dyetub ))
+        SendSysMessagePergon( who, "You cannot reach that!" );
+        return;
+    endif
+
+    if (dyetub.objtype != GetObjtypeByName( "dyetub" ))
+        SendSysMessagePergon( who, "That is not a dye tub!" );
+        return;
+    endif
+
+    var color := SelectColor( who, dyetub );
+    dyetub.color := color;
+
+endprogram

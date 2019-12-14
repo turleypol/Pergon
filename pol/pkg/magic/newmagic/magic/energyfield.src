@@ -1,0 +1,73 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  energyfield.src - Walkover Script for EnergyFields
+//
+//  Modifications:
+//
+//  21.01.2002 - Bihinos - Rewrite for new Magic
+//  09.02.2004 - Bihinos - removed creator as scriptcontroller (misused by players)
+//                         minor changes
+//  11.02.2005 - Bihinos - replaced MOVEOBJECT_FORCELOCATION with MOVEOBJECT_NORMAL
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use cfgfile;
+use file;
+use math;
+use os;
+use uo;
+use vitals;
+include ":newspells:resistance";
+include "include/clock";
+include "include/packets";
+
+Program EnergyField (mobile, tile, lastx,lasty,lastz)
+  Var dmg;
+  If (mobile.getprop("ignorefields"))  // DynDungeon Vieh ignoriert alle Felder
+    Return;
+  EndIf
+  If (mobile.cmdlevel>=CMDLEVEL_SEER)
+    Return;
+  EndIf
+  if (!mobile.dead)           // no damage or effect on ghosts
+    dmg:=tile.getprop("dmg");
+    If (!dmg) // wurde dmg schon gesetzt?
+      Var fields:= ReadConfigFile("magicfields");   // read Config-File for magic fields
+
+      if (fields)
+        Var fielddata:= FindConfigElem(fields, "energy");           // get field data from Config
+        dmg:= CInt(GetObjProperty(tile, "f") * fielddata.dmg / 100);  // read and calc fields base damage
+        tile.setprop("dmg",dmg);  // Speichern fürs nächstemal
+      EndIf
+    EndIf
+
+    Var boss:= SystemFindObjectBySerial(CInt(GetObjProperty(tile, "creator"))); // get creator of field
+    If (boss) // make creator attacker
+      SetScriptController(boss);
+    EndIf
+    If (dmg)
+      Var hit;
+
+      Set_Priority(10);
+      hit:= CInt(dmg * (1 - CDbl(GetResistance(mobile, "air"))));      // alter damage (air resistance)
+      ApplyRawDamagePergon(mobile, hit, DAMAGE_NO_REPSYS);            // apply damage to mobile
+      // Einfache Version, nur wenn Facing passt und nicht per Tele
+      // (Einkesseln mit Feldern führt sonst zu Endlosschleife)
+      If (!mobile) // tod
+        Return;
+      EndIf
+      If ((GetFacing(lastx,lasty,mobile.x,mobile.y)==mobile.facing) && (CoordinateDistance(lastx,lasty,mobile.x,mobile.y)<=1))
+        MoveObjectToLocation(mobile, lastx, lasty, lastz, mobile.realm, MOVEOBJECT_NORMAL);   // move mobile
+      Else
+        Var pos:=struct{x,y};
+        pos.x:=CInt(Sin(((mobile.facing+4)%8)*0.78)*1.5);  // get new position for mobile - repelling force field effect
+        pos.y:=CInt(Cos(((mobile.facing+4)%8)*0.78)*-1.5); // 180° rotated (facing+4)
+        MoveObjectToLocation(mobile, mobile.x+pos.x, mobile.y+pos.y, mobile.z, mobile.realm, MOVEOBJECT_NORMAL);    // move mobile
+      EndIf
+
+    else
+      SysLog("FEHLER: MagicFields-ConfigFile nicht gefunden!");
+    endif
+  endif
+
+EndProgram

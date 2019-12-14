@@ -1,0 +1,134 @@
+/////////////////////////////////////////////////////////
+// index - Startpage
+//
+// Author: Turley
+
+use http;
+use os;
+use polsys;
+use storage;
+use uo;
+include ":saver:saveopts";
+include "header";
+include "include/clock";
+include "include/permissions";
+include "include/server";
+
+Program HTMLPage()
+  DoHeader("Index");
+
+  WriteHTML("<div id='container'>");
+  WriteHTML("<div id='header'></div>");
+  WriteHTML("<div id='content'>");
+  TableHeader("Server Management Index");
+
+  If (!isALLOWED)
+    WriteHTML("<p><a href=#login>Zum Login</a></p>");
+  EndIf
+
+  WriteHTML("<h2>Tools</h2>");
+  WriteHTML("<ul>");
+  If (isALLOWED)
+    WriteHTML("<li><a href='objviewer.ecl?"+A_PARAM+"'>Object Viewer</a>");
+    WriteHTML("<li><a href='npcdesc.ecl?"+A_PARAM+"'>NPC Templates</a>");
+    //WriteHTML("<li><a href='newcharacct.ecl?"+A_PARAM+"'>New Accounts</a>");
+    WriteHTML("<li><a href='permissions.ecl?"+A_PARAM+"'>Permissions</a>");
+  EndIf
+  var pg := GetGlobalProperty(GM_PAGE_LIST);
+  WriteHTML("<li><a href='pages.ecl?"+A_PARAM+"'>Pages ("+pg.size()+")</a>");
+  WriteHTML("<li><a href='bandwidth.ecl?"+A_PARAM+"'>Bandwidth Usage</a>");
+  WriteHTML("<li><a href='packetstats.ecl?"+A_PARAM+"'>Packet Stats</a>");
+  WriteHTML("<li><a href='script_profiles.ecl?"+A_PARAM+"'>Script Profiles</a>");
+  WriteHTML("</ul>");
+
+  WriteHTML("<ul>");
+  WriteHTML("<li><a href='all_scripts.ecl?"+A_PARAM+"'>All Scripts</a>");
+  WriteHTML("<li><a href='large_scripts.ecl?"+A_PARAM+"'>Large Scripts</a>");
+  WriteHTML("<li><a href='running_scripts.ecl?"+A_PARAM+"'>Running Scripts</a>");
+  WriteHTML("<li><a href='long_running_scripts.ecl?"+A_PARAM+"'>Long Running Scripts</a>");
+  WriteHTML("<li><a href='sleeping_scripts.ecl?"+A_PARAM+"'>Sleeping Scripts</a>");
+  WriteHTML("</ul>");
+
+  If (isALLOWED)
+    WriteHTML("<ul>");
+    WriteHTML("<li><a href='performance_diff.ecl?"+A_PARAM+"'>Performance Diff</a>");
+    WriteHTML("<li><a href='globalprops.ecl?"+A_PARAM+"'>Global Properties</a>");
+    WriteHTML("<li><a href='storage.ecl?"+A_PARAM+"'>Storage Areas</a>");
+    WriteHTML("<li><a href='datafiles.ecl?"+A_PARAM+"'>Data Files</a>");
+    WriteHTML("<li><a href='guilds.ecl?"+A_PARAM+"'>Guilds</a>");
+    WriteHTML("</ul>");
+  EndIf
+
+  WriteHTML("<h2>Statistics</h2>");
+  WriteHTML("<p>");
+  WriteHTML("<a href='/stats.html'>Graphics</a>");
+  WriteHTML("</p>");
+
+  WriteHTML("<h2>POL Server Performance</h2>");
+
+  var core_ref := POLCore();
+
+  WriteHTML("<table style='width:auto'>");
+  TableDataHeader("Object Counts");
+  TableData("Mobile Count", core_ref.mobilecount);
+  TableData("Top Level Item Count", core_ref.itemcount);
+  TableData("Online Player Count", EnumerateOnlineCharacters().size());
+  TableData("Storage Area Count", StorageAreas().count);
+  TableDataHeader("Load Information");
+  TableData("System Load", core_ref.sysload+"% ("+core_ref.sysload_severity+")");
+  TableData("Priority Divider", core_ref.priority_divide);
+  TableData("Instructions Per Minute", core_ref.instr_per_min);
+  TableData("Scripts On Time Per Minute", core_ref.scripts_ontime_per_min);
+  TableData("Scripts Late Per Minute", core_ref.scripts_late_per_min);
+  TableData("Tasks On Time Per Minute", core_ref.tasks_ontime_per_min);
+  TableData("Tasks Late Per Minute", core_ref.tasks_late_per_min+" ("+core_ref.tasks_late_ticks_per_min+" ticks)");
+  TableDataHeader("Data Transfer");
+  TableData("Bytes Received", FormatBytes(core_ref.bytes_received));
+  TableData("Bytes Sent", FormatBytes(core_ref.bytes_sent));
+  TableDataHeader("Miscellaneous Information");
+  TableData("POL Uptime",Format_Time(core_ref.uptime));
+  TableData("POL IG Time",GetPergonTimeOfDay());
+  TableData("POL GameClock",ReadGameClock());
+  TableData("Last Save", GetGlobalProperty(SAVER_LAST));
+  TableData("Last Save Diff", core_ref.systime-GetGlobalProperty(SAVER_LAST));
+  TableData("Last Save Duration", GetGlobalProperty(SAVER_DUR));
+  TableData("Error Creations Per Minute", core_ref.error_creations_per_min);
+  TableData("Events Per Minute", core_ref.events_per_min);
+  TableData("Skill Checks Per Minute", core_ref.skill_checks_per_min);
+  TableData("Combat Operations Per Minute", core_ref.combat_operations_per_min);
+  TableData("Core Version", core_ref.verstr, 1);
+  TableData("Compile Time", core_ref.compiledate+" "+core_ref.compiletime, 1);
+  WriteHTML("</table>");
+
+  If (!isALLOWED)
+    LoginThingie();
+  EndIf
+
+  WriteHTML("</div>");
+
+  DoFooter();
+EndProgram
+
+Function TableData(byref name, byref data, nonum := 0)
+  WriteHTML("<tr>");
+  If (nonum)
+    WriteHTML("<td>"+name+"</td><td>"+data+"</td>");
+  Else
+    WriteHTML("<td>"+name+"</td><td class='num'>"+data+"</td>");
+  EndIf
+  WriteHTML("</tr>");
+EndFunction
+
+Function TableDataHeader(byref data)
+  WriteHTML("<tr><th colspan='2'>"+data+"</th></tr>");
+EndFunction
+
+Function FormatBytes(bytes)
+  var i:=1;
+  var names:={"B", "KB", "MB", "GB", "TB", "PB"};
+  While((bytes / 1024)>=1)
+    bytes/=1024.0;
+    i+=1;
+  EndWhile
+  Return(CStr(bytes)+" "+names[i]);
+EndFunction

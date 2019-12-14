@@ -1,0 +1,30 @@
+///////////////////////////////////////////////////////////////////////////
+// nukekoord -- Destroy items at given position
+
+use uo;
+include "include/msgs";
+
+Program TextCMD_NukeKoord(who, params)
+  var text := SplitWords(params);
+  var nukex := CInt(text[1]);
+  var nukey := CInt(text[2]);
+  var nukez := CInt(text[3]);
+
+  SendSysMessagePergon(who,
+    "Alle Items an "+nukex+", "+nukey+", "+nukez+" werden zerstört!"
+  );
+
+  var count := 0;
+  ForEach item in ListItemsAtLocation(nukex, nukey, nukez, who.realm)
+    SleepMS(2);
+    If (item.invisible)
+      // unsichtbare Dinge sind tabu
+      continue;
+    EndIf
+
+    DestroyItem(item);
+    count += 1;
+  EndForEach
+
+  SendSysMessagePergon(who, count+" Items wurden zerstört.");
+EndProgram

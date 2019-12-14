@@ -1,0 +1,53 @@
+/////////////////////////////////////////////////////////
+//
+// waypointquest - DummyKI die nix kann,
+//                 kann nur bei passendem NPC nen Event schicken
+//
+//     Author: Turley
+//
+//   Modifications:
+//
+/////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+Use npc;
+
+
+Include "include/eventid";
+Include "include/modifyskill";
+
+Var Me:=Self();
+Program waypointquest()
+  Var ev, event:=struct;
+  event.+pos;
+  event.+endspot;
+  event.+type:=EVID_QUEST_WAYPOINT;
+  event.+source:=Me;
+  EnableEvents(SYSEVENT_ENTEREDAREA, 5);
+  If (!Me.getprop("init"))
+  	Me.setprop("init",1);
+  Else
+        // Kill mich ich hab nen Restart überlebt
+  	KillNPC(Me, "waypoint", KILLNPC_NOCORPSE);
+  	Me.concealed:=0;
+  EndIf
+  Me.title_guild:="WAYPOINT";  // Nur mal so zur sicherheit :)
+  Me.name:="kill me and you will be killed";
+  Me.setfacing(4,FACING_FORCE); // Damit es schick aussieht
+  Me.paralyzed:=1;
+  While(1)
+  	ev:=Wait_For_Event(60);
+  	If (ev)
+  		Case (ev.type)
+  			SYSEVENT_ENTEREDAREA:
+  			  If (CInt(ev.source.serial)==CInt(Me.getprop("npcserial")))
+  			  	event.pos:=Me.getprop("pos");
+  			  	event.endspot:=Me.getprop("endspot");
+  			  	SendEvent(ev.source,event);
+  			  EndIf
+  		EndCase
+  	EndIf
+  	Sleep(1);
+  EndWhile
+EndProgram

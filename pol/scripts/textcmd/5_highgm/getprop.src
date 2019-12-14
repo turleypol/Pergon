@@ -1,0 +1,182 @@
+////////////////////////////////////////////////////////////
+// GETPROP.src
+//
+// Author: DC
+// Date: 2/14/99
+//
+// Description: An GM text command that prints the value
+//		of the given inherent property. Note that
+//		mobiles have more props than items.
+//
+// Syntax: .getprop <propname>
+// program textcmd_getprop: params: character using
+//				    property name
+//                	    passes the given prop text to
+//			    GetObjctProp and prints the
+//			    result.
+//
+// function GetObjctProp: Matches the given text to one of
+//			  the known properties of the
+//			  targetted object. If the prop
+//			  name could not be matched, it
+//			  throws an uninitialized error
+//			  which the main program catches.
+//
+// TODO: Give access to props accessable only with
+//	 "GetObjectProperty" function.
+//
+//   Modifications:
+//     29.09.2005 Turley: Paperdollitems
+//     2006/05/22 Shinigami: Prop Race hinzugefuegt
+//
+////////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+
+Include "include/modifyskill";
+
+Program TextCMD_GetProp(who, propname)
+  If (!propname)
+    SendSysMessagePergon(who, "Syntax: .getprop [propname]");
+    Return;
+  EndIf
+
+  SendSysMessagePergon(who, "Wählt ein Objekt.");
+
+  Var obj:=Target(who, TGTOPT_NOCHECK_LOS);
+  If (!obj)
+    SendSysMessagePergon(who, "Kein normales Item - Wählt ein Paperdoll Item!");
+    obj:= TargetCoordinates(who);
+    If (obj.item)
+      obj:=obj.item;
+    EndIf
+  EndIf
+  If (obj)
+    Var value:=GetObjctProp(obj, propname);
+    If (value=="<uninitialized object>")
+      SendSysMessagePergon(who, "Ungültiger Property-Name!");
+    ElseIf (value)
+      SendSysMessagePergon(who, "Wert von '"+propname+"' = "+value);
+    Else
+      SendSysMessagePergon(who, propname+" ist keine gültige Property!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram
+
+Function GetObjctProp(obj, propname)
+  Var retstr:="<uninitialized object>";
+
+  Case (propname)
+    "acct":             If (obj.acct)                 //   Mobile
+                          retstr:=1;                  //   Mobile
+                        EndIf                         //   Mobile
+    "acctname":         retstr:=obj.acctname;         //   Mobile
+    "alignment":        retstr:=obj.alignment;        // W Mobile
+    "amount":           retstr:=obj.amount;           //   Item
+    "ar":               retstr:=obj.ar;               //   Mobile
+    "ar_base":          retstr:=obj.ar_base;          //   Armor
+    "ar_mod":           retstr:=obj.ar_mod;           // W Mobile
+    "delay_mod":        retstr:=obj.delay_mod;        // W Mobile
+    "backpack":         If (obj.backpack)             //   Mobile
+                          retstr:=1;                  //   Mobile
+                        EndIf                         //   Mobile
+    "buyprice":         retstr:=obj.buyprice;         // W Item
+    "clientversion":    retstr:=obj.clientversion;    //   Mobile
+    "cmdlevel":         retstr:=obj.cmdlevel;         // W Mobile
+    "color":            retstr:=obj.color;            // W UObject
+    "concealed":        retstr:=obj.concealed;        // W Mobile
+    "container":        retstr:=obj.container.serial; //   Item
+    "corpsetype":       retstr:=obj.corpsetype;       //   Corpse
+    "criminal":         retstr:=obj.criminal;         // ? Mobile
+    "dead":             retstr:=obj.dead;             // ? Mobile
+    "decayat":          retstr:=obj.decayat;          // W Item
+    "desc":             retstr:=obj.desc;             // W Item
+    "dexterity":        retstr:=GetDexPergon(obj);    // ? Mobile
+    "dexterity_mod":    retstr:=GetDexModPergon(obj); // W Mobile
+    "dmg_mod":          retstr:=obj.dmg_mod;          // W Weapon
+    "equipscript":      retstr:=obj.equipscript;      // W Item
+    "evasionchance_mod":retstr:=obj.evasionchance_mod;// W Mobile
+    "eventmask" :       retstr:=obj.eventmask;        //   Mobile
+    "facing":           retstr:=obj.facing;           // W UObject
+    "frozen":           retstr:=obj.frozen;           // W Mobile
+    "gender":           retstr:=obj.gender;           // W Mobile
+    "graphic":          retstr:=obj.graphic;          // W UObject
+    "guildid":          retstr:=obj.guildid;          // W UObject
+    "gumpwidth":        retstr:=obj.gumpwidth;        // W Map
+    "gumpheight":       retstr:=obj.gumpheight;       // W Map
+    "height":           retstr:=obj.height;           //   UObject
+    "hidden":           retstr:=obj.hidden;           // W Mobile
+    "hitchance_mod":    retstr:=obj.hitchance_mod;    // W Mobile
+    "hitscript":        retstr:=obj.hitscript;        // W Armor
+    "hp":               If (obj.isa(POLCLASS_MOBILE))
+                          retstr:=GetHPPergon(obj)+" (von "+GetMaxHPPergon(obj)+")"; // W Mobile
+                        Else
+                          retstr:=obj.hp+" (von "+obj.maxhp+")"; // W Not Mobile
+                        EndIf
+    "intelligence":     retstr:=GetIntPergon(obj);    // ? Mobile
+    "intelligence_mod": retstr:=GetIntModPergon(obj); // W Mobile
+    "invisible":        retstr:=obj.invisible;        // W Item
+    "isopen":           retstr:=obj.isopen;           //   Door
+    "layer":            retstr:=obj.layer;            //   Item
+    "locked":           retstr:=obj.locked;           // W Lockable
+    "mana":             retstr:=GetManaPergon(obj)+" (von "+GetMaxManaPergon(obj)+")"; // W Mobile
+    "master":           retstr:=obj.master.name;      // W NPC
+    "maxhp":            If (obj.isa(POLCLASS_MOBILE))
+                          retstr:=GetMaxHPPergon(obj); // Mobile
+                        Else
+                          retstr:=obj.maxhp;           // Not Mobile
+                        EndIf
+    "maxhp_mod":        retstr:=obj.maxhp_mod;        // W Equipment
+    "maxmana":          retstr:=GetMaxManaPergon(obj); //   Mobile
+    "maxstamina":       retstr:=GetMaxStaminaPergon(obj); //   Mobile
+    "movable":          retstr:=obj.movable;          // W Item
+    "multi":            If (obj.multi)                //   UObject
+                          retstr:=1;                  //   UObject
+                        EndIf                         //   UObject
+    "murderer":         retstr:=obj.murderer;         // ?
+    "name":             retstr:=obj.name;             // W UObject
+    "newbie":           retstr:=obj.newbie;           // W Item
+    "npctemplate":      retstr:=obj.npctemplate;      //   NPC
+    "objtype":          retstr:=obj.objtype+" ("+Hex(obj.objtype)+")"; // ? UObject
+    "paralyzed":        retstr:=obj.paralyzed;        // W Mobile
+    "pid":              retstr:=obj.process.pid;      //   NPC
+    "poisoned":         retstr:=obj.poisoned;         // W Mobile
+    "quality":          retstr:=obj.quality;          // W Equipment
+    "race":             retstr:=obj.race;             // W Mobile
+    "reportables":      retstr:=obj.reportables;      //   NPC
+    "run_speed":        retstr:=obj.run_speed;        //   NPC
+    "script":           retstr:=obj.script;           // W NPC     (dann restart)
+    "sellprice":        retstr:=obj.sellprice;        // W Item
+    "serial":           retstr:=Hex(obj.serial);      //   UObject
+    "skillid":          retstr:=obj.attribute;        //   Weapon
+    "squelched":        retstr:=obj.squelched;        //   Mobile
+    "stackable":        retstr:=obj.stackable;        //   Item
+    "stamina":          retstr:=GetStaminaPergon(obj)+" (von "+GetMaxStaminaPergon(obj)+")"; // W Mobile
+    "stealthsteps":     retstr:=obj.stealthsteps;     // W Mobile
+    "strength":         retstr:=GetStrPergon(obj);    // ? Mobile
+    "strength_mod":     retstr:=GetStrModPergon(obj); // W Mobile
+    "title_prefix":     retstr:=obj.title_prefix;     //   Mobile
+    "title_suffix":     retstr:=obj.title_suffix;     //   Mobile
+    "title_guild":      retstr:=obj.title_guild;      //   Mobile
+    "title_race":       retstr:=obj.title_race;       //   Mobile
+    "truecolor":        retstr:=obj.truecolor;        //   Mobile
+    "trueobjtype":      retstr:=obj.trueobjtype;      //   Mobile
+    "unequipscript":    retstr:=obj.unequipscript;    // W Item
+    "usescript":        retstr:=obj.usescript;        // W Item
+    "warmode":          retstr:=obj.warmode;          //   Mobile
+    "weapon":           retstr:=obj.weapon.desc;      //   Mobile
+    "weight":           retstr:=obj.weight;           //   UObject
+    "x":                retstr:=obj.x;                // W UObject
+    "xeast":            retstr:=obj.xeast;            // W Map
+    "xwest":            retstr:=obj.xwest;            // W Map
+    "y":                retstr:=obj.y;                // W UObject
+    "ynorth":           retstr:=obj.ynorth;           // W Map
+    "ysouth":           retstr:=obj.ysouth;           // W Map
+    "z":                retstr:=obj.z;                // W UObject
+  EndCase
+
+  Return CStr(retstr);
+EndFunction

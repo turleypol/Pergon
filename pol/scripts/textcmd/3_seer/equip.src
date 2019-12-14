@@ -1,0 +1,35 @@
+Use uo;
+
+Include "include/msgs";
+Include "include/animal";
+Include "include/modifyskill";
+
+Program TextCMD_Equip(speaker)
+  SendSysMessagePergon( speaker, "Was soll ausgerüstet werden?" );
+
+  Var what := Target( speaker );
+  if (!what)
+    return;
+  endif
+
+  SendSysMessagePergon( speaker, "Wer soll mit " + what.desc + " ausgerüstet werden?" );
+  Var who := Target( speaker );
+  if (!who)
+    return;
+  endif
+  If (what.isA(POLCLASS_NPC))
+  	If (who.isA(POLCLASS_NPC))  // NPC sind nicht owner (damit nicht Script auf enticed gesetzt wird)
+  	  PetMount(what,who,0);
+  	Else
+  		PetMount(what,who,who);
+  	EndIf
+  Else
+  	
+    Var res := EquipItem( who, what );
+    if (res)
+      SendSysMessagePergon( speaker, "Fertig!" );
+    else
+      SendSysMessagePergon( speaker, "Nicht möglich Item auszurüsten: " + res.errortext );
+    endif
+  EndIf
+EndProgram

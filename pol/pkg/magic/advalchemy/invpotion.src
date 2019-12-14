@@ -1,0 +1,35 @@
+// Made By Charles Haustron
+// Hide Char
+use os;
+use uo;
+
+include "drinkpotion";
+include "include/modifyskill";
+
+program drink_invisibility (character, potion)
+if (!checkifcandrink(character))
+        return;
+endif
+
+
+    if (is_poison(potion))
+        do_poison(character, potion);
+    else
+        empty_bottle(character, potion);
+//        PlaySoundEffect(character, SFX_SPELL_INVISIBILITY);
+//        PlaySoundEffect(character, SFX_SPELL_INVISIBILITY);
+        character.hidden := 1;
+
+
+        detach();
+        sleep(10);
+        candrink(character);
+	      sleep(45);
+
+        If (character.hidden) // Um unnoetige Events zu sparen...
+          character.hidden := 0;
+        EndIf
+
+    endif
+
+endprogram

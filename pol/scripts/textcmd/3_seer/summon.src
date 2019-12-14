@@ -1,0 +1,80 @@
+/////////////////////////////////////////////////////////////////////
+// Summon - TextCommand
+//
+// Usage: .summon [playername]
+// Move a Online Player to you. If Player is not given
+// a Menu will open and prompt you to choose one.
+//
+// Author: Shinigami
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use uo;
+use os;
+include "include/msgs";
+include "include/msgs";
+include "include/onlinesearch";
+include "include/place";
+include "include/string";
+
+//////////////////////
+// Gump-Definitionen
+//////////////////////
+
+Var layout:={
+  "page 0",                       // Seite 0 (Basisseite)
+  "nodispose",
+  "resizepic 10 10 2620 310 590",
+  "gumppic 30 40 2621",
+  "checkertrans 15 16 300 578",
+
+  "text 30 19 40 0",
+  "text 243 19 40 1"
+};
+
+Var data:={"Spielername", "Summon"};
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_Summon(who, eingabe)
+  If (eingabe)
+    Var zielperson:=SearchForOnlineCharacter(who, eingabe);
+    If (zielperson)
+      JumpLocationAdd(zielperson);
+      SysLog(CharInfoStr(who, COORDS_REALM)+" holt "+CharInfoStr(zielperson, COORDS_REALM)+" zu sich");
+      MoveObjectToLocation(zielperson, who.x, who.y, who.z, who.realm, MOVEOBJECT_FORCELOCATION);
+    Else
+      SendSysMessagePergon(who, eingabe+" konnte nicht gefunden werden.");
+    EndIf
+  Else
+    // Liste mit {char.name, char}
+    Var playerinfo := FillInOnlineCharacterInfo(
+      layout, data, who, DONT_LIST_ME
+    );
+    If (playerinfo)
+      Var nummer:=SendDialogGump(who, layout, data)[0];
+      If (nummer)
+        If ((who.cmdlevel >= CMDLEVEL_GL) Or (PlaceName(who)<>"Gefaengnis")) // Nicht Admins duerfen Spieler nicht in den Knast summonen
+          JumpLocationAdd(playerinfo[nummer][2]);
+          SysLog(CharInfoStr(who, COORDS_REALM)+" holt "+CharInfoStr(playerinfo[nummer][2], COORDS_REALM)+" zu sich");
+          MoveObjectToLocation(playerinfo[nummer][2], who.x, who.y, who.z, who.realm, MOVEOBJECT_FORCELOCATION);          
+          // Waffen und [schwere] Ruestungen des Player ablegen
+          If (PlaceNewbie(playerinfo[nummer][2]) And (!GetObjProperty(playerinfo[nummer][2], TYPNEWBIE)))
+            If (!CheckEquipmentForNewbieArea(playerinfo[nummer][2]))
+              SendSysMessagePergon(playerinfo[nummer][2], "Euch fallen ein paar Gegenstände zu Boden.");
+            EndIf
+          EndIf
+        Else
+          SendSysMessagePergon(who, "Euch fehlt die nötige Befugnis!", "You are not authorizied!");
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Es ist gerade kein weiterer Character online.");
+    EndIf
+  EndIf
+EndProgram

@@ -1,0 +1,106 @@
+/////////////////////////////////////////////////////////
+// pages -- Anzeige der aktuell vorliegenden Pages
+
+use http;
+use os;
+use uo;
+include "header";
+include "include/clock";
+include "include/names";
+include "include/place";
+
+Program HTMLPage()
+  DoHeader("Pages");
+
+  WriteHTML("<div id='container'>");
+  WriteHTML("<div id='header'></div>");
+  WriteHTML("<div id='content'>");
+  TableHeader("Pages");
+
+  DenyAccess(isALLOWED || isALLOWED_STRICT);
+
+  var pages := GetGlobalProperty(GM_PAGE_LIST);
+  If (!pages)
+    pages := {};
+  Else
+    pages.reverse();
+  EndIf
+  WriteHTML("<h2>Vorliegende Pages</h2>");
+
+  If (pages.size() == 0)
+    WriteHTML("<p>Es liegen keine Pages vor.</p>");
+    WriteHTML("</div>");
+    DoFooter();
+    return;
+  EndIf
+
+  WriteHTML("<table>");
+  ForEach page in (pages)
+    WriteHTML("<tr>");
+    WriteHTML("<th style='text-align:left'>Character</th>");
+    var charname;
+    var char := SystemFindObjectBySerial(
+      page.who, SYSFIND_SEARCH_OFFLINE_MOBILES
+    );
+    If (char)
+      var currname := RemoveTown(char.name);
+      var realname := RemoveTown(GetRealName(char));
+      If (currname == realname)
+        charname := realname;
+      Else
+        charname := realname+" ("+currname+")";
+      EndIf
+    Else
+      charname := "unbekannt";
+    EndIf
+    If (isALLOWED_STRICT)
+      WriteHTML(
+        "<TD><A HREF='objviewer.ecl?Serial="+Hex(char.serial)+"&"+
+        A_PARAM+"'>"+EscapeHTML(charname)+"</A></TD>"
+      );
+    Else
+      WriteHTML("<td>"+EscapeHTML(charname)+"</td>");
+    EndIf
+
+    WriteHTML("<th style='text-align:left'>Online</th>");
+    If (char.connected)
+      WriteHTML("<td>ja</td>");
+    Else
+      WriteHTML("<td>nein</td>");
+    EndIf
+
+    WriteHTML("</tr>");
+
+    WriteHTML("<tr>");
+    WriteHTML("<th style='text-align:left'>Ort</th>");
+    page.loc["realm"] := page.loc.r;
+    WriteHTML(
+      "<td>"+EscapeHTML(
+        PlaceName(page.loc)+" ["+ShortLoc(page.loc)+"]"
+      )+"</td>"
+    );
+
+    WriteHTML("<th>Zeit</th>");
+    WriteHTML(
+      "<td class='nobr num'>"+
+      EscapeHTML(GetDateTimeStr(SHOW_DATE_FULL, page.time))+"</td>"
+    );
+
+    WriteHTML("</tr>");
+
+    WriteHTML("<tr>");
+    WriteHTML("<th>Text</th>");
+    WriteHTML("<td colspan=3>"+EscapeHTML(page.text)+"</td>");
+    WriteHTML("</tr>");
+
+    WriteHTML("<tr>");
+    WriteHTML("<td colspan=5><br></td>");
+    WriteHTML("</tr>");
+  EndForEach
+  WriteHTML("</table>");
+
+  WriteHTML("</div>");
+  DoFooter();
+EndProgram
+
+// vim: sw=2 sts=2

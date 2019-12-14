@@ -1,0 +1,42 @@
+/////////////////////////////////////////////////////////////////////////////
+//  ".goforcs x y [z]" - jump to a location, specifying coordinates.
+//
+// If Z is not specified, map data will be read.  Note statics and dynamic
+// items won't be taken into account, except insofar as
+// MoveObjectToLocation does automatically.
+
+use uo;
+include "include/msgs";
+include "include/place";
+
+Program TextCMD_GoForce(who, text)
+  var params := SplitWords(text);
+
+  If (params.size()<3) // Kein Z
+    params[3] := GetMapInfo(CInt(params[1]), CInt(params[2]), who.realm).z;
+  EndIf
+
+  If (params.size()<4) // Kein Realm
+    params[4] := who.realm;
+  Else
+    Case (CInt(params[4]))
+      0: params[4] := REALM_BRITANNIA;
+      2: params[4] := REALM_ILSHENAR;
+      3: params[4] := REALM_MALAS;
+      4: params[4] := REALM_TOKUNO;
+
+      default: params[4] := who.realm;
+    EndCase
+  EndIf
+
+  JumpLocationAdd(who);
+  var res := MoveObjectToLocation(
+    who, CInt(params[1]), CInt(params[2]), CInt(params[3]), params[4],
+    MOVEOBJECT_FORCELOCATION
+  );
+  If (!res)
+    SendSysMessagePergon(who,
+      "Nicht möglich dorthin zu gehen: "+res.errortext
+    );
+  EndIf
+EndProgram

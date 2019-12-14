@@ -1,0 +1,5 @@
+<h3 id="lag">lag</h3>
+
+<h4>Parameter: <kbd>&lt;text&gt;</kbd></h4>
+
+<p>Botschaft über Lags an Spectator (sofern vorhanden) schicken.</p>

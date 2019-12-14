@@ -1,0 +1,136 @@
+// Leiche eintopfen -- Urne benutzen, um eigenen Leichen zu entfernen
+//
+// Autor: Mehdorn
+
+use os;
+use polsys;
+use uo;
+include "include/msgs";
+include "include/names";
+include "include/properties";
+
+Const UOBJ_BONES  := 0x669a;
+Const URN_MAXFILL := "max_level";
+Const URN_CONTENT := "fill_level";
+
+Program HandleUrn(who, urn)
+    If (!urn.movable)
+        SendSysMessagePergon(who,
+            "Macht die Urne zunächst los!", "Unfasten the urn first!"
+        );
+        return;
+    EndIf
+    If (Distance(who, urn)>1)
+        SendSysMessagePergon(who,
+            "Das ist zu weit weg!", "That's too far away!"
+        );
+        return;
+    EndIf
+
+    var maxfill := GetObjProperty(urn, URN_MAXFILL);
+    If (maxfill == error)
+        maxfill := 1;
+    EndIf
+    var filled  := GetObjProperty(urn, URN_CONTENT);
+    If (filled == error)
+        filled := 0;
+    EndIf
+
+    If (filled >= maxfill)
+        Auspflanzen(who, urn);
+    Else
+        Eintopfen(who, urn);
+    EndIf
+EndProgram
+
+Function Eintopfen(who, urn) // {{{
+    SendSysMessagePergon(who,
+        "Wählt Eure Überreste, die Ihr einäschern wollt.",
+        "Select your bones you want to burn to ashes."
+    );
+    var corpse := Target(who);
+
+    If (!corpse or corpse.objtype != UOBJ_BONES)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (Distance(who, corpse) > 1)
+        SendSysMessagePergon(who,
+            "Ihr müsst näher heran.", "You are too far away."
+        );
+        return;
+    EndIf
+
+    var info := GetObjProperty(corpse, "corpseinfo");
+    var ex   := GetObjProperty(corpse, "ExMaster");
+    If (
+        (!info or who.serial != info[1]) and
+        (!ex   or who.serial != ex)
+    )
+        SendSysMessagePergon(who,
+            "Das scheinen weder Eure, noch die Überreste eines "+
+            "Eurer Tiere zu sein.",
+            "That does not seem to be your own bones, "+
+            "and they are not of one of your animals."
+        );
+        return;
+    EndIf
+
+    var name;
+    If (!ex)
+        name := GetRealName(who);
+    Else
+        name := corpse.desc;
+        name := name[5+Find(name, " von ", 0), Len(name)];
+        name[" domestiziert"] := "";
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Asche zu Asche, Staub zu Staub ...",
+        "Ashes to ashes, dust to dust ..."
+    );
+    Sleep(1);
+    PlaySoundEffect(corpse, 0x347);
+    PlayStationaryEffect(
+        corpse.x, corpse.y, corpse.z, 0x36b0, 1, 10, 0, corpse.realm
+    );
+    SleepMS(500);
+    DestroyItem(corpse);
+    SleepMS(500);
+
+    var filled := GetObjPropOrDefault(urn, URN_CONTENT, 0);
+    filled += 1;
+    SetObjProperty(urn, URN_CONTENT, filled);
+    SetObjProperty(urn, "name", name);
+    IncRevision(urn);
+EndFunction // }}}
+
+Function Auspflanzen(who, urn) // {{{
+    var statics := ListStaticsNearLocation(
+        who.x, who.y, LIST_IGNORE_Z, 2, ITEMS_IGNORE_MULTIS, who.realm
+    );
+    var on_grave := 0;
+    ForEach item in (statics)
+        SleepMS(2);
+        If (item.objtype in (array{0x0edf, 0xee0, 0xee1, 0xee2}))
+            on_grave := 1;
+            break;
+        EndIf
+    EndForEach
+
+    If (!on_grave)
+        SendSysMessagePergon(who,
+            "Ihr müsst Euch zu einem Grab begeben!",
+            "You should find a grave!"
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Ihr leert die Urne in das Grab.",
+        "You empty the urn into the grave."
+    );
+    SetObjProperty(urn, URN_CONTENT, 0);
+    IncRevision(urn);
+EndFunction // }}}

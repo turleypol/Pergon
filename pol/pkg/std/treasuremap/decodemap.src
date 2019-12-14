@@ -1,0 +1,135 @@
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// decodemap.src
+//
+// Checks the character's Cartogrphy skill to see if
+// the map can be read. If so, it creates a new, readable
+// map and a digging tool. Also picks a random location
+// for the treasure to be.
+//
+// Not in this script: Use the tool created and target the
+// map to use and then the ground to dig for that treasure.
+//
+// Author: Racalac, 4/24/99
+//
+//  2001/12/04 Commander: Verzerrungproblem gekickt, wenn karten zu nah an der grenze erzeugt wurden
+//  2001/12/05 Commander: diggingtool wird nur noch erzeugt, wenn noch keins im backpack ist
+//  12.02.2003 Fraggulus: entschluesselte Schatzkarten sind fuer alle einsehbar
+//  16.09.2003 Fraggulus: Level 10-Map auf 80% Minimumanforderung (Hauptskill) skaliert (Skillcheck ist weiterhin 80%)
+//  2004/08/15 chnattel/Feiv: Erweiterung um >300 Schaetze. Einfuehrung der KartenLevel fuer die Plaetze...
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+use os;
+use util;
+use attributes;
+use uo;
+use cfgfile;
+
+include "include/client";
+include "include/objtype";
+include "include/modifyskill";
+Include "treasurechest";
+
+Const UOBJECT_DIGGINGTOOL := 0x642a;
+
+program decode_map(character, map)
+
+		Var cfgfile  := ReadConfigFile("::itemdesc");
+		Var elem     := FindConfigElem(cfgfile, map.objtype);
+		Var maplevel := GetConfigInt(elem, "Level");
+		Var maxlevel := CInt(GetSkillPergon(character, SKILLID_KARTOGRAPHIE) / 8.0);
+
+		if (maplevel > maxlevel)
+		  SendSysMessagePergon(character, "Ihr könnt die Karte nicht verstehen.", "You're not able to understand this map.");
+		else
+			if (CheckSkillPergon(character, SKILLID_KARTOGRAPHIE, (maplevel*10) - 0.2, (maplevel*10)))
+			CreateTreasureMap(character, map, maplevel);
+			else
+				SendSysMessagePergon(character, "Ihr versteht die Map, könnt sie aber nicht entschlüsseln.",
+				                                "You understand this map, but cannot decode it.");
+			endif
+		endif
+
+endprogram
+
+
+
+function GetMaxMapLevel(character)
+
+		Var skill := GetSkillPergon(character, SKILLID_KARTOGRAPHIE);
+
+		if (skill >= 100)
+		  return 10;
+		elseif (skill >= 90)
+		  return 9;
+		elseif (skill >= 80)
+		  return 8;
+		elseif (skill >= 70)
+		  return 7;
+		elseif (skill >= 60)
+		  return 6;
+		elseif (skill >= 50)
+		  return 5;
+		elseif (skill >= 40)
+		  return 4;
+		elseif (skill >= 30)
+		  return 3;
+		elseif (skill >= 20)
+		  return 2;
+		elseif (skill >= 10)
+		  return 1;
+		else
+		  return 0;
+		endif
+
+endfunction
+
+
+function CreateTreasureMap(character, oldmap, maplevel)
+
+		Var map := CreateItemInBackpackPergon(character, UOBJ_MAP1, 1);
+
+		SetObjProperty(map , "level", maplevel);
+
+		SetTreasureCoords(map, maplevel);
+
+		SendSysMessagePergon(character, "Ihr entschlüsselt die Karte erfolgreich!",
+		                                "You successfully decode this map!");
+
+		SubtractAmount(oldmap,1);
+
+		if (!FindObjtypeInContainer(character.backpack, UOBJECT_DIGGINGTOOL))
+			Var tool := CreateItemInBackpackPergon(character, UOBJECT_DIGGINGTOOL, 1);
+			SetName(tool, "ein Grabewerkzeug");
+		EndIf
+
+endfunction
+
+
+function SetTreasureCoords(map, maplevel)
+
+		Var cfgfile := ReadConfigFile("treasure");
+		Var num  := GetConfigMaxIntKey(cfgfile);
+		Var elem;
+
+		Repeat
+		  Var cardnum:=RandomInt(num)+1;
+		  elem:=FindConfigElem(cfgfile, cardnum);
+		  If (!elem)
+		    SysLog("FEHLER: Die Karte "+cardnum+" ist nicht in treasure.cfg verzeichnet!");
+		    Return;
+		  EndIf
+		Until ((elem.levelmin<=maplevel) And (maplevel<=elem.levelmax) And (GetConfigInt(elem, "X")<5120));
+
+		Var x := GetConfigInt(elem, "X");
+		Var y := GetConfigInt(elem, "Y");
+		Var z := GetConfigInt(elem, "Z");
+
+		SetObjProperty(map, "chestx", x);
+		SetObjProperty(map, "chesty", y);
+		SetObjProperty(map, "chestz", z);
+
+		SetVisibleMap(map, x, y);
+
+endfunction

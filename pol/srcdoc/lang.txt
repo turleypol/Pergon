@@ -1,0 +1,6 @@
+
+ Languages
+
+    Language 0 is the 'system' language.  Players may or may not be allowed
+    to speak in the system language.
+

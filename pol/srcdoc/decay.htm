@@ -1,0 +1,29 @@
+<title>Object Decay</title>
+<table border=0 width="100%">
+  <tr>
+    <td valign="top" width="100%"><strong><big><big><big>Object Decay</big></strong></td>
+    <td width="50%" valign="top" align="right" nowrap><a href="index.htm"><small>POL Core Doc<br>Home</small></a></td>
+  </tr>
+</table>
+<pre>
+
+ </pre><H2><a name="1">1</a> Item Decay Criteria</H2><pre>
+     An Item is allowed to decay if ALL of the following are true:
+        - it is not In Use
+        - it is Movable, OR it is a Corpse
+        - its 'decayat' member is nonzero 
+            AND the Game Clock has passed this 'decayat' time
+        - it is not supported by a multi,
+            OR its itemdesc.cfg entry specifies 'DecaysOnMultis 1'
+        - it itemdesc.cfg entry specifies no 'DestroyScript', 
+            OR its 'DestroyScript' returns nonzero.
+
+ </pre><H2><a name="2">2</a> Decay Action</H2><pre>
+     Container contents are moved to the ground at the Container's location
+     before destroying the container.
+
+
+ </pre><H2><a name="3">3</a> Decay Sweep</H2><pre>
+     Each 64x64 tile World Zone is checked for decay approximately
+     once every 10 minutes
+

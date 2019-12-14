@@ -1,0 +1,48 @@
+///////////////////////////////////////////////////////////////////////////////////////
+//
+//   OpenBook - Oeffnet das Buch fuer den Spieler
+//              Die einzelne Steuerung uebernimmt dann das ensprechende MethodScript.
+//
+//     based on Bookcase Spawning System v0.3 (2000/12/08)
+//       Author: Syzygy, Zulu, Bishop Ebonhand
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2002/04/25 Shinigami: ReWrite
+//
+///////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonutil";
+Include "include/msgs";
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program OpenBook(who, book)
+  If (GetObjProperty(book, "bookcontent")) // Altes Buch oeffnen?
+    Start_ScriptPergon(":book:book", {who, book});
+  Else // Noe, ist ein neues...
+    Var res:=SendOpenBook(who, book);
+    If (!res)
+      If (who.cmdlevel >= CMDLEVEL_SEER)
+        SendSysMessagePergon(who, "Das Buch konnte nicht geöffnet werden ("+res+").");
+      Else
+        SendSysMessagePergon(who, "Das Buch konnte nicht geöffnet werden. Wendet Euch an einen GM!");
+      EndIf
+    EndIf
+  EndIf
+EndProgram

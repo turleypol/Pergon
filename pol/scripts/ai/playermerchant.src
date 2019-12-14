@@ -1,0 +1,974 @@
+////////////////////////////////////////////////////////////////////////////
+// MERCHANT.src - Control script For Player Merchants
+//
+
+use cfgfile;
+use npc;
+use os;
+use storage;
+use uo;
+use util;
+include "include/animal";
+include "include/client";
+include "include/clock";
+include "include/eventid";
+include "include/modifyskill";
+include "include/npc"; //some new functions
+include "include/objtype";
+include "include/names";
+include "include/storage";
+include "include/vetement"; // need for random clothing
+
+// zu initialisierende Variablen
+Const REACT_THRESHOLD := 7;
+Const REACT_THRESHOLD2 := 3;
+
+var storage, inv_fs, inv_pb;
+var mmaster;
+var following := 0;
+var pay := 0;
+var me := Self();
+var closed := cint(GetObjProperty(me, "rp"));
+
+SetWarMode(0);
+set_priority(50);
+
+// Namenszuweisung
+If (me.name["<random>"])
+  var npcname := RandomName(me);
+  SetName(me, npcname);
+  SetName(me, npcname + NPCTitle(me));
+
+  npcname := me.name + " ";
+
+  var pos := Find(npcname, ",", 1);
+  If (pos)
+    npcname := npcname[1, pos-1];
+  EndIf
+
+  SetObjProperty(me, "myname", npcname);
+  Habille(me, GetObjProperty(me, "Equipt")); // Random Clothing
+EndIf
+
+var minename := GetObjProperty(me, "myname");
+
+// Den Namen ein bissl zurechtstutzen
+var komma := Find(minename, ",", 1);
+If (komma)
+  minename := minename[1, komma-1];
+
+  minename:=Trim(minename);
+EndIf
+
+var next_pay := GetObjProperty(me, "p");
+var master := cint(GetObjProperty(me, "master"));
+var mastername := GetObjProperty(me, "mn");
+var mygold := cint(GetObjProperty(me, "g"));
+var cont := GetObjProperty(me, "cont");
+
+var klappehalten := 0;
+var ankauf := -1;
+
+If (GetObjProperty(me, "frozen"))
+  me.frozen := 1;
+  IncRevision(me);
+EndIf
+
+// Checken, ob der Npc schon zu lange sinnlos im Knast steht (und sein
+// Besitzer ihn wohl nie abholen wird) wenn Check positiv -> Npc killen
+// (lassen)..
+If (GetObjProperty(me, "AutoKillAt"))
+  If (CInt(GetObjProperty(me, "AutoKillAt")) < ReadGameClock())
+    // wenn Zeit ueberschritten ist..
+    If (!master || master == "")
+      // .. und aktuell kein Master vorhanden ist
+      syslog(
+        "HINWEIS: Playermerchant "+me.name+"/"+Lower(Hex(me.serial))+
+        " stand zu lange im Knast herum und wurde vernichtet."
+      );
+      // in den Knast zum Vernichter
+      MoveObjectToLocation(
+        me, 5283, 1184, 0, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+      );
+    EndIf
+  EndIf
+EndIf
+// Ende der Npc-Konfiguration; Start des AI-Scripts
+
+Program PlayerMerchant()
+    var minelocation := PlaceName(me);  //where is the npc?
+
+    storage := FindStorageArea(STORAGE_MERCHANT);
+    If (!storage)
+      // syslog("Unable to FindStorageArea "+STORAGE_MERCHANT);
+      exit;
+    EndIf
+
+    inv_fs := FindOrCreateRootItemInStorage(storage, me.serial+" FS", 0xE7C);
+    inv_pb := FindOrCreateRootItemInStorage(storage, me.serial+" PB", 0xE7C);
+    inv_fs := FindOrCreateRootItemInStorage(storage, me.serial+" 1C", 0xE7C);
+
+    If (!inv_fs or !inv_pb or !inv_fs)
+      exit;
+    EndIf
+
+    EnableEvents(SYSEVENT_SPEECH + SYSEVENT_ENGAGED + SYSEVENT_DISENGAGED + SYSEVENT_DAMAGED, REACT_THRESHOLD2);
+    EnableEvents(SYSEVENT_ENTEREDAREA + SYSEVENT_LEFTAREA, REACT_THRESHOLD2);
+    EnableEvents(SYSEVENT_OPPONENT_MOVED);
+    EnableEvents(SYSEVENT_ITEM_GIVEN + SYSEVENT_MERCHANT_SOLD);
+
+    While (1)
+      var ev;
+      ev := Wait_for_EventLogging(30);
+      PerformAction(me, UACTION_LOOK_AROUND);
+      If (ev and (!ev.source.isa(POLCLASS_NPC)) and !ev.source.dead)
+        TurnToward (ev.source);
+        Case (ev.type)
+          SYSEVENT_SPEECH:
+            If (!CheckLineOfSight(me, ev.source))
+              // wir sehen denjenigen nicht
+              break;
+            EndIf
+
+            var sayed := ev.text;
+            var talktome := 1;
+            var wordarray := SplitWords(sayed);
+            var word1 := wordarray [1];
+            If (lower(word1) == lower(minename))
+              SetObjProperty(ev.source,"talkto",minename);
+              sayed := wordarray[2];
+              If (wordarray[3])
+                sayed += " " + wordarray[3];
+              EndIf
+            EndIf
+            SleepMS(5);
+
+            If (GetObjProperty(ev.source, "talkto") and GetObjProperty(ev.source, "talkto")!=minename)
+              talktome := 0;
+            EndIf
+
+            // auf Emotes nicht reagieren
+            If (len(sayed) > 1)
+              If (sayed[1] == "*" && sayed[len(sayed)] == "*")
+                talktome := 0;
+              EndIf
+            EndIf
+
+            If (talktome)
+              If (ev.text == "zeit")
+                var time := GetPergonTimeOfDay();
+                SayPergon(ev.source, "Es ist "+time, "It is "+time);
+                Sleep (3);
+              EndIf
+              If (ev.text == "ort")
+                minelocation := PlaceName(me);  //where is the npc? // Korrekten Ort nennen
+                SayPergon(ev.source, "Ihr seid in " + minelocation);
+              Sleep (3);
+              EndIf
+              If (ev.text == "template?")
+                SayPergon(ev.source, "npctemplate: " + me.npctemplate);
+                Sleep (3);
+              EndIf
+              Case (sayed)
+                "name":
+                  SayPergon(ev.source, "Ich bin "+me.name);
+                "kaufen":
+                  If (master)
+                    var res;
+                    // res := SendBuyWindowPergon(ev.source, inv_fs, self(), inv_pb);
+                    If (!closed)
+                      res := SendBuyWindowPergon(ev.source, inv_fs, self(), inv_pb);
+                      If (!res)
+                        syslog("WARNUNG: SendBuyWindowPergon failed: " + res.errortext);
+                      EndIf
+                    Else
+                      If (ev.source.serial == master)
+                        SendBuyWindowPergon(ev.source, inv_fs, self(), inv_pb);
+                      Else
+                        SayPergon(ev.source, "Es tut mir leid, aber es ist nicht geöffnet");
+                      EndIf
+                    EndIf
+                  Else
+                    SayPergon(ev.source, "Ich suche zur Zeit noch einen geeigneten Partner.");
+                  EndIf
+                "verkaufen":
+                  If (ev.source.serial == master)
+                    SayPergon(ev.source, "Gebt mir einfach die Dinge, die ich verkaufen soll");
+                  Else
+                    If (master)
+                      If (ankauf < 0)
+                        SayPergon(ev.source, "Es tut mir leid, aber ich darf nichts ankaufen.", "Sorry, I`m not allowed to buy anything.");
+                      Else
+                        SayPergon(ev.source, "Gebt mir einfach einen Gegenstand und macht mir ein Angebot.");
+                      EndIf
+                    Else
+                      SayPergon(ev.source, "Ich suche zur Zeit noch einen geeigneten Partner.");
+                    EndIf
+                  EndIf
+                "schliessen":
+                  If (ev.source.serial == master)
+                    If (closed)
+                      SayPergon(ev.source, "Ich habe doch bereits geschlossen!");
+                    Else
+                      closed := 1;
+                      reprice();
+                      If (ev.source.gender)
+                        SayPergon(ev.source, "Ich habe geschlossen und alle Preise auf 1 gesetzt, Herrin!");
+                      Else
+                        SayPergon(ev.source, "Ich habe geschlossen und alle Preise auf 1 gesetzt, Herr!",
+                          "I have closed and set all the prices to 1, master.");
+                      EndIf
+                    EndIf
+                  EndIf
+                "vertrag":
+                  If (ev.source.serial == master)
+                    cont := recontact(ev.source);
+                    SetObjProperty(me, "cont", cont);
+                  Else
+                    If (master)
+                      SayPergon(ev.source, "Ich arbeite für "+mastername+".", "I work For "+mastername+".");
+                      If (cont)
+                        SayPergon(ev.source, "Folgend erreichbar: " + cont);
+                      EndIf
+                    Else
+                      SayPergon(ev.source, "Ich suche zur Zeit noch einen geeigneten Partner.");
+                    EndIf
+                  EndIf
+                "oeffnen":
+                  If (ev.source.serial == master)
+                    If (closed == 0)
+                      SayPergon(ev.source, "Ich habe doch bereits geöffnet!");
+                    Else
+                      closed := 0;
+                      SayPergon(ev.source, "Einen Moment, ich setze nur noch die Preise...", "One moment, I set the prices...");
+                      reset_prices();
+                      SayPergon(ev.source, "Das Geschäft kann beginnen!", "The shopping may start now!");
+                    EndIf
+                  EndIf
+                "sammeln":
+                  If (ev.source.serial == master)
+                    cashout(ev.source);
+                  EndIf
+                "kleidung":
+                  If (ev.source.serial == master)
+                    SayPergon(ev.source, "Welche Kleidung soll ich tragen?");
+                    var this := target(ev.source);
+                    wear_item(this);
+                  EndIf
+                "strip":
+                "ausziehen":
+                  If ((ev.source.serial == master) Or (ev.source.cmdlevel >= CMDLEVEL_SEER))
+                    SayPergon(ev.source, "Wie Ihr wünscht!");
+                    UnEquip_Items(me, ev.source);
+                    // Strip_Items(ev.source);
+                    // Strip_Items();
+                  EndIf
+                "anziehen":
+                  If ((ev.source.serial == master) Or (ev.source.cmdlevel >= CMDLEVEL_SEER))
+                    SayPergon(ev.source, "Wie Ihr wünscht!");
+                    Equip_Items(me, ev.source);
+                    // UnStrip_Items();
+                    EndIf
+                "stop":
+                  If (ev.source.serial == master)
+                    SayPergon(ev.source, "Nungut, ich werde genau hier stehenbleiben.");
+                    following := 0;
+                  EndIf
+                "folgen":
+                  If (ev.source.serial == master)
+                    SayPergon(ev.source, "Geht ruhig vor!");
+                    mmaster := ev.source;
+                    following := 1;
+                  EndIf
+                "mieten":
+                  If (!master)
+                    SayPergon(ev.source, "Gerne arbeite ich für Euch. Mein Lohn beträgt 1000 Gold und wäre sofort zu zahlen.");
+                  EndIf
+                "lohn":
+                  If ((ev.source.serial == master) || (ev.source.cmdlevel >= CMDLEVEL_HIGHGM))
+                    lohn_infos(ev.source);
+                  EndIf
+                "ruhe":
+                  If (ev.source.serial == master)
+                    PrintTextAbovePrivatePergon(me, "Ich werde Euch mal ein Weilchen ignorieren. Die Geschäfte gehen natürlich weiter!", "", ev.source);
+                    klappehalten := 1;
+                  EndIf
+                "unruhe":
+                  If (ev.source.serial == master)
+                    PrintTextAbovePrivatePergon(me, "Ah, keine Sonderbehandlung mehr?", "", ev.source);
+                    klappehalten := 0;
+                  EndIf
+                "ankaufpreis":
+                  If (ev.source.serial == master)
+                    set_buyprice(ev.source);
+                  EndIf
+                "status":
+                  If ((ev.source.serial == master) || (ev.source.cmdlevel >= CMDLEVEL_HIGHGM))
+                    status_infos(ev.source);
+                  EndIf
+                "kuendigen":
+                  If (ev.source.serial == master)
+                    PrintTextAbovePrivatePergon(me, "Um mir zu kuendigen, sagt einfach 'Ich kündige Euch.#123#'.", "", SystemFindObjectBySerial(master));
+                  EndIf
+                "aufsteigen":
+                  PrintTextAbovePrivatePergon(me, "Auf welches Tier soll ich aufsteigen?", "", ev.source);
+
+                  var pet := Target(ev.source);
+                  If (pet)
+                    If ((pet.graphic == CID_HUMAN_MALE) Or (pet.graphic == CID_HUMAN_FEMALE))
+                      PrintTextAbovePrivatePergon(me, "Nicht in der Öffentlichkeit *g*", "", ev.source);
+                    ElseIf ((pet.script in {"enticedanimal", "tamed"}) And (!GetObjProperty(pet, PROP_SUMMONED)) And
+                    (GetObjProperty(pet, "master") == ev.source.serial))
+                      If (Distance(pet, me)<=2)
+                        If (!PetMount(pet, me, ev.source))
+                          SendSysMessagePergon(ev.source, "Dies kann man nicht reiten.", "");
+                          PerformAction(pet, 0x06);
+                        EndIf
+                      Else
+                        SendSysMessagePergon(ev.source, "Das Tier ist viel zu weit entfernt!", "");
+                      EndIf
+                    Else
+                      PrintTextAbovePrivatePergon(me, "Es ist nicht Euer Tier.", "", ev.source);
+                    EndIf
+                  EndIf
+                "absteigen":
+                  PetDisMount(me, ev.source);
+
+                "Ich kuendige Euch.#123#":
+                  If (ev.source.serial == master)
+                    kuendigen();
+                  EndIf
+                default:
+                  If (!(ev.source.serial == master and (klappehalten!=0)))
+                    var answer := Answering(sayed, minelocation, me);
+                    SayPergon(ev.source, answer);
+                  EndIf
+              EndCase
+            EndIf
+          SYSEVENT_ENTEREDAREA:
+            If (!CheckLineOfSight(me, ev.source))
+              // wir sehen denjenigen nicht
+              break;
+            EndIf
+
+            If (!closed)
+              If (
+                (!ev.source.isa(POLCLASS_NPC)) and
+                // nicht durch Waende
+                (CheckLineOfSight(me, ev.source))
+              )
+                SayPergon(ev.source, "Seid gegrüßt.", "Greetings.");
+              EndIf
+            EndIf
+          SYSEVENT_LEFTAREA:
+            If (!CheckLineOfSight(me, ev.source))
+              // wir sehen denjenigen nicht
+              break;
+            EndIf
+
+            If (!closed)
+              If (GetObjProperty(ev.source, "talkto") == minename)
+                EraseObjProperty (ev.source, "talkto");
+                SayPergon(ev.source, "Empfehlt uns bitte weiter.", "Please recommend us.");
+              EndIf
+            EndIf
+          SYSEVENT_MERCHANT_SOLD:
+            TurnToward(ev.source);
+            PrintTextAbovePrivatePergon(self(),
+              "Das macht insgesamt "+ev.amount+" Gold.",
+              "That makes "+ev.amount+" gold.", ev.source
+            );
+            If (mygold == 0)
+              mygold := cint(ev.amount);
+            Else
+              mygold := mygold + ev.amount;
+            EndIf
+            SetObjProperty(me, "g", mygold);
+          SYSEVENT_ITEM_GIVEN:
+            If (!master)
+              If ((ev.item.objtype == UOBJ_GOLD_COIN) && (ev.item.amount >= 1000))
+                next_pay := readgameclock() + 86400;
+                SetObjProperty(me, "p", next_pay);
+                SayPergon(ev.source, "Ich fühle mich geehrt, fuer Euch zu arbeiten.");
+
+                master := ev.source.serial;
+                mastername := ev.source.name;
+                cont := recontact(ev.source);
+                SetObjProperty(me, "master", ev.source.serial);
+                SetObjProperty(me, "mn", ev.source.name);
+                EraseObjProperty(me, "ExMaster");
+                EraseObjProperty(me, "AutoKillAt");
+                If (ev.item.amount > 1000)
+                  If ((mygold == 0) || (mygold == error))
+                    mygold := 0;
+                  EndIf
+                  mygold := ev.item.amount - 1000;
+                  SetObjProperty(me, "g", mygold);
+                  SayPergon(ev.source,
+                    "Das restliche Geld wird mit meinem Lohn abgerechnet."
+                  );
+                EndIf
+                destroyitem(ev.item);
+              EndIf
+            Else
+              If (ev.source.serial == master)
+                stockitem(ev);
+              ElseIf (ankauf >= 0)
+                geschaeft(ev.source,ev.item);
+              Else
+                SayPergon(ev.source, "Ich darf auch keine Gegenstände annehmen");
+              EndIf
+            EndIf
+          SYSEVENT_DAMAGED:
+          SYSEVENT_ENGAGED:
+            // Angreifer wird fuer 10 Minuten ins Gefaengnis geworfen
+            If (ev.source.cmdlevel < CMDLEVEL_SEER)
+              PrintTextAbovePergon(ev.source, me, "Zu Hilfe! Verbrechen!", "Help me! Crime!");
+              SleepMS(1000);
+              PrintTextAbovePergon(ev.source, me, "Man greift mich an!", "I`m attacked!");
+              SleepMS(2500);
+
+              PrintTextAbovePergon(ev.source, me, "Sofort hinfort mit Euch und lernt Eure Lektion!", "Go away and learn your lection!");
+              SleepMS(500);
+              SendSysMessagePergon(ev.source, "Ihr wurdet wegen Angriffs auf einen Npc strafeingekerkert! Dauer: 10 Minuten",
+                "You were imprisoned due to a attack on a NPC for 10 minutes.", _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+              syslog("STRAFE: "+ev.source.name+" wurde wegen Angriffs auf den Playerhaendler '"+me.name+"' ("+Lower(Hex(me.serial))+") fuer 10 Minuten eingeknastet.");
+              AutoJail(ev.source, 10);
+            EndIf
+          SYSEVENT_DISENGAGED:
+            If (ev.source and ev.source.cmdlevel < CMDLEVEL_SEER)
+              PrintTextAbovePergon(ev.source, me,
+                "Aha! Scheinbar habt Ihr Euer Fehlverhalten eingesehen!?",
+                "Oh, seems you've learned!"
+              );
+              PrintTextAbovePergon(ev.source, me,
+                "Und nun verschwindet!", "And now, clear out!"
+              );
+            EndIf
+        EndCase
+      EndIf
+      If (following)
+        While ((mmaster) && (following))
+          If ((distance(mmaster, me) > 1) && (distance(mmaster, me) < 30))
+            runtoward(mmaster);
+            runtoward(mmaster);
+            runtoward(mmaster);
+            If (distance(mmaster, me) > 6)
+              SayPergon(mmaster, "*pant*");
+              runtoward(mmaster);
+              runtoward(mmaster);
+              runtoward(mmaster);
+            EndIf
+            If (distance(mmaster, me) == 10)
+              SayPergon(mmaster,
+                "Macht bitte langsamer, ich bin Händler, kein Marathonläufer!"
+              );
+              runtoward(mmaster);
+              runtoward(mmaster);
+              runtoward(mmaster);
+            EndIf
+// Beam-Routine, wenn Player zu weit weg
+/*
+        If (distance(mmaster, me) > 12)
+                var sx := me.x;
+            var sy := me.y;
+            var sz := me.z;
+            MoveObjectToLocation(me, mmaster.x, mmaster.y, mmaster.z, mmaster.realm);
+            PlayStationaryEffect(sx, sy, sz, FX_SMOKE, speed := 0xA, loop := 0xA);
+            PlayStationaryEffect(me.x, me.y, me.z, FX_SMOKE, speed := 0xA, loop := 0xA);
+                    PlaySoundEffect(mmaster, SFX_SPELL_TELEPORT);
+        EndIf
+*/
+// Ersatz:
+            If (distance(mmaster, me) > 12)
+              SayPergon(mmaster, "Huch? Wo seid Ihr hin?! ... Hallo?");
+              runtoward(mmaster);
+            EndIf
+          EndIf
+          var ev := Wait_for_EventLogging(1);
+          If (ev)
+            If (ev.type == SYSEVENT_SPEECH)
+              If ((ev.source.serial == master) and (ev.text["stop"]))
+                following := 0;
+                TurnToward(ev.source);
+                SayPergon(ev.source, "Nungut, ich werde hier stehenbleiben.");
+                break;
+              EndIf
+            EndIf
+          EndIf
+        EndWhile
+      EndIf
+// warum zum Henker oeffnet der Haendler, wenn kein Meister mehr in der
+// Naehe ist?
+/*
+      If (closed)
+        print ("Es ist geschlossen!");
+        var mstr := Systemfindobjectbyserial(cint(master));
+        If (!mstr)
+          print (mstr.errortext);
+        EndIf
+        If ((!mstr) or (distance(me, mstr) > 10))
+          print ("resetting prices");
+          reset_prices();
+        EndIf
+      EndIf
+*/
+      If ((next_pay) and (ReadGameClock() > next_pay))
+        If (getpay());
+//        syslog ("Vendor got his pay!");
+          var pmts := cint(GetObjProperty(me, "payments"));
+          pmts += 1;
+          next_pay := readgameclock() + 86400;
+          SetObjProperty(me, "payments", pmts);
+          SetObjProperty(me, "p", next_pay);
+        EndIf
+      EndIf
+    EndWhile
+EndProgram
+
+Function stockitem(tev)
+
+  If (tev.item.objtype == UOBJ_GOLD_COIN)
+    If ((mygold == 0) or (mygold == error))
+      mygold := 0;
+    EndIf
+    mygold += tev.item.amount;
+    SetObjProperty(me, "g", mygold);
+    pay += tev.item.amount;
+    SetObjProperty(me, "p", pay);
+    If (mygold <0)
+      SayPergon(tev.source, "Ich danke, Herr, aber Ihr habt noch immer  " + mygold * -1 + " Gold");
+    Else
+      SayPergon(tev.source, "Ich danke Euch, Herr!", "I thank you, master!");
+    EndIf
+    destroyitem(tev.item);
+    return;
+  EndIf
+
+  If (mygold < 0)
+    SayPergon(tev.source, "Herr, ich würde das gerne machen, aber Ihr habt nur " + mygold * -1 + " Gold");
+    return;
+  EndIf
+
+  // If (closed != 0)
+  //   SayPergon(tev.source, "können wir dafür nicht schließen, sonst komme ich durcheinander!");
+  //   return;
+  // EndIf
+
+  var item := tev.item;
+
+  SetObjProperty(item, "v", mastername);
+
+  //var tname := SendTextEntryGump(tev.source,"How shall I advertise this item?" , TE_CANCEL_ENABLE, TE_STYLE_NORMAL);
+  var cost := SendTextEntryGump(tev.source, "Wieviel soll dieses Item kosten? ", TE_CANCEL_ENABLE, TE_STYLE_NORMAL);
+  //        If (tname)
+  //                item.name := tname;
+  //        EndIf
+
+  If (cost)
+    item.sellprice := cint(cost);
+  EndIf
+  If (closed)
+    If (cost)
+      SetObjProperty(item, "rp", cint(cost));
+    EndIf
+  EndIf
+
+  If (!item.movable)
+    item.movable := 1;
+  EndIf
+
+  moveitemtocontainer(item, inv_fs);
+
+  SayPergon(tev.source, "Ich werde "+tev.item.desc+" für "+tev.item.sellprice+" verkaufen.",
+    "I will sell "+tev.item.desc+" For "+tev.item.sellprice+" gold.");
+EndFunction
+
+Function cashout(who)
+  SayPergon(who, "Herr, ich habe im Moment "+mygold+" Gold.", "Master, at the moment I have "+mygold+" gold.");
+  If ((mygold < 0) and (mygold != error))
+    SayPergon(who, "Ihr habt " + mygold * -1 + " Gold.");
+    return;
+  EndIf
+
+  var keep := cint((mygold-pay) * 0.05) ;
+  If ((keep <= 0) or (keep == error))
+    keep := 0;
+  EndIf
+  pay := 0;
+  SetObjProperty(me, "p", 0);
+  mygold := CInt(mygold - keep);  // Kommission vom Guthaben abziehen
+
+  // <BugFix - Shinigami>
+  var mstr := SystemFindObjectBySerial(CInt(master));
+  var goldcreated := 1;
+
+  While (mygold > 60000 && goldcreated)
+    goldcreated := CreateItemInContainerPergon(mstr.backpack, UOBJ_GOLD_COIN, 60000);
+    If (goldcreated)
+      mygold := mygold - 60000;
+    EndIf
+  EndWhile
+  If (mygold > 0 && goldcreated)
+    goldcreated := CreateItemInContainerPergon(mstr.backpack, UOBJ_GOLD_COIN, mygold);
+    If (goldcreated)
+      mygold := 0;
+    EndIf
+  EndIf
+  // </BugFix - Shinigami>
+
+  If (goldcreated)
+    SayPergon(who, "Ich habe meine Kommission von "+keep+" Gold abgerechnet.", "I subtracted my commission of "+keep+" gold.");
+    SayPergon(who, "Wie auch immer, Ihr habt mir kein zukünftiges Gehalt gelassen.", "However, you didn`t gave me my future wages.");
+    mygold := 0;
+    SetObjProperty(me, "g", mygold);
+  Else
+    SayPergon(who, "Oha! Die Auszahlung war wohl nicht perfekt!", "Oh! I think something went wrong during pay-out!");
+    SayPergon(who, "Wie auch immer, ich habe noch "+ mygold +" Gold.", "However, I still have "+mygold+" gold left.");
+    SetObjProperty(me, "g", mygold);
+  EndIf
+EndFunction
+
+Function getpay()
+  var massachar := SystemFindObjectBySerial(master);
+  If (massachar)
+    SendSysMessagePergon(
+      massachar, me.name+" macht jetzt Lohnabrechnung...",
+      me.name+" makes now pay slip..."
+  );
+  ElseIf (massachar.errortext == "Character not found")
+    kuendigen();
+  // Else
+  //   syslog(me.name+" sagt: "+massachar);
+  EndIf
+  var total := 0;
+
+  ForEach thingie in enumerateitemsincontainer(inv_fs)
+    If (thingie.sellprice > 0)
+      total += thingie.sellprice;
+    EndIf
+  EndForEach
+
+  var charge := cint(0.01 * total);
+// mind. 100 Gold als Lohn, da Restgold mit 1% Abzug niemals auf 0 kommt - F.
+// max. 10000 Gold als Lohn (gut fuer die, die mehr als 1Mio. Warenwert haben bzw. irgendwo ein Rechenfehler versteckt ist ;o)
+  If (charge < 100)
+    charge := 100;
+  ElseIf (charge > 10000)
+    charge := 10000;
+  EndIf
+  total -= pay;
+  mygold -= charge;
+
+  If (mygold <= 0)
+    // now i'm quitting service. no payment, no service! hah!
+    If (massachar)
+      SendSysMessagePergon(
+        massachar,
+        "Wo bleibt mein Lohn?", "Where's my fee?",
+        _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+      );
+    EndIf
+    kuendigen();
+    return 0;
+  EndIf
+  SetObjProperty(me, "g", mygold);
+  pay -= charge;
+  SetObjProperty(me, "p", charge);
+  return 1;
+EndFunction
+
+Function reprice()
+  If (GetObjProperty(me, "rp"))
+    return;
+  Else
+    SetObjProperty(me, "rp",1);
+  EndIf
+
+  ForEach thingie in enumerateitemsincontainer(inv_fs)
+    SetObjProperty(thingie, "sp", thingie.sellprice);
+    thingie.sellprice := 1;
+  EndForEach
+EndFunction
+
+Function reset_prices()
+  ForEach thingie in enumerateitemsincontainer(inv_fs)
+    var tprice := cint(GetObjProperty(thingie, "sp"));
+    eraseobjproperty(thingie, "sp");
+    thingie.sellprice := tprice;
+  EndForEach
+//  closed := 0;  // hat hier nix zu suchen
+  eraseobjproperty(me, "rp");
+EndFunction
+
+Function recontact(who)
+  var cnt := SendTextEntryGump(who, "Wie können die Kunden Euch erreichen? ", TE_CANCEL_DISABLE,TE_STYLE_NORMAL, 50);
+  return cnt;
+EndFunction
+
+Function wear_item(item)
+  ForEach thing in listequippeditems(me)
+    moveitemtocontainer(thing, inv_pb);
+  EndForEach
+
+  equipitem(me, item);
+
+  ForEach thingie in enumerateitemsincontainer(inv_pb)
+    equipitem(me, thingie);
+  EndForEach
+
+  ForEach thingie in enumerateitemsincontainer(inv_pb)
+//    MoveObjectToLocation(thingie, me.x, me.y, me.z, me.realm);
+    MoveObjectToLocation(thingie, me.x, me.y, me.z, me.realm, MOVEOBJECT_NORMAL);
+  EndForEach
+EndFunction
+
+///////////////////////////////////////////////////////////////////////////////////
+// Equip_Items - Den Haendler [komplett] einkleiden (ohne ihn vorher auszuziehen)
+///////////////////////////////////////////////////////////////////////////////////
+
+Function Equip_Items(vendor, player)
+  SendSysMessagePergon(player, "In welchem Container befindet sich das Equipment?", "");
+
+  var vendorequip := Target(player);
+  If (vendorequip.isa(POLCLASS_CONTAINER))
+    ForEach item in EnumerateItemsInContainer(vendorequip)
+      If (!EquipItem(vendor, item))
+        SendSysMessagePergon(player, "Konnte '"+item.desc+"' nicht anziehen!", "");
+      EndIf
+    EndForEach
+
+    SendSysMessagePergon(player, vendor.name+" wurde eingekleidet.", "");
+  Else
+    SendSysMessagePergon(player, "Dies ist kein Container!", "");
+  EndIf
+EndFunction
+
+/////////////////////////////////////////////////////
+// UnEquip_Items - Den Haendler komplett entkleiden
+/////////////////////////////////////////////////////
+
+Function UnEquip_Items(vendor, player)
+  var vendorequip := CreateItemInContainerPergon(player.backpack, 0xe75);
+  If (vendorequip)
+    vendorequip.name := "Equipment vom Haendler "+vendor.name;
+
+    ForEach item in ListEquippedItems(vendor)
+      If ((item.layer<>LAYER_HAIR) And (item.layer<>LAYER_BEARD))
+        If (!MoveItemToContainer(item, vendorequip))
+          SendSysMessagePergon(player, "Konnte '"+item.desc+"' nicht ausziehen!", "");
+        EndIf
+      EndIf
+    EndForEach
+
+    SendSysMessagePergon(player, "Schaut in Euren Rucksack nach 'Equipment vom Haendler "+vendor.name+"'.", "");
+  Else
+    SendSysMessagePergon(player, "Euer Rucksack ist voll!", "");
+  EndIf
+EndFunction
+
+//Function strip_items(mmaster)
+Function strip_items()
+
+  ForEach thing in listequippeditems(me)
+    If (thing.objtype != 0x203b)
+      moveitemtocontainer(thing, inv_pb);
+    EndIf
+  EndForEach
+
+  ForEach thing in enumerateitemsincontainer(inv_fs)
+    moveitemtocontainer(thing, inv_pb);
+  EndForEach
+
+  //ForEach thingie in enumerateitemsincontainer(inv_pb)
+  //  If (thingie.objtype != 0x203b)
+  //         moveitemtocontainer(thingie, mmaster.backpack);
+  //  EndIf
+  //EndForEach
+
+EndFunction
+
+Function unstrip_items()
+
+  ForEach item in listequippeditems(me)
+    moveitemtocontainer(item,inv_pb);
+  EndForEach
+
+  ForEach item in enumerateitemsincontainer(inv_pb)
+    equipitem(me,item);
+  EndForEach
+
+EndFunction
+
+Function find_price(item)
+  var preis := struct;
+  preis.+buy;
+  preis.+sell;
+  var cfg_file := ReadConfigFile("::itemdesc");
+  var elem := FindConfigElem(cfg_file,item.objtype);
+  If (elem)
+    If (!GetElemProperty(elem,"VendorBuysFor"))
+      preis.buy := 10;
+    Else
+      preis.buy := CInt(GetElemProperty(elem,"VendorBuysFor"));
+    EndIf
+    If (!GetElemProperty(elem,"VendorSellsFor"))
+      preis.sell := 20;
+    Else
+      preis.sell := CInt(GetElemProperty(elem,"VendorSellsFor"));
+    EndIf
+  EndIf
+  If (item.objtype == UOBJ_GOLD_COIN)
+    preis.buy := 1;
+    preis.sell := 1;
+  EndIf
+  If (!preis.buy)
+    preis.buy := 10;
+  EndIf
+  If (!preis.sell)
+    preis.sell := 20;
+  EndIf
+  //UnloadConfigFile(cfg_file);
+
+  return preis;
+EndFunction
+
+Function my_worth(which_inv)
+  var item;
+  var wert := 0;
+  ForEach item in enumerateitemsincontainer(which_inv)
+    wert := wert+find_price(item).sell;
+  EndForEach
+
+  return wert;
+EndFunction
+
+Function geschaeft(who,item)
+  var vorschlag := CInt(SendTextEntryGump(who,"Wieviel Gold verlangt Ihr dafür?",TE_CANCEL_ENABLE));
+  If (vorschlag<=(find_price(item).buy-ankauf))
+    If (mygold>=(1.5*vorschlag))
+      mygold := mygold-vorschlag;
+      SetObjProperty(me, "g", mygold);
+      If (!item.movable)
+        item.movable := 1;
+      EndIf
+      MoveItemToContainer(item, inv_fs);
+      item.sellprice := find_price(item).sell;
+      EraseObjProperty(item, "sp");
+      CreateItemInBackpackPergon(who, UOBJ_GOLD_COIN, vorschlag);
+      PrintTextAbovePrivatePergon(me, "Es ist eine Freude, mit Euch Geschäfte zu machen", "", who);
+    Else
+      PrintTextAbovePrivatePergon(me, "Unglücklicherweise reichen meine Finanzen nicht aus.", "", who);
+    EndIf
+  Else
+    PrintTextAbovePrivatePergon(me, "So kommen wir nicht ins Geschäft. Tut mir leid.", "", who);
+  EndIf
+EndFunction
+
+Function set_buyprice(who)
+  var preis := CInt(SendTextEntryGump(who,"Um wieviel billiger soll ich Gegenstaende kaufen, als in meiner Universalliste angegeben? (-1 bedeutet Ankauf aus)"));
+  ankauf := preis;
+EndFunction
+
+Function status_infos(who)
+  SendSysMessagePergon(who, "Momentane GP: "+mygold, "My gold at the moment: "+mygold);
+  SendSysMessagePergon(who, "Ausgezahlter Lohn: "+pay, "Payed wages: "+pay);
+  var i := struct;
+  i.+worth := 0;
+  i.+amount := 0;
+  ForEach thingie in enumerateitemsincontainer(inv_fs)
+    i.amount := i.amount+thingie.amount;
+    i.worth := i.worth+(thingie.sellprice*thingie.amount);
+  EndForEach
+  SendSysMessagePergon(who, "Ich besitze "+i.amount+" Items im Wert von "+i.worth+" zum Verkauf.",
+    "I own "+i.amount+" items with a worth of "+i.worth+" gold.");
+
+  // sicherstellen, dass die CProp fuer die naechste Zahlung korrekt ist
+  If (GetObjProperty(me, "p") < (ReadGameClock() - 86400))
+    SetObjProperty(me, "p", ReadGameClock() + 86400);
+    next_pay := ReadGameClock() + 86400;
+  EndIf
+EndFunction
+
+Function lohn_infos(who)
+  SendSysMessagePergon(who,
+    "Der Lohn beträgt pro UO-Tag 0.25% des Verkaufswertes, mindestens "+
+    "jedoch 25 Gold, maximal 2500 Gold!",
+    "My wage per uo-day is 0.25% of the selling-price, with a minimum "+
+    "of 25 gold and a maximum of 2500 gold.",
+    _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+  );
+
+  var seconds := next_pay-ReadGameClock();
+  SendSysMessagePergon(who,
+    "Es dauert noch "+seconds+" Sekunden bis zu meiner Lohnzahlung",
+    "There are "+seconds+" seconds left till my wage accounting."
+  );
+
+  If (mygold<0)
+    SendSysMessagePergon(who,
+      "Ihr schuldet mir noch "+mygold*(-1)+" Goldstücke!",
+      "You still owe me "+mygold*(-1)+ " gold coins!"
+    );
+  EndIf
+
+  var payments := CInt(GetObjProperty(me, "payments"));
+  SendSysMessagePergon(who,
+    "Ihr habt mich schon "+payments+" Mal ausbezahlt.",
+    "You payed me "+payments+" times."
+  );
+EndFunction
+
+Function kuendigen()
+  // alten Meister merken
+  // (fuer spaetere Ansprueche und Sachverhaltsklaerungen)
+  SetObjProperty(me, "ExMaster", Hex(GetObjProperty(me, "master")));
+
+  var massachar := SystemFindObjectBySerial(master);
+  If (massachar)
+    SendSysMessagePergon(
+      massachar, me.name+" quittiert seinen Dienst bei Euch.",
+      me.name+" quits his contract with you.",
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+  EndIf
+  EraseObjProperty(me, "master");
+  EraseObjProperty(me, "mn");
+  EraseObjProperty(me, "g");
+  EraseObjProperty(me, "cont");
+  EraseObjProperty(me, "p");
+  EraseObjProperty(me, "payments");
+  Sleep(3); // that *was* a shock, now wasn't it?
+
+  next_pay := 0;
+  master := 0;
+  mastername := "";
+  mygold := 0;
+  cont := "";
+
+  If (massachar)
+    SendSysMessagePergon(massachar,
+      me.name+" zieht sich an einen ruhigen Ort zurück.",
+      me.name+" goes back to a quiet place.",
+      _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+    );
+  EndIf
+
+  // zuguterletzt den gekuendigten/selbstkuendigenden Haendler an einen
+  // sicheren Ort teleporten, wo er noch eine Weile steht (falls der
+  // Besitzer Mist gebaut hat oder einfach nur seinen Haendler sucht)
+  MoveObjectToLocation(me,
+    5292 + RandomInt(9), 1189 + RandomInt(2), 0,
+    REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+  );
+
+  // Zeitpunkt vermerken, um Haendler, die laenger als 2 Monate im Knast
+  // stehen, automatisch zu eliminieren -> Platz- und Aufwandssparung
+  SetObjProperty(
+    me, "AutoKillAt",
+    // akt. Zeit + 2 Monate
+    ReadGameClock() + 2*31*24*60*60
+  );
+EndFunction
+
+// vim: sw=2 sts=2

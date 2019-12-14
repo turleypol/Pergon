@@ -1,0 +1,38 @@
+///////////////////////////////////////////////////////////////////////////
+// telearena -- Ausgang fuer die Arenen
+//
+// wird benoetigt, wenn jmd. im Kampf ausloggt und beim
+// Einloggen das Kampfscript nicht mehr aktiv ist
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.1  2008/08/25 14:40:56  mehdorn
+// - Arena vom Teleporter umgebaut zum Teststein fuer Ausgang
+// - Dummy-Eintrag, damit Konfigfile komplett ist
+//
+// Revision 1.3  2008/08/25 12:04:18  mehdorn
+// - Walkonaction gibt nun auch Ursprungskoordinaten weiter
+// - OneStepBack entsprechend umgebaut
+//
+// Revision 1.2  2008/08/25 10:50:47  mehdorn
+// - allgemeines Teleportsetupscript
+// - restliche Auswahlen konvertiert
+//
+// Revision 1.1  2008/08/23 21:14:55  mehdorn
+// + (unkonfigurierter) I-Stein ist nun auffaellig rot
+// - Template fuer Walk-On-Scripte namens template.src_
+// - einige Walk-On-Scripte erstellt
+//   - bis auf Frostkram sogar getestet
+// - Setupscript fuer Arenateleporter
+// - neue Konstanten eingefuehrt
+// - Goetterspendescript erzeugt nun bereits neuen I-Stein
+// + Bugfixes, Tippfehler, teilweise englische Texte eingebaut
+
+include "include/server";
+include "common";
+use uo;
+
+Program TeleArena(p)
+    EraseObjProperty(p.who, ARENABATTLE);
+EndProgram

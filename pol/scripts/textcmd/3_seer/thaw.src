@@ -1,0 +1,46 @@
+/*
+ *  Textbefehl .thaw, um ein Mobile aufzutauen
+ */
+ 
+Include "include/msgs";
+
+Program TXTCMD_Thaw(who)
+  
+  var tgt, frozen := GetObjProperty(who, "frozen");
+  // Ist der Anwender eventuell selbst gefroren?
+  If (who.frozen || who.paralyzed || frozen)
+    tgt := who;
+  Else
+    SendSysMessagePergon(who, "Wen wollt Ihr auftauen?");
+    tgt := Target(who, TGTOPT_NOCHECK_LOS+TGTOPT_NEUTRAL);
+    If (tgt.isa(POLCLASS_MOBILE))
+      frozen := GetObjProperty(tgt, "frozen");
+    Else
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+  EndIf  
+  
+  If (tgt.frozen || tgt.paralyzed || frozen)
+    If (tgt.frozen)
+      tgt.frozen := 0;
+    EndIf
+    If (tgt.paralyzed)
+      tgt.paralyzed := 0;
+    EndIf
+    If (frozen)
+      EraseObjProperty(tgt, "frozen");
+    EndIf      
+    IncRevision(tgt);      
+  Else
+    SendSysMessagePergon(who, "Das Ziel ist nicht gefroren oder paralysiert!", "The target isn't frozen or paralyzed!");
+    return;
+  EndIf  
+
+  PrintTextAbovePrivatePergon(tgt, tgt.name+" beginnt aufzutauen", "", who);
+    
+  If (!tgt.isa(POLCLASS_NPC))
+    SysLog(CharInfoStr(who)+" taut "+CharInfoStr(tgt)+" auf");
+  EndIf
+  
+EndProgram

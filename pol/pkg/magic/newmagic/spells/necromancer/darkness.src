@@ -1,0 +1,118 @@
+//**************************************************************************************************
+// Script file darkness.src
+//
+//    implements spell 311 <Darkness> - "Dunkelheit"
+//
+//  blinds several spelltargets simultaneously (sets lightlevel to ultimate darkness)
+//    [ Resisted (Magic) ]
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+Include "include/spellcheck";
+Include "../magicpergon";
+Include "../spellattack";
+
+program cast_darkness (params)
+
+  Var caster;
+  Var where;
+  Var victims;
+
+  Var spells:= ReadConfigFile("::spells");                   // load spelldata
+  Var spell:=  FindConfigElem(spells, SPELLID_NECRO_DARKNESS);
+  Var difficulty:= spell.skill;
+  Var resist:=   spell.resist;
+  Var dur;
+  Var basedur:=  spell.duration;
+  Var mindur:=   spell.durationmin;
+  Var maxdur:=   spell.durationmax;
+  Var range:=    spell.range;
+  Var minrange:= spell.rangemin;
+  Var maxrange:= spell.rangemax;
+  Var power;
+
+  if (params[1] == "#MOB")
+    caster:= params[2];
+    power:=  params[3];
+    basedur:=spell.NPCDuration;
+    where:=struct{x,y,z,realm};
+    where.x:=params[4].x;
+    where.y:=params[4].y;
+    where.z:=params[4].z;
+    where.realm:=params[4].realm;
+  elseif (params[1] == "#SCROLL")
+    caster:= params[2];
+    power:=  params[3];
+    where:=  TargetArea(caster);
+    if (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    endif
+  else
+    caster:= params[1];
+
+    power:= GetCastPowerPergon(caster, SPELLID_NECRO_DARKNESS);
+    where:= TargetArea(caster);
+    if (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    endif
+  endif
+
+  TurnCharTo(caster, where);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  range:= CInt(power*range/100.0);           // calc spell range according to casting power
+  if (minrange and minrange > range)
+    range:= minrange;
+  elseif (maxrange and maxrange < range)
+    range:= maxrange;
+  endif
+
+  victims:= ListMobilesNearLocation(where.x, where.y, where.z, range,where.realm);       // get victims
+
+  if (victims)
+    foreach victim in victims // for each victim
+      // check if victim is already blinded, preserve caster and ghosts
+      if (!GetObjProperty(victim, "spell_blind") && victim <> caster && !victim.dead)
+        if (resist)       // calc spell duration according to victims magic resistance and casting power
+          dur:= CInt(MagicResistance(victim, difficulty, resist, power*basedur/100.0, 1));
+        else
+          dur:= CInt(power*basedur/100.0);
+        endif
+
+        if (mindur and mindur > dur)
+          dur:= mindur;
+        elseif (maxdur and maxdur < dur)
+          dur:= maxdur;
+        endif
+
+        PlaySoundEffect(victim, SFX_SPELL_CURSE);
+        PlayObjectCenteredEffect(victim, FX_CURSE_EFFECT, 5, 10);
+
+        Var tag:= array;
+        Var parms:= array;
+
+        tag[1]:= ReadGameClock() + dur;
+        tag[2]:= power;
+        tag[3]:= ReadMilliSecondClock();
+
+        SetObjProperty(victim, "spell_blind", tag);     // tag spelltarget for spellchecker
+        SendSpellWaiter(victim, "spell_blind", dur, tag[3], victim);
+
+        if (victim.isa(POLCLASS_NPC))               // spell has been casted on NPC
+          send_attack(victim, caster, 311);
+        endif
+
+        parms[1]:= victim;                      // prepare script parameters
+
+        Start_ScriptPergon("::misc/blinded", parms);      // fire script 'blinded'
+      endif
+      SleepMS(2);
+    endforeach
+  endif
+
+endprogram

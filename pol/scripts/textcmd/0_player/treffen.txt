@@ -1,0 +1,5 @@
+<h3 id="treffen">treffen</h3>
+
+<p>Startet einen Browser mit der
+<a data-href="">Anmeldung</a>
+f�r Spielertreffen.</p>

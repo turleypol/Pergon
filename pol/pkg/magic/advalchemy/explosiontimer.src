@@ -1,0 +1,41 @@
+/////////////////////////////////////////////////////////////////////////
+//
+//   Explosion-Timer Script - Verzoegerung, bevor die Potion explodiert
+//
+//     Author: Shinigami
+//
+//   Modification:
+//     2003/07/17 Shinigami: Rewrite
+//
+/////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonutil";
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Explosion_Timer(parms)
+  Var potion:=parms[1];
+
+  PrintTextAbovePergon(parms[2], potion, "3", "3");
+  Sleep(1);
+  PrintTextAbovePergon(parms[2], potion, "2", "2");
+  Sleep(1);
+  PrintTextAbovePergon(parms[2], potion, "1", "1");
+  Sleep(1);
+
+  Start_ScriptPergon("exploder", parms);
+EndProgram

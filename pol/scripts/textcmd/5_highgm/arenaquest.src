@@ -1,0 +1,99 @@
+///////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD ArenaQuest - Ermoeglicht den Kampf normaler Spieler in der Arena
+//
+//     Author: Shinigami
+//
+//   Modification
+//
+///////////////////////////////////////////////////////////////////////////////
+
+/////////////
+// Includes
+/////////////
+
+use os;
+use uo;
+
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_ArenaQuest(who, prop)
+  If ((who.cmdlevel<CMDLEVEL_GL) And (who.acctname<>"jira"))
+    SendSysMessagePergon(who, "Ihr seid nicht befugt, diesen Befehl zu benutzen!");
+    Return;
+  EndIf
+
+  If (CInt(prop)==2)
+    ForEach accountname in ListAccounts()
+      Var account:=FindAccount(accountname);
+      If (account)
+        For charnr:=1 To 5
+          Var char:=account.getcharacter(charnr);
+          If (char)
+            EraseObjProperty(char, ARENABATTLE);
+          EndIf
+        EndFor
+      Else
+        SysLog("'"+accountname+"' gibt es nicht !");
+      EndIf
+    EndForEach
+  Else
+    SendSysMessagePergon(who, "Bitte einen Mobile auswählen!", "");
+
+    Var mobile:=Target(who);
+    If (mobile.isa(POLCLASS_MOBILE))
+      If (!GetObjProperty(mobile, ARENABATTLE))
+        SetObjProperty(mobile, ARENABATTLE, 1);
+        MoveObjectToLocation(mobile, 1388, 3732, -21, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION);
+        mobile.hidden:=1;
+        SendSysMessagePergon(mobile, "Ihr könnt nun Eure Rüste für den Kampf anlegen!", "", _DEFAULT_TEXT_FONT, FONTCOLOR_GREEN);
+        SendSysMessagePergon(mobile, "Sobald sie angelegt ist, irgendwas sagen wie 'los'...", "", _DEFAULT_TEXT_FONT, FONTCOLOR_GREEN);
+        SendSysMessagePergon(mobile, "Und dann werdet Ihr auch bald zum Start teleportiert.", "", _DEFAULT_TEXT_FONT, FONTCOLOR_GREEN);
+      EndIf
+
+      SendSysMessagePergon(who, mobile.name+" "+mobile.ar_mod+" "+GetStrModPergon(mobile)+" "+GetDexModPergon(mobile)+" "+GetIntModPergon(mobile));
+      If (mobile.ar_mod And prop)
+        mobile.ar_mod:=0;
+        SendSysMessagePergon(who, "-> reset");
+      EndIf
+      EraseObjProperty(mobile, "#ss");
+      EraseObjProperty(mobile, "#dd");
+      EraseObjProperty(mobile, "#ii");
+      EraseObjProperty(mobile, "#aa");
+      EraseObjProperty(mobile, "#pp");
+      EraseObjProperty(mobile, "#bb");
+      EraseObjProperty(mobile, "#cc");
+
+      ForEach item in ListEquippedItems(mobile)
+        If ((item.isa(POLCLASS_WEAPON)) Or (item.isa(POLCLASS_ARMOR)))
+          If (item.isa(POLCLASS_WEAPON))
+            SendSysMessagePergon(who, mobile.name+" "+item.dmg_mod+" "+item.desc);
+            If (item.dmg_mod And prop)
+              item.dmg_mod:=0;
+              SendSysMessagePergon(who, "-> reset");
+            EndIf
+          Else
+            SendSysMessagePergon(who, mobile.name+" "+item.ar_mod+" "+item.desc);
+            If (item.ar_mod And prop)
+              item.ar_mod:=0;
+              SendSysMessagePergon(who, "-> reset");
+            EndIf
+          EndIf
+          EraseObjProperty(item, "blessed");
+
+          ForEach propname in GetObjPropertyNames(item)
+            If (propname<>"Werkzeug")
+              SendSysMessagePergon(who, "Prop "+propname+" = "+GetObjProperty(item, propname));
+            EndIf
+          EndForEach
+        EndIf
+      EndForEach
+    Else
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+  EndIf
+EndProgram

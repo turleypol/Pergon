@@ -1,0 +1,49 @@
+////////////////////////////////////////////////////////
+//
+//   TextCMD UseSkill - Den angegebenen Skill benutzen
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2000/06/04 Shinigami: First Write
+//
+////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_UseSkill(who, param)
+  Var skillid:=CInt(param);
+  If ((0<=skillid) And (skillid<=MAX_SKILLS))
+    Var skillsinfo:=GetSkillInfo(skillid);
+
+    // Besitzt der Spieler den Skill?
+    If ((who.cmdlevel >= CMDLEVEL_SEER) Or (GetObjProperty(who, SKILLTYPKENNUNG+skillsinfo.name) in {SKILLTYP_BERUF, SKILLTYP_HAUPT, SKILLTYP_NEBEN, SKILLTYP_WEITERE}))
+      // Ist der Skill ausfuehrbar?
+      If (skillsinfo.Script)
+        SendSysMessagePergon(who, "Skill '"+skillsinfo.TrainName+"' wird benutzt...", "", 3, 0x3f);
+
+        Start_ScriptPergon(skillsinfo.Script, who);
+      Else
+        SendSysMessagePergon(who, "'"+skillsinfo.TrainName+"' ist ein passiver Skill!", "", 3, 0x22);
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Vom Skill '"+skillsinfo.TrainName+"' versteht Ihr nichts!", "", 3, 0x22);
+    EndIf
+  Else
+    SendSysMessagePergon(who, "'"+param+"' ist keine gueltige Skillnummer!", "", 3, 0x22);
+  EndIf
+EndProgram

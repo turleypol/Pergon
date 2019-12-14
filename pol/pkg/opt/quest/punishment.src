@@ -1,0 +1,78 @@
+//////////////////////////////////
+//
+//   Punishment Script v1.0
+//
+//     Author: Shinigami
+//
+//////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use util;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/client";
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Punishment(who)
+  Var counter:=GetObjProperty(who, "PunishCounter");
+  If (counter==1)
+    Bestrafen(who, "Die Götter tolerieren solche Äußerungen nicht!", 6);
+  ElseIf (counter==2)
+    Bestrafen(who, "Wollt Ihr die Götter denn noch mehr erzürnen?", 9);
+  Else
+    Bestrafen(who, "Mir scheint, Ihr wollt die Götter ernsthaft beleidigen.", 12);
+  EndIf
+
+  EraseObjProperty(who, "PunishRuns");
+EndProgram
+
+//////////////////////////////////////////
+// Bestrafen - Der Spieler wird bestraft
+//////////////////////////////////////////
+
+Function Bestrafen(who, message, time)
+  PrintTextAbovePergon(who, who, message);
+
+  SetObjProperty(who, "PunishOldColor", who.truecolor);
+  SetObjProperty(who, "PunishOldGraphic", who.trueobjtype);
+
+  PlaySoundEffect(who, SFX_THUNDER);
+  PlayLightningBoltEffect(who);
+
+  // damit da nix durcheinander kommt mit dem Polymorph-Zauber
+  EraseObjProperty(who, "spell_poly");
+
+  who.graphic:=0x33;
+  who.color:=RandomInt(200)+1;
+
+  // sicherheitshalber Offlineref holen
+  who := SystemFindObjectBySerial(who.serial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+  // warten
+  Sleep(RandomInt((time-1)*60)+60);
+
+  who.graphic := GetObjProperty(who, "PunishOldGraphic");
+  who.color   := GetObjProperty(who, "PunishOldColor");
+
+  EraseObjProperty(who, "PunishOldColor");
+  EraseObjProperty(who, "PunishOldGraphic");
+
+  If (who.connected)
+    PlaySoundEffect(who, SFX_THUNDER);
+    PrintTextAbovePrivatePergon(
+      who, "Hoffentlich habt Ihr aus Eurem Fehler gelernt.",
+      "Hopefully you learned from your mistake", who
+    );
+  EndIf
+EndFunction

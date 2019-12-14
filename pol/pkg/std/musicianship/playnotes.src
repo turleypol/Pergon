@@ -1,0 +1,34 @@
+///////////////////////////////////////////////////////////////////////////
+// playnotes
+//
+// Dient zum abgekoppelten Spielen der Noten
+
+include "common";
+use uo;
+
+Program PlayNotes(params)
+    var bard    := params[1];
+    var noten   := params[2];
+    var inst    := params[3];
+    var success := params[4];
+    var parentpid := params[5];
+    var rawpoints := params[6];
+
+    // SendSysMessagePergon(bard,
+    //     "2 das Lied laeuft jetzt "+GetObjProperty(bard, PROP_BARDING)
+    // );
+    If (success)
+        PlaySucc(bard, noten, inst, rawpoints);
+    Else
+        PlayFail(bard, noten, inst);
+    EndIf
+    SendSysMessagePergon(bard,
+        "Ihr beendet Euer Spiel.", "You finish playing",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+    );
+    EraseObjProperty(bard, PROP_MUSIC_BARDING); //hat aufgehört
+    var parentprocess:=GetProcess(parentpid);
+    If (parentprocess) //Event schicken das es sich beenden soll
+      parentprocess.sendevent(struct{type:=0x1234});
+    EndIf
+EndProgram

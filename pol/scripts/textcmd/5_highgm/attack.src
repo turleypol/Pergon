@@ -1,0 +1,48 @@
+// $Log: not supported by cvs2svn $
+// Revision 1.6  2008/08/18 01:07:14  mehdorn
+// - zusätzliche Checks auf Überleben, bevor Events geschickt werden
+// - auf logutil umgestellt
+// - einige unnoetige Includes entfernt
+//
+
+include "include/eventid";
+include "include/logutil";
+include "include/msgs";
+use os;
+use uo;
+
+Program TextCMD_Attack(character)
+  SendSysMessagePergon(
+    character, "Wählt die Kreatur, die Ihr provozieren wollt."
+  );
+
+  var attacker := Target(character);
+  If (!attacker)
+    SendSysMessagePergon(character, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  SendSysMessagePergon(character, "Wähle Ziel");
+  var victim := Target(character);
+  // eventuell ist Attacker waehrend Zielauswahl verstorben
+  If ((!victim) or (!attacker))
+    SendSysMessagePergon(character, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  // Logging
+  syslog(
+    CharInfoStr(character)+" hetzt "+attacker.name+" auf "+
+    CharInfoStr(victim, COORDS_REALM)
+  );
+
+  var ev := struct;
+  // ggf. aktuellen Angriff abbrechen
+  ev.+source := victim;
+  ev.+type   := EVID_PEACEMADE;
+  SendEvent(attacker, ev);
+
+  // (neues) Ziel angreifen
+  ev.type := SYSEVENT_ENGAGED;
+  SendEvent(attacker, ev);
+EndProgram

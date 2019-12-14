@@ -1,0 +1,55 @@
+/*
+ *  Usescript für Eigentumsnachweis
+ *  Übertragen eines Hauses an einen anderen Spieler
+ */
+ 
+Include "include/msgs";
+
+Program ChangeHouseOwner(who, deed)
+  var houseserial := GetObjProperty(deed, "builtserial");
+  If (!houseserial)
+    SendSysMessagePergon(who, "Das ist ein ungültiger Eigentumsnachweis!");
+    return;
+  EndIf
+
+  var house := SystemFindObjectBySerial(houseserial);
+  If (!house)
+    SendSysMessagePergon(who, "Das Haus zu diesem Eigentumsnachweis existiert nicht mehr!");
+    return;
+  EndIf
+
+  var oldownerserial := GetObjProperty(house, PROP_HS_C_OWNER);
+  If (oldownerserial != who.serial && !AllowedToHouse(who))
+    SendSysMessagePergon(who, "Ihr seid kein Eigentümer dieses Hauses!");
+    return;
+  EndIf
+  
+  var lastchange := GetObjProperty(deed, "lastchange");
+  If (lastchange && !AllowedToHouse(who))
+    If (lastchange+3600*24*84 > ReadGameClock())
+      // Nur alle viertel Jahre
+      SendSysMessagePergon(who, "Ihr könnt das Haus nicht schon wieder übertragen!", "", _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR);
+      return;
+    EndIf
+  EndIf
+  
+  SendSysMessagePergon(who, "Wählt den neuen Besitzer für das Haus!");
+  var newowner := Target(who);
+  If (!newowner || !newowner.isa(POLCLASS_MOBILE) || newowner.isa(POLCLASS_NPC) || newowner.serial == oldownerserial)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  SetObjProperty(house, PROP_HS_C_OWNER,   newowner.serial);
+  SetObjProperty(house, PROP_HS_C_ACCOUNT, newowner.acctname);
+  SetObjProperty(deed, "lastchange", ReadGameClock());
+
+  SendSysMessagePergon(newowner, "Ihr wurdet als neuer Eigentümer eingetragen.");
+  SendSysMessagePergon(newowner, "Es wäre klug, die Schlösser so schnell wie möglich zu wechseln!");
+
+  SendSysMessagePergon(who, newowner.name+" wurde als neuer Eigentümer eingetragen.");
+  
+  // Logging
+  var oldowner := SystemFindObjectBySerial(oldownerserial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+  SysLog(CharInfoStr(who)+" uebertraegt "+MultiInfoStr(house, COORDS_REALM)+" von "+ CharInfoStr(oldowner)+" an "+CharInfoStr(newowner));
+EndProgram

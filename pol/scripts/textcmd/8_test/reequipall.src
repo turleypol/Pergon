@@ -1,0 +1,27 @@
+Use util;
+use uo;
+
+Include "include/vetement";
+Include "include/itemnpc";
+Include "include/modifyskill";
+
+Program TextCMD_ReEquipAll(who)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  Var number:=0;
+
+  ForEach npc in ListObjectsInBox(0, 0, -128, 6143, 4095, 127)
+    If (npc.isa(POLCLASS_NPC))
+      If (((npc.objtype==0x190) Or (npc.objtype==0x191)) And (npc.script<>"playermerchant"))
+        EquipNPC(npc);   // NPC neu einkleiden
+       // RevokePrivilege(npc, "invul");        // Gaaaanz sicher *g*
+       // SetObjProperty(npc, "guardkill", 1);
+       // KillMobile(npc, "TextCMD ReEquipAll");
+
+        number:=number+1;
+      EndIf
+    EndIf
+  EndForEach
+
+  SendSysMessagePergon(who, "Es wurden "+number+" NPCs neu eingekleidet.");
+EndProgram

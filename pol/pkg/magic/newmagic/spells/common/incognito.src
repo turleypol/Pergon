@@ -1,0 +1,103 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file incognito.src
+//
+// implements spell 29 <Incognito> - "Inkognito"
+// renders caster incognito - i.e. changes his name
+
+use os;
+use util;
+include "../magicpergon";
+include "include/pergonutil";
+include "include/spellcheck";
+
+Program CastIncognito(params)
+  var caster;
+  var power;
+
+  If (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_COMMON_INCOGNITO);
+  EndIf
+
+  // check on incognito item
+  If (GetObjProperty(caster, "realrname"))
+    SendSysMessagePergon(caster,
+      "Ihr steht bereits unter der Einwirkung eines Inkognito-Gegenstands",
+      "You are already under the influence of an incognito item"
+    );
+    return;
+  EndIf
+
+  PerformAction(caster, ANIM_CAST_AREA);
+  PlaySoundEffect(caster, SFX_SPELL_INCOGNITO);
+
+  // load spelldata
+  var spells := ReadConfigFile("::spells");
+  var spell := FindConfigElem(spells, SPELLID_COMMON_INCOGNITO);
+
+  // check if caster is already under incognito
+  If (!GetObjProperty(caster, "spell_incognito"))
+    // preserve old name and tag only if not already done
+    // => consecutive incognitos only change name
+
+    // calc duration according to casting power
+    var dur := CInt(power*spell.duration/100.0);
+    If (spell.durationmin and spell.durationmin > dur)
+        dur := spell.durationmin;
+    ElseIf (spell.durationmax and spell.durationmax < dur)
+        dur := spell.durationmax;
+    EndIf
+
+    var tag := array{
+      ReadGameClock() + dur,
+      // preserve original name
+      caster.name,
+      ReadMilliSecondClock()
+    };
+
+    // tag spelltarget for spellchecker
+    SetObjProperty(caster, "spell_incognito", tag);
+    SendSpellWaiter(caster, "spell_incognito", dur, tag[3], caster);
+  EndIf
+
+  var newname := AssignIncognitoName(caster);
+  If (newname)
+    SetNamePergon(caster, newname, "Spell Incognito - Set");
+    PrintTextAbovePrivatePergon(
+      caster, "Euer neuer Name ist " + newname,
+      "You are now called " + newname, caster
+    );
+  EndIf
+EndProgram
+
+////////////////////////////////////////////////
+// AssignIncognitoName - Sucht einen neuen Namen heraus
+////////////////////////////////////////////////
+Function AssignIncognitoName(me)
+  var type := 5 + me.gender;
+
+  var cfg := ReadConfigFile("::names");
+  If (!cfg)
+    syslog("FEHLER: Konnte names.cfg nicht oeffnen!");
+    return;
+  EndIf
+
+  var elem := FindConfigElem(cfg, type);
+  If (!elem)
+    syslog(
+      "FEHLER: Konnte die Gruppe '"+type+
+      "' nicht in der names.cfg finden!"
+    );
+    return;
+  EndIf
+
+  var names := GetConfigStringArray(elem, "Name");
+  If (names.size())
+    return names.randomentry();
+  EndIf
+EndFunction
+
+// vim: sw=2 sts=2

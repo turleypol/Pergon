@@ -1,0 +1,64 @@
+Allgemein:
+Die Stadtwachen sind ins Framework der Main_AI2 eingearbeitet. Dies betrifft allgemein die Behandlung von Initialisierung, Event Bearbeitung und Ideln.
+
+Initialisierung:
+- Equipment nach Region in der gespawnt wird
+- Beritten nach Zufallswert und nach Region, Berittene bekommen Max Speed 250, Pferdeart ist zufällig
+- Stadtgardisten werden zusätzlich mit Bogen ausgestattet, wenn eine Stadtkasse in der Region existiert
+- Gardisten die auserhalb der festgelegten Regionen spawnen werden zerstört
+- bei Restart Neuausrüstung
+
+OnEnteredAreaEvent:
+- "quest_mostwanted" angreifen
+- "city_wanted" angreifen
+- Regionen abhängige Angriffsregeln (Rote angreifen ja/nein)
+- "guardignore" beachten
+- Angriffsverzögerung bei Sichtung
+- Salutieren und Diverese Spruchtexte
+
+- Player folgen bis "halt"
+
+Ideln: 
+- ab und zu nen LookAround
+- Patroulienfunktionalität (offen)
+
+OnSpeechEvent:
+reagiert wenn er nicht im Kampf ist auf folgende Begriffe:
+- konkrete Kommandos wenn nicht gemutet:
+	- "zeit", "ort", "name"
+	- "fresse", "schnauze", "klappe", "ruhe", "schweig" <- muten für bestimmte Zeit
+	- "fehler" <- Bugmarker
+- Begriff kommt vor:
+	- guards, wache, hilfe <- Lookaround
+	- verbrechen <- Stadtwache folgt bis zu ner bestimmten Entfernung
+	- stop, halt <- Folgen abbrechen und Lookaround
+	- arrestant, gefangen, knast <- Gefangenenauskunft
+	- vorstrafen <- Gegen Bezahlung eigenes Vorstarfenregister
+	
+MakeMePeaceful_Guard:
+- kehrt zum Startpunkt zurück (Weg wird bei Verfolgungen gespeichert), löscht dabei auftretende Ereignisse
+
+
+Waffenwechsel:
+- Wechselt die Waffe zu Bogen wenn er nach N Schritten über M Schritte nicht Näher kommt
+- Waffenwechsel zu Nahkampf wenn keine Sichtlinie besteht oder Gegner neben der Wache steht
+
+Kampf:
+- Dynamischer Wechsel zwischen Nah und Fernkampf
+- ignorieren von SYSEVENT_ENTEREDAREA+SYSEVENT_LEFTAREA+SYSEVENT_SPEECH
+- Fernkampf beinhaltet keine Bewegungskomponente
+- Verfolgung im Nahkampfmodus
+- "guardkill" was die Stadtwache an NPCs angreift gibt keine Leiche mehr
+- Verfolgung nur bis MAX_PATHLENGTH Zeitschritte
+
+SYSEVENT_ENGAGED:
+- Angreifer verliert Invulschutz (was ist wenn die Stadtwache angreift, skillen mit Stadtwachen als Statue Problem ???)
+
+SYSEVENT_DAMAGED
+- kein Gegnerwechsel
+- Lässt Sprüche los
+
+EVID_GUARDS_HELP:
+- zum Hilfe rufenden rennen (offen) und dabei nach Gegnern umschauen 
+- könnte von Stadtwachen im Kampf genutzt werden um Verstärkung zu rufen (offen)
+- Wird von Questchars eingesetzt 

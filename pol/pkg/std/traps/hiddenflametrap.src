@@ -1,0 +1,23 @@
+//
+//  05.03.2000 - Fraggulus - Trennung der Elemente (Feuer, Gift)
+//	04.01.2002 - Fraggulus - Tote ausschliessen
+//
+use vitals;
+use util;
+use math;
+
+include ":newspells:resistance";
+include "include/modifyskill";
+include "include/packets";
+include "traps";
+
+Program Walk_on_Flame_Trap(mobile, trap)
+    If (!mobile.dead && (mobile.cmdlevel < CMDLEVEL_SEER))
+        var damage := CInt(
+            RandomDiceRoll(PlayTrapEffect(trap)) *
+            (1 - CDbl(GetResistance(mobile, "fire")))
+        );
+        SetScriptController(mobile);
+        ApplyRawDamagePergon(mobile, damage, DAMAGE_NO_REPSYS);
+    EndIf
+EndProgram

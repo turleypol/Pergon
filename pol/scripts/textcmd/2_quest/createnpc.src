@@ -1,0 +1,58 @@
+///////////////////////////////////////////////////////////////////////
+// TextCMD CreateNPC - Erzeugt einen NPC an der gewaehlten Position
+//
+// Author: Shinigami
+
+use file;
+use os;
+use uo;
+include "include/msgs";
+include "include/npc";
+include "include/quests";
+
+Program TextCMD_CreateNPC(who, template)
+  SendSysMessagePergon(who,
+    "Bitte einen Zielpunkt auswählen!", "Please choose target location!"
+  );
+
+  var loc := TargetCoordinates(who);
+  If (!loc)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  var props := struct;
+  props.+facing := who.facing;
+  var npc := CreateNpcFromTemplatePergon(
+    template, loc.x, loc.y, loc.z, 2, props, 1, loc.realm
+  );
+  If (!npc)
+    SendSysMessagePergon(who,
+      "CreateNPC gescheitert: "+npc.errortext,
+      "CreateNPC failed: "+npc.errortext
+    );
+    return;
+  EndIf
+
+  If (who.cmdlevel == CMDLEVEL_QUESTCHAR)
+    // NPC gesondert markieren
+    SetObjProperty(npc, TYPQUESTCHAR, who.serial);
+  EndIf
+
+  var zoneopts := QuestZoneIsIn(who, QZ_ISIN_OPT);
+  If (zoneopts.size() >= 1)
+    // Restriktionen aus der Questzone setzen
+    QuestZoneApplyRestrictions(npc, zoneopts);
+    // speichern, dass er in Questzone gebaut wurde
+    npc.setprop(PROP_QUESTBUILT, who.serial);
+  EndIf
+
+  // Erzeuger festhalten
+  SignNPCCreation(who, npc);
+
+  // Logging
+  syslog(
+    "CreateNPC: "+CharInfoStr(npc, COORDS_REALM)+" durch "+CharInfoStr(who)
+  );
+  QuestCharLog(who, "TextCMD CreateNPC: "+CharInfoStr(npc, COORDS_REALM));
+EndProgram

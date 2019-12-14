@@ -1,0 +1,154 @@
+//**************************************************************************************************
+//
+//   	 Aktivieren der Inkognito Maske
+//
+//	   Setzt den Besitzer und den Inkognitonamen der Maske
+//		 Basiert auf incogitemcontrol.src	
+//
+//		 21.11.2005 Fox: Erstellung
+//
+//**************************************************************************************************
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+use os;
+use file;
+use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/npc";
+Include "include/msgs";
+
+Program TextCMD_Maske(who)
+    SendSysMessagePergon (who, "Maske wählen.","Select mask.");
+    var incogitem :=  Target (who, TGTOPT_NOCHECK_LOS);
+    If (!incogitem)
+    	SendSysMessagePergon(who, "Zielen abgebrochen.", "Canceled");
+    	Return;
+  	EndIf
+  	
+  	If ((incogitem.objtype != 0x6604) AND (incogitem.objtype != 0x6605))
+    	SendSysMessagePergon(who, "Keine Inkognito Maske gewählt.", "No mask selected,");
+    	Return;  		
+  	EndIf	
+  	
+  	If (GetObjProperty(incogitem, "incogused")) // Sollte eigentlich nich aufgerufen werden
+    	DestroyItem(incogitem); // Falls die Maske ihre eigentliche Zerstoerung ueberlebt hat...
+  	EndIf
+    
+		Var name_ok:=10; // max. 10 Schleifendurchläufe. Danach ist das Inkognitoitem unbrauchbar
+    Var newname;
+
+    While (name_ok>0)
+      newname:=SendTextEntryGump(who, "Gebt einen Inkognito-Namen ein (max. 20 Zeichen) - "+(11-name_ok)+". Versuch", TE_CANCEL_ENABLE, TE_STYLE_NORMAL, 20);
+      If (newname)
+        If (Len(newname)>20) // Name zu lang
+          SendSysMessagePergon(who, "Der Name ist zu lang.", "The name is too long.");
+        ElseIf (!NameCharCheck(newname)) // unerlaubte Zeichen
+          SendSysMessagePergon(who, "Der Name enthält unerlaubte Zeichen.", "The name contains illegal signs.");
+        ElseIf (!NameCheck(newname)) // Name existiert schon und darf nicht verwendet werden.
+          SendSysMessagePergon(who, "Der Name darf nicht verwendet werden.", "The name can't be used.");
+        Else
+          name_ok:=0;
+        EndIf
+      EndIf
+
+      name_ok-=1;
+    EndWhile
+
+    If (name_ok==-1) // Neuer Name wurde angegeben
+    	SendSysMessagePergon (who, "Träger wählen.","Select carrier.");
+			var nutzer :=  Target (who, TGTOPT_NOCHECK_LOS);
+	    If (nutzer)
+   	 	  If ((nutzer.isa(POLCLASS_MOBILE)) And (!nutzer.isa(POLCLASS_NPC)))
+   	 	  	  SendSysMessagePergon(who, incogitem.desc+" wurde mit einem Inkognitonamen versehen.", incogitem.desc+" was attached an incognito name.");
+   	 	  		SetObjProperty(incogitem, "incogname", newname);
+	   	 	  	SetObjProperty(incogitem, "maskownerserial", nutzer.serial);
+	   	 	  	LogToFile("log/masken.log",who.name+" ("+Lower(Hex(who.serial))+") hat Maske für "+nutzer.name+" ("+Lower(Hex(nutzer.serial))
+	   	 	  		+") mit Geheimnamen "+newname+" erzeugt.");
+	   	 	Else
+	   	 		SendSysMessagePergon(who, "Kein Player");
+		    	Return;
+	   	 	EndIF
+	    Else
+	    	SendSysMessagePergon(who, "Zielen abgebrochen");
+	    	Return;
+	  	EndIf      
+    Else
+      SendSysMessagePergon(who, "Abbruch aufgrund zu vieler Versuche.",
+        "Abort due to too many attempts. This item is no longer usable.");
+    EndIf
+EndProgram
+
+/////////////////////////////////////////////////////////////////////////
+// NameCharCheck - Nur Buchstaben, Bindestrich und Leerzeichen zulassen
+/////////////////////////////////////////////////////////////////////////
+
+Function NameCharCheck(name)
+  Var char;
+
+  // auf unerlaubte Zeichen testen
+  For index:=1 To Len(name)
+    char:=name[index];
+
+    If (!((Lower(char)<>Upper(char)) Or (char in {"-", " "})))
+      Return (0);
+    EndIf
+  EndFor
+
+  // auf Leerzeichen am Beginn und Ende testen
+  If ((name[1] == " ") || (name[len(name)] == " "))
+    Return (0);
+  EndIf
+
+  Return (1);
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// NameCheck - Name darf keine CMDLevelbezeichnungen und keinen vorhandenen Charnamen enthalten
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
+Function NameCheck(name)
+  name:=Lower(name);
+
+  If (name["coun "] Or name["counselor "] Or name["seer "] Or name["seerin "] Or name["gm "] Or name["highgm "] Or
+      name["gm"] Or name["admin"] Or name["gl "] Or name["gameleader "] Or name["highgm "] Or name["bm "])
+    Return (0);
+  EndIf
+
+  Var realname;
+
+  ForEach accountname in ListAccounts()
+    Var account:=FindAccount(accountname);
+    If (account)
+      For charnr:=1 To 5
+        Var char:=account.getcharacter(charnr);
+        If (char)
+          If (Lower(char.name)==name)
+            Return (0);
+          EndIf
+
+          realname:=GetObjProperty(char, "spell_incognito");
+          If (realname)
+            realname:=realname[2];
+          Else
+            realname:=GetObjProperty(char, "realrname");
+          EndIf
+
+          If (realname And (Lower(realname)==name))
+            Return (0);
+          EndIf
+        EndIf
+      EndFor
+    EndIf
+
+    SleepMS(2);
+  EndForEach
+
+  Return (1);
+EndFunction

@@ -1,0 +1,15 @@
+use os;
+use uo;
+include "drinkpotion";
+include "include/modifyskill";
+
+Program drink_green (character, potion)
+  If (!checkifcandrink(character))
+    return;
+  EndIf
+  do_poison(character, potion);
+
+  detach();
+  Sleep(10);
+  candrink(character);
+EndProgram

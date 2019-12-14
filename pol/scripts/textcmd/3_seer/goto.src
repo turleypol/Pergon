@@ -1,0 +1,102 @@
+////////////////////////////////////////////////////////////////////
+// Goto - TextCommand
+//
+// Usage: .goto [playername]
+//      Go to a Player. If Player is not given a Menu will open and
+//      prompt you to choose one.
+//
+// based on Msg - TextCommand
+// Author: Racalac
+//
+// Author: Shinigami
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use os;
+use uo;
+include "include/logutil";
+include "include/msgs";
+include "include/onlinesearch";
+include "include/place";
+include "include/server";
+include "include/string";
+
+//////////////////////
+// Gump-Definitionen
+//////////////////////
+
+var layout := {
+  "page 0",                       // Seite 0 (Basisseite)
+  "nodispose",
+  "resizepic 10 10 2620 310 590",
+  "gumppic 30 40 2621",
+  "checkertrans 15 16 300 578",
+
+  "text 30 19 40 0",
+  "text 269 19 40 1"
+};
+
+var data := {"Spielername", "Goto"};
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_Goto(who, eingabe)
+  
+  If (CStr(eingabe) == "?" or CStr(eingabe) == "h")
+    SendSysMessagePergon(who, "Parameter: .goto [charname] | [serial]");
+    return;
+  EndIf
+  
+  If (eingabe)
+    var zielperson;
+    If(IsNumeric(eingabe))
+      zielperson := SystemFindObjectBySerial(CInt(eingabe), SYSFIND_SEARCH_OFFLINE_MOBILES);
+    Else
+      zielperson := SearchForOnlineCharacter(who, eingabe);
+    EndIf
+    If (zielperson)
+      GotoCharacter(who, zielperson);
+    Else
+      SendSysMessagePergon(who, eingabe+" konnte nicht gefunden werden.");
+    EndIf
+  Else
+    // Liste mit {char.name, char}
+    var playerinfo := FillInOnlineCharacterInfo(
+      layout, data, who, DONT_LIST_ME
+    );
+    If (playerinfo)
+      var nummer := SendDialogGump(who, layout, data)[0];
+      If (nummer)
+        GotoCharacter(who, playerinfo[nummer][2]);
+      Else
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Es ist gerade kein weiterer Character online.");
+    EndIf
+  EndIf
+EndProgram
+
+//////////////////////////////////////////////////////
+// GotoCharacter - Bewegt den Character schliesslich
+//////////////////////////////////////////////////////
+
+Function GotoCharacter(who, ziel)
+  syslog(CharInfoStr(who)+" springt zu "+CharInfoStr(ziel, COORDS_REALM));
+
+  JumpLocationAdd(who);
+  MoveObjectToLocation(
+    who, ziel.x, ziel.y, ziel.z, ziel.realm, MOVEOBJECT_FORCELOCATION
+  );
+  If (who.multi)
+    // zweimal bewegen
+    // (laesst den Client die Decke ausblenden, wenn Char in Haus)
+    SleepMs(50);
+    MoveObjectToLocation(
+      who, ziel.x, ziel.y, ziel.z, ziel.realm, MOVEOBJECT_FORCELOCATION
+    );
+  EndIf
+EndFunction

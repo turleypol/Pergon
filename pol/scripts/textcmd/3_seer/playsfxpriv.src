@@ -1,0 +1,19 @@
+//
+// 30.10.2005 Fraggulus: .SfxPriv umbenannt in .PlaySfxPriv
+//
+
+Use uo;
+
+Include "include/msgs";
+
+Program TextCMD_PlaySfxPriv(who, soundno)
+  soundno := CInt(soundno);
+
+  If (soundno)
+    PlaySoundEffectPrivate(who, soundno, who);
+    SendSysMessagePergon(who, "Ihr hoert gerade den SoundEffekt " + Lower(Hex(soundno)) + ".",
+                              "You are hearing sound effect " + Lower(Hex(soundno)) + ".");
+  Else
+    SendSysMessagePergon(who, "USAGE: .PlaySfxPriv <soundnumber>", "USAGE: .PlaySfxPriv <soundnumber>");
+  EndIf
+EndProgram

@@ -1,0 +1,220 @@
+<title>Reputation System</title>
+<table border=0 width="100%">
+  <tr>
+    <td valign="top" width="100%"><strong><big><big><big>Reputation System</big></strong></td>
+    <td width="50%" valign="top" align="right" nowrap><a href="index.htm"><small>POL Core Doc<br>Home</small></a></td>
+  </tr>
+</table>
+<pre>
+ </pre><H2><a name="1">1</a> Reputation System Configuration</H2><pre>
+ Reputation System Configuration is read from config/repsys.cfg
+ This file is re-read on a config reload.
+ </pre><H3><a name="1.1">1.1</a> General Configuration</H3><pre>
+  Settings are defined in the General section:
+    CriminalFlagInterval     Time, in seconds, for which you will be marked criminal
+    AggressorFlagTimeout     Time, in seconds, for which you will be marked an aggressor
+                             
+
+ </pre><H3><a name="1.2">1.2</a> Color Configuration</H3><pre>
+  Name colors are defined in the NameColoring section:
+    Murderer
+    Criminal
+    Attackable
+    Innocent
+    GuildAlly
+    GuildEnemy
+  The client specifies highlight colors.
+
+
+ </pre><H2><a name="2">2</a> Timeouts</H2><pre>
+ When Any of Amy's Rep-system timers time out
+
+     If Amy's Criminal Timer has expired,
+         Clear Amy's Criminal Timer
+
+     If Amy was Aggressor to Bob, but has timed out
+         De-escalate<a href=#7>*</a> Amy and Bob
+         Update Bob to nearby clients
+ 
+     If Amy had Lawfully Damaged Bob, but has timed out
+         De-escalate<a href=#7>*</a> Amy and Bob
+         Update Bob to nearby clients
+
+     If any of Amy's statuses changed,
+         Update Amy to nearby clients
+
+ </pre><H2><a name="3">3</a> Player attacks another Player</H2><pre>
+ When Amy attacks Bob
+     These rules are applied:
+         - When Amy tries to apply any damage to Bob
+         - When Amy selects Bob as her Opponent
+         - When Amy swings at Bob
+         - When Amy selects Bob with a Harmful target cursor
+
+   if Bob is Innocent to Amy,
+       Set Amy's Criminal flag for CriminalFlagInterval seconds
+
+   if Bob is Aggressor to Amy,
+       Set Bob as Aggressor to Amy for AggressorFlagTimeout seconds
+   else,
+       Tell Bob "Amy is Attacking you!" if this is news
+       Set Amy as Aggressor to Bob for AggressorFlagTimeout seconds
+
+
+ </pre><H2><a name="4">4</a> Player Damages Player</H2><pre>
+ When Amy damages Bob
+     These rules applied:
+         - When Amy actually applies damage to Bob
+         - When Amy poisons Bob (only with Bob.SetPoisoned(1))
+            (note damage due to poisoning will not fire this rule,
+             only the initial application)
+         - When Amy paralyzes Bob (only with Bob.SetParalyzed(1))
+
+     Apply all rules for "Player Attacks Another Player"<a href=#3>*</a>
+
+     If Bob is Innocent to Amy,
+         Add Amy to Bob's "ToBeReportable" list
+     else
+         Set Amy as having LawfullyDamaged Bob for AggressorFlagTimeout seconds
+
+     
+ 
+
+ </pre><H2><a name="5">5</a> Player Helps Another Player</H2><pre>
+ When Amy Helps Bob
+     These rules applied:
+         - When Amy selects Bob with a Helpful target cursor
+         - When Amy Heals Bob
+         - When Amy clear's Bob's Poisoned flag
+         - When Amy clear's Bob's Paralyzed flag
+
+    If Bob is a Criminal, Set Amy Criminal 
+    
+ </pre><H2><a name="7">7</a> De-Escalation</H2><pre>
+ To De-escalate Amy and Bob:
+      if Amy's opponent is Bob, Amy clears her opponent
+      If Bob's opponent is Amy, Bob clears his opponent   
+
+
+ </pre><H2><a name="8">8</a> Highlighting and Name Coloring</H2><pre>
+    if Amy looks at Bob, coloring is as follows:
+        if Bob is a Murderer              color Bob MURDERER ()
+        if Bob is a Criminal,             color Bob CRIMINAL (Red)
+        If Bob is a guild ally of Amy's,  color Bob FRIEND (Green)
+        if Bob is an Aggressor to Amy,    color Bob ATTACKABLE (Grey)
+        if Amy has lawfully damaged Bob,  color Bob ATTACKABLE (Grey)
+        if Bob is a guild enemy of Amy's, color Bob ENEMY (Orange)
+        otherwise                         color Bob INNOCENT (Blue)
+
+
+ </pre><H2><a name="9">9</a> Innocent Status</H2><pre>
+ Bob is Innocent to Amy if:
+ ===============================
+    Bob is Innocent to Amy only if NONE of the following are true:
+         Bob is a murderer;
+         Bob is a criminal
+         Bob is an Aggressor to Amy
+         Bob is a Guild Ally of Amy
+         Bob is a Guild Enemy of Amy
+         Amy has Lawfully Damaged Bob
+
+
+ </pre><H2><a name="10">10</a> Guild Rules</H2><pre>
+ The following Guild Rules are only temporary pending a more complete system
+
+ </pre><H3><a name="10.1">10.1</a> Guild Allies</H3><pre>
+ Bob and Amy are Guild Allies if:
+     Bob is in a guild, AND
+     Amy is in a guild, AND
+     Bob's Guild is allied with Amy's guild
+
+
+ </pre><H3><a name="10.2">10.2</a> Guild Enemies</H3><pre>
+ Bob and Amy are Guild Enemies if:
+     Bob is in a guild, AND
+     Amy is in a guild, AND
+     Bob's Guild is an Enemy Guild of Amy's Guild
+
+
+
+ A Mobile is Criminal if:
+     he has an active Criminal Timer, which has not timed out.
+       OR
+     he is a murderer.
+
+
+ </pre><H2><a name="13">13</a> Mobile (MA) Attacks Mobile (MA)</H2><pre>
+
+     Rules are applied based on whether MA is a PC or an NPC.
+  
+ </pre><H3><a name="13.1">13.1</a> Player (Amy) Attacks Mobile (Mob)</H3><pre>
+     If Mob is a PC (Bob),
+         Apply 'Player Attacks Player' rules<a href=#3>*</a> for Amy vs Bob.
+     Else if Mob is an NPC with a Master (Bob),
+         Apply 'Player Attacks Player' rules for Amy vs Bob
+     Else if Mob is a Good-aligned NPC,
+         Set Amy's Criminal Flag
+
+
+ </pre><H3><a name="13.2">13.2</a> NPC (MA) Attacks Mobile (MB)</H3><pre>
+     If MA has a Master (Amy),
+         Apply 'Player Attacks Mobile' rules<a href=#13.1>*</a> for Amy vs MB
+     Else
+         Exit with no (RepSystem) effect.
+
+
+ </pre><H2><a name="14">14</a> Mobile (MA) Damages Mobile (MB)</H2><pre>
+
+     Rules are applied based on whether MA is a PC or an NPC.
+
+ </pre><H3><a name="14.1">14.1</a> Player (Amy) Damages Mobile (Mob)</H3><pre>
+   If Mob is a PC (Bob),
+       Apply 'Player Damages Player' rules<a href=#4>*</a> for Amy vs Bob.
+   Else if Mob is an NPC with a Master (Bob),
+       Apply 'Player Damages Player' rules for Amy vs Bob
+   Else if Mob is a Good-aligned NPC,
+       Set Amy's Criminal Flag
+
+
+ </pre><H3><a name="14.2">14.2</a> NPC (MA) Damages Mobile (MB)</H3><pre>
+     If MA has a Master (Amy),
+         Apply 'Player Damages Mobile' rules<a href=#14.1>*</a> for Amy vs MB
+     Else
+         Exit with no (RepSystem) effect.
+
+
+ </pre><H2><a name="15">15</a> Mobile (MA) Helps Mobile (MB)</H2><pre>
+
+     Rules are applied based on whether MA is a PC or an NPC.
+ 
+   </pre><H3><a name="15.1">15.1</a> Player (Amy) Helps Mobile (Mob)</H3><pre>
+     If Mob is a PC (Bob),
+         Apply 'Player Helps Player' rules<a href=#5>*</a> for Amy helps Bob.
+     Else if Mob is an NPC with a Master (Bob),
+         Apply 'Player Helps Player' rules for Amy helps Bob
+     Else if Mob is an Evil-aligned NPC,
+         Set Amy's Criminal Flag
+
+   </pre><H3><a name="15.2">15.2</a> NPC (MA) Helps Mobile (MB)</H3><pre>
+       If MA has a Master (Amy),
+           Apply 'Player Helps Mobile' rules<a href=#15.1>*</a> for Amy helps MB
+       Else
+           Exit with no (RepSystem) effect.
+
+
+ </pre><H2><a name="16">16</a> NPC Highlighting</H2><pre>
+     If the NPC has a master, 
+         Highlight color is the same as the Master's.
+     Else
+         Highlight Good NPCs     INNOCENT (Blue)
+         Highlight Neutral NPCs  ATTACKABLE (Grey)
+         Highlight Evil NPCs     MURDERER (Red)
+
+
+ To Set Amy Criminal (For a LevelOfOffense)
+
+    If the LevelOfOffense is 0,
+         clear the CriminalTimer
+    Else
+         Set her Criminal Timer for (LevelOfOffense * CriminalFlagInterval) seconds
+

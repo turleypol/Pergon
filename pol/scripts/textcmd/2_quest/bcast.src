@@ -1,0 +1,35 @@
+//////////////////////////////////////////////////////////////////////////
+// TextCMD BCast - Einfache BroadCasts verschicken (siehe auch BCastW)
+//
+// Author: Shinigami
+
+use file;
+use uo;
+include "include/msgs";
+include "include/quests";
+
+Program TextCMD_BCast(who, text, uctext)
+  If (!text)
+    text := RequestInputPergon(who, who.backpack,
+      Struct{uc_text := CAscZ("Welche Nachricht wollen Sie schicken?"), lang := "DEU"},
+      Struct{uc_text := CAscZ("Which message do you want to send?"), lang := "ENG"});
+    If (!text)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+    If (text.uc_text)
+      uctext := text.uc_text;
+      // Logging
+      text := CChrZ(text.uc_text);
+    EndIf
+  EndIf
+  
+  If (who.cmdlevel == CMDLEVEL_QUESTCHAR)
+    BroadcastPergon("Quest: "+text, "Quest: "+text, _DEFAULT_TEXT_FONT, 38);
+    QuestCharLog(who, "TextCMD BCast: "+text);
+  Else
+    BroadcastPergon(who.name+": "+text, who.name+": "+text, _DEFAULT_TEXT_FONT, 38);
+    SysLog(CharInfoStr(who)+": "+text);
+  EndIf
+  
+EndProgram

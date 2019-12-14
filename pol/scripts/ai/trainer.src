@@ -1,0 +1,128 @@
+///////////////////////////////////////////////////////////////////////////
+// Trainer Script - Control script for NPC Trainer
+//
+
+/////////////
+// Bibliotheken&Includes
+/////////////
+use npc;
+use os;
+use storage;
+include "include/merchant";
+
+///////////////////////////////
+// Merchant - Initialisierung
+///////////////////////////////
+
+Function SetMerchantType(meprototype)
+  meprototype.merchanttype:="Trainer";
+  meprototype.buynsold:=0;
+  meprototype.speech_name:=1;
+
+  Return (meprototype);
+EndFunction
+
+/////////////////////
+// Hook_Move_Action
+/////////////////////
+
+Function Hook_Move_Action(me, medata, ev)
+  return;
+  me := 0; medata := 0; ev := 0;
+EndFunction
+
+///////////////////////
+// Hook_Merchant_Sold
+///////////////////////
+
+Function Hook_Merchant_Sold(me, medata, ev)
+  return;
+  me := 0; medata := 0; ev := 0;
+EndFunction
+
+//////////////////////
+// Hook_Entered_Area
+//////////////////////
+
+Function Hook_Entered_Area(me, medata, ev)
+  return;
+  me := 0; medata := 0; ev := 0;
+EndFunction
+
+///////////////////
+// Hook_Left_Area
+///////////////////
+
+Function Hook_Left_Area(me, medata, ev)
+  return;
+  me := 0; medata := 0; ev := 0;
+EndFunction
+
+/////////////////////////////
+// Hook_Item_Given_Sleeping
+/////////////////////////////
+
+Function Hook_Item_Given_Sleeping(me, medata, ev)
+  return;
+  me := 0; medata := 0; ev := 0;
+EndFunction
+
+////////////////////
+// Hook_Item_Given
+////////////////////
+
+Function Hook_Item_Given(me, medata, ev)
+  return;
+  me := 0; medata := 0; ev := 0;
+EndFunction
+
+/////////////////////
+// Hook_Speech_Open
+/////////////////////
+
+Function Hook_Speech_Open(me, medata, ev)
+  return;
+  me := 0; medata := 0; ev := 0;
+EndFunction
+
+/////////////////////////
+// Hook_Speech_Sleeping
+/////////////////////////
+
+Function Hook_Speech_Sleeping(me, medata, ev)
+  return;
+  me := 0; medata := 0; ev := 0;
+EndFunction
+
+/////////////////////
+// Hook_Speech_Name
+/////////////////////
+
+Function Hook_Speech_Name(me, medata, ev)
+  NPCSayTextTraditional(me, "Sagt doch "+medata.minename+" zu mir", "");
+  return;
+  ev := 0;
+EndFunction
+
+////////////////////////
+// Hook_Speech_Default
+////////////////////////
+
+Function Hook_Speech_Default(me, medata, ev, sayed)
+  return;
+  me := 0; medata := 0; ev := 0; sayed := 0;
+EndFunction
+
+//////////////////////////////
+// Hook_Ghost_Speech_Default
+//////////////////////////////
+
+Function Hook_Ghost_Speech_Default(me, medata, ev, sayed)
+  return;
+  me := 0; medata := 0; ev := 0; sayed := 0;
+EndFunction
+
+Function Hook_Buy(me, medata, who)
+  return;
+  me := 0; medata := 0; who := 0;
+EndFunction

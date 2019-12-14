@@ -1,0 +1,165 @@
+//**************************************************************************************************
+// Script file curseitem.src
+//
+//    implements spell 307 <Curse Item> - "Gegenstand Verfluchen"
+//
+//  curses an (randomly choosen) (equipped) item
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+use util;
+
+Include "include/thaumaturgy";
+Include "../magicpergon";
+Include "../spellattack";
+
+Program cast_curseitem(params)
+
+  var caster;
+  var caston;
+  var curseitems := {};
+
+  var spells := ReadConfigFile("::spells");                  // load spelltarget
+  var spell :=  FindConfigElem(spells, SPELLID_NECRO_CURSEITEM);
+  var dmg :=    spell.primary;
+  var mindmg := spell.primarymin;
+  var maxdmg := spell.primarymax;
+  var power;
+
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  := params[3];
+    caston := params[4];
+    send_attack(caston, caster, 307);
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetThing(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_NECRO_CURSEITEM);
+    caston := TargetThing(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  If (caston.isa(POLCLASS_NPC) || caston.isa(POLCLASS_MULTI))     // check If casted on NPC, multi or house
+    SendSysMessagePergon(caster, "Das könnt Ihr nicht verfluchen", "You cannot curse this");
+    return;
+  EndIf
+
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  If (caston.isa(POLCLASS_MOBILE))   // spell has been casted on player
+
+    TurnCharTo(caster, caston);
+    PlayObjectCenteredEffect(caston, FX_CURSE_EFFECT, 7, 7);
+
+    var equipment := ListEquippedItems(caston);              // get equipped items of spelltarget
+    var item;
+
+    ForEach item in equipment                             // for each item
+      If ( !GetObjProperty(item, "spell_curse") &&                    // check If item is already cursed
+        (item.isa(POLCLASS_WEAPON) || item.isa(POLCLASS_ARMOR)) )   // and If item is weapon or armor piece
+        curseitems.append(item);
+      EndIf
+    EndForEach
+
+    If (curseitems.size())
+      item := curseitems.randomentry();
+
+      PlaySoundEffect(caston, SFX_1E2);
+      PrintTextAbovePrivatePergon(caston, item.desc + " wurde verflucht", item.desc + " has been cursed", caston);
+      SendSysMessagePergon(caster, "Ihr verflucht " + item.desc, "You curse " + item.desc);
+
+      dmg := CInt((power / 300.0) * (item.hp * 0.9));        // calc dmg according to casting power
+
+      If (mindmg and mindmg > dmg)
+        dmg := mindmg;
+      ElseIf (maxdmg and maxdmg < dmg)
+        dmg := maxdmg;
+      EndIf
+
+      var tagrust := array;
+      tagrust[1]  := power;
+      tagrust[2]  := item.hp;
+      tagrust[3]  := dmg;
+
+      item.hp := item.hp - dmg;        // reduce HP of cursed item
+
+      var tag := array;
+      tag[1]  := -1;                        // mark duration as 'eternal'
+      tag[2]  := power;
+      tag[3]  := "curse";
+
+      SetObjProperty(item, "spell_curse", tag);     // tag item as cursed
+      SetObjProperty(item, "spell_rust", tagrust);
+      CalcItemQualityBonus(item);             // calcs new item bonus
+      IncRevision(item);
+
+    Else
+      PlaySoundEffect(caston, SFX_1E2);
+      SendSysMessagePergon(caster, "Euer Ziel trägt nichts zum Verfluchen geeignetes an sich",
+      "Your target wears nothing worth a curse");
+    EndIf
+
+  ElseIf (caston.isa(POLCLASS_WEAPON) || caston.isa(POLCLASS_ARMOR))    // spell has been casted on item
+
+    var container := caston.container;
+    If (container)
+      While (container.container)
+        container := container.container;
+      EndWhile
+      TurnCharTo(caster, container);
+      PlayObjectCenteredEffect(caster, FX_CURSE_EFFECT, 7, 7);
+    Else
+      TurnCharTo(caster, caston);
+      PlayStationaryEffect(caston.x, caston.y, caston.z, FX_CURSE_EFFECT, 7, 7);
+    EndIf
+
+    If (GetObjProperty(caston, "spell_curse"))      // check If spelltarget is already cursed
+      PlaySoundEffect(caster, SFX_1E2);
+      SendSysMessagePergon(caster, "Das ist bereits verflucht", "This already has been cursed");
+    Else
+      PlaySoundEffect(caster, SFX_1E2);
+      SendSysMessagePergon(caster, "Ihr verflucht " + caston.desc, "You curse " + caston.desc);
+
+      dmg := CInt((power / 300.0) * (caston.hp * 0.9));        // calc dmg according to casting power
+
+      If (mindmg and mindmg > dmg)
+        dmg := mindmg;
+      ElseIf (maxdmg and maxdmg < dmg)
+        dmg := maxdmg;
+      EndIf
+      
+      var tagrust := array;
+      tagrust[1]  := power;
+      tagrust[2]  := caston.hp;
+      tagrust[3]  := dmg;
+
+      caston.hp := caston.hp - dmg;    // reduce HP of cursed item
+
+      var tag := array;
+      tag[1]  := -1;                        // mark duration as 'eternal'
+      tag[2]  := power;
+      tag[3]  := "curse";
+
+      SetObjProperty(caston, "spell_curse", tag);   // tag item as cursed
+      SetObjProperty(caston, "spell_rust", tagrust);
+      CalcItemQualityBonus(caston);             // calcs new item bonus
+      IncRevision(caston);
+      
+    EndIf
+
+  EndIf
+
+EndProgram

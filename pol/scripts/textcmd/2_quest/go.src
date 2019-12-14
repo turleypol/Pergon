@@ -1,0 +1,578 @@
+///////////////////////////////////////////////////////////////////////////
+// .go - Bewegt den eigenen Char oder jemand anders zu einem bestimmten Ort
+//
+// Author: Shinigami
+
+use datafile;
+use os;
+use uo;
+include "include/msgs";
+include "include/place";
+
+// Version, wird abgefragt auf Änderung für Aufbau des privateGumps
+Const VERSION := 1.2;
+
+Enum GUMPCONST
+  SHOW_PUBLIC     := 1,
+  SHOW_PRIVATE,
+  ADD,
+  LINES_PER_PAGE := 24,
+  GOTO_LOC       := 10000,
+  SEND_LOC       := 20000,
+  DEL_LOC        := 30000
+EndEnum
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+var public := OpenDataFile("gocmd_public");
+var privat := OpenDataFile("gocmd_privat");
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_Go(who, text)
+   // Per Script Datafile erzeugen / CmdLevel
+  If (
+    (who[1] == "Init") ||
+    ((who.cmdlevel >= CMDLEVEL_SCRIPTER) && (lower(text) == "init"))
+  )
+    syslog(".GO Datafile begin");
+    SetGlobalProperty("#gocmdinit", 1);
+    InitPublic();
+    EraseGlobalProperty("#gocmdinit");
+    syslog(".GO Datafile completed");
+    return;
+  EndIf
+
+  If (GetGlobalProperty("#gocmdinit"))
+    SendSysMessagePergon(who, "Datafile wird noch erzeugt, probiere es später nochmal.");
+    return;
+  EndIf
+
+  var layout, data, areadict;
+  var ret, key;
+  var area, location, send_go;
+  var mobile;
+
+  If (who.cmdlevel < CMDLEVEL_QUESTCHAR) // Alle ab QuestChar duerfen, der Rest nich
+    SendSysMessagePergon(who,
+      "Ihr seid nicht befugt, diesen Befehl zu benutzen!",
+      "You are not authorized to use this command!"
+    );
+    return;
+  EndIf
+
+  If (text)  // direktes anspringen
+    text := SplitWords(text);
+
+    Case (text.size())
+      1: Location_suchen(who, text[1]);
+      2: AreaLocation_suchen(who, text[1], text[2]);
+
+      default: SendSysMessagePergon(who, "USAGE: .go [[area]] [location]");
+    EndCase
+    return;
+  EndIf
+
+  layout := public.FindElement("Gump").getprop("layout");
+  data := public.FindElement("Gump").getprop("data");
+  areadict := public.FindElement("Coords").getprop("coords");
+
+  Repeat
+    ret := SendDialogGump(who, layout, data, 50, 50);
+    key := ret.keys[2];
+
+    If (ret[SHOW_PRIVATE])
+      If (!ShowPrivate(who))
+        return;
+      EndIf
+    EndIf
+
+  Until (!ret[SHOW_PRIVATE]);
+
+  If (key)
+    key := CStr(key);
+    area := key[2, 2];
+    If (area[1] == "0")
+      area := CInt(area[2]);
+    Else
+      area := CInt(area);
+    EndIf
+    location := key[4, 2];
+    If (location[1] == "0")
+      location := CInt(location[2]);
+    Else
+      location := CInt(location);
+    EndIf
+    send_go := CInt(key[1, 1]);
+
+    If (send_go == 2) // QuestChars duerfen keine Spieler "verschicken"
+      If (who.cmdlevel<CMDLEVEL_SEER)
+        SendSysMessagePergon(who,
+          "Euch fehlt die noetige Befugnis!", "You are not authorized!"
+        );
+        return;
+      EndIf
+    EndIf
+
+    If (!areadict[area].locations[location])
+      SendSysMessagePergon(who, "Ungueltige Location");
+      return;
+    EndIf
+
+    If (send_go == 2) // Verschicken
+      SendSysMessagePergon(who, "Waehlt einen Spieler oder NPC!");
+      mobile := Target(who, TGTOPT_NOCHECK_LOS);
+      If (!mobile.isa(POLCLASS_MOBILE))
+        SendSysMessagePergon(who, "Ungueltiges Ziel!");
+        return;
+      EndIf
+      // Nicht Admins duerfen Spieler nicht in den Knast summonen
+      If (!(mobile.isa(POLCLASS_NPC) || (who.cmdlevel >= CMDLEVEL_GL) ||
+           (PlaceName(areadict[area].locations[location]) != "Gefaengnis")))
+        SendSysMessagePergon(who,"Euch fehlt die noetige Befugnis!", "You are not authorized!");
+        Return;
+      EndIf
+    Else
+      mobile := who;
+    EndIf
+
+    var loc := areadict[area].locations[location];
+    loc.realm := Lower(loc.realm);
+
+    JumpLocationAdd(mobile);
+    MoveObjectToLocation(
+      mobile, loc.x, loc.y, loc.z, loc.realm, MOVEOBJECT_FORCELOCATION
+    );
+    If (mobile.multi)
+      // ein zweimaliges Move scheint das Ausblenden der Obergeschosse
+      // im Client zu triggern
+      SleepMs(100);
+      MoveObjectToLocation(
+        mobile, loc.x, loc.y, loc.z, loc.realm, MOVEOBJECT_FORCELOCATION
+      );
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram
+
+/////////////////////////////////////////////////
+// Location_suchen - Nach einer Location suchen
+/////////////////////////////////////////////////
+
+Function Location_suchen(who, destlocation)
+  var areadict   := public.FindElement("Coords").getprop("coords");
+  destlocation   := Lower(destlocation);
+  
+  If (!privat)
+    InitPrivate(who);
+  EndIf
+  If (!privat.FindElement(CStr(who.serial)))
+    InitPrivate(who);
+  EndIf
+  var privatdict := privat.FindElement(CStr(who.serial));
+  If (privatdict.getprop("VERSION")<>VERSION) // ältere Version
+    InitPrivate(who);
+  EndIf 
+
+  ForEach area in areadict  // Ist es ein Area Name dann zu Basis teleporten
+    If (destlocation == Lower(area.name))
+      If (area.basis)
+        ForEach loc in (area.locations)
+          If (Lower(loc.name) == Lower(area.basis))
+            loc.realm := Lower(loc.realm);
+            JumpLocationAdd(who);
+            MoveObjectToLocation(
+              who, loc.x, loc.y, loc.z, loc.realm, MOVEOBJECT_FORCELOCATION
+            );
+            If (who.multi)
+              // ein zweimaliges Move scheint das Ausblenden der Obergeschosse
+              // im Client zu triggern
+              SleepMs(100);
+              MoveObjectToLocation(
+                who, loc.x, loc.y, loc.z, loc.realm, MOVEOBJECT_FORCELOCATION
+              );
+            EndIf
+            return;
+          EndIf
+          SleepMS(2);
+        EndForEach
+        Break;
+      Else
+        Break;
+      EndIf
+    EndIf
+    SleepMS(2);
+  EndForEach
+
+  ForEach area in areadict // Location Name?
+    ForEach loc in (area.locations)
+      If (lower(loc.name) == destlocation)
+        loc.realm := Lower(loc.realm);
+        JumpLocationAdd(who);
+        MoveObjectToLocation(
+          who, loc.x, loc.y, loc.z, loc.realm, MOVEOBJECT_FORCELOCATION
+        );
+        If (who.multi)
+          // ein zweimaliges Move scheint das Ausblenden der Obergeschosse
+          // im Client zu triggern
+          SleepMs(100);
+          MoveObjectToLocation(
+            who, loc.x, loc.y, loc.z, loc.realm, MOVEOBJECT_FORCELOCATION
+          );
+        EndIf
+        return;
+      EndIf
+      SleepMS(2);
+    EndForEach
+  EndForEach
+  
+  ForEach area in (privatdict.getprop("locs"))
+  	If (lower(area.name) == destlocation)
+  	  area.realm := Lower(area.realm);
+      JumpLocationAdd(who);
+      MoveObjectToLocation(
+        who, area.x, area.y, area.z, area.realm, MOVEOBJECT_FORCELOCATION
+      );
+      If (who.multi)
+        // ein zweimaliges Move scheint das Ausblenden der Obergeschosse
+        // im Client zu triggern
+        SleepMs(100);
+        MoveObjectToLocation(
+          who, area.x, area.y, area.z, area.realm, MOVEOBJECT_FORCELOCATION
+        );
+      EndIf
+      return;
+    EndIf
+    SleepMS(2);
+  EndForEach
+    
+  SendSysMessagePergon(who, "Unbekannte Stelle!");
+EndFunction
+
+/////////////////////////////////////////////////////
+// AreaLocation_suchen - Nach einer Location suchen
+/////////////////////////////////////////////////////
+
+Function AreaLocation_suchen(who, destarea, destlocation)
+  var areadict := public.FindElement("Coords").getprop("coords");
+  destlocation := Lower(destlocation);
+
+  ForEach area in areadict
+    If (Lower(area.name) == destarea)
+      ForEach loc in (area.locations)
+        If (Lower(loc.name) == destlocation)
+          loc.realm := Lower(loc.realm);
+          JumpLocationAdd(who);
+          MoveObjectToLocation(
+            who, loc.x, loc.y, loc.z, loc.realm, MOVEOBJECT_FORCELOCATION
+          );
+          If (who.multi)
+            // ein zweimaliges Move scheint das Ausblenden der Obergeschosse
+            // im Client zu triggern
+            SleepMs(100);
+            MoveObjectToLocation(
+              who, loc.x, loc.y, loc.z, loc.realm, MOVEOBJECT_FORCELOCATION
+            );
+          EndIf
+          return;
+        EndIf
+        SleepMS(2);
+      EndForEach
+      Break;
+    EndIf
+    SleepMS(2);
+  EndForEach
+
+  SendSysMessagePergon(who, "Unbekannte Stelle!");
+EndFunction
+
+
+/////////////////////////////////////////////////
+// InitPublic - Gump/Dict aufbauen der allg. Loc's
+/////////////////////////////////////////////////
+
+Function InitPublic()
+  If (public)
+    public.DeleteElement("Gump"); // Altlasten entfernen
+    public.DeleteElement("Coords");
+  Else
+    public := CreateDataFile("gocmd_public", DF_KEYTYPE_STRING);
+  EndIf
+
+  var pages, page, y, counter, lastpage;
+  var currentmaxpages, locations, locationarray, locationname;
+  var public_gump := public.CreateElement("Gump");
+  var public_coords := public.CreateElement("Coords");
+
+  var layout := {"page 0",               // Seite 0 (Basisseite)
+                 "nodispose",
+                 "resizepic 0 0 3600 350 490", // Hintergrund
+                 "resizepic 15 15 5054 320 35",
+                 "resizepic 15 55 5054 320 380",
+                 "resizepic 15 440 5054 320 35",
+                 "htmlgump 15 20 320 20 0 0 0",
+                 "button 30 447 4008 4010 1 0 "+SHOW_PRIVATE,
+                 "htmlgump 70 450 100 20 2 0 0"};
+  var data := {"<basefont color="+HTML_WHITE+"><center>.Go Public</center>",
+               "(Send)",
+               "<basefont color="+HTML_WHITE+">Private Menu"};
+
+  var gofile := ReadConfigFile("golocs");
+  var areadict := dictionary;
+  var areas := GetConfigStringArray(gofile["MainList"], "Area");
+
+  If (areas.size()>LINES_PER_PAGE)  // Wieviel Pages gibts
+    pages := areas.size()/LINES_PER_PAGE+1;
+  Else
+    pages := 1;
+  EndIf
+
+  page := 1;
+  y := 65;
+
+  layout.append("page 1");
+  counter := 0;
+  var areacount := 0;
+  ForEach area in areas  // Hauptareas
+    counter += 1;
+    If (counter == LINES_PER_PAGE+1)  // Nächste Seite
+      counter := 1;
+      page += 1;
+      y := 65;
+      layout.append("button 290 410 2706 2707 0 " + page +" 0");
+      layout.append("page "+page);
+      layout.append("button 302 410 2704 2705 0 "  + CStr(page - 1)+" 0");
+    EndIf
+
+    If (area!= "SEPERATOR")
+      areacount += 1;
+      layout.append("text 55 "+y+" 2100 "+data.size());
+      data.append(area);
+      layout.append("button 35 "+(y+5)+" 2362 2361 0 "+(pages+areacount)+" 0");
+      areadict.insert(areacount, struct);  // Speichern im Dict
+      areadict[areacount].+name := area;
+    EndIf
+    y += 15;
+    SleepMS(2);
+  EndForEach
+
+  currentmaxpages := page+areadict.keys().size();  // Aktuelle Maxanzahl (alle Areas haben nur eine Page)
+
+  ForEach detail in areadict  // Areas durchgehen
+    layout.append("page "+(pages+_detail_iter));
+    layout.append("text 24 24 5 " + CStr(data.size()));
+    data.append(detail.name);
+    layout.append("text 240 24 2100 1");
+    layout.append("button 290 24 2650 2651 0 1 0");
+    locations := GetConfigStringArray(gofile[detail.name], "Location");
+    If (GetConfigString(gofile[detail.name], "Basis"))
+      detail.+basis := GetConfigString(gofile[detail.name], "Basis");
+    EndIf
+    y := 65;
+    counter := 0;
+    lastpage := pages+_detail_iter;
+
+    detail.+locations := array;
+    ForEach location in locations // Locations der Areas durchgehen
+      counter += 1;
+      If (counter == LINES_PER_PAGE+1)
+        counter := 1;
+        currentmaxpages += 1;
+        y := 65;
+        layout.append("button 290 410 2706 2707 0 " + currentmaxpages+" 0");
+        layout.append("page "+currentmaxpages);
+        layout.append("button 302 410 2704 2705 0 "  + lastpage+" 0");
+        layout.append("text 24 24 5 " + CStr(data.size()));
+        data.append(detail.name);
+        layout.append("text 240 24 2100 1");
+        layout.append("button 290 24 2650 2651 0 1 0");
+        lastpage := currentmaxpages;
+      EndIf
+
+      If (location!="SEPERATOR")
+        locationname := SplitWords(location, ":");
+
+        locationarray := SplitWords(locationname[2]);
+        detail.locations.append(struct{name := locationname[1],
+                                       x := CInt(locationarray[1]), y := CInt(locationarray[2]), z := CInt(locationarray[3]),
+                                       realm := _DEFAULT_REALM});
+        If (locationarray[4]) // Realm
+          detail.locations[detail.locations.size()].realm := locationarray[4];
+        EndIf
+
+        layout.append("button 35 "+y+" 2362 2361 1 0 "+(GOTO_LOC+_detail_iter*100+detail.locations.size()));
+        layout.append("button 258 "+y+" 2362 2361 1 0 "+(SEND_LOC+_detail_iter*100+detail.locations.size()));
+
+        layout.append("text 55 "+(y-5)+" 2100 "+CStr(data.size()));
+        data.append(locationname[1]);
+      EndIf
+      y += 15;
+      SleepMS(2);
+    EndForEach
+  EndForEach
+
+  public_gump.setprop("layout", layout);
+  public_gump.setprop("data", data);
+  public_coords.setprop("coords", areadict);
+
+  UnloadConfigFile("golocs");
+EndFunction
+
+Function ShowPrivate(who)
+  If (!privat)
+    InitPrivate(who);
+  EndIf
+  If (!privat.FindElement(CStr(who.serial)))
+    InitPrivate(who);
+  EndIf
+  var element := privat.FindElement(CStr(who.serial));
+  If (element.getprop("VERSION")<>VERSION) // ältere Version
+    InitPrivate(who);
+  EndIf
+  var layout := element.getprop("layout");
+  var data := element.getprop("data");
+  var locations := element.getprop("locs");
+  var text, what, mobile;
+
+  var ret := SendDialogGump(who, layout, data, 50, 50);
+  If (ret)
+    If (ret[ADD])
+      text := RequestInputPergon(who, who.backpack, Struct{uc_text := CAscZ("Wie soll die Stelle heißen?"), lang := "DEU"},
+                                                    Struct{uc_text := CAscZ("Which name should the place have?"), lang := "ENG"});
+      If (text)
+        locations.append(struct{name := CChrZ(text.uc_text), x := who.x, y := who.y, z := who.z, realm := who.realm});
+        SendSysMessagePergon(who, "Location an der Stelle: "+who.x+" "+who.y+" "+who.z+" "+who.realm+" hinzugefuegt");
+        element.setprop("locs", locations);
+        InitPrivate(who);
+      Else
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+      EndIf
+
+    ElseIf (ret[SHOW_PUBLIC])
+      return(1);
+
+    ElseIf (ret.keys[2]>DEL_LOC)
+      what := ret.keys[2]-DEL_LOC;
+      locations.erase(what);
+      SendSysMessagePergon(who, "Location geloescht");
+      element.setprop("locs", locations);
+      InitPrivate(who);
+
+    ElseIf (ret.keys[2]>SEND_LOC)
+      what := ret.keys[2]-SEND_LOC;
+      SendSysMessagePergon(who, "Waehlt einen Spieler oder NPC!");
+      mobile := Target(who, TGTOPT_NOCHECK_LOS);
+      If (!mobile.isa(POLCLASS_MOBILE))
+        SendSysMessagePergon(who, "Ungueltiges Ziel!");
+        return;
+      EndIf
+      If (
+        // Nichtadmins duerfen Spieler nicht in den Knast summonen
+        mobile.isa(POLCLASS_NPC) || (who.cmdlevel >= CMDLEVEL_GL) ||
+        (PlaceName(locations[what]) != "Gefaengnis")
+      )
+        JumpLocationAdd(mobile);
+        MoveObjectToLocation(mobile,
+          locations[what].x, locations[what].y, locations[what].z,
+          locations[what].realm, MOVEOBJECT_FORCELOCATION
+        );
+        If (mobile.multi)
+          // ein zweimaliges Move scheint das Ausblenden der Obergeschosse
+          // im Client zu triggern
+          SleepMs(100);
+          MoveObjectToLocation(mobile,
+            locations[what].x, locations[what].y, locations[what].z,
+            locations[what].realm, MOVEOBJECT_FORCELOCATION
+          );
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Euch fehlt die noetige Befugnis!", "You are not authorized!");
+      EndIf
+
+    ElseIf (ret.keys[2]>GOTO_LOC)
+      what := ret.keys[2]-GOTO_LOC;
+      JumpLocationAdd(who);
+      MoveObjectToLocation(who,
+        locations[what].x, locations[what].y, locations[what].z,
+        locations[what].realm, MOVEOBJECT_FORCELOCATION
+      );
+      If (who.multi)
+        // ein zweimaliges Move scheint das Ausblenden der Obergeschosse
+        // im Client zu triggern
+        SleepMs(100);
+        MoveObjectToLocation(who,
+          locations[what].x, locations[what].y, locations[what].z,
+          locations[what].realm, MOVEOBJECT_FORCELOCATION
+        );
+      EndIf
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndFunction
+
+Function InitPrivate(who)
+  If (!privat)
+    privat := CreateDataFile("gocmd_private", DF_KEYTYPE_STRING);
+  EndIf
+  If (!privat.FindElement(CStr(who.serial)))
+    privat.CreateElement(CStr(who.serial));
+  EndIf
+  var element := privat.FindElement(CStr(who.serial));
+  var locations := element.getprop("locs");
+  If (!locations)
+    locations := array;
+    element.setprop("locs", locations);
+  EndIf
+  var layout := {"page 0",               // Seite 0 (Basisseite)
+               "nodispose",
+               "resizepic 0 0 3600 350 490", // Hintergrund
+               "resizepic 15 15 5054 320 35",
+               "resizepic 15 55 5054 320 380",
+               "resizepic 15 440 5054 320 35",
+               "htmlgump 15 20 320 20 0 0 0",
+               "button 30 447 4011 4013 1 0 "+SHOW_PUBLIC,
+               "htmlgump 70 450 100 20 3 0 0",
+               "button 150 447 4005 4007 1 0 "+ADD,
+               "htmlgump 190 450 30 20 4 0 0",
+               "text 240 24 2100 1",
+               "text 290 24 2100 2",
+               "page 1"};
+
+  var data := {"<basefont color="+HTML_WHITE+"><center>.Go Private</center>",
+             "(Send)",
+             "Delete",
+             "<basefont color="+HTML_WHITE+">Public Menu",
+             "<basefont color="+HTML_WHITE+">Add"};
+
+  var y := 65;
+  var page := 1;
+  var counter := 0;
+  ForEach loc in locations
+    counter += 1;
+    If (counter == LINES_PER_PAGE+1)
+      counter := 0;
+      y := 65;
+      page += 1;
+      layout.append("button 290 447 2706 2707 0 "+page+" 0");
+      layout.append("page "+page);
+      layout.append("button 302 447 2704 2705 0 "+(page-1)+" 0");
+    EndIf
+    layout.append("button 35 "+y+" 2362 2361 1 0 "+(GOTO_LOC+_loc_iter));
+    layout.append("button 258 "+y+" 2362 2361 1 0 "+(SEND_LOC+_loc_iter));
+    layout.append("button 308 "+y+" 2362 2361 1 0 "+(DEL_LOC+_loc_iter));
+    layout.append("text 55 "+(y-5)+" 2100 "+CStr(data.size()));
+    data.append(loc.name);
+    y += 15;
+    SleepMS(2);
+  EndForEach
+  element.setprop("layout", layout);
+  element.setprop("data", data);
+  element.setprop("VERSION", VERSION);
+EndFunction
+
+// vim: sw=2 sts=2

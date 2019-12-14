@@ -1,0 +1,26 @@
+///////////////////////////////////////////////////////////////////////////
+// FindItemRegister - Zu findendes Item bei Erzeugung im System registrieren
+
+Const ALLOW_CREATE := 1;
+
+use os;
+use uo;
+use util;
+include "common";
+
+Program FindItemRegister(item)
+    // zufaellig umfaerben (Wunsch von Garun)
+    var eggcolors := array{3, 25, 36, 46, 61, 82};
+    item.color := eggcolors.randomentry();
+
+    var crit := Is_Critical();
+    Set_Critical(1);
+    var list := GetGlobalProperty(GPROP_FINDITEM_LIST);
+
+    FindAddToList(list, item);
+
+    SetGlobalProperty(GPROP_FINDITEM_LIST, list);
+    Set_Critical(crit);
+
+    return ALLOW_CREATE;
+EndProgram

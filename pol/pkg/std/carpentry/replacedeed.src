@@ -1,0 +1,210 @@
+////////////////////////////////////////////////////////////////////////
+//
+//   Umkehrfunktion (wandelt die Items wieder in einen Besitzschein)
+//
+//   Modifications:
+//     2001/04/xx Paukerli: ReWrite (Werkzeug (Bastel-Skill) benutzen,
+//                          Betten aufstellen, etc.)
+//     2001/05/23 Paukerli: Bastel-Skill wieder enfernt
+//                          Jeder kann Haus-Ad-On's abbauen
+//
+////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+use cfgfile;
+use os;
+use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/client";
+Include "include/itemnpc";
+Include "include/msgs";
+Include "include/modifyskill";
+
+///////////////
+// Konstanten
+///////////////
+
+Const UOBJECT_WERKZEUGKASTEN:=0x1eba;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Replace_Deed(who, deed)
+  ReserveItem(deed);
+
+  If (!AccessiblePergon(who, deed))
+    SendSysMessagePergon(who, "Ihr kommt da nicht ran!");
+    Return;
+  EndIf
+
+  SendSysMessagePergon(who, "Wählt den Werkzeugkasten mit dem Ihr arbeiten wollt!");
+
+  Var werkzeugkasten:=Target(who);
+  If (werkzeugkasten.objtype<>UOBJECT_WERKZEUGKASTEN) // gr. Werkzeugkasten
+    SendSysMessagePergon(who, "Das ist nicht das richtige Werkzeug!");
+    Return;
+  EndIf
+
+  // Item-Deed-Eigenschaften werden ausgelesen
+  Var bauanleitung:=GetObjProperty(deed, "bauanleitung");
+  Var color:=deed.color;
+  Var desc:=deed.desc;
+
+  Var x:=GetObjProperty(deed, "lage_x");
+  Var y:=GetObjProperty(deed, "lage_y");
+  Var z:=GetObjProperty(deed, "lage_z");
+
+  Var type:=CInt(GetObjProperty(deed, "type"));
+  Case (type)
+    1: DestroyItemAtLocation(x, y, z, GetObjProperty(deed, "itemtype1"),who.realm); // einzelnes Item
+
+       CreateBauanleitung(who, 2, bauanleitung, color, desc, deed);
+
+    2: DestroyItemAtLocation(x,   y, z, GetObjProperty(deed, "itemtype1"),who.realm); // kleines Bett west
+       DestroyItemAtLocation(x-1, y, z, GetObjProperty(deed, "itemtype2"),who.realm);
+
+       CreateBauanleitung(who, 2, bauanleitung, color, desc, deed);
+
+    3: DestroyItemAtLocation(x, y,   z, GetObjProperty(deed, "itemtype1"),who.realm); // kleines Bett nord
+       DestroyItemAtLocation(x, y-1, z, GetObjProperty(deed, "itemtype2"),who.realm);
+
+       CreateBauanleitung(who, 2, bauanleitung, color, desc, deed);
+
+    4: DestroyItemAtLocation(x,   y,   z, GetObjProperty(deed, "itemtype1"),who.realm); // grosses Bett west
+       DestroyItemAtLocation(x,   y-1, z, GetObjProperty(deed, "itemtype2"),who.realm);
+       DestroyItemAtLocation(x-1, y,   z, GetObjProperty(deed, "itemtype3"),who.realm);
+       DestroyItemAtLocation(x-1, y-1, z, GetObjProperty(deed, "itemtype4"),who.realm);
+
+       CreateBauanleitung(who, 4, bauanleitung, color, desc, deed);
+
+    5: DestroyItemAtLocation(x,   y,   z, GetObjProperty(deed, "itemtype1"),who.realm); // grosses Bett nord
+       DestroyItemAtLocation(x,   y-1, z, GetObjProperty(deed, "itemtype2"),who.realm);
+       DestroyItemAtLocation(x+1, y,   z, GetObjProperty(deed, "itemtype3"),who.realm);
+       DestroyItemAtLocation(x+1, y-1, z, GetObjProperty(deed, "itemtype4"),who.realm);
+
+       CreateBauanleitung(who, 4, bauanleitung, color, desc, deed);
+
+    6: Var itemtypes:=GetItemTypes(deed, 3); // grosser Holztisch west
+
+       Var x_ende:=GetObjProperty(deed, "maxx");
+       Var y_ende:=GetObjProperty(deed, "maxy");
+
+       SysLog("x "+x_ende+" -> "+x);
+       SysLog("y "+y_ende+" -> "+y);
+
+       For x_pos:=x_ende To x
+         For y_pos:=y_ende To y
+           If (x_pos==x)
+             DestroySingleItem(who, itemtypes[1], x_pos, y_pos, z);
+           ElseIf (x_pos==x_ende)
+             DestroySingleItem(who, itemtypes[3], x_pos, y_pos, z);
+           Else
+             DestroySingleItem(who, itemtypes[2], x_pos, y_pos, z);
+           EndIf
+         EndFor
+       EndFor
+
+       CreateBauanleitung(who, 0, bauanleitung, color, desc, deed);
+
+    7: Var itemtypes:=GetItemTypes(deed, 3); // grosser Holztisch nord
+
+       Var x_ende:=GetObjProperty(deed, "maxx");
+       Var y_ende:=GetObjProperty(deed, "maxy");
+
+       SysLog("x "+x+" -> "+x_ende);
+       SysLog("y "+y_ende+" -> "+y);
+
+       For x_pos:=x To x_ende
+         For y_pos:=y_ende To y
+           If (y_pos==y)
+             DestroySingleItem(who, itemtypes[1], x_pos, y_pos, z);
+           ElseIf (y_pos==y_ende)
+             DestroySingleItem(who, itemtypes[3], x_pos, y_pos, z);
+           Else
+             DestroySingleItem(who, itemtypes[2], x_pos, y_pos, z);
+           EndIf
+         EndFor
+       EndFor
+
+       CreateBauanleitung(who, 0, bauanleitung, color, desc, deed);
+
+    8: DestroyItemAtLocation(x, y,   z, GetObjProperty(deed, "itemtype1"),who.realm); // 2 Items nebeneinander
+       DestroyItemAtLocation(x, y-1, z, GetObjProperty(deed, "itemtype2"),who.realm);
+
+       CreateBauanleitung(who, 2, bauanleitung, color, desc, deed);
+
+    9: DestroyItemAtLocation(x,   y, z, GetObjProperty(deed, "itemtype1"),who.realm); // 2 Items nebeneinander
+       DestroyItemAtLocation(x+1, y, z, GetObjProperty(deed, "itemtype2"),who.realm);
+
+       CreateBauanleitung(who, 2, bauanleitung, color, desc, deed);
+
+    10: DestroyItemAtLocation(x, y, z, GetObjProperty(deed, "itemtype1"),who.realm); // 2 Items uebereinander (an selber Stelle)
+        DestroyItemAtLocation(x, y, z, GetObjProperty(deed, "itemtype2"),who.realm);
+
+        CreateBauanleitung(who, 2, bauanleitung, color, desc, deed);
+
+    default: SysLog("FEHLER: Besitzschein "+Lower(Hex(deed.objtype))+" ("+Lower(Hex(deed.serial))+") besitzt einen falschen 'type' ("+type+") !");
+  EndCase
+EndProgram
+
+///////////////////////////////////////////////////
+// GetItemTypes - Liefert alles 'itemtypeX'-Props
+///////////////////////////////////////////////////
+
+Function GetItemTypes(besitzschein, number)
+  Var itemtypes:={};
+
+  For i:=1 To number
+    itemtypes.append(GetConfigInt(besitzschein, "itemtype"+i));
+  EndFor
+
+  Return (itemtypes);
+EndFunction
+
+///////////////////////////////////////////////
+// CreateBauanleitung - Bauanleitung erzeugen
+///////////////////////////////////////////////
+
+Function CreateBauanleitung(who, soundnumber, bauanleitung, color, desc, deed)
+  For i:=1 To soundnumber
+    PlaySoundEffect(who, SFX_HAMMER);Sleep(1);
+  EndFor
+
+  Var item_return:=CreateItemInBackpackPergon(who, bauanleitung, 1);
+  If (item_return)
+    item_return.color:=color;SetName(item_return, desc);
+  EndIf
+
+  DestroyItem(deed);
+EndFunction
+
+///////////////////////////////////////////////////////////
+// DestroyItemAtLocation - Bestimmten ItemType zerstoeren
+///////////////////////////////////////////////////////////
+
+Function DestroyItemAtLocation(x, y, z, itemtype,realm)
+  ForEach item in ListItemsNearLocation(x, y, z, 1,realm)
+    If (item.objtype==itemtype)
+      DestroyItem(item);
+    EndIf
+  EndForEach
+EndFunction
+
+/////////////////////////////////////////////////////
+// DestroySingleItem - Zerstoert ein einzelnes Item
+/////////////////////////////////////////////////////
+
+Function DestroySingleItem(who, itemtype, x, y, z)
+  DestroyItemAtLocation(x, y, z, itemtype,who.realm);
+
+  PlaySoundEffect(who, SFX_HAMMER);Sleep(1);
+  PlaySoundEffect(who, SFX_HAMMER);Sleep(1);
+EndFunction

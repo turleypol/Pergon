@@ -1,0 +1,94 @@
+Ein Standard-Itemdescriptor für ein herkömmliches Item:
+
+struct{
+    BlocksCastingIfInHand := Integer = 1,
+    CanUseWhileFrozen     := Integer = 0,
+    CanUseWhileParalyzed  := Integer = 0,
+    ColdResist            := Integer = 0,
+    Color                 := Integer = 0,
+    ControlScript         := String,
+    CProps                := dictionary{},
+    CreateScript          := String,
+    DecaysOnMultis        := Integer = 0,
+    DecayTime             := Integer = 10,
+    Desc                  := String,
+    DestroyScript         := String,
+    DoubleClickRange      := Integer = 2,
+    EnergyResist          := Integer = 0,
+    EquipScript           := String,
+    Facing                := Integer = 0,
+    FireResist            := Integer = 0,
+    GhostsCanUse          := Integer = 0,
+#   Graphic               := Integer,
+    Invisible             := Integer = 0,
+    Lockable              := Integer = 0,
+    MethodScript          := String,
+    Movable               := Integer = 1,
+    Name                  := String,
+    Newbie                := Integer = 0,
+*   ObjClass              := "Item",
+*   ObjType               := Integer,
+    PhysicalResist        := Integer = 0,
+    PoisonResist          := Integer = 0,
+    RequiresAttention     := Integer = 1,
+    Script                := String,
+    StackingIgnoresCProps := array{},
+    StrRequired           := Integer = 0,
+    Tooltip               := String,
+    UnequipScript         := String,
+    UseRequiresLOS        := Integer = 1,
+    VendorBuysFor         := Integer = 0,
+    VendorSellsFor        := Integer = 0,
+    WalkOnScript          := String,
+    Weight                := Integer
+}
+
+Hinweise:
+- die zusätzlichen Angaben sind typische Standardwerte
+- "*" sind Pflichtangaben, "#" können notwendig sein
+
+Mobile override:
+
+struct{
+    Name           := String,
+    Graphic        := Integer,
+    TrueObjType    := Integer,
+    Color          := Integer,
+    TrueColor      := Integer,
+    Facing         := Integer,
+    CProps         := dictionary{},
+    CmdLevel       := String,
+    MoveMode       := String,
+    Concealed      := Integer,
+    Frozen         := Integer,
+    Hidden         := Integer,
+    Gender         := Integer,
+    Race           := Integer,
+    TitlePrefix    := String,
+    TitleSuffix    := String,
+    TitleGuild     := String,
+    TitleRace      := String,
+    Murderer       := Integer,
+    Privs          := String (Trennzeichen: Leerzeichen),
+    Settings       := String (Trennzeichen: Leerzeichen, aktivierte Privs),
+    Strength       := String/Integer,
+    Intelligence   := String/Integer,
+    Dexterity      := String/Integer,
+    [Skillname]    := String/Integer,
+    AR             := String/Integer,
+    Master         := Integer = Serial,
+    Script         := String,
+    SpeechColor    := Integer,
+    SpeechFont     := Integer,
+    UseAdjustments := Integer,
+    RunSpeed       := Integer,
+    DamagedSound   := Integer,
+    ColdResist     := Integer,
+    EnergyResist   := Integer,
+    FireResist     := Integer,
+    PhysicalResist := Integer,
+    PoisonResist   := Integer
+}
+
+Hinweise:
+- einige Sound-Einträge fehlen

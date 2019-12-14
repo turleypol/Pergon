@@ -1,0 +1,180 @@
+///////////////////////////////////////////////////////////////////////////
+// touchplateconfig
+//
+// Touchplates einrichten per Gump
+
+use uo;
+include "hidecommon";
+include "include/msgs";
+
+Const BUTT_OK     := 100;
+Const BUTT_SELECT := 101;
+Program TouchplateConfig(who, plate);
+    If (who.cmdlevel < CMDLEVEL_QUESTCHAR)
+        // normale Spieler duerfen nicht dran fummeln
+        return;
+    EndIf
+
+    var config := plate.getprop(PROP_TP_CONFIG);
+    // config-struct:
+    // action1 - ACTION_*-Konstante
+    // action2 - ACTION_*-Konstante
+    // value1  - Farb-/Grafikwert (je nach Action fuer action1)
+    // value2  - Farb-/Grafikwert (je nach Action fuer action2)
+    // toggle  - 0 - nur action1 ausfuehren,
+    //           1 - zwischen 1 und 2 wechseln
+    // walls   - Array der Serials der anzusteuernden Wände
+
+    // Default-Konfig bauen
+    If (!config)
+        config := struct;
+        config.action1 := ACTION_WALLUP;
+        config.action2 := ACTION_WALLDOWN;
+        config.value1 := 0;
+        config.value2 := 0;
+        config.toggle := 1;
+        config.walls := array{};
+    EndIf
+
+    If (config.walls.size() <= 0)
+        SendSysMessagePergon(who,
+            "Achtung! Bisher keine Wände auswählt!",
+            "Caution! No walls selected yet!"
+        );
+    EndIf
+
+    var layout := array{
+        // Hintergrund
+        "page 0",
+        "nodispose",
+        "resizepic 0 0 2620 310 "+(300+112),
+        "gumppic 20 30 2621",
+        "checkertrans 5 6 300 "+(300+100),
+        // Ueberschrift
+        "text 20 10 40 0",
+        "page 1",
+        // Aktion 1/2-Spaltenbeschriftung
+        "text  20  40 40  1",
+        "text 230  40 40  2",
+        // Aktionen
+        "text 120  80 40  3",
+        "text 120 120 40  4",
+        "text 120 160 40  5",
+        "text 120 200 40  6",
+        "text 120 240 40  7",
+        "text 120 280 40  8",
+        "text 120 320 40  9",
+        "text 120 340 40 10",
+        // Auswahl fuer Aktion 1
+        "group 0"
+    };
+    var i;
+    For (i := 1; i <= 6; i += 1)
+        var onoff := 0;
+        If (config.action1 == i)
+            onoff := 1;
+        EndIf
+        layout.append("radio  50 "+(45+40*i)+" 2118 2224 "+onoff+" "+(0+i));
+    EndFor
+    layout += array{
+        "endgroup",
+        "resizepic 20 320 2620 80 40",
+        "textentry 30 330 70 20 50 20 11",
+        // Auswahl fuer Aktion 2
+        "group 1"
+    };
+    For (i := 1; i <= 6; i += 1)
+        var onoff := 0;
+        If (config.action2 == i)
+            onoff := 1;
+        EndIf
+        layout.append("radio 250 "+(45+40*i)+" 2118 2223 "+onoff+" "+(10+i));
+    EndFor
+    layout += array{
+        "endgroup",
+        "resizepic 210 320 2620 80 40",
+        "textentry 220 330 70 20 50 30 12",
+        // Ok-Button
+        "button 120 375 2076 2075 1 0 "+BUTT_OK,
+        // Select-Button
+        "resizepic 110 40 5054 90 40",
+        "button 120  55 2106 2106 1 0 "+BUTT_SELECT,
+        ""
+    };
+    var data := array{
+        "Touchplate-Einstellungen",
+        "Aktion 1",
+        "Aktion 2",
+        "Auftauchen",
+        "Verschwinden",
+        "Sichtbar",
+        "Unsichtbar",
+        "Farbe",
+        "Grafik",
+        "Wert fuer",
+        "Farbe/Grafik"
+    };
+    data += config.value1;
+    data += config.value2;
+
+    var ret := SendDialogGump(who, layout, data, 100, 20);
+    If (CInt(ret[0]) == BUTT_SELECT)
+        // Waende von Konfigurierendem uebernehmen
+        var walls := who.getprop(PREFERRED_WALLS);
+        If (walls)
+            config.walls := walls;
+            plate.setprop(PROP_TP_CONFIG, config);
+            SendSysMessagePergon(who,
+                "Wand(-gruppe) übernommen", "Wall (group) adopted"
+            );
+        Else
+            SendSysMessagePergon(who,
+                "Wählt zuvor mit '.hidewall (s)' eine Wand(-gruppe) aus!",
+                "Select a wall (group) with '.hidewall s' first!"
+            );
+        EndIf
+        return;
+    EndIf
+    If (CInt(ret[0]) <> BUTT_OK)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    ForEach key in (ret.keys)
+        //  1- 6 - Radio Aktion 1
+        If (1 <= key and key <= 6)
+            config.action1 := key;
+        EndIf
+        // 11-16 - Radio Aktion 2
+        If (11 <= key and key <= 16)
+            config.action2 := key - 10;
+        EndIf
+        //    20 - Wert Aktion 1
+        If (key == 20)
+            config.value1 := GetNumericValue(ret[20]);
+        EndIf
+        //    30 - Wert Aktion 2
+        If (key == 30)
+            config.value2 := GetNumericValue(ret[30]);
+        EndIf
+    EndForEach
+    // Toggle-Wert ermitteln (quasi nur Optimierung fuer Nutzung)
+    If (
+        config.action1 == config.action2 and
+        config.action1 in (array{
+                ACTION_WALLUP, ACTION_WALLDOWN, ACTION_WALLVIS, ACTION_WALLINVIS
+        })
+    )
+        config.toggle := 0;
+    Else
+        config.toggle := 1;
+    EndIf
+    plate.setprop(PROP_TP_CONFIG, config);
+
+    SendSysMessagePergon(who, "Einstellungen gesichert", "Options saved");
+EndProgram
+
+Function GetNumericValue(retstr)
+    var splitted := SplitWords(retstr, " ");
+    return CInt(splitted[2]);
+EndFunction

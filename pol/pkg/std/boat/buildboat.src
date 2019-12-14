@@ -1,0 +1,567 @@
+///////////////////////////////////////////////////////////////////////////
+// BuildBoat - Bauplan erstellen oder Boot aufbauen
+//
+// Author: Turley
+
+///////////////////////////////////////////////////////////////////////////
+// Todo:
+//  - Skillgain anpassen
+
+///////////////////////////////////////////////////////////////////////////
+// CProps:
+// - "Material"
+//      material[1]= Bootstyp,
+//      material[2]= Holzbretter,
+//      material[3]= Holzmast,
+//      material[4]= Metall,
+//      material[5]= Stoff
+// - "builder"  {(who.name),(who.gender)}
+// - "maxhp"
+// - "Skillreq"
+
+use attributes;
+use cfgfile;
+use os;
+use uo;
+use util;
+include "include/itemnpc";
+include "include/manufacturegump";
+include "include/modifyskill";
+include "include/msgs";
+include "include/objtype";
+include "include/resources";
+
+Const NAEGEL  := 0x102e;
+
+Var boatcfg := ReadConfigFile("buildboat");
+Var matcfg  := ReadConfigFile(":crafting:materials");
+Var who;
+
+Program buildboat(params)
+  If (!params.size())  // Über Skillfenster aufgerufen? -> Planzeichnen
+    who := params;
+    If (who.cmdlevel<CMDLEVEL_GM)  // Erstmal deaktiviert
+      SendSysMessagePergon(who,"Dieser Skill ist noch nicht aktiv!");
+      Return;
+    EndIf
+    If (who)
+      If (who.getprop("#buildboat"))
+        SendSysMessagePergon(who,"Ihr stellt bereits ein Boot her!");
+        Return;
+      EndIf
+      who.setprop("#buildboat",1);
+      Bauplanzeichnen(who.x, who.y);
+    Else
+      Syslog("WARNUNG: Kein Mobile spezifiziert.");
+    EndIf
+  Else  // Dann halt Boot baun
+    who := params[1];
+    If (who.cmdlevel<CMDLEVEL_GM)  // Erstmal deaktiviert
+      SendSysMessagePergon(who,"Dieser Skill ist noch nicht aktiv!");
+      Return;
+    EndIf
+    If (who.getprop("#buildboat"))
+      SendSysMessagePergon(who,"Ihr stellt bereits ein Boot her!");
+      Return;
+    EndIf
+    who.setprop("#buildboat",1);
+    Bootbauen(params[2], who.x, who.y);
+  EndIf
+  who.eraseprop("#buildboat");
+EndProgram
+
+///////////////////////////////
+// Bauplanzeichen - Zeichen
+//////////////////////////////
+
+Function Bauplanzeichnen(xold, yold)
+  var ink, paper, auswahl, product, i, deed, productdesc;
+  ink := SearchObject(UOBJ_PENINK); // Tinte und Feder da?
+  If (!ink)
+    SendSysMessagePergon(who, "Ihr benötigt Tinte und Feder zum Zeichnen!", "");
+    return;
+  EndIf
+  SendSysMessagePergon(who, "Wählt die Papierrollen aus, mit denen Ihr arbeiten wollt.", "");
+  paper := Target(who); // Papier da?
+  If (!paper.objtype == UOBJ_RAWPAPER)
+    SendSysMessagePergon(who, "Darauf könnt Ihr nicht schreiben!", "");
+    return;
+  EndIf
+  If (!(AccessiblePergon(who, paper) && (Distance (who, paper) <= 1)))  //Festgemacht bzw Erreichbar?
+    SendSysMessagePergon(who, "Ihr kommt da nicht ran.","");
+    return;
+  EndIf
+  If (!ReserveItem(paper))  //Mehrfachnutzung verhindern
+    SendSysMessagePergon(who, "Dies ist bereits in Benutzung!", "");
+    return;
+  EndIf
+  auswahl := ChooseBauPlan(ink);
+  If (auswahl)
+    SendSysMessagePergon(who, "Ihr beginnt zu zeichnen.", "");
+    product := boatcfg[auswahl.key];
+    i := 0;
+    productdesc:=GetItemDescriptor(product.objtype);
+    productdesc.cprops.insert("build",1); //Unterscheidung created und normal erstellt
+    While (i < auswahl.amount)
+      If (GetAmount(paper) >= product.material_paper)
+        If ((who.x == xold) && (who.y == yold))
+          PlaySoundEffect(who, SFX_24A);  // Ein wenig Inscriptionsound
+          Sleep(3);
+          PlaySoundEffect(who, SFX_24A);
+          Sleep(3);
+          If (CheckskillPergon(who, SKILLID_SCHIFFBAU, product.skill_schiffbau, product.skill_schiffbau * 2))
+            deed := CreateItemInBackpackPergon(who, productdesc);
+            SetName(deed, "Bauplan fuer ein " + product.desc);
+            SubtractAmount(paper, product.material_paper);
+            SendSysMessagePergon(who, "Ihr legt einen Bauplan in Euren Rucksack.", "");
+          Else
+            SubtractAmount(paper, CInt((product.material_paper / 3.0)));
+            SendSysMessagePergon(who, "Ihr scheitert beim Zeichnen eines Bauplans.", "");
+          EndIf
+        Else
+          SendSysMessagePergon(who, "Um den Bauplan zeichnen zu können, benötigt Ihr Ruhe!", "");
+          return;
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Ihr habt nicht genug Papier.", "");
+        return;
+      EndIf
+      i += 1;
+    EndWhile
+  Else
+    SendSysMessagePergon(who, "Da müsst Ihr wohl erstmal noch etwas üben.", "");
+  EndIf
+EndFunction
+
+///////////////////////////////
+// ChooseBauPlan - Manifacturegump
+//////////////////////////////
+
+Function ChooseBauPlan(ink)
+ var menu,auswahl;
+ // Skillmod fest auf -10, da Werkzeug keinen Einfluss hat
+ menu := MGCreateMenuFromCFG(who, "buildboat", "bauplan", ink, SKILLID_SCHIFFBAU, -10);
+ If (menu)
+   auswahl := MGSelect(who,  menu);
+   If (auswahl)
+     If ((auswahl.amount) && (auswahl.amount > 0))
+       If (auswahl.amount > 10)
+         auswahl.amount := 10;
+       EndIf
+       MGSetDefault(ink, "bauplan", auswahl); // --- Defaults im Tool speichern ---
+       return (auswahl);
+     EndIf
+   EndIf
+ Else
+   SendSysMessagePergon(who, "Ihr könnt mit dem Material nichts anfangen.", "");
+ EndIf
+ return (0);
+EndFunction
+
+///////////////////////////////
+// Bootbauen - Spielzeugboot herstellen
+//////////////////////////////
+
+Function Bootbauen(deed, xold, yold)
+syslog("baue Boot...: "+deed.objtype);
+  var tool := struct, material := struct, boatdef := {}, skill := struct, time := struct;
+  var naegelmetall, metalltemp, tuechertemp, holztemp, verhaeltnis;
+  var skilldiff, time_i, maxhp;
+  boatdef := boatcfg[deed.objtype];
+
+  If (!ReserveItem(deed))
+    SendSysMessagePergon(who, "Dieser Bauplan ist bereits in Benutzung.", "");
+    Return;
+  EndIf
+
+  //Überhaupt eine Chance erfolgreich zu sein?
+  If (boatdef.skill_schiffbau - GetSkillPergon(who, SKILLID_SCHIFFBAU) > 20)
+    SendSysMessagePergon(who, "Ihr traut Euch nicht an ein so großes Projekt.", "");
+    return;
+  ElseIf (boatdef.skill_holzverarbeitung - GetSkillPergon(who, SKILLID_HOLZVERARBEITUNG) > 20)
+    SendSysMessagePergon(who, "Ihr traut Euch nicht an ein so großes Projekt.", "");
+    return;
+  ElseIf (boatdef.skill_schneidern - GetSkillPergon(who, SKILLID_SCHNEIDERN) > 20)
+    SendSysMessagePergon(who, "Ihr traut Euch nicht an ein so großes Projekt.", "");
+    return;
+  EndIf
+
+  tool.+hammer := TargetTool(0x102A, "n Hammer");
+  If (tool.hammer)
+    tool.+saege := TargetTool(0x1035, " Säge");
+    If (tool.saege)
+      tool.+schere := TargetTool(0x0F9E, " Schere");
+      If (!tool.schere)
+        return; //Keine Schere
+      EndIf
+    Else
+      return; //Keine Saege
+    EndIf
+  Else
+    return; //Kein Hammer
+  EndIf
+
+  //Wartezeit berechnen zwischen der Materialien Auswahl
+  time.+hammer := CInt(Max(4,Min(10,10 - 1.25 * tool.hammer.quality)));
+  time.+saege  := CInt(Max(4,Min(10,10 - 1.25 * tool.saege.quality)));
+  time.+schere := CInt(Max(4,Min(10,10 - 1.25 * tool.schere.quality)));
+
+  //Komplette Herstellzeit berechen
+  skilldiff := CInt(Max(-20,Min(20,boatdef.skill_schiffbau - GetSkillPergon(who, SKILLID_SCHIFFBAU))));
+  time.+build := CInt(Max(300,Min(600,600 - 1.304 * GetDexPergon(who) + 5.217 * skilldiff)));
+
+
+  material.+bretter := TargetMaterial({GetUobjBretter(), "Wählt die Bretter, mit denen Ihr arbeiten wollt."}, boatdef.bretter, "Bretter", xold, yold);
+  If (material.bretter)
+    PlaySoundEffect(who,  SFX_23E);  //Hammer
+sendsysmessagepergon(who, "hammerpause" + time.hammer); // xxx am Ende rausnehmen
+    Sleep(time.hammer);
+    material.+naegel := TargetMaterial({{NAEGEL},"Wählt die Nägel, mit denen Ihr arbeiten wollt."}, boatdef.naegel, "Nägel", xold, yold);
+    If (material.naegel)
+      PlaySoundEffect(who,  SFX_43);  //Säge
+      Sleep(time.saege);
+sendsysmessagepergon(who, "saegepause" + time.saege); // xxx am Ende rausnehmen
+      material.+staemme := TargetMaterial({GetUobjHoelzer(), "Wählt die Stämme fuer den Mast."}, boatdef.staemme, "Staemme", xold, yold);
+      If (material.staemme)
+        PlaySoundEffect(who, SFX_23E);  //Hammer
+        Sleep(time.schere);
+sendsysmessagepergon(who, "scherepause"+time.schere); // xxx am Ende rausnehmen
+        material.+tuecher := TargetMaterial({GetUobjTuecher(), "Wählt die Tücher fuer das Segel."}, boatdef.tuecher, "Tücher", xold, yold);
+        If (!material.tuecher)
+          return; //Keine Tücher
+        EndIf
+        PlaySoundEffect(who, SFX_249);  //Schere
+      Else
+        return; //Keine Stämme
+      EndIf
+    Else
+      return; //Keine Naegel
+    EndIf
+  Else
+    return; //Keine Bretter
+  EndIf
+
+  //Materialeigenschaften besorgen
+  material.+bretterdef := matcfg[material.bretter[1].objtype];
+  naegelmetall         := GetMetall(material.naegel[1].color);  //Über Farbe Metall rausfinden
+  material.+naegeldef  := matcfg[naegelmetall];
+  material.+staemmedef := matcfg[material.staemme[1].objtype];
+  material.+tuecherdef := matcfg[material.tuecher[1].objtype];
+
+  //Name Speichern für Tillermangump
+  material.+name := {(boatdef.desc),
+                     (material.bretterdef.shortdesc),
+                     (material.staemmedef.shortdesc),
+                     (material.naegeldef.shortdesc),
+                     (material.tuecherdef.shortdesc)};
+  If (!material.naegeldef) //NPC-Nägel
+    material.name[4] := "Eisen";
+  EndIf
+  material.+s_bretter := SubtractMaterial(material.bretter, boatdef.bretter, "Bretter", xold, yold);
+  If (material.s_bretter)
+    material.+s_naegel := SubtractMaterial(material.naegel, boatdef.naegel, "Nägel", xold, yold);
+    If (material.s_naegel)
+      material.+s_staemme := SubtractMaterial(material.staemme, boatdef.staemme, "Stämme", xold, yold);
+      If (material.s_staemme)
+        material.+s_tuecher := SubtractMaterial(material.tuecher, boatdef.tuecher, "Tücher", xold, yold);
+        If (!material.s_tuecher)
+          return; //Nicht genug Tuecher
+        EndIf
+      Else
+        return; // Nicht genug Staemme
+      EndIf
+    Else
+      return; // Nicht genug Naegel
+    EndIf
+  Else
+    return; // Nicht genug Bretter
+  EndIf
+
+  verhaeltnis   := boatdef.staemme * 1.0 / boatdef.bretter;
+  skill.+skill_schiffbau        :=
+    boatdef.skill_schiffbau - tool.hammer.quality; //Diff Schiffbau
+
+  skill.+skill_holzverarbeitung :=
+    boatdef.skill_holzverarbeitung +
+    (verhaeltnis * material.staemmedef.difficulty / 100.0 + (1 - verhaeltnis)
+    * material.bretterdef.difficulty / 100.0) - tool.saege.quality; //Diff Holzverarbeitung
+
+  skill.+skill_schneidern       :=
+    boatdef.skill_schneidern - tool.schere.quality; //Diff Schneidern
+
+  skill.+raw1   := skill.skill_schiffbau * 300; //Rawpoints Schiffbau
+  skill.+raw2   := skill.skill_holzverarbeitung * 50; //Rawpoints Holzverarbeitung
+  skill.+raw3   := skill.skill_schneidern * 10; //Rawpoints Schneidern
+sendsysmessagepergon(who, "skill_schiffbau " + skill.skill_schiffbau + " skill_holzverarbeitung " + skill.skill_holzverarbeitung + " skill_schneidern " + skill.skill_schneidern);
+
+  // Gesamte Wartezeit aufteilen in 3 Teile und wiederum in 5 Sekundenabschnitte und das Halbieren
+  time.build := time.build / (3 * 5 * 2.0);
+SendSysMessagePergon(who, "time " + time.build); // xxx am Ende rausnehmen
+
+  // Skillchecks über die Herstellungszeit verteilen und Ergebnis speichern
+  For (time_i := 0; time_i < time.build; time_i += 1)
+    Sleep(5);
+    PlaySoundEffect(who, SFX_23E);  //Säge
+  EndFor
+  skill.+holzverarbeitung := CheckSkillPergon(who, SKILLID_HOLZVERARBEITUNG, skill.skill_holzverarbeitung, skill.raw2);
+  For (time_i := 0; time_i < time.build; time_i += 1)
+    Sleep(5);
+    PlaySoundEffect(who, SFX_23E);  //Säge
+  EndFor
+
+  For (time_i := 0; time_i < time.build; time_i += 1)
+    Sleep(5);
+    PlaySoundEffect(who, SFX_249);  //Schere
+  EndFor
+  skill.+schneidern := CheckSkillPergon(who, SKILLID_SCHNEIDERN, skill.skill_schneidern, skill.raw3);
+  For (time_i := 0; time_i < time.build; time_i += 1)
+    Sleep(5);
+    PlaySoundEffect(who, SFX_249);  //Schere
+  EndFor
+
+  For (time_i := 0; time_i < time.build; time_i += 1)
+    Sleep(5);
+    PlaySoundEffect(who, SFX_43);  //Hammer
+  EndFor
+  skill.+schiffbau := CheckSkillPergon(who, SKILLID_SCHIFFBAU, skill.skill_schiffbau, skill.raw1);
+  For (time_i := 0; time_i < time.build; time_i += 1)
+    Sleep(5);
+    PlaySoundEffect(who, SFX_43);  //Hammer
+  EndFor
+
+  //MaxHP Berechnung, Zum Verständis Konzept lesen :)
+  metalltemp := 31.98 * material.naegeldef.hp * material.naegeldef.quality;
+  If (!material.naegeldef.hp) // 0 bei Npc
+    metalltemp := 0;
+  EndIf
+  tuechertemp := 800 * material.tuecherdef.quality;
+  holztemp := 52.77 * ((1 - verhaeltnis) * material.bretterdef.hp + verhaeltnis * material.staemmedef.hp)
+                    * ((1-verhaeltnis)*material.bretterdef.quality+ verhaeltnis * material.staemmedef.quality);
+  maxhp := boatdef.hp + CInt((boatdef.hp/4000.0)*(0.05 * metalltemp + 0.15 * tuechertemp + 0.8 * holztemp)); // ??? xxx fehlt hier die 'Mast'-Quality?
+
+  //Addition der SkillChecks zum Vergleichen
+  skill.+gesamt := skill.schiffbau + skill.holzverarbeitung + skill.schneidern;
+
+  If (skill.gesamt == 3) //War alles erfolgreich?
+    deed.graphic := UOBJ_SHIP_MODEL1;
+    SetName(deed, boatdef.desc);
+    SetObjProperty(deed, "Material", material.name);  //Propertys setzten
+    SetObjProperty(deed, "builder" , {(who.name), (who.gender)});
+    SetObjProperty(deed, "maxhp"   , maxhp);
+    SetObjProperty(deed, "Skillreq", boatdef.Skillreq);
+    SendSysMessagePergon(who, "Ihr fertigt erfolgreich ein " + boatdef.desc, "");
+  ElseIf (skill.gesamt == 2) //Bei 2 erfolgreichen 40% Chance auf schwimmfähiges Schiff
+    If (RandomInt(100) < 40)
+      deed.graphic := UOBJ_SHIP_MODEL1;
+      SetName(deed, boatdef.desc);
+      SetObjProperty(deed, "Material", material.name);  //Propertys setzten
+      SetObjProperty(deed, "builder" , {(who.name), (who.gender)});
+      SetObjProperty(deed, "maxhp"   , Cint(maxhp * (RandomInt(31) + 10) / 100.0));  // Zwischen 10% und 40% der eigentlichen Hp
+      SetObjProperty(deed, "Skillreq", boatdef.Skillreq);
+      SendSysMessagePergon(who, "Das " + boatdef.desc + " ist halbwegs schwimmfähig.", "");
+    Else
+      SendSysMessagePergon(who, "Das hat wohl nicht geklappt..", "");
+    EndIf
+  ElseIf (skill.gesamt == 1) //Bei einem erfolgreichen 30% Chance auf schwimmfähiges Schiff
+    If (RandomInt(100) < 30)
+      deed.graphic := UOBJ_SHIP_MODEL1;
+      SetName(deed, boatdef.desc);
+      SetObjProperty(deed, "Material", material.name);  //Propertys setzten
+      SetObjProperty(deed, "builder" , {(who.name), (who.gender)});
+      SetObjProperty(deed, "maxhp"   , Cint(maxhp * (RandomInt(31) + 10) / 100.0));  // Zwischen 10% und 40% der eigentlichen Hp
+      SetObjProperty(deed, "Skillreq", boatdef.Skillreq);
+      SendSysMessagePergon(who, "Das " + boatdef.desc + " ist geradeso schwimmfähig.");
+    Else
+      SendSysMessagePergon(who, "Das hat wohl nicht geklappt..", "");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr scheitert bei dem Versuch, ein " + boatdef.desc + " aufzubauen.", "");
+  EndIf
+  WerkzeugSchaden(tool.hammer, "Euer Hammer");
+  WerkzeugSchaden(tool.saege,  "Eure Säge");
+  WerkzeugSchaden(tool.schere, "Eure Schere");
+  Sleep(5); //Abschlusspause
+EndFunction
+
+///////////////////////////////
+// TargetTool - Auswahl des Werkzeuges
+//////////////////////////////
+
+Function TargetTool(what, text)
+  var tool;
+  SendSysMessagePergon(who, "Welche" + text + " wollt Ihr benutzen?", "");
+  tool := Target(who);
+  If ((!tool) || (tool.objtype != what))  //Gültiges Ziel?
+    SendSysmessagePergon(who, "Ihr habt nicht den richtige" + text + " gewählt.", "");
+    return (0);
+  EndIf
+  If ((!AccessiblePergon(who, tool) && (Distance(who, tool) <= 1))) //Kommt man dran?
+    SendSysMessagePergon(who, "Ihr kommt da nicht ran.", "You can't reach that.");
+    return (0);
+  EndIf
+  If (!ReserveItem(tool))  //Mehrfachnutzung verhindern
+    SendSysMessagePergon(who, "Dies ist bereits in Benutzung!", "This is already in use.");
+    return (0);
+  EndIf
+  return (tool);
+EndFunction
+
+///////////////////////////////
+// TargetMaterial - Auswahl des Materials
+//////////////////////////////
+
+Function TargetMaterial(what, amount, name, oldx, oldy)
+  var mat;
+  If ((who.x != oldx) || (who.y != oldy))  //Bewegt?
+    SendSysMessagePergon(who, "Ihr benötigt Ruhe zum Arbeiten!", "");
+    return (0);
+  EndIf
+
+  SendSysMessagePergon(who, what[2]);  //Passende Meldung
+  mat := Target(who);
+  If ((!mat) || !(mat.objtype IN what[1]))  //Richtiges Ziel?
+    SendSysmessagePergon(who, "Ihr habt das falsche Material gewählt.", "");
+    return (0);
+  EndIf
+  If ((!AccessiblePergon(who, mat) && (Distance(who, mat) <= 1)))  //Kommt man dran?
+    SendSysMessagePergon(who, "Ihr kommt da nicht ran.", "You can't reach that.");
+    return (0);
+  EndIf
+  If (!ReserveItem(mat))  //Mehrfachnutzung verhindern
+    SendSysMessagePergon(who, "Dies ist bereits in Benutzung!", "This is already in use.");
+    return (0);
+  EndIf
+  If (mat.amount < amount)  //Passt die Menge?
+    mat := SearchObject(mat.objtype, amount, mat.color);
+    If (!mat)
+      SendsysMessagePergon(who, "Ihr habt nicht genügend "+name+".", "You don't have enough " + name + ".");
+      return (0);
+    EndIf
+  EndIf
+  return (mat);
+EndFunction
+
+///////////////////////////////
+// SearchObject - Sucht nach einem Object im Backpack
+//////////////////////////////
+
+Function SearchObject(objtype, amount := 0, color := 0)
+  Var i := 0, items := {};
+
+  If (!amount)  //Einfaches Object oder Stacksuche?
+    items:=FindSubstance(who.backpack,objtype,1,1);
+    If (items)
+      Return(items[1]);
+    EndIf
+  Else
+    ForEach item in (FindSubstance(who.backpack,objtype,1,0,FINDSUBSTANCE_FIND_ALL))
+      If (item.color==color)
+        If (ReserveItem(item))
+          items.append(item);
+          i+=item.amount;
+          If (i>=amount)
+            Break;
+          EndIf
+        EndIf
+      EndIf
+    EndForEach
+    If (i>=amount)
+      Return(items);
+    Else
+      ForEach it in items
+        ReleaseItem(it);
+      EndForEach
+    EndIf
+  EndIf
+  Return(0);
+EndFunction
+
+///////////////////////////////
+// SubtractMaterial - Zerstört die passende Anzahl an Mat
+//////////////////////////////
+
+Function SubtractMaterial(byref mat, amount, desc, oldx, oldy)
+  Var result,i := 0, amounttemp;
+
+  If ((who.x != oldx) || (who.y != oldy))  //Bewegt?
+    SendSysMessagePergon(who, "Ihr benötigt Ruhe zum Arbeiten!", "");
+    return (0);
+  EndIf
+  If (mat.size() > 1) //Sind es mehrere Stacks?
+    While (amount > i)
+      If (!mat.size())
+        SendSysMessagePergon(who, "Ihr habt nicht genügend " + desc + ".", "You don't have enough " + desc + ".");
+        return (0);
+      EndIf
+      If (i + mat[mat.size()].amount <= amount)  //Kann alles abgezogen werden, oder nur ein Teil?
+        amounttemp := mat[mat.size()].amount;
+        result := SubtractAmount(mat[mat.size()], mat[mat.size()].amount);
+        If (result)
+          i += amounttemp;
+        EndIf
+      Else
+        result := SubtractAmount(mat[mat.size()], amount - i);
+        If (result)
+          i := amount;
+        EndIf
+      EndIf
+      mat.erase(mat.size());
+    EndWhile
+  Else  //Die einfache Variante
+    result := SubtractAmount(mat, amount);
+    If (!result)
+      SendSysMessagePergon(who, "Ihr habt nicht genügend " + desc + ".", "You don't have enough " + desc + ".");
+      return (0);
+    EndIf
+  EndIf
+  return (1);
+EndFunction
+
+///////////////////////////////
+// GetMetall - Aus Colorwert auf Metall schließen
+// (Wird für die Nägel benötigt)
+//////////////////////////////
+
+Function GetMetall(color)
+
+  Var Metall  := 0;
+
+  Var counter := UOBJ_BARREN_START;
+  While (counter <= UOBJ_BARREN_END)
+    If (GetConfigInt(matcfg[counter], "color") == color)  // korrekte Farbe wurde in einem der Metall-Eintraege gefunden
+      Metall := counter;
+      Break;
+    EndIf
+    counter += 1;
+  EndWhile
+
+  Return (Metall);
+
+EndFunction
+
+///////////////////////////////
+// WerkzeugSchaden - Werkzeug hp und quality runtersetzten
+// Da immer 70% Schaden entsteht eigene Funktion
+//////////////////////////////
+
+Function WerkzeugSchaden(item, text)
+  Var werkzeug := GetPropertyItem(item);
+
+  If ((werkzeug) && (werkzeug.hp) && (werkzeug.quality))
+    werkzeug.hp      := CInt(werkzeug.hp * 0.3); //70% Schaden
+    werkzeug.quality := CInt(werkzeug.quality * 0.3);
+    If ((werkzeug.hp < 2) || (werkzeug.quality < 0.1))
+      DestroyItem(item);
+      SendSysMessagePergon(who, text + " ist zerbrochen!", "");
+      return;
+    ElseIf ((werkzeug.hp <= 15)||(werkzeug.quality <= 0.4))
+      SendSysMessagePergon(who, text + " ist stark beschädigt!", "");
+    Else
+      SendSysMessagePergon(who, text + " hat gelitten!", "");
+    EndIf
+    SetPropertyItem(item, werkzeug.quality, werkzeug.hp, werkzeug.maxhp, werkzeug.qualityorig, werkzeug.maxhporig, werkzeug.type, werkzeug.skillid, werkzeug.skillrepair, werkzeug.price);
+  Else //NPC Werkzeug immer zerstören
+    DestroyItem(item);
+    SendSysMessagePergon(who,  text + " ist zerbrochen!", "");
+  EndIf
+EndFunction

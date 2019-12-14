@@ -1,0 +1,355 @@
+///////////////////////////////////////////////////////////////////////////
+// seed - Saat in die Erde stopfen
+
+use cfgfile;
+use os;
+use uo;
+include "farm";
+include "include/client";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/objtype";
+include "include/resources"; // Bretter -> UOBJ_BRETTER
+
+Const DUMMY  := 0x5de8;
+Const DUMMY1 := 0x5de9;
+
+Program PlantSeed(who, seed)
+    var use_on, graphics;
+
+    var cfg := readconfigfile(":farming:itemdesc");
+    If (!cfg)
+        syslog("FEHLER: Konnte :farming:itemdesc.cfg nicht oeffnen!");
+        return;
+    EndIf
+
+    var seed_cfg := cfg[seed.objtype];
+    If (!seed_cfg)
+        syslog(
+            "WARNUNG: Item " + seed.objtype +
+            " nicht in der :farming:itemdesc.cfg gefunden!"
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Wo möchtet Ihr das anpflanzen?",
+        "Where do you want to plant that?"
+    );
+
+    ReserveItem(seed);
+    var where := TargetCoordinates(who);
+
+    If (!where)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (CoordinateDistance(who.x,who.y, where.x,where.y) > 1)
+        SendSysMessagePergon(who,
+            "Das ist zu weit weg!", "That's too far away!"
+        );
+        return;
+    EndIf
+
+    If (!CheckLosAt(who, where.x, where.y, where.z))
+        SendSysMessagePergon(who,
+            "Dort könnt ihr nicht pflanzen!",
+            "That's a bad place to plant!"
+        );
+        return;
+    EndIf
+
+    If (!IsPlantable(where))
+        SendSysMessagePergon(who,
+            "Hier könnt Ihr nichts anpflanzen!",
+            "You can't plant anything here!"
+        );
+        return;
+    EndIf
+
+    var acker := FieldFree(where);
+    If (TypeOfInt(acker) != OT_LONG)
+        If (!UpdateFertility(who, acker))
+            return;
+        EndIf
+    ElseIf (!acker)
+        SendSysMessagePergon(who,
+            "Ihr könnt nur auf ein freies Feld pflanzen.",
+            "You only can plant at a free field."
+        );
+        return;
+    EndIf
+
+    // Zu groß?
+    var large := 0;
+    // Baeume in Multis duerfen nicht in oberen Stockwerken angebaut werden
+    If (seed_cfg.HeightCheck)
+        If (where.item && where.item.multi)
+            If (where.z > where.item.multi.z + 8)
+                large := 1;
+            EndIf
+        // Baeume in Nicht-Multis duerfen nur auf Maphoehe angebaut werden
+        ElseIf (abs(where.z - GetMapInfo(where.x, where.y, where.realm).z) > 5)
+            large := 1;
+        EndIf
+    EndIf
+    If (large)
+        SendSysMessagePergon(who,
+            "Bäume wachsen nur ebenerdig.",
+            "Trees grow only on flatground."
+        );
+        return;
+    EndIf
+
+    var schaufel; // Schaufel im Backpack?
+    schaufel := FindObjtypeInContainer(who.backpack, 0xF39);
+    If (!schaufel)
+        schaufel := FindObjtypeInContainer(who.backpack, 0xF3A);
+    EndIf
+    If (!schaufel)
+        SendSysMessagePergon(who,
+            "Zum Umgraben braucht Ihr eine Schaufel im Rucksack.",
+            "A shovel is missing in your backpack."
+        );
+        return;
+    EndIf
+
+    // Bretter benötigt?
+    If (seed_cfg.Bretter)
+        SendSysMessagePergon(who,
+            "Wählt die Bretter für das Gestell aus.",
+            "Choose some boards For the frame."
+        );
+        use_on := Target(who);
+        If (!use_on)
+            SendSysMessagePergon(who, "Abbruch", "Abort");
+            return;
+        EndIf
+
+        If (!AccessiblePergon(who, use_on))
+            SendSysMessagePergon(who,
+                "Ihr kommt da nicht ran!", "You cannot reach that!"
+            );
+            return;
+        EndIf
+
+        // Commander
+        If (!(use_on.objtype in GetUobjBretter()))
+            SendSysMessagePergon(who,
+                "Ihr braucht dafür Bretter!",
+                "You need normal wooden boards!"
+            );
+            return;
+        EndIf
+
+        // Materialbedarf
+        If (GetAmount(use_on) < 4)
+            SendSysMessagePergon(who,
+                "Ihr braucht mehr Bretter dafür!",
+                "You need some more boards!"
+            );
+            return;
+        EndIf
+    EndIf
+
+    // braucht Wasser zum Anpflanzen
+    If (!seed_cfg.defaultitem)
+        If (!UseWaterVessel(who))
+            SendSysMessagePergon(who,
+                "Ihr braucht Wasser, um den Samen anzupflanzen.",
+                "You need water to plant the seeds."
+            );
+            return;
+        EndIf
+    EndIf
+
+    If (who.x <> where.x or who.y <> where.y)
+      // in Richtung zukuenftiger Pflanze drehen
+      who.facing := GetFacing(who.x, who.y, where.x, where.y);
+    EndIf
+
+    // Anpflanzversuch
+    If (!seed_cfg.defaultitem)
+        If (!CheckSkillPergon(
+                who, SKILLID_ACKERBAU, CInt(seed_cfg.Difficulty), 0
+        ))
+            SendSysMessagePergon(who,
+                "Ihr scheitert bei dem Versuch den Samen zu pflanzen.",
+                "You failed to plant the seed."
+            );
+            return;
+        EndIf
+    EndIf
+
+    PerformAction(who, 0x0020);
+    PlaySoundEffect(who, 0x23);
+    Sleep(1);
+    PlaySoundEffect(who, 0x23);
+    Sleep(1);
+
+    // Schaufel beschädigen
+    If (RandomInt(100) < 2)
+        If (SetWerkzeugSchaden(
+                who, schaufel,
+                "Eure Schaufel hat gelitten!",
+                "Eure Schaufel ist stark beschädigt!",
+                "Eure Schaufel ist zerbrochen!"
+        ))
+            return;
+        EndIf
+    EndIf
+
+    // Bretter werden abgezogen
+    If (seed_cfg.Bretter)
+        ReserveItem(use_on);
+        SubtractAmount(use_on, 4);
+        PlaySoundEffect(who, 0x23e);
+        SleepMS(1200);
+        PlaySoundEffect(who, 0x23e);
+        SleepMS(1200);
+    EndIf
+
+    var generation := CInt(seed.getprop("generation"));
+    If (!generation)
+        generation := 1;
+    EndIf
+
+    // Item, was aus dem Samen entsteht, wird uebergeben
+    If (!seed_cfg.Phase1)
+        SendSysMessagePergon(who,
+            "Es ist etwas schief gelaufen. "+
+            "Es konnte keine Pflanze aus den Samen wachsen.",
+            "Something went wrong. No plant could grow from this seeds."
+        );
+        syslog("FEHLER: Item.Phase1 fehlt in :farming:itemdesc.cfg!");
+        return;
+    EndIf
+
+    var item;
+    ForEach items in (SplitWords(seed_cfg.Phase1, ", "))
+        If (_items_iter != 1)
+            item := CreateItemAtLocationPergon(
+                where.x, where.y, where.z+1, DUMMY1, 1, where.realm
+            );
+        Else
+            // Nur erstes Item bekommt das Controlscript
+            item := CreateItemAtLocationPergon(
+                where.x, where.y, where.z+1, DUMMY, 1, where.realm
+            );
+            item.setprop("phase",      1);
+            item.setprop("plant",      seed.objtype);
+            item.setprop("generation", generation);
+
+            var skill := GetSkillPergon(who, SKILLID_ACKERBAU);
+            var diff  := seed_cfg.Difficulty + 1.5*(generation-1);
+            If (skill >= 15 + diff)
+                // ab +15% steigen Generationen
+                item.setprop("nextgeneration", CInt(Min(10, generation+1)));
+
+            ElseIf (skill + 10 <= diff)
+                // bei zu wenig Skill sinken ggf. die Generationen
+                item.setprop("nextgeneration", CInt(Max(1, generation-1)));
+
+            Else // Generation bleibt so
+                item.setprop("nextgeneration", generation);
+            EndIf
+        EndIf
+
+        If (!item)
+            SendSysMessagePergon(who,
+                "An dieser Stelle kann nicht gesät werden!",
+                "You cannot seed at this location!"
+            );
+            return;
+        EndIf
+
+        graphics     := SplitWords(items);
+        item.graphic := CInt(graphics[RandomInt((graphics).size())+1]);
+        SetName(item, seed_cfg.Phase1Name);
+    EndForEach
+
+    // Anzahl Produkte wird durch Generation/Werkzeug beeinflusst
+    var tool   := GetPropertyItem(schaufel);
+    var amount := CInt(seed_cfg.Amount + generation/2 + tool.quality);
+    If (amount)
+        SetObjProperty(item, "amount", amount);
+    Else
+        syslog("WARNUNG: Item.amount fehlt in :farming:itemdesc.cfg!");
+        SetObjProperty(item, "amount", 5);
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Ihr setzt den Samen.", "You sow the seeds."
+    );
+    SubtractAmount(seed, 1);
+EndProgram
+
+// Gegend bepflanzbar
+Function IsPlantable(item) // {{{
+    If (item.objtype == UOBJ_ACKER)
+        return 1;
+    EndIf
+
+    var maptile := GetMapInfo(item.x, item.y, item.realm).landtile;
+    If (maptile >= 0x9 && maptile <= 0x15)
+        return 1;
+    ElseIf (maptile >= 0x150 && maptile <= 0x15c)
+        return 1;
+    Else
+        return 0;
+    EndIf
+EndFunction // }}}
+
+// Fruchtbarkeit des Ackers aktualisieren
+Function UpdateFertility(who, item) // {{{
+    If (item.objtype != UOBJ_ACKER)
+        return 0;
+    EndIf
+
+    // Nichtmulti-Acker ist immer fruchtbar
+    If (!item.multi)
+        return 1;
+    EndIf
+
+    // Fruchtbarkeit reduzieren
+    If (item.getprop("usable") >= 1)
+        item.setprop("usable", item.getprop("usable") - 1);
+        return 1;
+    EndIf
+
+    DestroyItem(item);
+    SendSysMessagePergon(who,
+        "Dieser Ackerboden ist nicht mehr fruchtbar.",
+        "This farming ground is no longer fertile."
+    );
+    return 0;
+EndFunction // }}}
+
+// ist das Feld frei fuer den Anbau?
+Function FieldFree(where) // {{{
+    // Gegend bei/ueber Ziel untersuchen
+    var items :=
+        ListItemsAtLocation(where.x, where.y, where.z, where.realm) +
+        ListItemsAtLocation(where.x, where.y, where.z+1, where.realm);
+
+    var acre;
+    ForEach item in items
+        If (item.objtype == UOBJ_ACKER)
+            // Acker ist erwuenscht
+            acre := item;
+            continue;
+        EndIf
+        If ((item.objtype >= 0x177d) and (item.objtype <= 0x1781))
+            // Gras ignorieren
+            continue;
+        EndIf
+
+        return 0;
+    EndForEach
+
+    If (acre)
+        return acre;
+    EndIf
+    return 1;
+EndFunction // }}}

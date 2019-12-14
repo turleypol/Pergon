@@ -1,0 +1,87 @@
+<html>
+
+<head>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+<title>FOR Statement (C-style)</title>
+</head>
+
+<body>
+
+<h1>FOR Statement (C-style)</h1>
+
+<h2>General Form</h2>
+
+<table border="1" width="100%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="50%"><pre>
+FOR( expr<sub>1</sub>; expr<sub>2</sub>; expr<sub>3</sub> )
+    statement
+</pre>
+    </td>
+    <td width="50%"><ul>
+      <li><font face="Courier New">expr<sub>1</sub></font> is the initial-expression</li>
+      <li><font face="Courier New">expr<sub>2</sub></font> is the predicate-expression</li>
+      <li><font face="Courier New">expr<sub>3</sub></font> is the iterative-expression</li>
+    </ul>
+    <p>NOTE, variables cannot be declared in the first expression, in contrast to the C++
+    for() statement.</p>
+    <p>This statement does not use <a href="fbracket.htm">fully-bracketed-syntax</a>.</td>
+  </tr>
+</table>
+
+<pre>
+for( expr<sub>1</sub>; expr<sub>2</sub>; expr<sub>3</sub> )
+    statement
+</pre>
+
+<p>is equivalent to:</p>
+
+<pre>expr<sub>1</sub>;
+while (expr<sub>2</sub>)
+begin
+    statement
+    expr<sub>3</sub>;
+end
+</pre>
+
+<h2>Examples</h2>
+
+<table border="1" width="100%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="50%"><pre>
+for( i := 0; i &lt; 10; i := i + 1 )
+    print &quot;i=&quot; + i;
+</pre>
+    </td>
+    <td width="50%">Loop counts from 0 to 9</td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>
+for( i := 0; i &lt; 10; i := i + 1 )
+begin
+    print &quot;i=&quot; + i;
+    print &quot;i is still &quot; + i;
+end
+</pre>
+    </td>
+    <td width="50%">&nbsp;</td>
+  </tr>
+  <tr>
+    <td width="50%">&nbsp;</td>
+    <td width="50%">&nbsp;</td>
+  </tr>
+  <tr>
+    <td width="50%">&nbsp;</td>
+    <td width="50%">&nbsp;</td>
+  </tr>
+  <tr>
+    <td width="50%">&nbsp;</td>
+    <td width="50%">&nbsp;</td>
+  </tr>
+  <tr>
+    <td width="50%">&nbsp;</td>
+    <td width="50%">&nbsp;</td>
+  </tr>
+</table>
+</body>
+</html>

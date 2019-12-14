@@ -1,0 +1,57 @@
+//
+// 06.12.2000 - Fraggulus - SKILLID auf Basteln umgestellt
+// 28.11.2001 - Fraggulus - Pfeile/Bolzen-Unterscheidung in Messages
+//
+
+use attributes;
+use uo;
+include "include/client";
+include "include/modifyskill";
+include "include/objtype";
+include "include/utility";
+
+Program on_fletch(character, shafts)
+  var feathers;
+  SendSysMessagePergon(character, "Welche Feder wollt Ihr nutzen?");
+
+  feathers := Target(character);
+  If (!feathers) // cancelled, or targetting error
+    SendSysMessagePergon(character, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (GetObjType(feathers) != UOBJ_FEATHER)
+    SendSysMessagePergon(character, "Ihr könnt Pfeile oder Bolzen nur aus Schäften und Federn herstellen.");
+    return;
+  EndIf
+
+  var choice := SelectMenuItem2(character , "fletching");
+
+  If (AccessiblePergon(character, shafts) and AccessiblePergon(character, feathers))
+    If (CheckSkillPergon(character,  SKILLID_BASTELN,  -1, 0)) // Basteln muss ja keine Punkte geben
+      var num_to_make := CInt(Min(GetAmount(shafts), GetAmount(feathers)));
+
+      var arrows := CreateItemInBackpackPergon(character, choice.objtype, num_to_make);
+
+      If (arrows)
+        SubtractAmount(shafts, num_to_make);
+        SubtractAmount(feathers, num_to_make);
+        If (arrows.objtype == 0x1bfb)
+          SendSysMessagePergon(character, "Ihr fertigt einige Bolzen und legt sie in Euren Rucksack.");
+        Else
+          SendSysMessagePergon(character, "Ihr fertigt einige Pfeile und legt sie in Euren Rucksack.");
+        EndIf
+        arrows.color := shafts.color;
+      Else
+        SendSysMessagePergon(character, "Es ist ein Fehler aufgetreten. Die Pfeile/Bolzen konnten nicht hergestellt werden.");
+      EndIf
+    Else
+    SubtractAmount(shafts, 1);
+    SubtractAmount(feathers, 1);
+    SendSysMessagePergon(character, "Ihr zerstört etwas Material.");
+    EndIf
+  Else
+    SendSysMessagePergon(character, "Es sind weder Schäfte noch Federn vorhanden!");
+  EndIf
+
+EndProgram

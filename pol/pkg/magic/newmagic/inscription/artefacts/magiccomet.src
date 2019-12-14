@@ -1,0 +1,85 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für magischen Komet
+//
+// Komet wird auf Ziel geworfen und macht Erd- und Feuerschaden
+//
+// Author: Seppel (2005-10-31)
+
+include ":newspells:magicpergon";
+include ":newspells:resistance";
+include "common";
+include "include/effects";
+include "include/modifyskill";
+include "include/msgs";
+include "include/packets";
+use cfgfile;
+use os;
+use uo;
+use util;
+
+Program MagicComet(who, item)
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var delay := artefact.delay;
+  var range := artefact.range;
+  var impactDelay := artefact.impactdelay;
+  var difficulty := artefact.useskill;
+  var damage := SplitWords(GetConfigString(artefact, "Damage"));
+  var minDamage := CInt(damage[1]);
+  var maxDamage := CInt(damage[3]);
+
+  If (GetSkillPergon(who, SKILLID_MAGIE) < difficulty)
+    SendSysMessagePergon(who,
+      "Ihr könnt das nicht benutzen", "You cannot use this"
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who, "Ziel wählen", "Select target");
+  var where := TargetCoordinates(who);
+  If (!where)
+    SendSysMessagePergon(who, "Zielen abgebrochen", "Cancelled");
+    return;
+  ElseIf (!CheckLosAt(who, where.x, where.y, where.z))
+    SendSysMessagePergon(who,
+      "Ihr könnt das nicht sehen", "You cannot see this"
+    );
+    return;
+  EndIf
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", (ReadGameClock() + delay));
+
+  TurnCharTo(who, where);
+  PerformAction(who, ANIM_CAST_AREA);
+  SubtractAmount(item, 1);
+
+  Detach();
+
+  HighThrow(who, where, 0x1363, impactDelay);
+
+  PlaySoundEffectXYZ(where.x, where.y, where.z, 0x0309, who.realm);
+  ExplodeInCircle(
+    where.x, where.y, where.z + 15, who.realm, range, 40, 100, 20,
+    array{FX_EXPLODE_1, FX_EXPLODE_2, FX_EXPLODE_3}
+  );
+
+  ForEach victim in (ListMobilesNearLocationEx(
+      where.x, where.y, where.z, range,
+      LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN, where.realm
+  ))
+    SleepMs(2);
+    var resistEarth := 1 - CDbl(GetResistance(victim, "earth"));
+    var resistFire  := 1 - CDbl(GetResistance(victim, "fire"));
+    var rawDamage := CInt(
+      RandomIntMinMax(minDamage, 1+maxDamage)/2*resistEarth +
+      RandomIntMinMax(minDamage, 1+maxDamage)/2*resistFire);
+    ApplyRawDamagePergon(victim, rawDamage);
+  EndForEach
+EndProgram
+
+// vim: sts=2 sw=2

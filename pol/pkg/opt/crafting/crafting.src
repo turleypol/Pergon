@@ -1,0 +1,709 @@
+///////////////////////////////////////////////////////////////////////////
+//  ...
+//
+//  ...
+
+use attributes;
+use cfgfile;
+use math;
+use os;
+use uo;
+use util;
+include "include/modifyskill";
+include "include/msgs";
+include "include/resources";
+
+var hecan_make;
+var targetmaterial;
+
+Program Use_Item(who, item)
+  // Werkzeug abnutzen
+  If (!WearOutTool(who, item))
+    return;
+  EndIf
+
+  // Objekt auswählen {{{
+  var lightscript := GetObjProperty(item, "lightscript");
+  // Shinigami: Sonderfall Bunsenbrenner
+  If (lightscript)
+    SendSysMessagePergon(who,
+      "Worauf wollt Ihr das anwenden? (auf Objekt selbst, um es "+
+      "ein-/auszuschalten)",
+      "On what do you wanna use it? (itself to switch on/off)"
+    );
+  Else
+    SendSysMessagePergon(who,
+      "Worauf wollt Ihr das anwenden?", "On what do you wanna use it?"
+    );
+  EndIf
+
+  var what := Target(who, TGTOPT_CHECK_LOS);
+  If (!what)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (lightscript)
+    If (what == item)
+      Run_Script_to_CompletionPergon(lightscript, {"#params", who, item});
+      return;
+    EndIf
+  EndIf
+  // }}}
+
+  If (!ReserveItem(what))
+    SendSysMessagePergon(who,
+      "Das wird schon benutzt.", "That is already being used."
+    );
+  EndIf
+
+  targetmaterial := what;
+  // Output(who, "Selected " + what.objtype);
+
+  var materialcfg := readconfigfile("materials");
+  var qualmod     := materialcfg[what.objtype].quality;
+  var hpmod       := materialcfg[what.objtype].hp;
+  var clrmod      := CInt(materialcfg[what.objtype].color);
+  var namemod     := materialcfg[what.objtype].Shortdesc;
+  var diffmod     := materialcfg[what.objtype].difficulty;
+  var pointmod    := materialcfg[what.objtype].points;
+  var weightmod   := materialcfg[what.objtype].weight;
+  var hitscript   := materialcfg[what.objtype].hitscript;
+  If (!qualmod)
+    qualmod := 1.0;
+  EndIf
+  If (!hpmod)
+    hpmod := 1.0;
+  EndIf
+  If (!diffmod)
+    diffmod := 1.0;
+  Else
+    diffmod /= 100;
+  EndIf
+  If (!pointmod)
+    pointmod := 1.0;
+  EndIf
+  If (!weightmod)
+    weightmod := 1.0;
+  EndIf
+
+  // Menue-Eintraege sind mit Eisen/Mischholz/Normalem Fell/etc. definiert,
+  // daher Check auf Sondermetalle/-hoelzer/-felle
+  var what_objtype := what.objtype;
+  If (what_objtype in GetUobjMetalle())
+    what_objtype := UOBJ_EISEN_BARREN;
+  ElseIf (what_objtype in GetUobjHoelzer())
+    what_objtype := UOBJ_LOGS;
+  ElseIf (what_objtype in GetUobjBretter())
+    what_objtype := 0x1bd7;
+  EndIf
+
+  var menuname := FormatHex(item.objtype) + "+" + FormatHex(what_objtype);
+  // Output(who, "Der Menüname (Obj-Type+Graphic) lautet " + menuname);
+
+  var cfg := readconfigfile("crafting");
+  var tmenu := cfg[menuname];
+  If (!tmenu)
+    // Output(who, "Konnte Eintrag für " + menuname + " nicht finden.");
+    SendSysMessagePergon(who, "Ihr wisst nichts daraus zu fertigen.", "You don't know what to craft.");
+    return;
+  EndIf
+
+  var ret;
+  var exitit := 0;
+  // Output(who, "Showmenu is " + tmenu.showmenu);
+  var menus := readconfigfile("crafting");
+  var mname := menus[tmenu.showmenu];
+
+  While (!exitit)
+    // Output(who, "mname is " + mname);
+    ret := GetSubMenuSelection(who, mname, diffmod, cfg);
+    // Output(who, "RET = " + ret);
+    If (!ret)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+    If (ret.type == 2)
+      mname := menus[ret.objtype];
+    Else
+      exitit := 1;
+    EndIf
+  EndWhile
+
+  var telem := cfg[ret.objtype];
+  // Output(who, "Suche nach ObjType " +hex(ret.objtype));
+  If (!telem)
+    syslog("FEHLER: Unable to find crafting.cfg entry for " + ret.objtype);
+    telem := cfg[FormatHex(ret.objtype)];
+    If (!telem)
+      // Output(who, "Nicht gefunden");
+      return;
+    EndIf
+  EndIf
+
+  var makestack := telem.makestack;
+  If (makestack == error)
+    makestack := 0;
+  EndIf
+
+
+  var materiallist := {};
+  var materials := getconfigstringarray(telem, "material");
+
+  var temp1 := materials[1];
+  temp1["/"] := " ";
+  var temp := splitwords(temp1);
+
+  // hack, i know :(
+  If (targetmaterial.amount < CInt(temp[2]))
+    SendSysMessagePergon(who,
+      "Ihr habt nicht genug Material dafür!",
+      "You don't have enough material!"
+    );
+    SendSysMessagePergon(who,
+      "Ihr benötigt "+targetmaterial.amount+" Stueck "+targetmaterial.desc,
+      "You need "+targetmaterial.amount+" pieces of "+targetmaterial.desc
+    );
+    return;
+  EndIf
+
+  materials.erase(1);
+
+  var d_counter := 1;  // Zaehlt die versch. Materialien durch
+  ForEach material in materials
+    var d := GrabMaterial(who, material, materiallist, makestack);
+
+    material["/"] := " ";
+    var TempMat := splitwords(material);
+
+    If (!d)
+      // FIXME: GetItemDescriptor/DescEinzahl benutzen
+      // temporaeres Item zwecks Description-Extrahierung erzeugen
+      var TempItem := CreateItemAtLocationPergon(
+        5889, 513, 0, CInt(TempMat[1]), 1, REALM_BRITANNIA
+      );
+      If (TempItem)
+              TempMat[1] := TempItem.desc;
+      EndIf
+      DestroyItem(TempItem);
+
+      SendSysMessagePergon(who,
+        "Ihr habt nicht genug Material dafür!",
+        "You don't have enough material!"
+      );
+      SendSysMessagePergon(who,
+        "Benötigt: " + TempMat[1] + " = " + TempMat[2] + " Stueck",
+        "Needed: " + TempMat[1] + " = " + TempMat[2] + " pieces"
+      );
+
+      return;
+    Else
+      materiallist.append(d[d_counter]);
+      d_counter += 1;
+    EndIf
+  EndForEach
+
+  // Output(who, "Materialliste = " + materiallist);
+
+  var areatools := ReadConfigFile("areatools");
+  ForEach areaitem in (GetConfigStringArray(telem, "area"))
+    If (!FindAreaItem(who, areaitem, areatools))
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+  EndForEach
+
+  ForEach tool in (GetConfigStringArray(telem, "tool"))
+    tool["/"] := " ";
+    var stuf := splitwords(tool);
+    var theprompt := GetPrompt(tool);
+    SendSysMessagePergon(who, theprompt, theprompt);
+    var this := target(who, TGTOPT_CHECK_LOS);
+    If (this.objtype <> CInt(stuf[1]))
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+  EndForEach
+
+  var success := 0;
+
+  // Output(who, "Checke Skill");
+  ForEach skill in getconfigstringarray(telem, "skill")
+    skill := StrReplace(skill, "/", " ");
+
+    var skillstuff := SplitWords(skill);
+    var tskillid   := GetSkillName(CInt(skillstuff[1]));
+    var tdiff      := CInt(skillstuff[2] * diffmod);
+    var tpoints    := CInt(skillstuff[3] * CDbl(pointmod));
+
+    // Bei Basteln keine Skillpunkte vergeben
+    If (tskillid == SKILLID_BASTELN)
+      tpoints := 0;
+    EndIf
+
+    If (CheckSkillPergon(who, tskillid, tdiff, tpoints))
+      success := 1;
+      Output(who, "Ihr schafft es!");
+    Else
+      success := 0;
+    EndIf
+  EndForEach
+
+  // Output(who, "Skill gecheckt");
+  // ok, if they succeeded in making the item, then the success variable
+  // will be 1.  Either way, I need to subtract material
+
+  var neededamount;
+  GetMaterial(telem, materiallist, success, neededamount);
+
+  ForEach sound in (GetConfigStringArray(telem, "sound"))
+    sound["/"] := " ";
+    var st := SplitWords(sound);
+    var cntr;
+    For (cntr := 1; cntr <= CInt(st[2]); cntr += 1)
+      PlaySoundEffect(who, CInt(st[1]));
+      SleepMS(1400);
+    EndFor
+  EndForEach
+
+  If (!success)
+    SendSysMessagePergon(who,
+      "Ihr scheitert und zerstört dabei einiges Material.",
+      "You failed and destroyed some material."
+    );
+    return;
+  EndIf
+
+  If (!hecan_make)
+    hecan_make := 1;
+  EndIf
+
+  var it := CreateItemInBackpackPergon(who, CInt(ret.objtype), hecan_make);
+  If (!it)
+    SendSysMessagePergon(who,
+      "Der Gegenstand konnte nicht erzeugt werden!", "Unable to create item!"
+    );
+    // Output(who, it.errortext);
+    return;
+  EndIf
+
+  it.movable := 1;
+
+  var excep := 0;
+
+  If (telem.exceptional)
+    ForEach skill in (GetConfigStringArray(telem, "skill"))
+      var skillstuff := SplitWords(skill, "/");
+      If (GetSkillPergon(who, GetSkillName(CInt(skillstuff[1])))>90)
+        If (randomint(100) == 3)
+          excep := 1;
+        Else
+          excep := 0;
+        EndIf
+      Else
+        excep := 0;
+      EndIf
+    EndForEach
+  EndIf
+
+  it.quality := qualmod;
+  it.color   := clrmod;
+  it.weight  := it.weight*weightmod;
+  it.maxhp   := CInt(it.maxhp*hpmod);
+  If (namemod)
+    it.setprop(TOOLINFO, struct{material := namemod});
+  EndIf
+  If (hitscript)
+    it.hitscript := hitscript;
+  EndIf
+
+  If (excep)
+    SendSysMessagePergon(who,
+      "Ihr fertigt ein außergewöhnliches Stück!", ""
+    );
+    it.quality := it.quality*1.25;
+  Else
+    SendSysMessagePergon(who,
+      "Ihr legt das Item in Euren Rucksack.",
+      "You put this item into your backpack."
+    );
+    it.quality := GetQuality(who, telem);
+  EndIf
+  it.hp := it.maxhp;
+  IncRevision(it);
+
+  // UnloadConfigFile("crafting");
+  // UnloadConfigFile("areatools");
+  // UnloadConfigFile("::itemdesc"); // Entladen verursacht Fehler!
+  // UnloadConfigFile("materials");
+EndProgram
+
+Function GetMaterial(telem, materiallist, success, neededamount)
+  var ttt := telem.material;
+  ttt["/"] := " ";
+  var tt := splitwords(ttt);
+
+  neededamount := CInt(tt[2]);
+  //print ("tt is " + tt);
+  If (!neededamount)
+    neededamount := 1;
+  EndIf
+
+  If (!hecan_make)
+    If (telem.makestack)
+      hecan_make := targetmaterial.amount / neededamount;
+    Else
+      hecan_make := 1;
+    EndIf
+  EndIf
+
+  If (success)
+    subtractamount(targetmaterial, neededamount * hecan_make);
+  Else
+    subtractamount(targetmaterial, CInt((neededamount * hecan_make)/3.0));
+  EndIf
+
+  ForEach elem in getconfigstringarray(telem, "material")
+    //var subamount := 0;
+    elem["/"] := " ";
+    var stf := splitwords(elem);
+    If (!success)
+      //FIXME: this is a little arbitrary, how about a lost amount
+      stf[2] := stf[2] / (randomint(3) + 1);
+    EndIf
+
+    If (materiallist)
+      ForEach item in materiallist
+        If (item.objtype == CInt(stf[1]))
+          If ((item.amount >= (CInt(stf[2]) * hecan_make)) and CInt(stf[2]) > 0)
+            subtractamount(item.item, CInt(stf[2]) * hecan_make);
+            stf[2] := 0;
+          Else
+            stf[2] := CInt(stf[2]) - item.amount;
+            destroyitem(item.item);
+          EndIf
+        EndIf
+      EndForEach
+    EndIf
+  EndForEach
+EndFunction
+
+// this Function finds the materials they'll need to make an item. If
+// it's a regular item (that is, you only make one at a time) it looks
+// through their backpack For the necessary materials. If they're making
+// a stack, it instead prompts them to target the material
+Function GrabMaterial(who, material, materiallist, makestack)
+  // Output (who, who.name + " versucht, " + material + " für " + materiallist + "zu bekommen, makestack = " + makestack);
+  var materialentry := struct;
+  materialentry.+ objtype;
+  materialentry.+ amount;
+  materialentry.+ item;
+  material["/"] := " ";
+  var stuff := splitwords(material);
+
+  If (!makestack)
+    var totalamount := 0;
+      ForEach item in enumerateitemsInContainer(who.backpack)
+        SleepMS(2);
+        If (item.objtype <> CInt(stuff[1]))
+          continue;
+        EndIf
+
+        // Output(who, "Füge "+item.objtype+" der Liste hinzu.");
+        totalamount := totalamount + item.amount;
+        materialentry.objtype := item.objtype;
+        // Output(who, "Füge Materialeintrag hinzu "+materialentry.objtype);
+        materialentry.amount := item.amount;
+        // Output(who, "Füge Anzahl hinzu "+materialentry.amount);
+        materialentry.item := item;
+        // Output(who, "Füge Item hinzu "+item);
+        // reserveitem(item);
+        materiallist.append(materialentry);
+      EndForEach
+
+    // print("Materiallist: " + materiallist);
+    // print("totalamount: " + totalamount);
+
+    If (totalamount >= CInt(stuff[2]))
+      return materiallist;
+    EndIf
+
+    return;
+  EndIf
+
+  // makestack gesetzt
+  var whatt := target(who, TGTOPT_CHECK_LOS);
+  While (whatt.graphic != CInt(stuff[1]) && whatt)
+    SendSysMessagePergon(who,
+      "Das ist das falsche Material!", "That's not the right material!"
+    );
+    whatt := target(who, TGTOPT_CHECK_LOS);
+  EndWhile
+
+  // Output(who, "  You need " + stuff[2]);
+  If (!whatt)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  reserveitem(whatt);
+
+  If (whatt.amount < CInt(stuff[2]))
+    SendSysMessagePergon(who,
+      "Ihr habt nicht genug Material, um das herzustellen!",
+      "You don't have enough material to craft that!"
+    );
+    return;
+  EndIf
+
+  materialentry.objtype := whatt.objtype;
+  materialentry.amount := whatt.amount;
+  materialentry.item := whatt;
+  materiallist.append(materialentry);
+  // Output(who, "Materiallist = " + materiallist);
+
+  If (whatt.amount < targetmaterial.amount)
+    hecan_make := CInt(whatt.amount / CInt(stuff[2]));
+  Else
+    hecan_make := CInt(targetmaterial.amount / CInt(stuff[2]));
+  EndIf
+  return materiallist;
+EndFunction
+
+// this Function takes the name of a submenu and loads it. It returns an
+// array with the objtype of the selection, as well as the submenu name
+// (if any)
+Function GetSubMenuSelection(who, submenuname, diffmod, byref cfg)
+  // Output(who, "in getsubmenuselection, got " + submenuname);
+  var retval := struct;
+  retval.+type;
+  retval.+objtype;
+  var menuentries2 := {};
+  var menuentry2 := struct;
+  menuentry2.+objtype;
+  menuentry2.+type;
+  menuentry2.+submenu;
+  var themenu2 := createmenu("Was wollt Ihr fertigen?");
+  // Output(who, "About to check for entries ");
+
+  var entries  := GetConfigStringArray(submenuname, "Entry");
+
+  ForEach entry in (entries)
+    SleepMS(2);
+    // Output(who, "Got an entry : "+ entry);
+    var rtvl := CanMake(who, entry, diffmod, cfg);
+    If (!rtvl)
+      // Output(who, "can't make " + entry);
+      continue;
+    EndIf
+
+    // Output(who, "adding entry" + entry);//
+    var stuff := splitwords(entry);
+    // Output(who,
+    //   "Calling AddMenuItem(themenu, " +
+    //   GetGraphic(stuff[1]) + ", " +  stuff[2] + ")"
+    // );
+    AddMenuItem(themenu2, GetGraphic(CInt(stuff[1])), stuff[2]);
+    menuentry2.objtype := CInt(stuff[1]);
+    menuentry2.submenu := "";
+    menuentry2.type := 1;
+    menuentries2.append(menuentry2);
+    // Output(who, menuentries2);
+  EndForEach
+
+  // var submenus := GetConfigStringArray(submenuname, "submenu");
+  // //SendSysMessagePergon(who, "Checked!!!!!!!!!!");
+  // ForEach entry in (submenus)
+  //   ////print ("checking submenu " + entry);
+  //   var stuff := GetSubMenu(entry);
+  //   addmenuitem(themenu2, GetGraphic(CInt(stuff[2])), stuff[3]);
+  //   menuentry2.objtype := CInt(stuff[2]);
+  //   menuentry2.type := 2;
+  //   menuentry2.submenu := stuff[1];
+  //   menuentries2.append(menuentry2);
+  // EndForEach
+
+  var retl2 := selectmenuitem2(who, themenu2);
+  // print (retl2.errortext);
+  If (!retl2.index)
+    // Output(who, "He didn't select anything!");
+    return error{errortext := "Nothing selected"};
+  EndIf
+
+  // print ("Index is " + retl2.index + " objtype = " + retl2.objtype);
+  If (menuentries2[retl2.index].type == 2)
+    retval.objtype := menuentries2[retl2.index].submenu;
+    retval.type := 2;
+  Else
+    retval.objtype := menuentries2[retl2.index].objtype;
+    retval.type := 1;
+  EndIf
+  // print ("type is "+retval.type);
+
+  // Output(who, "returning " + retval);
+  return retval;
+EndFunction
+
+// Werkzeug abnutzen (mal was anderes als SetWerkzeugSchaden)
+Function WearOutTool(who, tool) // {{{
+  // Werkzeug abnutzen
+  var uses := tool.getprop("uses");
+  If (!uses)
+    uses := randomint(150) + 1;
+    tool.setprop("uses", uses);
+  EndIf
+  If (!uses)
+    SendSysMessagePergon(who,
+      "Das viel benutzte Werkzeug zerbricht!",
+      "The widely uses tool breaks!"
+    );
+    // stackkompatibel abnutzen
+    tool.eraseprop("uses");
+    SubtractAmount(tool, 1);
+    return error{errortext := "Tool broken"};
+  EndIf
+  tool.setprop("uses", uses - 1);
+
+  return tool;
+EndFunction // }}}
+
+// Qualitaet des Items aus den benutzten Skills berechnen
+Function GetQuality(who, elem) // {{{
+  var totalskillpoints := 0;
+  var tcount := 0;
+
+  ForEach skill in (GetConfigStringArray(elem, "skill"))
+    SleepMs(2);
+    var skillstuff := SplitWords(skill, "/");
+    totalskillpoints += GetSkillPergon(
+      who, GetSkillName(CInt(skillstuff[1]))
+    );
+    tcount += 1;
+  EndForEach
+
+  var avg := CInt((totalskillpoints / tcount) * 1.2);
+  return RandomInt(avg) + 1;
+EndFunction // }}}
+
+Function GetPrompt(theprompt) // {{{
+  // syslog("theprompt: " + theprompt);
+  theprompt[1, Find(theprompt, " ", 1) ] := "";
+  // syslog("theprompt: " + theprompt);
+  return theprompt;
+EndFunction // }}}
+
+// Grafik fuer Menue besorgen
+Function GetGraphic(theval) // {{{
+  var itemcfg := ReadConfigFile("::itemdesc");
+  If (itemcfg[theval].graphic)
+    return itemcfg[theval].graphic;
+  EndIf
+
+  return CInt(theval);
+EndFunction // }}}
+
+// prueft, ob Spieler Skills hoch genug hat, um Entry im Menue zu sehen
+Function CanMake(who, entry, diffmod, byref cfg) // {{{
+  // SendSysMessagePergon(who, "Seeing if you can make " + what + " with
+  // entry " + entry);
+  var dtstuff := splitwords(entry);
+  // var tentry := cfg[dtstuff[1]];
+
+  ForEach skill in (GetConfigStringArray(cfg[dtstuff[1]], "skill"))
+    SleepMs(2);
+    // SendSysMessagePergon(who, "Checking for skill " + skill);
+    var stuff := SplitWords(skill, "/");
+    If (GetSkillPergon(
+        who, GetSkillName(CInt(stuff[1]))) < CInt(stuff[2]*diffmod
+    ))
+      Output(who,
+        "Bei Skill #"+stuff[1]+" braucht Ihr "+CInt(stuff[2]*diffmod)+
+        ", aber Ihr habt weniger."
+      );
+      return 0;
+    EndIf
+
+    return 1;
+  EndForEach
+EndFunction // }}}
+
+// gucken, ob bestimmte Items in der Naehe sind (Amboss, Schmiedefeuer ...)
+Function FindAreaItem(who, areaitem, byref areatools) // {{{
+  var items := GetConfigStringArray(areatools[areaitem], "item");
+
+  ForEach item in (ListItemsNearLocation(who.x, who.y, who.z, 2, who.realm))
+    SleepMS(2);
+    If (item.objtype in (items))
+      // if it's near them, then return.
+      return 1;
+    EndIf
+  EndForEach
+
+  return 0;
+
+  // 2009-04-02 (mehdorn): deaktiviert {{{
+  // Otherwise, you have to look for it
+  // SendSysMessagePergon(who,
+  //   "Wählt das Werkzeug, das Ihr benutzen wollt.", "Choose a tool to use."
+  // );
+  // var what := TargetCoordinates(who);
+
+  // If (!what or !what.objtype)
+  //   return 0;
+  // EndIf
+
+  // While (!(what.objtype in items))
+  //   SendSysMessagePergon(who,
+  //     "Wählt das Werkzeug, das Ihr benutzen wollt.", "Choose a tool to use."
+  //   );
+  //   what := TargetCoordinates(who);
+  //   If (!what or !what.objtype)
+  //     return 0;
+  //   EndIf
+  // EndWhile
+
+  // return 1;
+  // }}}
+EndFunction // }}}
+
+// Debugnachrichten fuer Staffler
+Function Output(who, message) // {{{
+  If (who.cmdlevel >= CMDLEVEL_SEER)
+    SendSysMessagePergon(who, message);
+  EndIf
+EndFunction // }}}
+
+// Hex-Zahl im Format 0xabcd erzeugen
+Function FormatHex(objtype) // {{{
+  var thex := Hex(objtype);
+  If (len(thex) == 5)
+    thex["0x"] := "0x0";
+  ElseIf (len(thex) == 4)
+    thex["0x"] := "0x00";
+  ElseIf (len(thex) == 3)
+    thex["0x"] := "0x000";
+  EndIf
+  return thex;
+EndFunction // }}}
+
+// inactive function(s) {{{
+// Function GetSubMenu(thestring)
+//   // Output(who, "I'm in getmenu, damnit!");
+//   // print ("In getsubmenu, thestring = " + thestring);
+//   var retval := {};
+//
+//   thestring:=Cstr(thestring);
+//   If (Len(thestring)>0)
+//     thestring:=StrReplace(thestring, "  ", " ");
+//   EndIf
+//
+//   retval := splitwords(thestring);
+//   If (itemcfg[CInt(retval[1])].graphic)
+//     retval[1] := itemcfg[CInt(retval[1])].graphic;
+//     //print ("resetting graphic to " + retval[1]);
+//   EndIf
+//
+//   //print ("returning " + retval);
+//   return retval;
+// EndFunction
+// }}}

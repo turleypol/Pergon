@@ -1,0 +1,22 @@
+Huhu
+
+
+- neue Tiere zum reiten
+- Reitbeschränkungen
+- Monster machen jetzt mehr SOunds
+- Magie:
+  - Bann (3.Zirkel) bannt nun auch Wände und Tore
+  - Unsichtbarkeit kann wieder NPCs verstecken
+  - Teleport wieder im Dungeon möglich
+  - ein paar optische und akustische Verbesserungen :)
+- Artefakte:
+  - Balancing (höher, schneller, weiter)
+  - ein neues Artefakt
+- Bugfixing im Monsterschach
+- Puzzletruhe
+- Turnierstein
+- Emotes geben Sound *feier* *furz*
+- Tischlerei: Holzthröne
+- Waffenbalancing
+
+

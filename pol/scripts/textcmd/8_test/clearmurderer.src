@@ -1,0 +1,11 @@
+Use uo;
+
+
+Program TextCMD_ClearMurderer(who)
+  Var dest:=Target(who);
+  If (dest)
+    Foreach reportable in (dest.reportables)
+      dest.removereportable(reportable.serial, reportable.gameclock);
+    EndForEach
+  EndIf
+EndProgram

@@ -1,0 +1,235 @@
+/////////////////
+// Bibliotheken
+/////////////////
+
+use util;
+use attributes;
+use uo;
+use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program ConsoleCMD_Check()
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+  SysLog("Test-Script aktiviert...");
+
+  Var npc:=CreateNpcFromTemplate("deer", 5273, 1181, 0,0,REALM_BRITANNIA);
+  If (npc)
+    TestCheckSkill(npc);
+
+  EndIf
+
+  SysLog("Test-Script deaktiviert.");
+EndProgram
+
+///////////////////////////////////////////////////////////
+// TestCheckSkill - Wertebereich von CheckSkill ermitteln
+///////////////////////////////////////////////////////////
+
+Function TestCheckSkill(who)
+  SysLog("  Getestet wird "+who.name);
+
+ // TestCheckSkillSub(who, 0,   8192,  30, 100,  50); // 50.0%   um genau  50 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  30, 200, 100); // 50.0%   um genau 100 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  30,   2,   1); // 50.0%   um genau   1 Punkt
+ // TestCheckSkillSub(who, 0,   8192,  30,   1,   0); //  0.0%   um genau   0 Punkte
+ // TestCheckSkillSub(who, 0, 262144,  80, 100,  50); // 50.0%   um genau  50 Punkte
+ // TestCheckSkillSub(who, 0, 262144,  80, 200, 100); // 50.0%   um genau 100 Punkte
+ // TestCheckSkillSub(who, 0, 262144,  80,   2,   1); // 50.0%   um genau   1 Punkt
+ // TestCheckSkillSub(who, 0, 262144,  80,   1,   0); //  0.0%   um genau   0 Punkte
+ //
+ // Folgendes wurde bei 11%..209% getestet
+ //   (Erfolgsmeldung und Punkteanstieg fallen zusammen)
+ //
+ // TestCheckSkillSub(who, 0,   8192,  10, 100,   0); //  0.0%   um genau   0 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  11, 100,   3); // 97.063% um genau   3 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  12, 100,   5); // 95.002% um genau   5 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  13, 100,   8); // 92.084% um genau   8 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  14, 100,  10); // 89.868% um genau  10 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  15, 100,  13); // 86.928% um genau  13 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  16, 100,  15); // 84.990% um genau  15 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  17, 100,  18); // 82.036% um genau  18 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  18, 100,  20); // 80.147% um genau  20 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  19, 100,  23); // 77.033% um genau  23 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  20, 100,  25); // 75.011% um genau  25 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  21, 100,  28); // 72.161% um genau  28 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  22, 100,  30); // 69.844% um genau  30 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  23, 100,  33); // 67.101% um genau  33 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  24, 100,  35); // 64.507% um genau  35 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  25, 100,  38); // 61.977% um genau  38 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  26, 100,  40); // 60.048% um genau  40 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  27, 100,  43); // 57.004% um genau  43 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  28, 100,  45); // 54.857% um genau  45 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  29, 100,  48); // 51.840% um genau  48 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  30, 100,  50); // 50.0%   um genau  50 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  31, 100,  52); // 48.095% um genau  52 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  32, 100,  55); // 44.974% um genau  55 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  33, 100,  57); // 43.257% um genau  57 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  34, 100,  60); // 40.123% um genau  60 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  35, 100,  62); // 38.083% um genau  62 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  36, 100,  65); // 35.361% um genau  65 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  37, 100,  67); // 33.127% um genau  67 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  38, 100,  70); // 30.220% um genau  70 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  39, 100,  72); // 28.164% um genau  72 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  40, 100,  75); // 24.935% um genau  75 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  41, 100,  77); // 23.148% um genau  77 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  42, 100,  80); // 19.704% um genau  80 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  43, 100,  82); // 17.960% um genau  82 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  44, 100,  85); // 15.078% um genau  85 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  45, 100,  87); // 12.895% um genau  87 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  46, 100,  90); //  9.961% um genau  90 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  47, 100,  92); //  8.072% um genau  92 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  48, 100,  95); //  4.824% um genau  95 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  49, 100,  97); //  3.023% um genau  97 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  50, 100,   0); //  0.0%   um genau   0 Punkte
+ //
+ // Folgendes wurde bei 0%..10% getestet
+ //   (100% Erfolgsmeldung, aber Punkteanstieg gemaess obiger Wahrscheinlichkeit)
+ //
+ // TestCheckSkillSub(who, 0,   8192,   0, 100,  25); // 100% um genau  25 Punkte
+ // TestCheckSkillSub(who, 0,   8192,   1, 100,  28); // 100% um genau  28 Punkte
+ // TestCheckSkillSub(who, 0,   8192,   2, 100,  30); // 100% um genau  30 Punkte
+ // TestCheckSkillSub(who, 0,   8192,   3, 100,  33); // 100% um genau  33 Punkte
+ // TestCheckSkillSub(who, 0,   8192,   4, 100,  35); // 100% um genau  35 Punkte
+ // TestCheckSkillSub(who, 0,   8192,   5, 100,  38); // 100% um genau  38 Punkte
+ // TestCheckSkillSub(who, 0,   8192,   6, 100,  40); // 100% um genau  40 Punkte
+ // TestCheckSkillSub(who, 0,   8192,   7, 100,  43); // 100% um genau  43 Punkte
+ // TestCheckSkillSub(who, 0,   8192,   8, 100,  45); // 100% um genau  45 Punkte
+ // TestCheckSkillSub(who, 0,   8192,   9, 100,  48); // 100% um genau  48 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  10, 100,  50); // 100% um genau  50 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  11, 100,  52); // 100% um genau  52 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  12, 100,  55); // 100% um genau  55 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  13, 100,  57); // 100% um genau  57 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  14, 100,  60); // 100% um genau  60 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  15, 100,  62); // 100% um genau  62 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  16, 100,  65); // 100% um genau  65 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  17, 100,  67); // 100% um genau  67 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  18, 100,  70); // 100% um genau  70 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  19, 100,  72); // 100% um genau  72 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  20, 100,  75); // 100% um genau  75 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  21, 100,  77); // 100% um genau  77 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  22, 100,  80); // 100% um genau  80 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  23, 100,  82); // 100% um genau  82 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  24, 100,  85); // 100% um genau  85 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  25, 100,  87); // 100% um genau  87 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  26, 100,  90); // 100% um genau  90 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  27, 100,  92); // 100% um genau  92 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  28, 100,  95); // 100% um genau  95 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  29, 100,  97); // 100% um genau  97 Punkte
+ // TestCheckSkillSub(who, 0,   8192,  30, 100,   0); // 100% um genau   0 Punkte
+
+  Var skillid:=0;
+  Var base:=20;
+  Var rawbase:=BaseSkillToRawSkillPergon(80*10);
+
+  TestCheckSkillSub(who, skillid,   rawbase,  base-20, 100,   0); //  0.0%   um genau   0 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base-19, 100,   2); // 97.063% um genau   3 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base-18, 100,   5); // 95.002% um genau   5 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base-17, 100,   7); // 92.084% um genau   8 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base-16, 100,   9); // 89.868% um genau  10 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base-15, 100,  12); // 86.928% um genau  13 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base-14, 100,  14); // 84.990% um genau  15 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base-13, 100,  17); // 82.036% um genau  18 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base-12, 100,  19); // 80.147% um genau  20 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base-11, 100,  22); // 77.033% um genau  23 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base-10, 100,  25); // 75.011% um genau  25 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base- 9, 100,  27); // 72.161% um genau  28 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base- 8, 100,  30); // 69.844% um genau  30 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base- 7, 100,  32); // 67.101% um genau  33 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base- 6, 100,  35); // 64.507% um genau  35 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base- 5, 100,  37); // 61.977% um genau  38 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base- 4, 100,  40); // 60.048% um genau  40 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base- 3, 100,  42); // 57.004% um genau  43 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base- 2, 100,  44); // 54.857% um genau  45 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base- 1, 100,  47); // 51.840% um genau  48 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base   , 100,  50); // 50.0%   um genau  50 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+ 1, 100,  52); // 48.095% um genau  52 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+ 2, 100,  55); // 44.974% um genau  55 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+ 3, 100,  57); // 43.257% um genau  57 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+ 4, 100,  60); // 40.123% um genau  60 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+ 5, 100,  62); // 38.083% um genau  62 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+ 6, 100,  65); // 35.361% um genau  65 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+ 7, 100,  67); // 33.127% um genau  67 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+ 8, 100,  70); // 30.220% um genau  70 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+ 9, 100,  72); // 28.164% um genau  72 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+10, 100,  75); // 24.935% um genau  75 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+11, 100,  77); // 23.148% um genau  77 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+12, 100,  80); // 19.704% um genau  80 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+13, 100,  82); // 17.960% um genau  82 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+14, 100,  85); // 15.078% um genau  85 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+15, 100,  87); // 12.895% um genau  87 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+16, 100,  90); //  9.961% um genau  90 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+17, 100,  92); //  8.072% um genau  92 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+18, 100,  95); //  4.824% um genau  95 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+19, 100,  97); //  3.023% um genau  97 Punkte
+  TestCheckSkillSub(who, skillid,   rawbase,  base+20, 100,   0); //  0.0%   um genau   0 Punkte
+EndFunction
+
+/////////////////////////////////////////////////
+// TestCheckSkillSub - Einzelcheck durchfuehren
+/////////////////////////////////////////////////
+
+Function TestCheckSkillSub(who, skillid, initrawskill, skill, rawpoints, ownedrawpoints)
+  If (skill>=0)
+    Var gesteigert_b:=0;
+    Var gesteigert:=0;
+    Var success:=0;
+    Var index;
+
+    For (index:=1; index<=1000; index+=1)
+      SetRawSkillPergon(who, skillid, initrawskill);
+     // If (TestCheckSkillFunctionPergon(who, skillid, skill, rawpoints))
+      If (TestCheckSkillFunctionCore(who, skillid, skill, rawpoints))
+        success:=success+1;
+      EndIf
+
+      If (GetRawSkillPergon(who, skillid)==initrawskill+ownedrawpoints)
+        gesteigert:=gesteigert+1;
+      ElseIf (GetRawSkillPergon(who, skillid)<>initrawskill)
+       // SysLog("    Skill "+skillid+" ("+initrawskill+", "+skill+", "+rawpoints+") = "+
+       //   (GetRawSkillPergon(who, skillid)-initrawskill)+" ["+ownedrawpoints+"]");
+        gesteigert_b:=gesteigert_b+1;
+      EndIf
+    EndFor
+
+    SysLog("    Skill "+skillid+" ("+initrawskill+", "+skill+", "+rawpoints+", "+
+      ownedrawpoints+") -> "+gesteigert+"/"+success+" ["+gesteigert_b+"]");
+  EndIf
+EndFunction
+
+Function TestCheckSkillFunctionCore(who, skillid, skill, rawpoints)
+ // Return (CheckSkill(who, skillid, skill, rawpoints));
+  Return (CheckSkillPergon(who, skillid, skill, rawpoints));
+EndFunction
+
+Function TestCheckSkillFunctionPergon(who, skillid, skill, rawpoints)
+  Var skillvalue:=GetSkillPergon(who, skillid);
+  Var chance:=0.025*(skillvalue-skill)+0.5;
+
+  If ((0<chance) And (chance<=1))
+    If (skillvalue<=10)
+      SetRawSkillPergon(who, skillid, GetRawSkillPergon(who, skillid)+CInt((1-chance)*rawpoints));
+
+      If (CInt(chance*1000)>=RandomInt(1000))
+        Return (1);
+      Else
+        Return (0);
+      EndIf
+    Else
+      If (CInt(chance*1000)>=RandomInt(1000))
+        SetRawSkillPergon(who, skillid, GetRawSkillPergon(who, skillid)+CInt((1-chance)*rawpoints));
+        Return (1);
+      Else
+        Return (0);
+      EndIf
+    EndIf
+  EndIf
+EndFunction

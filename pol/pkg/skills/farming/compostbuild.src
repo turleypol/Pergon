@@ -1,0 +1,187 @@
+///////////////////////////////////////////////////////////////////////////
+// compostbuild -- einen Komposthaufen aufbauen
+//
+// Autor: Mehdorn
+
+use os;
+use uo;
+
+include ":housing:house";
+
+Program CompostBuild(who, starter) // {{{
+    If (!starter.movable)
+        SendSysMessagePergon(who, "Das müsst Ihr erst losmachen.");
+        return;
+    EndIf
+
+    // Ziel ermitteln und pruefen {{{
+    SendSysMessagePergon(who,
+        "Wo wollt Ihr einen Komposthaufen haben?",
+        "Where do you want your compost heap?"
+    );
+    var dest := TargetCoordinates(who);
+    If (!dest or dest.item.container)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    // in fremden Haeusern darf man keinen Kompost hinbauen
+    var house := GetHouseContainingObject(dest);
+    If (house and !IsHouseOwner(house, who))
+        SendSysMessagePergon(who,
+            "In einem Haus kann nur der Besitzer einen Kompost aufschütten.",
+            "Only the owner may create a compost heap in a house."
+        );
+        return;
+    EndIf
+    // }}}
+
+    // Bereich um Ziel austesten {{{
+    // gleich verbieten, wenn weiteres Kompostitem in der Naehe
+    If (
+        ListItemsNearLocationOfType(
+            dest.x, dest.y, LIST_IGNORE_Z, 1, 0xda25, dest.realm
+        ).size() >= 1
+    )
+        // andere Kompost wuerde ueberlappen
+        SendSysMessagePergon(who,
+            "Ein anderer Kompost ist zu nah.",
+            "There is another compost too close nearby."
+        );
+        return;
+    EndIf
+
+    // Position des Starteritems merken und unsichtbar machen,
+    // um damit unauffaellig das Gebiet austesten zu können
+    var oldpos := struct;
+    oldpos.x       := starter.x;
+    oldpos.y       := starter.y;
+    oldpos.z       := starter.z;
+    oldpos.realm   := starter.realm;
+    oldpos.movable := starter.movable;
+    If (starter.container)
+        oldpos.container := starter.container;
+    EndIf
+    starter.invisible := 1;
+    starter.movable   := 0;
+
+    If (!TestLocation(starter, dest))
+        SendSysMessagePergon(who,
+            "Die Stelle ist ungeeignet.",
+            "This place is unsuitable."
+        );
+        GiveBackCompost(starter, oldpos);
+        starter.invisible := 0;
+        return;
+    EndIf
+
+    If (!TestLocation(starter, dest, struct{x := 1}))
+        SendSysMessagePergon(who,
+            "Der Platz im Osten ist ungeeignet.",
+            "The space in the east is unsuitable."
+        );
+        GiveBackCompost(starter, oldpos);
+        starter.invisible := 0;
+        return;
+    EndIf
+
+    If (!TestLocation(starter, dest, struct{y := 1}))
+        SendSysMessagePergon(who,
+            "Der Platz im Süden ist ungeeignet.",
+            "The space in the south is unsuitable."
+        );
+        GiveBackCompost(starter, oldpos);
+        starter.invisible := 0;
+        return;
+    EndIf
+
+    If (!TestLocation(starter, dest, struct{x := 1, y := 1}))
+        SendSysMessagePergon(who,
+            "Der Platz im Südosten ist ungeeignet.",
+            "The space in the southeast is unsuitable."
+        );
+        GiveBackCompost(starter, oldpos);
+        starter.invisible := 0;
+        return;
+    EndIf
+    GiveBackCompost(starter, oldpos);
+    // }}}
+
+    // Kompost aufbauen {{{
+    var compost := CreateItemAtLocation(
+        dest.x, dest.y, dest.z, 0xda25, 1, dest.realm
+    );
+    If (!compost)
+        SendSysMessagePergon(who,
+            "Interner Fehler. Staff wird informiert.",
+            "Internal error.  Staff is informed."
+        );
+        syslog(
+            "FEHLER: Kein Kompost auf "+CoordStr(dest, COORDS_REALM)+
+            " aufbaubar: "+compost.errortext
+        );
+        return;
+    EndIf
+
+    // Erfolg, Haufen markieren und Startermenge reduzieren
+    compost.setprop("builder", who.serial);
+    SubtractAmount(starter, 1);
+    If (starter)
+        // falls vom Starterstack noch etwas uebrig ist,
+        // wieder sichtbar machen
+        starter.invisible := 0;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Kompost aufgebaut. Vergesst nicht, ihn regelmäßig zu füttern.",
+        "Compost heap created. Don't forget to feed it regularly."
+    );
+    // }}}
+EndProgram // }}}
+
+// prueft, ob die Position verfuegbar ist, indem es das Item
+// dorthin zu verschieben versucht
+Function TestLocation(item, pos, shift := 0) // {{{
+    // per Parameter kann man eine Verschiebung anfordern
+    If (shift and shift.x)
+        pos.x += shift.x;
+    EndIf
+    If (shift and shift.y)
+        pos.y += shift.y;
+    EndIf
+
+    // testen, ob man da etwas hinschieben kann
+    var move := MoveObjectToLocation(
+        item, pos.x, pos.y, pos.z, pos.realm, MOVEITEM_IGNOREMOVABLE
+    );
+    If (!move)
+        return move;
+    EndIf
+
+    If (pos.z == item.z)
+        // Bereich ist frei, da Move keine andere Hoehe gewaehlt hat
+        return 1;
+    EndIf
+    return error{errortext := "Height constraint failed"};
+
+    return 1;
+EndFunction // }}}
+
+// Kompostitem zurueck ins Backpack/die Landschaft legen
+Function GiveBackCompost(item, pos) // {{{
+    If (pos.exists("container"))
+        // war in einem Container
+        item.movable := 1;
+        var ret := MoveItemToContainer(item, pos.container, pos.x, pos.y);
+        item.movable := pos.movable;
+        return ret;
+    EndIf
+
+    // lag in der Gegend herum
+    var ret := MoveObjectToLocation(
+        item, pos.x, pos.y, pos.z, pos.realm,
+        MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+    );
+    item.movable := pos.movable;
+    return ret;
+EndFunction // }}}

@@ -1,0 +1,269 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+// Prisoner-Script speziell fuer einen Gefangenen im Covetous-Dungeon (funzt wirklich nur dort!!!)
+// Grundlage: person.src
+//
+// 11/12/99 kiesow: added speech-files (profession and var)
+// 12/12/99 kiesow: added support For special locations
+// 07.03.01 Fraggulus: Umgeschrieben auf Gefangenen
+// 06.11.01 Fraggulus: Frost-Quest eingeplant
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use npc;
+use os;
+use uo;
+use util;
+include "include/animal";
+include "include/client";
+include "include/eventid";
+include "include/modifyskill";
+include "include/npc"; //some new functions
+include "include/objtype";
+include "include/pergonutil";
+include "include/names";
+include "include/vetement"; // need For random clothing
+
+const HALT_THRESHOLD := 7; // how close before he barks?
+const HALT_THRESHOLD2 := 2; // how close before he barks? For speaking
+
+const LIFETIME := 20; // Lebensdauer des Gefangenen (in Minuten) nachdem man ihn zum Folgen aufgefordert hat
+
+var me := Self();
+
+Program person()
+    DropAnchor();
+    SetObjProperty(me,"serial",me.serial);
+
+    EnableEvents(SYSEVENT_SPEECH + SYSEVENT_ENGAGED + SYSEVENT_DISENGAGED + SYSEVENT_DAMAGED, HALT_THRESHOLD2);
+    EnableEvents(SYSEVENT_ENTEREDAREA + SYSEVENT_LEFTAREA, HALT_THRESHOLD);
+    EnableEvents(SYSEVENT_OPPONENT_MOVED);
+
+
+    SetWarMode(0);
+    set_priority(10);
+    me.frozen := 0;
+    IncRevision(me);
+
+    If (me.name["<random>"])
+      var npcname := RandomName(me);
+      SetName(me, npcname);
+
+      SetObjProperty(me, "myname", npcname);
+    EndIf
+
+    Habille(me, GetObjProperty(me, "Equipt")); // Random Clothing
+
+    var minename := GetObjProperty(me, "myname");
+
+
+    me.setmaster(SystemFindObjectBySerial(me.serial));
+    // ending configure of npc and starting ai
+
+    var ev;
+    While (1)
+        PerformAction(me, UACTION_LOOK_AROUND);
+        ev := Wait_for_EventLogging(120);
+        PerformAction(me, UACTION_LOOK_AROUND);
+
+        If (ev and (!ev.source.isa(POLCLASS_NPC)) and !ev.source.dead)
+          TurnToward (ev.source);
+          Case (ev.type)
+            SYSEVENT_SPEECH:
+              var sayed := ev.text;
+              var talktome := 1;
+              var wordarray := SplitWords(sayed);
+              var word1 := wordarray [1];
+	      If (lower(word1)==lower(minename))
+                 SetObjProperty(ev.source,"talkto",minename);
+                 sayed := wordarray[2];
+                 If (wordarray[3])
+                   sayed += " " + wordarray[3];
+                 EndIf
+              EndIf
+              SleepMS(5);
+              If (GetObjProperty(ev.source,"talkto") and GetObjProperty(ev.source,"talkto")!=minename)
+		talktome := 0;
+	      EndIf
+              If (talktome)
+
+                If (!CheckLosAt(me, ev.source.x, ev.source.y, ev.source.z+16)) // Um zu verhindern, dass Gefangene durch Waende angesproechen werden
+                  Case (RandomInt(6)+1)
+                    1: PrintTextAbovePergon(ev.source, me, "Huh? Wer spricht da?");
+                    2: PrintTextAbovePergon(ev.source, me, "Huh? Wer spricht da?");
+                    3: PrintTextAbovePergon(ev.source, me, "Meint Ihr mich?");
+                    4: PrintTextAbovePergon(ev.source, me, "Wo seid Ihr?");
+                    5: PrintTextAbovePergon(ev.source, me, "Nanu? Wo kommt die Stimme her?");
+                    6: PrintTextAbovePergon(ev.source, me, "Geistestimmen ... zu Hilfeee");
+                  EndCase
+                Else
+                  Case (sayed)
+                   "hallo":
+                   "hi":
+                   	   SayPergon(ev.source, "Ich flehe Euch an ... _Helft_ mir!");
+                   "wer":
+                   	   SayPergon(ev.source, "Ich weiß es nicht mehr.");
+                   	   SleepMS(2000);
+                   	   SayPergon(ev.source, "Ich wache jeden morgen hier auf und kann mich an nichts erinnern.");
+                   	   SleepMS(3000);
+                   	   SayPergon(ev.source, "Ich weiss nur, dass ich hier raus will.");
+                   "zeit":
+                       SayPergon(ev.source, "Leider kann ich Euch nicht sagen, wie spät es ist.");
+                       SleepMS(2000);
+                       SayPergon(ev.source, "...");
+                       SleepMS(2000);
+                       SayPergon(ev.source, "Habt Ihr auch manchmal Descha-wues?");
+                   "ort":
+                       SayPergon(ev.source, "Ihr seid in einem Gefängnis.");
+                   "name":
+                       SayPergon(ev.source, "Man nennt mich "+minename+" ... glaube ich.");
+                   "hilfe":
+                       SayPergon(ev.source, "Ihr wollt mich hier rausbringen?");
+                       Sleep(3);
+                       SayPergon(ev.source, "Ich wär Euch tausend mal dankbar dafür!");
+                       Sleep(3);
+                       SayPergon(ev.source, "Sagt, wenn es losgeht.");
+                       Sleep(3);
+                       SayPergon(ev.source, "Ich werde nicht von Eurer Seite weichen.");
+                       Sleep(3);
+                       SetObjProperty(me, "hilfe", 1);
+                   "frost":
+                       SayPergon(ev.source, "Die Kälte ist an allem Schuld!");
+                   "los":
+                   "folgen":
+                   "freiheit":
+                       If (!GetObjProperty(me, "hilfe"))
+                         SayPergon(ev.source, "Wie meint Ihr?");
+                       Else
+                         SayPergon(ev.source, "Auf in die Freiheit!!!");
+
+                         SetObjProperty(me, "TimeStamp", ReadGameClock() + LIFETIME*60); // der Gefangene soll nur 20 Minuten leben
+
+                         // ab hier Anweisung zum Folgen des 'Retters'
+
+                         var x_old, y_old; // dient dazu, festzustellen, ob der Gefangene durch ein Gate o.ae. gelaufen ist
+                         var teleported := 0;   // zeigt an, dass der Gefangene eben die Treppen ordnungsgemaess benutzt hat
+
+                         While (1)
+
+                           x_old := me.x;
+                           y_old := me.y;
+
+                           If (!CheckLineOfSight(me, ev.source))
+                             If (((me.x >= 5551) && (me.x <= 5553) && (me.y <= 1804)))
+                       	       // Beam 'me' eine Etage hoeher
+                       	       MoveObjectToLocation(me, 5556, 1824, -1, REALM_BRITANNIA);
+                               me.facing := 2;
+                       	       SayPergon(ev.source, "Da bin ich.");
+                       	       teleported := 1;
+                       	     Else
+                       	       PrintTextAbovePergon(ev.source, me, "Hilfee ... wo seid Ihr hin??");
+                       	       Break;
+                       	     EndIf
+                       	   EndIf
+
+                           If ((Distance(me, ev.source) > 5) || ((ev.source).hidden == 1) || ((ev.source).dead == 1))
+                             PrintTextAbovePergon(ev.source, me, "Huch ... wo seid Ihr hin??");
+                             Sleep(2);
+                             PrintTextAbovePergon(ev.source, me, "Ich sehe Euch nicht mehr!");
+                             Break;
+                           EndIf
+
+                           If ((me.x >= 5578) && ((me.x <= 5580) && (me.y >= 1923)))
+                       	     SayPergon(ev.source, "aaaahhh ... Freiheit!!!");
+                       	     SleepMS(1500);
+                             PerformAction(me, 0x20);
+                             SayPergon(ev.source, "Wie kann ich Euch nur danken?");
+                             SleepMS(4000);
+                             SayPergon(ev.source, "Ein paar Goldmünzen ... das ist alles, was ich verstecken konnte.");
+                             SleepMS(3000);
+                             SayPergon(ev.source, "Fragt nicht wie, nehmt sie einfach ... mehr kann ich Euch nicht geben.");
+                             SleepMS(3000);
+                             CreateItemInBackpackPergon(ev.source, UOBJ_GOLD_COIN, RandomInt(444) + 1111);
+                             SleepMS(1000);
+                             SayPergon(ev.source, "Habt nochmals großen Dank. Viel Glück auf Euren Wegen.");
+                             SleepMS(5000);
+                             // spaeter dann hier noch massig Karma und Fame verteilen
+
+                             // Abgang
+                             me.facing := 4;
+                             WalkTowardLocation(5579, 1927);
+                             WalkTowardLocation(5579, 1927);
+                             WalkTowardLocation(5579, 1927);
+
+                             AutoJail(me); // Gefaengnis -> NPC-Vernichter
+
+                             // Ende. Gefangener wird im Jail vernichtet und spawnt irgendwann neu
+                             return;
+                           EndIf
+
+                           WalkToward(ev.source);
+
+                           // Check, ob der Gefangene unerlaubterweise irgendwo anders hingebracht wurde
+                           If (!teleported) // nur, wenn nicht gerade die Treppe benutzt wurde
+                             If ((Abs(x_old - me.x) > 1) || (Abs(y_old - me.y) > 1) || (me.x < 5000)) // der Gefangene ist nicht gelaufen, sondern wurde teleportiert
+                                                                                        // bzw. ist an einer unerlaubten Stelle
+                               SetObjProperty(me, "guardkill", 1);
+                               KillMobile(me, "prisoner-zwangstod");
+                             EndIf
+                           Else
+                             teleported := 0;
+                           EndIf
+
+                           If (ReadGameClock() > GetObjProperty(me, "TimeStamp"))  // Zeitlimit erreicht
+                             PrintTextAbovePergon(ev.source, me, "aaarrghh ... ");
+//                             SetObjProperty(me, "guardkill", 1);
+                             KillMobile(me, "prisoner-zeittod");
+                           ElseIf ((ReadGameClock() + 120 > GetObjProperty(me, "TimeStamp")) && (RandomInt(5) <= 1)) // 2min-Vorwarnung, dass der Gefangene bald den Loeffel abgibt
+                             PrintTextAbovePergon(ev.source, me, "Bitte beeilt Euch ... Ich fühle meine Kräfte schwinden...");
+                           EndIf
+
+                           SleepMS(450);
+                         EndWhile
+                       EndIf
+                   default:
+                       SayPergon(ev.source, "...");
+      	          EndCase
+      	        EndIf // von !Check_LOS
+              EndIf
+            SYSEVENT_ENGAGED:
+		SayPergon(ev.source, "Aaahhh! Hilfe! Hilfe!  Man greift mich an!");
+//                Run(ev.source, HALT_THRESHOLD);
+
+            SYSEVENT_DISENGAGED:
+		SayPergon(ev.source, "*puh*");
+
+            SYSEVENT_DAMAGED:
+                SayPergon(ev.source, "Was habe ich nur getan. Zu Hilfe!!!");
+                If (ev.source)
+//                    Run(ev.source, HALT_THRESHOLD);
+                Else
+                    SayPergon(ev.source, "So viele gegen mich alleine? Hilfe!!!");
+                EndIf
+
+            SYSEVENT_ENTEREDAREA:
+                Case (RandomInt(4) + 1)
+                  1: SayPergon(ev.source, "Zu Hiiiilfeeee....");
+                  2: SayPergon(ev.source, "Hiiiilfeeee....");
+                  3: SayPergon(ev.source, "Helft mir....");
+                  4: SayPergon(ev.source, "Hiilfeeee....");
+                EndCase
+
+	    SYSEVENT_LEFTAREA:
+                If (GetObjProperty(ev.source, "talkto")==minename)
+                  EraseObjProperty (ev.source, "talkto");
+                EndIf
+
+          EndCase
+	EndIf
+
+      If (GetObjProperty(me, "TimeStamp"))
+        If (ReadGameClock() > GetObjProperty(me, "TimeStamp"))  // Zeitlimit erreicht. Gefangener hat nur in der Gegend rumgestanden
+          PrintTextAbovePergon(0, me, "aaarrghh ... ");
+          SetObjProperty(me, "guardkill", 1);
+          KillMobile(me, "prisoner-nochn-zeittod");
+        EndIf
+      EndIf
+
+    EndWhile
+EndProgram

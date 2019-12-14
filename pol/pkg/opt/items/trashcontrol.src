@@ -1,0 +1,35 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+//   TrashControl - Leert sicherheitshalber ca. alle 5 Minuten den Abfalleimer
+//
+//     based on Trash (1999/12/08)
+//       Author: Zulu
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2001/10/04 Shinigame: Complete ReWrite
+//
+////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use util;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TrashControl(trashcan)
+  While (1)
+    ForEach item in EnumerateItemsInContainer(trashcan)
+      DestroyItem(item);
+    EndForEach
+
+    Sleep(240+RandomInt(60));
+  EndWhile
+EndProgram

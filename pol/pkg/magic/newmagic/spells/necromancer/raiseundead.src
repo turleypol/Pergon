@@ -1,0 +1,189 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file raiseundead.src
+//
+// implements spell 305 <Raise Undead> - "Erwecke Untoten"
+//
+// raises undead from corpse
+
+use os;
+use util;
+use vitals;
+include "../magicpergon";
+
+Program cast_raiseundead (params)
+  var caster;
+  var caston;
+
+  // load spelldata
+  var spells := ReadConfigFile("::spells");
+  var spell := FindConfigElem(spells, SPELLID_NECRO_RAISEUNDEAD);
+  var dur := spell.duration;
+  var mindur := spell.durationmin;
+  var maxdur := spell.durationmax;
+  var power;
+
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power := params[3];
+    caston := params[4];
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power := params[3];
+    caston := TargetThing(caster, TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+
+    power := GetCastPowerPergon(caster, SPELLID_NECRO_RAISEUNDEAD);
+    caston := TargetThing(caster, TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  // check If spelltarget is a corpse
+  If (caston.objtype <> UOBJ_CORPSE)
+    SendSysMessagePergon(caster, "Das ist keine Leiche", "This is no corpse");
+    return;
+  EndIf
+
+  // check If spelltarget is undead
+  If (GetObjProperty(caston, "undead"))
+    SendSysMessagePergon(caster, "Untote könnt Ihr nicht wiedererwecken", "You cannot reawake undead corpses");
+    return;
+  EndIf
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  var template;
+  var critter;
+  var blood := {};
+  var parms := struct;
+  // prepare control script for summoned critter
+  parms.+script := "enticedanimal";
+  parms.+CProps := dictionary;
+  parms.+Master := caster.serial;
+  // set caster as master
+  parms.CProps.insert("master", caster.serial);
+  // set enticed time (high enough)
+  parms.CProps.insert("RoamsFreeAt", ReadGameClock() + dur * 6);
+  // mark as summoned by necro
+  parms.CProps.insert(PROP_SUMMONED, SUMMON_BY_NECRO);
+  // mark as undead
+  parms.CProps.insert("undead", 1);
+  // für Antimagie und Exorzismus
+  parms.CProps.insert("power", CInt(power+40));
+  // Exp löschen für selbstbeschworene Viecher
+  parms.CProps.insert("exp", 0);
+
+  // calc spell duration according to casting power
+  dur := CInt(power*dur/100.0);
+  If (mindur and mindur > dur)
+    dur := CInt(mindur / 5);
+  ElseIf (maxdur and maxdur < dur)
+    dur := CInt(maxdur / 5);
+  Else
+    dur := CInt(dur / 5);
+  EndIf
+
+  If (power > 110)                     // get template for critter
+    template := 2 + RandomInt(2);
+  ElseIf (power > 90)
+    template := 1 + RandomInt(2);
+  ElseIf (power > 70)
+    template := RandomInt(2);
+  Else
+    template := 0;
+  EndIf
+
+  PlayStationaryEffect(caston.x, caston.y, caston.z, FX_MARK_EFFECT, 7, 10, 0, caston.realm);
+
+  Case (template)                      // create critter
+    0:  critter := CreateNpcFromTemplate("undead", caston.x, caston.y, caston.z, parms, caston.realm);
+    SendSysMessagePergon(caster, "Ihr erweckt einen Untoten", "You raise an Undead");
+    1:  critter := CreateNpcFromTemplate("zombie", caston.x, caston.y, caston.z, parms, caston.realm);
+    SendSysMessagePergon(caster, "Ihr erweckt einen Zombie", "You raise a Zombie");
+    2:  critter := CreateNpcFromTemplate("mummy", caston.x, caston.y, caston.z, parms, caston.realm);
+    SendSysMessagePergon(caster, "Ihr erweckt eine Mumie", "You raise a Mummy");
+    3:  critter := CreateNpcFromTemplate("liche", caston.x, caston.y, caston.z, parms, caston.realm);
+    SendSysMessagePergon(caster, "Ihr erweckt einen Liche", "You raise a Liche");
+  EndCase
+
+  If (!critter)
+    SendSysMessagePergon(caster, "Ihr könnt keine Untoten herbeirufen, da das Template fehlt! Wendet euch an einen GM.");
+    syslog(
+      "FEHLER: Scheinbar fehlt eines der Untoten-NPC-Templates: "+
+      critter.errortext+" ("+template+")"
+    );
+    return;
+  EndIf
+
+  // applied damage after 1/5th of duration
+  var critdmg := CInt(GetMaxHPPergon(critter)/5);
+
+  PlaySoundEffect(caston, SFX_1DA);
+  PrintTextAbovePrivatePergon(critter, "Ihr befehlt - ich folge, Herr", "You order - I follow, Lord", caster);
+
+  // create blood stains
+  blood[1]:= CreateItemAtLocationPergon(
+    caston.x, caston.y, caston.z, 0x122f, 1, caston.realm
+  );
+  blood[2]:= CreateItemAtLocationPergon(
+    caston.x, caston.y - 1, caston.z, 0x122d, 1, caston.realm
+  );
+  blood[1].movable    := 0;
+  blood[2].movable    := 0;
+  blood[1].saveonexit := 0;
+  blood[2].saveonexit := 0;
+
+  // Taeter markieren für Forensic
+  SetObjProperty(caston, EV_CHOPPER, caster.name);
+
+  DestroyItem(caston);                           // destroy corpse
+
+  Detach();
+
+  var i := 0;
+
+  While (i < 5)                                // wait summa 4/5th of duration
+    Sleep(dur);
+
+    If (i == 1)                               // destroy blood stains
+      DestroyItem(blood[1]);
+      DestroyItem(blood[2]);
+    EndIf
+
+    // abort if critter got killed
+    If (!critter or critter.dead)
+      return;
+    EndIf
+
+    PlaySoundEffect(critter, SFX_SPELL_HARM);
+    PlayObjectCenteredEffect(critter, FX_SMOKE, 10, 10);
+
+    // reduce critters HP by 1/5th
+    If (GetHPPergon(critter) <= critdmg)
+      break;
+    Else
+      SetHPPergon(critter, GetHPPergon(critter) - critdmg);
+    EndIf
+  EndWhile
+
+  PlaySoundEffect(critter, SFX_SPELL_MANA_VAMPIRE);
+  PlayStationaryEffect(
+    critter.x, critter.y, critter.z, FX_SMOKE, 10, 10, 0, critter.realm
+  );
+
+  // hide critter
+  critter.hidden := 1;
+
+  // kill critter
+  KillNPC(critter, "necro-raiseundead", KILLNPC_NOCORPSE);
+EndProgram
+
+// vim: sw=2 sts=2

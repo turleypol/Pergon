@@ -1,0 +1,151 @@
+///////////////////////////////////////////////////////////////////////////
+//
+//  magiccristalball.src    -   Magische Kristallkugel die Auskunft über den
+//                                    Aufenthaltsort des Ziels gibt
+//
+//    v0.9  -   09.04.05  -   Seppel
+//    v1.0  -   13.04.05  -   Seppel  -   leichte Änderungen und Abschluss für v1.0
+//
+///////////////////////////////////////////////////////////////////////////
+
+Include "include/modifyskill";
+Include "include/npc";
+Include "include/onlinesearch";
+use cfgfile;
+use math;
+use os;
+use uo;
+
+
+////////////////////////////////////////////////////
+// Gump-Definitionen  (aus msg.src geklaut :)
+////////////////////////////////////////////////////
+
+Var layout:={
+  "page 0",                       // Seite 0 (Basisseite)
+  "nodispose",
+  "resizepic 10 10 2620 310 430",
+  "gumppic 30 40 2621",
+  "checkertrans 15 16 300 418",
+
+  "text 30 19 40 0",
+  "text 234 19 40 1"
+};
+
+Var data:={"Spielername", "Nachricht"};
+
+//////////////////
+//Hauptprogramm
+//////////////////
+
+program magiccristalball(character,item)
+
+  Var rares:=   ReadConfigFile("rares");                                  //Rares Config auslesen
+  Var rare:=    FindConfigElem(rares, item.objtype);
+  Var dur:=     rare.duration;
+  Var tbu:=     rare.timebetweenuses;
+
+  if(item.movable == 0)                                                   //ist die Kristallkugel lose?
+    SendSysmessagePergon(character, "Die Kristallkugel bewegt sich nicht");
+    return;
+  endif
+
+  if (CInt(GetObjProperty(item, "lastuse") + tbu) > ReadGameClock())      //letzte Benutzung lange genug her?
+      SendSysMessagePergon(character, "Die Kugel muss erst noch regenerieren");
+      return;
+  endif
+
+  SendSysMessagePergon(character, "Wen wollt ihr verfolgen?");
+  Var victim;
+
+
+  //Gumpsachen aus msg.src übernommen und leicht verändert
+  Var playerinfo := FillInOnlineCharacterInfo(
+    layout, data, character, DONT_LIST_ME
+  );      // Liste mit {char.name, char}
+  If (playerinfo)
+    Var nummer:=SendDialogGump(character, layout, data)[0];
+    If (nummer)
+         victim:= playerinfo[nummer][2];
+    Else
+        SendSysMessagePergon(character, "Abbruch", "Abort");
+    EndIf
+  Else
+      SendSysMessagePergon(character, "Es ist niemand da zum verfolgen", "There's nobody to follow");
+  EndIf
+
+  if (!victim)
+    SendSysMessagePergon(character, "Ohne Ziel wird das nichts");
+    return;
+  endif
+
+  SendSysMessagePergon(character, "Ihr verfolgt nun " + victim.name);
+
+  SetObjProperty(item, "lastuse", ReadGameClock());                           //Benutzung merken
+  Detach();
+
+  Var i:=0;
+  Var away:=0;
+  for(i:=0; i < dur; i+=1)                                                  //alle 10 sekunden neue Nachricht bis dur vorbei
+    if(SearchForOnlineCharacter(character, victim.name))                      //ist Ziel online?
+      if (away == 1)                                                          //war Zwischenzeitlich ausgeloggt?
+        SendSysMessagePergon(character, "Euer Ziel ist wieder aufgetaucht!");
+        away:=0;
+      endif
+      
+      Var dist:= CInt(DistanceEuclidean(character, victim));   //Entfernungsberechnung
+      Var place:= PlaceName(victim);                                          //Ort des Ziels
+      Var distanceword;
+      Var placeword;
+
+      if(dist < 5)                                                            //Entfernung in sinnvolle Beschreibung umwandeln
+        distanceword:= "sehr nah";
+      elseif(dist < 10)
+        distanceword:= "in der Nähe";
+      elseif(dist < 50)
+        distanceword:= "nicht weit";
+      elseif(dist < 100)
+        distanceword:= "in der Region";
+      elseif(dist < 300)
+        distanceword:= "weit weg";
+      else
+        distanceword:= "sehr weit weg";
+      endif
+
+      case (place)                                                            //je nach Ort wird noch ein bindewort benötigt
+        "GreenAcres"                        : placeword:= "auf ";
+        "Minoc"                             : placeword:= "in ";
+        "Yew"                               : placeword:= "in ";
+        "Vesper"                            : placeword:= "in ";
+        "Cove"                              : placeword:= "in ";
+        "Jhe'lom"                           : placeword:= "in ";
+        "Jhe'lom Nord"                      : placeword:= "in ";
+        "Jhe'lom Sued"                      : placeword:= "in ";
+        "Nirdana"                           : placeword:= "in ";
+        "Sumpf"                             : placeword:= "im ";
+        "Hoehlen"                           : placeword:= "in den ";
+        "Wrong (Necromanten)"               : placeword:= "im ";
+        "Magierturm (Elementarmagier)"      : placeword:= "beim ";
+        "Magierturmruine (Elementarmagier)" : placeword:= "bei der ";
+        "Badehaus"                          : placeword:= "beim ";
+        "Heiligtum (Kleriker)"              : placeword:= "beim ";
+        "Orcfort zu Cove"                   : placeword:= "beim ";
+        "Orcvorposten"                      : placeword:= "beim ";
+        default:                              placeword:= " ";
+      endcase
+
+      //zusammensetzen und ausgabe der Meldung
+      SendSysMessagePergon(character, victim.name + " ist " + distanceword + " und hält sich " + placeword + place + " auf");
+
+    else
+      if (away == 0)                                                              //wenn Ziel ausloggt
+        SendSysMessagePergon(character, "Euer Ziel ist unerreichbar");
+        away:=1;
+      endif
+    endif
+    SleepMS(10000);
+  endfor
+
+  SendSysMessagePergon(character, "Die Energie der Kugel ist erschöpft");
+
+EndProgram

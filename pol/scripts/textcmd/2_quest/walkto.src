@@ -1,0 +1,55 @@
+///////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD WalkTo - Ein NPC soll zu einer bestimmten Koordinate laufen oder rennen
+//
+//     Author: Mai
+//
+//   Modifications:
+//     16.10.2005 Fraggulus: USAGE angepasst, Script in Form gebracht
+//
+///////////////////////////////////////////////////////////////////////////
+
+use file;
+use uo;
+include "include/clock";
+include "include/eventid";
+include "include/modifyskill";
+include "include/quests";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program WalkTo(character, params)
+
+  If (!params)
+    SendSysMessagePergon(character, "USAGE: .WalkTo <steps> <walk_run>", "USAGE: .WalkTo <steps> <0|1>");
+    SendSysMessagePergon(character, "steps: Anzahl Schritte des Npcs; walk_run = 0: Npc geht, walk_run = 1: Npc rennt",
+                                    "steps: steps to walk; walk_run = 0: npc walks, walk_run = 1: npc runs");
+    Return;
+  Else
+    var dummy := splitwords(params);
+    var run_   := 0;
+    var time  := dummy[1];
+
+    If (dummy[2])
+      run_ := dummy[2];
+    EndIf
+
+    SendSysMessagePergon(character, "Wählt einen Npc.", "Target an npc.");
+    var animal:= Target(character,TGTOPT_NOCHECK_LOS);
+
+    SendSysMessagePergon(character, "Wohin soll der Npc laufen?", "Where to let the npc walk?");
+    var where := TargetCoordinates(character);
+
+    If (animal && where)
+      var ev := struct;
+      ev.+type  := EVID_WALK;
+      ev.+range := {where.x, where.y, cint(time), run_};
+      SendEvent(animal, ev);
+
+      QuestCharLog(character, "TextCMD WalkTo: "+animal.name+" ["+animal.npctemplate+"] nach "+where.x+" "+where.y);
+    EndIf
+ EndIf
+
+EndProgram

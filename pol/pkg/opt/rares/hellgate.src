@@ -1,0 +1,187 @@
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+//  hellgate.src    -   Pentagram öffnet Tor zur Hölle
+//
+//    v0.9  -   11.04.05  -   Seppel
+//    v1.0  -   13.04.05  -   Seppel  -   leichte Änderungen und Abschluss für v1.0
+//
+//////////////////////////////////////////////////////////////////////////////////////////
+use util;
+use os;
+use uo;
+use math;
+use cfgfile;
+
+Include "include/modifyskill";
+
+program hellgate(character, item)
+
+  Var rares:=     ReadConfigFile("rares");                                  //Rares Config auslesen
+  Var rare:=      FindConfigElem(rares, item.objtype);
+  Var dur:=       rare.duration;
+  Var tbu:=       rare.timebetweenuses;
+  Var gatepower:= rare.power;
+  Var regg:=      rare.regeneration;
+
+  if (item.container || item.movable == 0)                                                        //Pentagram muss auf dem Boden liegen
+    SendSysMessagePergon(character, "Das Pentagram rührt sich nicht");
+    return;
+  endif
+
+                                                                            //überprüfung auf vollständiges Pentagram
+  Var pentagram:= {};
+  Var i:= 1;
+  Var x:= 0;
+  Var y:= 0;
+  Var otype;
+
+  for (i:=1; i<9; i+=1)
+    case (i)                                                                  //welches Teil muss wo liegen?
+      1:  x:= -1; y:= 0;  otype:= 0xdb01;
+      2:  x:= -1; y:= -1; otype:= 0xdb02;
+      3:  x:= 0;  y:= -1; otype:= 0xdb03;
+      4:  x:= -1; y:= 1;  otype:= 0xdb04;
+      5:  x:= 1;  y:= -1; otype:= 0xdb11;
+      6:  x:= 0;  y:= 1;  otype:= 0xdb12;
+      7:  x:= 1;  y:= 1;  otype:= 0xdb13;
+      8:  x:= 1;  y:= 0;  otype:= 0xdb14;
+    endcase
+
+    Var things:= ListItemsAtLocation(item.x + x, item.y + y, item.z,item.realm);
+    foreach thing in things
+      if (thing.objtype == otype)
+        pentagram[i]:= thing;                                               //wenn es ein Pentagramteil ist merken
+      endif
+    endforeach
+  endfor
+
+  pentagram[9]:= "ende";                                                    //frag nich
+
+  foreach penta in pentagram                                                //überprüfung auf vollständiges Pentagram
+    if (!penta)
+      SendSysMessagePergon(character, "Das Pentagram ist unvollständig!");
+      return;
+    endif
+  endforeach
+
+  if (CInt(GetObjProperty(item, "lastuse") + tbu) > ReadGameClock())        //letzte Benutzung lange genug her?
+    SendSysMessagePergon(character, "Das Pentagram reagiert nicht");
+    return;
+  endif
+
+  foreach penta in pentagram                                                //Pentagram festmachen damits keiner klaut
+    penta.movable:= 0;
+  endforeach
+  item.movable:= 0;
+
+  Detach();
+
+  SendSysMessagePergon(character, "Das Pentagram fängt an zu glühen");
+  PlaySoundEffect(item, 0x301);
+  SleepMS(2000);
+  PlaySoundEffect(item, 0x2f9);
+
+  Var gate:= CreateItemAtLocationPergon(item.x, item.y, item.z, 0x1fcb, 1,item.realm);   //Moongateeffekt leider nicht als Animation vorhanden sondern nur als einzelne Bilder
+  SleepMS(200);
+  DestroyItem(gate);
+  gate:= CreateItemAtLocationPergon(item.x, item.y, item.z, 0x1fcc, 1,item.realm);
+  SleepMS(200);
+  DestroyItem(gate);
+  gate:= CreateItemAtLocationPergon(item.x, item.y, item.z, 0x1fcd, 1,item.realm);
+  SleepMS(200);
+  DestroyItem(gate);
+  gate:= CreateItemAtLocationPergon(item.x, item.y, item.z, 0x1fce, 1,item.realm);
+  SleepMS(200);
+  DestroyItem(gate);
+  gate:= CreateItemAtLocationPergon(item.x, item.y, item.z, 0x1fcf, 1,item.realm);
+  SleepMS(200);
+  DestroyItem(gate);
+  gate:= CreateItemAtLocationPergon(item.x, item.y, item.z, 0x1fd1, 1,item.realm);
+  SleepMS(200);
+  DestroyItem(gate);
+  gate:= CreateItemAtLocationPergon(item.x, item.y, item.z, 0x1fd2, 1,item.realm);
+  SleepMS(200);
+  DestroyItem(gate);
+  gate:= CreateItemAtLocationPergon(item.x, item.y, item.z, 0x1fd3, 1,item.realm);
+  SleepMS(200);
+  DestroyItem(gate);
+  gate:= CreateItemAtLocationPergon(item.x, item.y, item.z, 0x1fd4, 1,item.realm);
+
+  PlaySoundEffect(item, 0x302);
+  SleepMS(3000);
+
+  BroadcastPergon(character.name + " öffnet ein Tor zu Hölle!", character.name + " opens a Gate to Hell!", _DEFAULT_TEXT_FONT, 38);
+
+  for (i:=0; i<dur; i+=1)                                                     //Viecherspawn für dur Sekunden
+    Var j:=0;
+    Var skeletons:= RandomInt(5);                                               //jedes mal ein bissl Kleinkram
+    while (j < skeletons)
+      case (RandomInt(4))
+        0:  CreateNpcFromTemplate("skeleton", item.x + RandomInt(9) - 4, item.y + RandomInt(9) - 4, item.z,0,item.realm);
+        1:  CreateNpcFromTemplate("zombie", item.x + RandomInt(9) - 4, item.y + RandomInt(9) - 4, item.z,0,item.realm);
+        2:  CreateNpcFromTemplate("mummy", item.x + RandomInt(9) - 4, item.y + RandomInt(9) - 4, item.z,0,item.realm);
+        3:  CreateNpcFromTemplate("skeletonknight", item.x + RandomInt(9) - 4, item.y + RandomInt(9) - 4, item.z,0,item.realm);
+      endcase
+      SleepMS(100);
+      j+=1;
+    endwhile
+    SleepMS(500);
+    Var crittertype:= CInt(RandomInt(gatepower));                               //Berechnugn des critters
+    Var cx:= CInt(item.x + RandomInt(3) - 1);                                   //Critterpositionen berechnen
+    Var cy:= CInt(item.y + RandomInt(3) - 1);
+    if (crittertype < 10)                                                       //critter auswählen
+      case (RandomInt(4))
+        0:  CreateNpcFromTemplate("soulzombie", cx, cy, item.z,0,item.realm);
+        1:  CreateNpcFromTemplate("wraith", cx, cy, item.z,0,item.realm);
+        2:  CreateNpcFromTemplate("spectre", cx, cy, item.z,0,item.realm);
+        3:  CreateNpcFromTemplate("flamingskeleton", cx, cy, item.z,0,item.realm);
+      endcase
+    elseif (crittertype < 20)
+      case (RandomInt(4))
+        0:  CreateNpcFromTemplate("hellhound", cx, cy, item.z,0,item.realm);
+        1:  CreateNpcFromTemplate("bonewarlock", cx, cy, item.z,0,item.realm);
+        2:  CreateNpcFromTemplate("hellcat", cx, cy, item.z,0,item.realm);
+        3:  CreateNpcFromTemplate("darkwolf", cx, cy, item.z,0,item.realm);
+      endcase
+    elseif (crittertype < 40)
+      case (RandomInt(3))
+        0:  CreateNpcFromTemplate("liche", cx, cy, item.z,0,item.realm);
+        1:  CreateNpcFromTemplate("minordemon", cx, cy, item.z,0,item.realm);
+        2:  CreateNpcFromTemplate("lichelord", cx, cy, item.z,0,item.realm);
+      endcase
+    elseif (crittertype < 80)
+      case (RandomInt(3))
+        0:  CreateNpcFromTemplate("bloodliche", cx, cy, item.z,0,item.realm);
+        1:  CreateNpcFromTemplate("kobold", cx, cy, item.z,0,item.realm);
+        2:  CreateNpcFromTemplate("hordedemon", cx, cy, item.z,0,item.realm);
+      endcase
+      PlaySOundEffect(item, 0x2a8);
+    elseif (crittertype < 100)
+      case (RandomInt(4))
+        0:  CreateNpcFromTemplate("daemonlieutenant", cx, cy, item.z,0,item.realm);
+        1:  CreateNpcFromTemplate("daemon", cx, cy, item.z,0,item.realm);
+        2:  CreateNpcFromTemplate("hellguardian", cx, cy, item.z,0,item.realm);
+        3:  CreateNpcFromTemplate("chaosdaemon", cx, cy, item.z,0,item.realm);
+      endcase
+      PlaySoundEffect(item, 0x28d);
+    else
+      case (RandomInt(2))
+        0:  CreateNpcFromTemplate("arcanedemon", item.x, item.y, item.z,0,item.realm);
+        1:  CreateNpcFromTemplate("balron", item.x, item.y, item.z,0,item.realm);
+      endcase
+      PlaySoundEffect(item, 0x166);
+    endif
+    gatepower:= CInt(gatepower - crittertype + RandomInt(regg));              //Berechnung der neuen Gatepower
+    SleepMS(1000);
+  endfor
+
+  DestroyItem(gate);                                                          //Tor zerstören
+
+  foreach penta in pentagram                                                  //Pentagram wieder losmachen
+    penta.movable:= 1;
+  endforeach
+  item.movable:= 1;
+
+  SetObjProperty(item, "lastuse", ReadGameClock());                           //Benutzung speichern
+
+endprogram

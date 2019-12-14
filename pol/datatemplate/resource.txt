@@ -1,0 +1,302 @@
+#
+#  RESOURCE.TXT: Resource System Data
+#
+
+GlobalResourcePool carrot
+{
+	Units	1000
+}
+
+RegionalResourcePool carrot
+{
+	Name	The Whole World
+	Units	0
+#	(regions/carrot.cfg: Capacity is 1000)
+}
+
+GlobalResourcePool clay
+{
+	Units	10000
+}
+
+RegionalResourcePool clay
+{
+	Name	The Whole World
+	Units	0
+#	(regions/clay.cfg: Capacity is 10000)
+}
+
+GlobalResourcePool corn
+{
+	Units	1000
+}
+
+RegionalResourcePool corn
+{
+	Name	The Whole World
+	Units	0
+#	(regions/corn.cfg: Capacity is 1000)
+}
+
+GlobalResourcePool cotton
+{
+	Units	2000
+}
+
+RegionalResourcePool cotton
+{
+	Name	The Whole World
+	Units	0
+#	(regions/cotton.cfg: Capacity is 2000)
+}
+
+GlobalResourcePool fish
+{
+	Units	300000
+}
+
+RegionalResourcePool fish
+{
+	Name	The Whole World
+	Units	0
+#	(regions/fish.cfg: Capacity is 450000)
+}
+
+GlobalResourcePool flax
+{
+	Units	1000
+}
+
+RegionalResourcePool flax
+{
+	Name	The Whole World
+	Units	0
+#	(regions/flax.cfg: Capacity is 1000)
+}
+
+GlobalResourcePool garlic
+{
+	Units	500
+}
+
+RegionalResourcePool garlic
+{
+	Name	The Whole World
+	Units	0
+#	(regions/garlic.cfg: Capacity is 500)
+}
+
+GlobalResourcePool ginseng
+{
+	Units	500
+}
+
+RegionalResourcePool ginseng
+{
+	Name	The Whole World
+	Units	0
+#	(regions/ginseng.cfg: Capacity is 500)
+}
+
+GlobalResourcePool hops
+{
+	Units	1000
+}
+
+RegionalResourcePool hops
+{
+	Name	The Whole World
+	Units	0
+#	(regions/hops.cfg: Capacity is 1000)
+}
+
+GlobalResourcePool mandrake
+{
+	Units	500
+}
+
+RegionalResourcePool mandrake
+{
+	Name	The Whole World
+	Units	0
+#	(regions/mandrake.cfg: Capacity is 500)
+}
+
+GlobalResourcePool nightshade
+{
+	Units	500
+}
+
+RegionalResourcePool nightshade
+{
+	Name	The Whole World
+	Units	0
+#	(regions/nightshade.cfg: Capacity is 500)
+}
+
+GlobalResourcePool onion
+{
+	Units	1000
+}
+
+RegionalResourcePool onion
+{
+	Name	The Whole World
+	Units	0
+#	(regions/onion.cfg: Capacity is 1000)
+}
+
+GlobalResourcePool ore
+{
+	Units	50000
+}
+
+RegionalResourcePool ore
+{
+	Name	Background
+	Units	0
+#	(regions/ore.cfg: Capacity is 2000)
+}
+
+RegionalResourcePool ore
+{
+	Name	Jhelom
+	Units	0
+#	(regions/ore.cfg: Capacity is 2800)
+}
+
+RegionalResourcePool ore
+{
+	Name	Mountain NW of Wrong
+	Units	0
+#	(regions/ore.cfg: Capacity is 5000)
+}
+
+RegionalResourcePool ore
+{
+	Name	Mountain at Shame
+	Units	0
+#	(regions/ore.cfg: Capacity is 20000)
+}
+
+RegionalResourcePool ore
+{
+	Name	Mountains around Britain
+	Units	0
+#	(regions/ore.cfg: Capacity is 100000)
+}
+
+RegionalResourcePool ore
+{
+	Name	Mountains near Cove
+	Units	0
+#	(regions/ore.cfg: Capacity is 1000)
+}
+
+RegionalResourcePool ore
+{
+	Name	Small mountains near Trinsic
+	Units	0
+#	(regions/ore.cfg: Capacity is 3000)
+}
+
+RegionalResourcePool ore
+{
+	Name	Large range near Trinsic
+	Units	0
+#	(regions/ore.cfg: Capacity is 60000)
+}
+
+RegionalResourcePool ore
+{
+	Name	Outer Covetous
+	Units	0
+#	(regions/ore.cfg: Capacity is 20000)
+}
+
+GlobalResourcePool sand
+{
+	Units	10000
+}
+
+RegionalResourcePool sand
+{
+	Name	The Whole World
+	Units	0
+#	(regions/sand.cfg: Capacity is 200000)
+}
+
+GlobalResourcePool silk
+{
+	Units	10000
+}
+
+RegionalResourcePool silk
+{
+	Name	Background
+	Units	0
+#	(regions/silk.cfg: Capacity is 2000)
+}
+
+RegionalResourcePool silk
+{
+	Name	Covetous Level 1
+	Units	0
+#	(regions/silk.cfg: Capacity is 2000)
+}
+
+RegionalResourcePool silk
+{
+	Name	Covetous Level 2
+	Units	0
+#	(regions/silk.cfg: Capacity is 2000)
+}
+
+GlobalResourcePool stone
+{
+	Units	100000
+}
+
+RegionalResourcePool stone
+{
+	Name	Background
+	Units	0
+#	(regions/stone.cfg: Capacity is 100000)
+}
+
+GlobalResourcePool turnip
+{
+	Units	1000
+}
+
+RegionalResourcePool turnip
+{
+	Name	The Whole World
+	Units	0
+#	(regions/turnip.cfg: Capacity is 1000)
+}
+
+GlobalResourcePool wheat
+{
+	Units	2000
+}
+
+RegionalResourcePool wheat
+{
+	Name	The Whole World
+	Units	0
+#	(regions/wheat.cfg: Capacity is 2000)
+}
+
+GlobalResourcePool wood
+{
+	Units	200000
+}
+
+RegionalResourcePool wood
+{
+	Name	The Whole World
+	Units	0
+#	(regions/wood.cfg: Capacity is 200000)
+}
+

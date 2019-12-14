@@ -1,0 +1,139 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+// Simple Townperson AI. responds to a few keywords and barks out
+// some crappy responses
+//
+// He also runs like heck if you try to attack him :)
+//
+// 11/12/99 kiesow: added speech-files (profession and Var)
+// 12/12/99 kiesow: added support for special locations
+// day/month/year who-did-it: what-did-u
+/////////////////////////////////////////////////////////////////////////////
+
+Use npc;
+Use os;
+Use storage;
+Use uo;
+Include "include/animal";
+Include "include/client";
+Include "include/clock";
+Include "include/eventid";
+Include "include/itemnpc";
+Include "include/modifyskill";
+Include "include/msgs";
+Include "include/npc";  //some new functions
+Include "include/objtype";
+Include "include/names";
+Include "include/vetement";  // need for random clothing
+
+Const HALT_THRESHOLD := 7; // how close before he barks?
+Const HALT_THRESHOLD2 := 3; // how close before he barks? for speaking
+
+Var me := Self();
+
+Program person()
+  DropAnchor();
+  SetObjProperty(me,"serial",me.serial);
+
+  Var next_wander := ReadGameClock() + 10;
+  EnableEvents( SYSEVENT_SPEECH + SYSEVENT_ENGAGED + SYSEVENT_DISENGAGED + SYSEVENT_DAMAGED, HALT_THRESHOLD2);
+  EnableEvents( SYSEVENT_ENTEREDAREA + SYSEVENT_LEFTAREA, HALT_THRESHOLD );
+  EnableEvents( SYSEVENT_OPPONENT_MOVED );
+
+  If (getobjproperty(me, "frozen"))
+    me.frozen := 1;
+    IncRevision(me);
+  EndIf
+
+  Var minelocation := PlaceName(me);  //where is the npc?
+  SetWarMode( 0 );
+  set_priority(10);
+
+  If (me.name["<random>"])
+    Var npcname:=RandomName(me);
+    SetName(me, npcname);
+    SetName(me, npcname+NPCTitle(me));
+
+    npcname:=me.name+" ";
+
+    Var pos:=Find(npcname, ",", 1);
+    If (pos)
+      npcname:=npcname[1, pos-1];
+    EndIf
+
+    SetObjProperty(me, "myname", npcname);
+  EndIf
+
+  Habille(me, GetObjProperty(me, "Equipt")); // Random Clothing
+
+  Var minename := GetObjProperty(me, "myname");
+
+  // ending configure of npc and starting ai
+
+  Var ev;
+  While (1)
+    PerformAction( me, UACTION_LOOK_AROUND );
+    ev := Wait_for_EventLogging( 120 );
+    PerformAction( me, UACTION_LOOK_AROUND );
+    // print( "event type: " + ev.type );
+    If (ev and (!ev.source.isa(POLCLASS_NPC)) and !ev.source.dead)
+      TurnToward (ev.source);
+      Case (ev.type)
+        SYSEVENT_SPEECH:
+          Var sayed := ev.text;
+          Var talktome := 1;
+          Var wordarray := SplitWords(sayed);
+          Var word1 := wordarray [1];
+          If (lower(word1)==lower(minename))
+            SetObjProperty(ev.source,"talkto",minename);
+            sayed := wordarray[2];
+            If (wordarray[3])
+              sayed += " " + wordarray[3];
+            EndIf
+          EndIf
+          sleepms(5);
+          If (GetObjProperty(ev.source,"talkto") and GetObjProperty(ev.source,"talkto")!=minename)
+            talktome := 0;
+          EndIf
+          If (talktome)
+            Case (sayed)
+              "zeit":
+                SayPergon(ev.source, "Es ist " + GetPergonTimeOfDay());
+              "ort":
+                SayPergon(ev.source, "Ihr seid in " + minelocation);
+              "name":
+                SayPergon(ev.source, "Man nennt mich "+minename);
+              default:
+                Var answer := Answering(sayed, minelocation, me);
+                SayPergon(ev.source, answer);
+            EndCase
+          EndIf
+        SYSEVENT_ENGAGED:
+          SayPergon(ev.source, "Aaahhh! Hilfe! Hilfe!  Man greift mich an!");
+          Run( ev.source, HALT_THRESHOLD );
+
+        SYSEVENT_DAMAGED:
+          SayPergon(ev.source, "Was habe ich nur getan. Zu Hilfe, Wachen!!!" );
+          //print( "I just took " + ev.damage + " points of damage!" );
+          If (ev.source)
+            Run( ev.source, HALT_THRESHOLD );
+          Else
+            SayPergon(ev.source, "So viele gegen mich alleine? Hilfe!!!" );
+          EndIf
+
+        SYSEVENT_LEFTAREA:
+          If (GetObjProperty(ev.source, "talkto")==minename)
+            EraseObjProperty (ev.source, "talkto");
+          EndIf
+          default:
+          WanderPergon();
+
+      EndCase
+    EndIf
+
+    If (ReadGameClock() >= next_wander)
+      WanderPergon();
+      next_wander := ReadGameClock() + 10;
+    EndIf
+  EndWhile
+EndProgram

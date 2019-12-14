@@ -1,0 +1,56 @@
+///////////////////////////////////////////////////////////////
+//
+//   TextCMD FindNPC - Sucht NPCs anhand ihres Templates
+//
+//     Author:
+//     eMail:
+//
+//   Modification:
+//     2004/08/14 Shinigami: "heaven"-NPCs werden ausgelassen
+//     30.10.2005 Fraggulus: Abbruch-/Usage-/Msg eingepflegt
+//
+///////////////////////////////////////////////////////////////
+
+/////////////
+// Includes
+/////////////
+use os;
+use uo;
+
+Include "include/modifyskill";
+Include "include/npc";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_FindNPC(who, template)
+
+  If ((template) && template != "?")
+    Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+    template := Lower(template);
+//    SysLog("FindNPC "+template);
+
+    Var number := 0;
+    ForEach mobile in ListObjectsInBox(0, 0, -128, 6143, 4095, 127,who.realm)
+      If (mobile.isa(POLCLASS_NPC))
+        If (Lower(mobile.npctemplate) == template)
+          If (mobile.script != "heaven")
+            SendSysMessagePergon(who, "NPC: "    + number + " (" + mobile.name + ")");
+            SendSysMessagePergon(who, "  Ort: "  + PlaceInfos(mobile).name);
+            SendSysMessagePergon(who, "  Position: "+mobile.x+"/"+mobile.y+"/"+mobile.z);
+//            SysLog("  "+mobile.x+" "+mobile.y+" "+mobile.z);
+            number := number + 1;
+          EndIf
+        EndIf
+      EndIf
+      SleepMs(2);
+    EndForEach
+
+    SendSysMessagePergon(who, "Insgesamt "+number+" "+template+"'s gefunden.", 
+                              number+" "+template+"'s found.");
+  Else
+    SendSysMessagePergon(who, "USAGE: .FindNpc <template>", "USAGE: .FindNpc <template>");
+  EndIf
+EndProgram

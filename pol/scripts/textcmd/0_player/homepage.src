@@ -1,0 +1,15 @@
+////////////////////////////////////////////////////////////////
+// HomePage TextCMD - Oeffnet die Pergon-Homepage im Browser
+//
+// Author: Shinigami
+
+use uo;
+include "include/msgs";
+include "include/urls";
+
+Program TextCMD_HomePage(who)
+    SendSysMessagePergon(who,
+        "Die Pergon-Homepage wird im Browser geöffnet ..."
+    );
+    OpenURL(who, URL_HOMEPAGE);
+EndProgram

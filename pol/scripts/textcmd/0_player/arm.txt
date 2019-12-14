@@ -1,0 +1,7 @@
+<h3 id="arm">arm</h3>
+
+<h4>Parameter: <kbd>1</kbd> (entspricht keine) oder <kbd>2</kbd></h4>
+
+<p>Waffenset 1 oder 2 anlegen</p>
+
+<p>Siehe auch: <a data-href="#disarm">disarm</a></p>

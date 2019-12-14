@@ -1,0 +1,185 @@
+//*tinkering                   (Basteln)
+//*Mining                      (Erzabbau)
+//*blacksmithy                 (Erzverarbeitung)
+//*glasverarb                  (Glasverarbeitung)
+//*feinschmied                 (Kunst-/Feinschmied.)
+//*waffenschmied               (Waffen schmieden)
+//*werkzeugschmied             (Werkzeug schmieden)
+//*carpentry                   (Holzverarbeitung)
+//*Tailoring                   (Schneidern)
+//*lederei                     (Lederei/Schustern)
+//
+//*SKILLID_BASTELN             / SKILLID_TINKERING       / 37
+//   pkg/opt/crafting/makelock.src   -> war dieser Skill (Basteln) -> SKILLID_KUNST_FEINSCHMIEDEN -> Ok
+//     0x6600 Verschlussmechanismus
+//   pkg/opt/crafting/repair.src     -> NUR dieser Skill (Basteln) -> SKILLID_WERKZEUGSCHMIEDEN   -> Ok
+//     0x7701 Reparaturset
+//   pkg/std/tinkering/tinkering.src -> NUR dieser Skill (Basteln) -> SKILLID_HOLZVERARBEITUNG    -> Ok
+//     0x1ebc Werkzeug                                             -> SKILLID_WAFFENSCHMIEDEN     -> Ok
+//     0x1053 Zahnrad                                              -> SKILLID_WERKZEUGSCHMIEDEN   -> Ok
+//     0x1051 Zahnraeder mir Achse                                 -> SKILLID_KUNST_FEINSCHMIEDEN -> Ok
+//     0x1059 Sextantteile                                         -> SKILLID_GLASVERARBEITUNG    -> Ok
+//     0x105b Achse
+//     0x105c Achse
+//     0x104d Uhrenrahmen
+//     0x104e Uhrenrahmen
+//     0x104f Uhrenteil
+//     0x1055 Scharnier
+//   pkg/std/carpentry/carpentry.src -> war dieser Skill      (Basteln)          -> SKILLID_KUNST_FEINSCHMIEDEN -> Ok
+//     0x1035 Saege                     war SKILLID_CARPENTRY (Holzverarbeitung) -> SKILLID_HOLZVERARBEITUNG    -> Ok
+//     0x10e4 Spanmesser
+//     0x10e6 Schnitzbuegel
+//     0x10e7 Schaelmesser
+//     0x1030 Hobel
+//     0x1032 Feinhobel
+//     0x102a Hammer
+// ? scripts/items/fletch.src
+//     0x1db4 Pfeilschaft
+//
+//*SKILLID_ERZABBAU            / SKILLID_MINING          / 45
+//   pkg/std/mining/mining.src            -> NUR dieser Skill (Erzabbau)      -> Ok
+//     0x0f39 Schaufel
+//     0x143c Rabenschnabel
+//     0x0e85 Spitzhacke
+//     0xee85 magische Spitzhacke
+//   pkg/std/mining/stonemining.src       -> NUR dieser Skill (Steinabbau)    -> Ok
+//     0x8210 Steinpicke
+//   pkg/std/treasuremap/digitreasure.src -> NUR dieser Skill (Schatzbuddeln) -> Ok
+//   pkg/std/mining/smelting.src          -> war dieser Skill (Schmelzen)     -> SKILLID_ERZVERARBEITUNG -> Ok
+//     Erze
+//   pkg/opt/craftung/ligir.src           -> war dieser Skill (Ligieren)      -> SKILLID_ERZVERARBEITUNG -> Ok
+//     0x0fb1 Schmiedefeuer
+//     0x197a Blasebalg
+//     0x19a2 Schmiedefeuer
+//     0x19a6 Schmiedefeuer
+//     0x1982 Schmiedefeuer
+//     0x199e Schmiedefeuer
+//
+//*SKILLID_ERZVERARBEITUNG     / SKILLID_BLACKSMITHY     /  7
+//   pkg/std/mining/smelting.src                   -> WAR SKILLID_ERZABBAU (Schmelzen)    -> Ok
+//     Erze
+//   pkg/opt/craftung/ligir.src                    -> WAR SKILLID_ERZABBAU (Ligieren)     -> Ok
+//     0x0fb1 Schmiedefeuer
+//     0x197a Blasebalg
+//     0x19a2 Schmiedefeuer
+//     0x19a6 Schmiedefeuer
+//     0x1982 Schmiedefeuer
+//     0x199e Schmiedefeuer
+//   pkg/opt/crafting/meltdown.src                 -> war dieser Skill     (Einschmelzen) -> Ok
+//     0x0fbb Zange
+//   okt/std/blacksmithy/blacksmithy.src           -> war dieser Skill     (Schmelzen)    -> SKILLID_ERZVERARBEITUNG  -> Ok
+//     0xee18 Sandkoerner                                                                    SKILLID_GLASVERARBEITUNG -> Ok
+//     0x0eed Goldstueck                                                                     SKILLID_GLASVERARBEITUNG -> Ok
+//   okt/std/blacksmithy/make_blacksmith_items.src -> war dieser Skill     (Waffenbau)    -> SKILLID_WAFFENSCHMIEDEN -> Ok
+//     0x13e3 Schmiedehammer
+//
+//*SKILLID_GLASVERARBEITUNG    /                         / 52
+//   okt/std/blacksmithy/blacksmithy.src           -> WAR SKILLID_ERZVERARBEITUNG (Schmelzen)    -> SKILLID_ERZVERARBEITUNG  -> Ok
+//     0xee18 Sandkoerner                                                                           SKILLID_GLASVERARBEITUNG -> Ok
+//     0x0eed Goldstueck                                                                            SKILLID_GLASVERARBEITUNG -> Ok
+//   pkg/std/tinkering/tinkering.src               -> NUR SKILLID_TINKERING (Basteln) -> SKILLID_HOLZVERARBEITUNG    -> Ok
+//     0x1ebc Werkzeug                                                                -> SKILLID_WAFFENSCHMIEDEN     -> Ok
+//     0x1053 Zahnrad                                                                 -> SKILLID_WERKZEUGSCHMIEDEN   -> Ok
+//     0x1051 Zahnraeder mir Achse                                                    -> SKILLID_KUNST_FEINSCHMIEDEN -> Ok
+//     0x1059 Sextantteile                                                            -> SKILLID_GLASVERARBEITUNG    -> Ok
+//     0x105b Achse
+//     0x105c Achse
+//     0x104d Uhrenrahmen
+//     0x104e Uhrenrahmen
+//     0x104f Uhrenteil
+//     0x1055 Scharnier
+//
+//*SKILLID_KUNST_FEINSCHMIEDEN /                         / 51
+//   pkg/std/tinkering/tinkering.src -> NUR SKILLID_TINKERING (Basteln) -> SKILLID_HOLZVERARBEITUNG    -> Ok
+//     0x1ebc Werkzeug                                                  -> SKILLID_WAFFENSCHMIEDEN     -> Ok
+//     0x1053 Zahnrad                                                   -> SKILLID_WERKZEUGSCHMIEDEN   -> Ok
+//     0x1051 Zahnraeder mir Achse                                      -> SKILLID_KUNST_FEINSCHMIEDEN -> Ok
+//     0x1059 Sextantteile                                              -> SKILLID_GLASVERARBEITUNG    -> Ok
+//     0x105b Achse
+//     0x105c Achse
+//     0x104d Uhrenrahmen
+//     0x104e Uhrenrahmen
+//     0x104f Uhrenteil
+//     0x1055 Scharnier
+//   pkg/std/carpentry/carpentry.src -> war SKILLID_TINKERING (Basteln)          -> SKILLID_KUNST_FEINSCHMIEDEN -> Ok
+//     0x1035 Saege                     war SKILLID_CARPENTRY (Holzverarbeitung) -> SKILLID_HOLZVERARBEITUNG    -> Ok
+//     0x10e4 Spanmesser
+//     0x10e6 Schnitzbuegel
+//     0x10e7 Schaelmesser
+//     0x1030 Hobel
+//     0x1032 Feinhobel
+//     0x102a Hammer
+//   pkg/opt/craftung/makelock.src   -> war SKILLID_TINKERING (Basteln)          -> SKILLID_KUNST_FEINSCHMIEDEN -> Ok
+//     0x6600 Verschlussmechanismus
+//
+//*SKILLID_WAFFENSCHMIEDEN     /                         / 49
+//   okt/std/blacksmithy/make_blacksmith_items.src -> WAR SKILLID_ERZVERARBEITUNG (Waffenbau)    -> SKILLID_WAFFENSCHMIEDEN -> Ok
+//     0x13e3 Schmiedehammer
+//   pkg/std/tinkering/tinkering.src               -> NUR SKILLID_TINKERING (Basteln) -> SKILLID_HOLZVERARBEITUNG    -> Ok
+//     0x1ebc Werkzeug                                                                -> SKILLID_WAFFENSCHMIEDEN     -> Ok
+//     0x1053 Zahnrad                                                                 -> SKILLID_WERKZEUGSCHMIEDEN   -> Ok
+//     0x1051 Zahnraeder mir Achse                                                    -> SKILLID_KUNST_FEINSCHMIEDEN -> Ok
+//     0x1059 Sextantteile                                                            -> SKILLID_GLASVERARBEITUNG    -> Ok
+//     0x105b Achse
+//     0x105c Achse
+//     0x104d Uhrenrahmen
+//     0x104e Uhrenrahmen
+//     0x104f Uhrenteil
+//     0x1055 Scharnier
+//
+//*SKILLID_WERKZEUGSCHMIEDEN   /                         / 50
+//   pkg/std/tinkering/tinkering.src -> NUR SKILLID_TINKERING (Basteln) -> SKILLID_HOLZVERARBEITUNG    -> Ok
+//     0x1ebc Werkzeug                                                  -> SKILLID_WAFFENSCHMIEDEN     -> Ok
+//     0x1053 Zahnrad                                                   -> SKILLID_WERKZEUGSCHMIEDEN   -> Ok
+//     0x1051 Zahnraeder mir Achse                                      -> SKILLID_KUNST_FEINSCHMIEDEN -> Ok
+//     0x1059 Sextantteile                                              -> SKILLID_GLASVERARBEITUNG    -> Ok
+//     0x105b Achse
+//     0x105c Achse
+//     0x104d Uhrenrahmen
+//     0x104e Uhrenrahmen
+//     0x104f Uhrenteil
+//     0x1055 Scharnier
+//   pkg/opt/craftung/repair.src     -> NUR SKILLID_TINKERING (Basteln) -> SKILLID_WERKZEUGSCHMIEDEN   -> Ok
+//     0x7701 Reparaturset
+//
+//*SKILLID_HOLZVERARBEITUNG    / SKILLID_CARPENTRY       / 11
+//   pkg/std/tinkering/tinkering.src -> NUR SKILLID_TINKERING (Basteln) -> SKILLID_HOLZVERARBEITUNG    -> Ok
+//     0x1ebc Werkzeug                                                  -> SKILLID_WAFFENSCHMIEDEN     -> Ok
+//     0x1053 Zahnrad                                                   -> SKILLID_WERKZEUGSCHMIEDEN   -> Ok
+//     0x1051 Zahnraeder mir Achse                                      -> SKILLID_KUNST_FEINSCHMIEDEN -> Ok
+//     0x1059 Sextantteile                                              -> SKILLID_GLASVERARBEITUNG    -> Ok
+//     0x105b Achse
+//     0x105c Achse
+//     0x104d Uhrenrahmen
+//     0x104e Uhrenrahmen
+//     0x104f Uhrenteil
+//     0x1055 Scharnier
+//   pkg/std/carpentry/carpentry.src -> war SKILLID_TINKERING (Basteln)          -> SKILLID_KUNST_FEINSCHMIEDEN -> Ok
+//     0x1035 Saege                     war dieser Skill      (Holzverarbeitung) -> SKILLID_HOLZVERARBEITUNG    -> Ok
+//     0x10e4 Spanmesser
+//     0x10e6 Schnitzbuegel
+//     0x10e7 Schaelmesser
+//     0x1030 Hobel
+//     0x1032 Feinhobel
+//     0x102a Hammer
+// ? scripts/items/bladed.src
+//     0x0f51 Taschenmesser
+//     Waffen
+//
+//*SKILLID_SCHNEIDERN          / SKILLID_TAILORING       / 34
+//   pkg/std/tailoring/make_cloth_items.src -> NUR dieser Skill (Schneidern) -> SKILLID_SCHNEIDERN        -> Ok
+//     0x0f9d Naehzeug                                                       -> SKILLID_LEDEREI_SCHUSTERN -> Ok
+//   pkg/std/tailoring/scissors.src         -> NUR dieser Skill (Schneidern) -> SKILLID_SCHNEIDERN -> Ok
+//     0x0f9e Schere
+//
+//*SKILLID_LEDEREI_SCHUSTERN   /                         / 70
+//   pkg/std/tailoring/make_cloth_items.src -> NUR SKILLID_TAILORING (Schneidern) -> SKILLID_SCHNEIDERN        -> Ok
+//     0x0f9d Naehzeug                                                            -> SKILLID_LEDEREI_SCHUSTERN -> Ok
+
+
+
+// 1) crafting.cfg  -> skill[1] anpassen
+// 2) tinkering.src -> dazu menus.cfg synchron zur tinkers.cfg sortieren
+// 3) SKILLID_BASTELN ueberall einbauen
+//
+// Schloesser bauen/Schluessel duplizieren -> SKILLID_KUNST_FEINSCHMIEDEN

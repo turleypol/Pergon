@@ -1,0 +1,101 @@
+//**************************************************************************************************
+// Script file archheal.src
+//
+//    implements spell 209 <Arch Heal> - "Erzheilung"
+//
+//	heals more HP on several spelltargets simultaneously
+//		[ Resisted (Magic) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 01.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use vitals;
+
+Include "../magicpergon";
+Include "../resistance";
+
+program cast_archheal (params)
+
+   Var caster;
+   Var where;
+   Var beneficiaries;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_ARCHHEAL);
+   Var difficulty:= spell.skill;
+   Var resist:=   spell.resist;
+   Var amnt;
+   Var baseamnt:= spell.primary;
+   Var range:=    spell.range;
+   Var minrange:= spell.rangemin;
+   Var maxrange:= spell.rangemax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      where:=struct{x,y,z,realm};
+      where.x:=params[4].x;
+      where.y:=params[4].y;
+      where.z:=params[4].z;
+      where.realm:=params[4].realm;
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      where:=  TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_ARCHHEAL);
+      where:= TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, where);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   baseamnt:= CDbl(power*baseamnt/100.0);						// calc spell range and spell effect
+   range:= CInt(power*range/100.0); 							// according to casting power
+   if (minrange and minrange > range)
+      range:= minrange;
+   elseif (maxrange and maxrange < range)
+      range:= maxrange;
+   endif
+
+   beneficiaries:= ListMobilesNearLocation(where.x, where.y, where.z, range,where.realm); 	// get spelltargets
+
+   Var healpnts:= 0;
+   Var benefics:= 0;
+
+   if (beneficiaries)
+      foreach beneficiary in beneficiaries					// for each spelltarget
+
+         if (resist)						// alter spelleffect according to spelltargets magic resistance
+            amnt:= CInt(MagicResistance(beneficiary, difficulty, resist, baseamnt, 1));
+         else
+            amnt:= CInt(baseamnt);
+         endif
+
+         PlaySoundEffect(beneficiary, SFX_SPELL_HEAL);
+         PlayObjectCenteredEffect(beneficiary, FX_HEAL_EFFECT, 5, 25);
+
+         HealDamage(beneficiary, amnt);						// heal HP
+
+         benefics+= 1;								// remember stuff for message
+         healpnts+= amnt;
+         SleepMS(2);
+      endforeach
+
+      SendSysMessagePergon(caster, "Ihr heilt durchschnittlich " + CInt(healpnts / benefics) + " Lebenspunkte",
+                                   "You heal averaged " + CInt(healpnts / benefics) + "hitpoints");
+   endif
+
+endprogram

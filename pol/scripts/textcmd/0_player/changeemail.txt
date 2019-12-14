@@ -1,0 +1,4 @@
+<h3 id="changeemail">changeemail</h3>
+
+<p>E-Mail-Adresse eines Characters ändern. <strong>Hinweis:</strong>
+Beschränkt auf bestimmte Character</p>

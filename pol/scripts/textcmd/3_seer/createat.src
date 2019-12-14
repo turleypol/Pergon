@@ -1,0 +1,130 @@
+////////////////////////////////////////////////////////////////////////
+//   TextCMD CreateAt  - Erzeugt ein Item an einer gewaehlten Position
+//   TextCMD CreateAtC - Erzeugt ein Item an einer gewaehlten Position
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2004/06/01 SeBB: color-Parameter
+
+////////////////////////////////////////////////////////////////////////
+//
+//  Die hiermit erzeugten Items verschwinden nicht (kein decay).
+//
+//  Als Parameter sind zulaessig (TextCMD Create):
+//    objtype  - Name oder Nummer
+//    [amount] - Anzahl           (Standard = 1)
+//    [color]  - Farbe            (Standard = 0)
+//
+//  Als Parameter sind zulaessig (TextCMD CreateC):
+//    objtype  - Name oder Nummer
+//    [color]  - Farbe            (Standard = 0)
+//    [amount] - Anzahl           (Standard = 1)
+//
+//  Ohne Angabe von Parametern oeffnet sich ein Menue.
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+include "include/itemnpc";
+include "include/msgs";
+include "include/objtype";
+use uo;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program TextCMD_CreateAt(who, text)
+    If (!text)
+        // was denn, keine Parameter?
+        var selection := SelectMenuItem2(who, "ItemCreation");
+        If (!selection)
+            return;
+        EndIf
+
+        // SpawnRune darf nur ueber .CreateSpawnrune createt werden
+        If (
+            (selection.objtype == UOBJ_SPAWNRUNE) ||
+            (lower(selection.objtype) == "spawnrune")
+        )
+            SendSysMessagePergon(who,
+                "Konnte das nicht erzeugen: Unerlaubtes Item"
+            );
+            return;
+        EndIf
+
+        SendSysMessagePergon(who,
+            "An welcher Stelle soll das Item erscheinen?"
+        );
+        var place := TargetCoordinates(who);
+        If (!place)
+            SendSysMessagePergon(who, "Abbruch", "Abort");
+            return;
+        EndIf
+        If (place.item.container)
+            SendSysMessagePergon(who, "In Containern geht das nicht!");
+            return;
+        EndIf
+        var created := CreateItemAtLocationPergon(
+            place.x, place.y, place.z, selection.objtype, 1, who.realm
+        );
+        created.color := selection.color;
+        created.decayat := 0;
+        return;
+    EndIf
+
+    // Parameter wurden uebergeben
+    var params := SplitWords(text);
+    var objtype := params[1];
+    var color := CInt(params[3]);
+    var amount := CInt(params[2]);
+
+    If (CInt(objtype))
+        objtype := CInt(objtype);
+    EndIf
+
+    If (!color)
+        color := 0;
+    EndIf
+
+    If (!amount)
+        amount := 1;
+    EndIf
+
+    // SpawnRune darf nur ueber .CreateSpawnrune createt werden
+    If ((objtype == UOBJ_SPAWNRUNE) ||(lower(objtype) == "spawnrune"))
+        SendSysMessagePergon(who,
+            "Konnte das nicht erzeugen: Unerlaubtes Item"
+        );
+        return;
+    EndIf
+
+    var i;
+    For (i := 1; i <= amount; i += 1)
+        SendSysMessagePergon(who,
+            "An welcher Stelle soll das Item Nr. "+i+" erscheinen?"
+        );
+        var place := TargetCoordinates(who);
+        If (!place)
+            SendSysMessagePergon(who, "Abbruch", "Abort");
+            return;
+        EndIf
+        If (place.item.container)
+            SendSysMessagePergon(who, "In Containern geht das nicht!");
+            return;
+        EndIf
+
+        var item := CreateItemAtLocation(
+            place.x, place.y, place.z, objtype, 1, who.realm
+        );
+        If (item == error)
+            SendSysMessagePergon(who, "Fehler: "+item.errortext);
+            return;
+        EndIf
+        If (color)
+          item.color := color;
+        EndIf
+        item.decayat := 0;
+        SleepMs(2);
+    EndFor
+EndProgram

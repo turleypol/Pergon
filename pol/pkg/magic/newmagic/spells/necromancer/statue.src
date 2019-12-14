@@ -1,0 +1,184 @@
+//**************************************************************************************************
+// Script file statue.src
+//
+//    implements spell 328 <Statue> - "Statue"
+//
+//  turns spelltarget into a statue of stone (total paralyzation)
+//    [ Reflected / Resisted (Magic) ]
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use os;
+
+Include "../magicpergon";
+//Include "../resistance";
+Include "../spellattack";
+Include "include/spellcheck";
+Include "include/eventid";
+
+program cast_statue (params)
+
+   Var caster;
+   Var caston;
+   Var spelltarget;
+
+   Var spells:= ReadConfigFile("::spells");                   // load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_NECRO_STATUE);
+   Var difficulty:= spell.skill;
+   Var resist:= spell.resist;
+   Var dur:=    spell.duration;
+   Var mindur:= spell.durationmin;
+   Var maxdur:= spell.durationmax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+      send_attack(caston, caster, 328);
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_NECRO_STATUE);
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif     
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+                                    // get spelltarget -> possible spell reflection
+   spelltarget:= ReflectSpell(caster, caston, power, 1, FX_GLOW_SPIKE, 10, 10, 0, SFX_SPELL_WALL_OF_STONE);
+
+   if (spelltarget)
+      if (GetObjProperty(spelltarget, "spell_statue"))    // check if spelltarget already is a statue
+         SendSysMessagePergon(caster, "Euer Ziel ist bereits eine Statue", "Your target is a statue already");
+         return;
+      endif
+
+      Var curseTag:= GetObjProperty(spelltarget, "spell_curse");
+      Var deadKnight:= 0;
+      If (curseTag[3]== "dead knight")      // Todesritter?
+        deadKnight:= 1;
+      EndIf
+
+      if (spelltarget.dead || deadKnight == 1)        // wenn tot oder Todesritter dann kann man nicht versteinern
+          SendSysMessagePergon(caster, "Tote könnt ihr nicht versteinern",
+                                "Dead cannot be turned into an statue");
+          return;
+      endif
+ // Nekromanten dürfen alles außer InvulNPC versteinern
+      if (spelltarget.isa(POLCLASS_NPC) && spelltarget.enabled("invul"))             // check if spelltarget is a NPC
+         SendSysMessagePergon(caster, "Euer Ziel kann nicht versteinert werden",
+                              "Your target cannot be turned into a statue");
+         return;
+      endif
+
+      if (resist)   // calc spell duration according to spelltargets magic resistance and casting power
+         dur:= CInt(MagicResistance(spelltarget, difficulty, resist, power*dur/100.0, 1));
+      else
+         dur:= CInt(power*dur/100.0);
+      endif
+
+      if (mindur and mindur > dur)
+         dur:= mindur;
+      elseif (maxdur and maxdur < dur)
+         dur:= maxdur;
+      endif
+
+      Var tag:= array;
+
+      Var equipped:= ListEquippedItems(spelltarget);      // get spelltargets equipped items
+
+      tag[1]:= ReadGameClock() + dur;
+      tag[2]:= power;
+      tag[3]:= spelltarget.name;                    // save name of spelltarget
+      tag[4]:= spelltarget.color;                 // save color of spelltarget
+      tag[5]:= ReadMilliSecondClock();
+
+      SetObjProperty(spelltarget, "spell_statue", tag);   // tag spelltarget for spellchecker
+      SendSpellWaiter(spelltarget, "spell_statue", dur, tag[5], spelltarget);
+
+      if (spelltarget.gender)
+         spelltarget.name:= "Eine Statue der " + tag[3];    // alter name
+      else
+        spelltarget.name:= "Eine Statue des " + tag[3];
+      endif
+
+      spelltarget.color:= 901;                    // paint spelltarget gray
+
+      foreach equip in equipped                         // for each equipped item
+         tag[4]:=equip.color;
+         SetObjProperty(equip, "spell_statue", tag);      // save color of equipment
+         SendSpellWaiter(equip, "spell_statue", dur, tag[5], spelltarget);
+         equip.color:= 901;                           // paint equipment gray
+         if (equip.isa(POLCLASS_WEAPON) or equip.isa(POLCLASS_ARMOR))
+            equip.movable:= 0;                          // make equipment unmovable
+         endif
+      endforeach                              // spelltarget should be totally gray now
+
+      if (spelltarget.isa(POLCLASS_NPC) && GetObjProperty(spelltarget, PROP_SUMMONED) == SUMMON_BY_NECRO)
+        var newev:=struct; 
+        newev.+type := EVID_TU_NIX;
+        newev.+source:=caster;
+        SendEvent(spelltarget,newev);
+        
+        Var weapon:= spelltarget.weapon;                    // get weapon of spelltarget
+        weapon.dmg_mod:= weapon.dmg_mod-1000;               // alles entfernen was Schaden verursachen könnte
+        SetStrPergon(spelltarget, 10);                      //        
+        SetSkillPergon(spelltarget, SKILLID_FAUSTKAMPF, 0); //
+        SetSkillPergon(spelltarget, SKILLID_ANATOMIE, 0);   //
+        SetSkillPergon(spelltarget, SKILLID_TAKTIK, 0);     //
+        SetHPPergon(spelltarget, 1);                        // Hits und Mana niedrig setzen damit Kreaturenopfer nichts mehr bringt
+        SetManaPergon(spelltarget, 1);                            
+      endif
+
+      PrintTextAbovePrivatePergon(spelltarget, "Ihr erstarrt zu einer steinernen Statue",
+                                               "You are turned into a stone statue", spelltarget);
+
+      if (GetObjProperty(spelltarget, "spell_paralyze"))
+        EraseObjProperty(spelltarget, "spell_paralyze");    // wenn schon gefreezed dann tag entfernen damit spellchecker nicht entfreezed
+      endif
+      spelltarget.frozen:= 1;                     // freeze spelltarget
+      GrantPrivilege(spelltarget, "invul");           // make spelltarget invulnerable
+      if (!spelltarget.enable("invul"))                     // activate privilege
+         Syslog("WARNUNG: Spell Statue - Cannot activate granted privilege invul");
+      endif
+      IncRevision(spelltarget);
+      
+      If (spelltarget!=caster)
+        If (!caster.getprop(TYPKILLER)) // kein PK
+          caster.setcriminal(36); // und jetzt erstmal ne zeitlang criminal (für alle nicht nur caston)
+//          Set_Critical(1);
+//          var last:=CInt(caster.getprop("longmurders"));
+//          If (last<=4) // nicht eh schon vogelfrei
+//            caster.setprop("longmurders",5);
+//            Set_Critical(0);
+//            caster.setmurderer(1);
+//            
+//            Detach();
+//            Sleep(120); // 2minuten vogelfrei
+//            caster.setprop("longmurders",last);
+//            caster.setmurderer(0);
+//            caster.setcriminal(36); // und jetzt erstmal ne zeitlang criminal (für alle nicht nur caston)
+//          Else
+//            Set_Critical(0);
+//          EndIf
+        EndIf
+      EndIf
+
+   endif
+
+endprogram

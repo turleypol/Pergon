@@ -1,0 +1,100 @@
+///////////////////////////////////////////////////////////////////////////
+// Nuketyperange -- Destroy defined items in range, even in containers
+
+use uo;
+include "include/msgs";
+include "include/objtype";
+
+Program TextCMD_NukeType(who, params)
+  var text := SplitWords(params);
+
+  If (!params || text.size() <> 2)
+    SendSysMessagePergon(who, "Usage: .nuketyperange <objtype> <range>");
+    return;
+  EndIf
+
+  var nukerange := CInt(text[2]);
+  If (!nukerange)
+    nukerange := 0;
+  EndIf
+
+  If (nukerange > 50)
+    nukerange := 50;
+    SendSysMessagePergon(who,
+      "Sicherheitshalber wird der Bereich auf 50 Felder reduziert."
+    );
+  EndIf
+
+  var objtype := text[1];
+  If (CInt(objtype))
+    objtype := CInt(objtype);
+  Else
+    objtype := GetObjtypeByName(objtype);
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Das Item "+Hex(objtype)+" wird im Radius "+nukerange+" zerstört!"
+  );
+  SendSysMessagePergon(who, "Mittelpunkt der Zerstörung waehlen!");
+
+  var tgt := TargetCoordinates(who);
+  If (!tgt or tgt.item.container)
+    SendSysMessagePergon(who, "Ungültige Auswahl");
+    return;
+  EndIf
+
+  var count := 0;
+  ForEach item in (ListItemsNearLocation(
+    tgt.x, tgt.y, tgt.z, nukerange, tgt.realm
+  ))
+    SleepMs(2);
+    count += DestroyRecursive(item, objtype);
+  EndForEach
+
+  If (count == 0)
+    SendSysMessagePergon(who, "Es wurde kein Item zerstört.");
+  ElseIf (count == 1)
+    SendSysMessagePergon(who, "Es wurde ein Item zerstört.");
+  Else
+    SendSysMessagePergon(who, "Es wurden "+count+" Items zerstört.");
+  EndIf
+EndProgram
+
+Function DestroyRecursive(item, objtype) // {{{
+  var count := 0;
+
+  If (
+    // unsichtbare Items ignorieren
+    item.invisible or
+    // Stadt- und Gildensteine nicht begrabbeln
+    item.objtype in (array{UOBJ_TOWNSTONE, UOBJ_GUILDSTONE})
+  )
+    return count;
+  EndIf
+
+  If (item.isa(POLCLASS_CONTAINER))
+    // bei Containern Inhalt rekursiv beseitigen
+    ForEach content in (EnumerateItemsInContainer(item, ENUMERATE_ROOT_ONLY))
+      SleepMs(2);
+      If (content.objtype == objtype)
+        count += DestroyRecursive(content, objtype);
+      EndIf
+    EndForEach
+
+    // falls der Container das gesuchte Objekt ist ...
+    If (item.objtype == objtype)
+      // ... ebenfalls wegmachen, sofern er leer ist
+      If (EnumerateItemsInContainer(item, ENUMERATE_ROOT_ONLY).size() <= 0)
+        DestroyItem(item);
+      EndIf
+    EndIf
+  Else
+    If (item.objtype == objtype)
+      // normale Items einfach zerstoeren
+      DestroyItem(item);
+      count += 1;
+    EndIf
+  EndIf
+
+  return count;
+EndFunction // }}}

@@ -1,0 +1,196 @@
+////////////////////////////////////////////
+// plitsch -- Nach Wasser graben
+//
+// Author: Pauker 11/2001
+
+use attributes;
+use os;
+use uo;
+use util;
+include "include/client";
+include "include/modifyskill";
+include "include/objtype";
+
+program plitsch(char, myst)
+  Var UOBJ_Schaufel := {0xF39, 0xF3A, 0x0f39};
+  Var UOBJ_Hacke    := {0x0e85, 0x0e86, 0x8210};
+
+  PlaySoundEffect(char, 0x12);
+  SendSysMessagePergon(char, "Ihr hört ein leises Rauschen ...", "You hear a gentle rush ...");
+  sleep(1);
+
+  // Hacke auswaehlen
+  SendSysMessagePergon (char, "Wählt die Hacke, mit der Ihr arbeiten wollt.", "Choose a pickaxe to work with.");
+  Var Hacke := target(char, TGTOPT_CHECK_LOS);
+  If (!Hacke)
+    SendSysMessagePergon (char, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  if (Hacke.objtype in UOBJ_Hacke)
+    If (!IsPickAxeEquipped(char, Hacke))
+      SendSysMessagePergon(char, "Zum Graben müsst Ihr das in die Hand nehmen!", "You have to equip that in order to dig!");
+      Return;
+    EndIf
+  else
+    SendSysMessagePergon (char, "Das ist nicht das richtige Werkzeug.", "That's not the right tool.");
+    return;
+  endif
+  ReserveItem(Hacke);
+  // Werkzeug-Eigenschaften auslesen
+  Var werkzeug1:=GetPropertyItem(Hacke);
+
+  // Schaufel auswaehlen
+  SendSysMessagePergon (char, "Wählt die Schaufel mit der ihr arbeiten wollt.", "Choose a shovel to work with.");
+  Var Schaufel := target(char, TGTOPT_CHECK_LOS);
+  if (Schaufel.objtype in UOBJ_Schaufel)
+    If ((!AccessiblePergon(char,Schaufel)) or (distance(char, Schaufel) > 1))
+      SendSysMessagePergon (char, "Ihr könnt das Werkzeug nicht benutzen.", "You're not able to use that tool.");
+      return;
+    endif
+  else
+    SendSysMessagePergon (char, "Das ist nicht das richtige Werkzeug.", "That's not the right tool.");
+    return;
+  endif
+  ReserveItem(Schaufel);
+  // Werkzeug-Eigenschaften auslesen
+  Var werkzeug2:=GetPropertyItem(Schaufel);
+
+  Var num_chops_quelle:=randomint(100)+200;
+  Var num_chops_skill:=cint(200-(GetSkillPergon(char, SKILLID_ERZABBAU)*2));
+  Var num_chops:=cint((num_chops_quelle+num_chops_skill)/10);
+  if (num_chops<1)
+    num_chops:=1;
+  endif
+
+  SendSysMessagePergon (char, "Ihr fangt an zu Graben.", "You start to dig.");
+
+  Var ran;
+  while (num_chops>0)
+
+     performaction(char, UACTION_PICK);
+     PlaySoundEffect(char, SFX_PICK);
+     sleep(1);
+
+     if (!((cint(char.x)==cint(myst.x)) and (cint(char.y)==cint(myst.y))))
+       SendSysMessagePergon (char, "Abbruch", "Abort");
+       return;
+     endif
+
+     if (randomint(100)>95) // Zufallsereignis
+       ran:=randomint(5);
+
+       Case (ran)
+         0: if (CheckSkillPergon(char, SKILLID_ERZABBAU, 60, 600))
+              SendSysMessagePergon(char, "Hui! Noch mal Glück gehabt. Die Seitenwände halten.",
+                                         "Whew! Luckily the side walls are stable.");
+            else
+              SendSysMessagePergon (char, "Oh nein! Die Seitenwaende sind eingebrochen.",
+                                          "Oh no! the side walls collapsed.");
+              num_chops+=20;
+            endif
+         1: if (num_chops<20)
+              create_stone_char_backpack(char);
+              num_chops+=20;
+            endif
+         2: Var it := createnpcfromtemplate("LesserEarthElemental", myst.x, myst.y, char.z,0,char.realm);
+            if (!it.errortext)
+              SendSysMessagePergon(char, "Oh nein! Ihr habt ein "+it.name+" ausgegraben.",
+                                         "Oh no! You scared up an earth elemantal");
+              return;
+            endif
+         3: if (CheckSkillPergon(char, SKILLID_ERZABBAU, 60, 600))
+              SendSysMessagePergon (char, "Hui! Noch mal Glück gehabt. Die Seitenwände halten.",
+                                          "Whew! Luckily the side walls are stable.");
+            else
+              SendSysMessagePergon (char, "Oh nein! Die Seitenwände sind eingebrochen.",
+                                          "Oh no! the side walls collapsed.");
+              num_chops+=30;
+            endif
+         4: if (num_chops<20)
+              create_stone_char_backpack(char);
+              num_chops+=20;
+            endif
+       EndCase
+     endif
+
+     if (randomint(100)>90)
+       if (randomint(2)==1)
+         if (SetWerkzeugSchaden(char, Hacke, "Eure Hacke hat gelitten!", "Eure Hacke ist stark beschädigt!", "Eure Hacke ist zerbrochen!"))
+           return;
+         endif
+       Else
+         if (SetWerkzeugSchaden(char, Schaufel, "Eure Schaufel hat gelitten!", "Eure Schaufel ist stark beschädigt!", "Eure Schaufel ist zerbrochen!"))
+           return;
+         endif
+       endif
+     endif
+     num_chops-=cint(werkzeug1.quality+werkzeug2.quality);
+
+  endwhile
+
+  Var wasser:=GetObjProperty(myst, "wasser"); // die Wassermenge wird ausgelesen
+  SendSysMessagePergon (char, "Ihr legt die Wasserader frei.", "You excavate a water vein.");
+  Var wasser_ader:=CreateItemAtLocationPergon(myst.x, myst.y, myst.z, 0xff97, 1,myst.realm);
+  DestroyItem(myst);
+  SetObjProperty(wasser_ader, "wasser", wasser); // die Wassermenge wird gesetzt
+endprogram
+
+Function IsPickAxeEquipped (character, pickaxe)
+  Var result:=0;
+
+  If (AccessiblePergon(character, pickaxe) And (Distance(character, pickaxe)<=1))
+    If (pickaxe.objtype==0x0f39) // Ist es eine Schaufel?
+      If (pickaxe.container==character.backpack)
+        result:=1;
+      Else
+        SendSysMessagePergon(character, "Zum Schürfen muss sich die Schaufel im Backpack befinden!",
+                                        "The shovel has to be in your backpack in order to dig!");
+      EndIf
+    Else // Irgendwas, was man auch in die Hand nehmen kann
+      ForEach item in ListEquippedItems(character)
+        If (pickaxe.serial==item.serial)
+          result:=1;
+        EndIf
+      EndForEach
+
+      If (!result) // Befindet sich nicht in der Hand
+        result:=EquipItem(character, pickaxe);
+      EndIf
+
+      If (!result) // Befindet sich immernoch nicht in der Hand
+        SendSysMessagePergon(character, "Zum Schürfen müsst Ihr das in die Hand nehmen!",
+                                        "You have to to equip that in order to dig!");
+      EndIf
+    EndIf
+  Else
+    SendSysMessagePergon(character, "Ihr kommt dort nicht ran!", "You cannot access that!");
+  EndIf
+
+  Return (result);
+EndFunction
+
+
+Function create_stone_char_backpack(character)
+  SendSysMessagePergon(character, "Ganz schön steiniges Gelände hier.", "A very stony terrain.");
+  Var steinblock;
+  Var i:=RandomInt(100);
+  if (i<10)
+    steinblock:=UOBJ_MARBLESTONE;  // Marmor
+  else
+    if (i<50)
+      steinblock:=UOBJ_GRANITSTONE;  // Granit
+    else
+      steinblock:=UOBJ_SANDSTONE; // Sandstein gibts als default
+    endif
+  endif
+  Var anzahl:=randomint(8)+2;
+  CreateItemInBackpackPergon(character, steinblock, anzahl);
+  If (anzahl > 1)
+    SendSysMessagePergon(character, "Ihr legt "+anzahl+" Steinblöcke in Euren Rucksack.",
+                                    "You put "+anzahl+" blocks of stone in your backpack.");
+  Else
+    SendSysMessagePergon(character, "Ihr legt "+anzahl+" Steinblock in Euren Rucksack.",
+                                    "You put "+anzahl+" block of stone in your backpack.");
+  EndIf
+endfunction

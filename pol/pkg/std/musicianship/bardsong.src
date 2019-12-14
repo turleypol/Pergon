@@ -1,0 +1,34 @@
+///////////////////////////////////////////////////////////////////////////
+// bardsong
+//
+// ein Lied spielen (UseScript Notenrolle)
+
+// Wirkungsradius abhängig vom Skill:      bei 200: dist 20
+// Zugewinn abhängig vom Skill:            bei 200: stats  20, resi  40
+// Verluste für Feinde abhängig von Skill: bei 200: stats -20, resi -20?
+// Regdelay abhängig vom Skill?
+
+use cfgfile;
+use os;
+include "common";
+
+Program BardSong(bard, item)
+    If (item.getprop(PROP_MUSIC_SCR_IS_COPY) != error)
+        SendSysMessagePergon(bard,
+            "Diese Rolle ist eine Kopie und nicht zum Spielen geeignet.",
+            "This scroll is a copy and cannot be used to play a song.",
+            _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+        );
+        return;
+    EndIf
+
+    var itemdesc := ReadConfigFile("::itemdesc");
+    // besser ist das, sollte aber nie schief laufen
+    If (!itemdesc)
+        syslog("FEHLER: "+itemdesc.errortext);
+        return;
+    EndIf
+
+    var liednr := itemdesc[item.objtype].bardsong;
+    PlayBardSong(bard, LoadBardSong(liednr));
+EndProgram

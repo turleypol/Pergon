@@ -1,0 +1,40 @@
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD BMOnline - Schaltet fuer Counselors die besondere Sichtbarkein in Online an oder aus
+//
+//     Author: Fox
+//
+//   Modifications:
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+//////////////
+// Libraries
+//////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+Include "include/modifyskill";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program TextCMD_BMOnline(who)
+  If (who.cmdlevel == CMDLEVEL_COUNSELOR)
+    If (GetObjProperty(who, HIDE_BM_ONLINE))
+      EraseObjProperty(who, HIDE_BM_ONLINE);
+      SendSysMessagePergon(who, "Euer Name wird nun im Online hervorgehoben");
+    Else
+      SetObjProperty(who, HIDE_BM_ONLINE, 1);
+      SendSysMessagePergon(who, "Euer Name wird nun im Online normal erscheinen");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Dies dürfen nur Bürgermeister nutzen");
+  EndIf
+EndProgram

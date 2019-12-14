@@ -1,0 +1,321 @@
+/////////////////////////////////////////////////////////
+//
+//   packetstats - Stats der Pakete 
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     09.11.07 Turley: Init/Modified Basierend auf PolDistro
+//
+/////////////////////////////////////////////////////////
+
+use uo;
+use os;
+use http;
+
+include "header";
+
+
+Program HTMLPage()
+	DoHeader("Packet Stats");
+	WriteHTML("<DIV ID='container'>");
+	WriteHTML("<DIV ID='header'></DIV>");
+	WriteHTML("<DIV ID='content'>");
+	TableHeader("Packet Stats");
+	
+	DenyAccess(isALLOWED_STRICT);
+
+	WriteHTML("<P>Packets Sent</P>");
+
+	WriteHTML("<TABLE CELLSPACING='1' CELLPADDING='2' WIDTH='700'>");
+	WriteHTML("<TR>");
+	WriteHTML("<TH><B>Message Type</B></TH><TH><B>Name</B></TH><TH><B>Count</B></TH><TH><B>Bytes</B></TH><TH><B>KB</B></TH><TH><B>MB</B></TH>");
+	WriteHTML("</TR>");
+	var iostats := POLCore().iostats;
+
+	for msgtype := 0 to 255
+		if ( iostats.sent[msgtype+1].count )
+			WriteHTML("<TR>");
+			WriteHTML("<TD>"+Hex(msgtype)+"</TD>");
+			WriteHTML("<TD>"+GetMessageName(msgtype)+"</TD>");
+			WriteHTML("<TD>"+iostats.sent[msgtype+1].count+"</TD>");
+			WriteHTML("<TD>"+iostats.sent[msgtype+1].bytes+"</TD>");
+			WriteHTML("<TD>"+FormatBytesToKB(iostats.sent[msgtype+1].bytes)+"</TD>");
+			WriteHTML("<TD>"+FormatBytesToMB(iostats.sent[msgtype+1].bytes)+"</TD>");
+			WriteHTML("</TR>");
+		endif
+		SleepMS(2);
+	endfor
+	WriteHTML("</TABLE>");
+	
+	WriteHTML("<P>Packets Received</P>");
+
+	WriteHTML("<TABLE CELLSPACING='1' CELLPADDING='2' WIDTH='700'>");
+	WriteHTML("<TR>");
+	WriteHTML("<TH><B>Message Type</B></TH><TH><B>Name</B></TH><TH><B>Count</B></TH><TH><B>Bytes</B></TH><TH><B>KB</B></TH><TH><B>MB</B></TH>");
+	WriteHTML("</TR>");
+	for msgtype := 0 to 255
+		if ( iostats.received[msgtype+1].count )
+			WriteHTML("<TR>");
+			WriteHTML("<TD>"+Hex(msgtype)+"</TD>");
+			WriteHTML("<TD>"+GetMessageName(msgtype)+"</TD>");
+			WriteHTML("<TD>"+iostats.received[msgtype+1].count+"</TD>");
+			WriteHTML("<TD>"+iostats.received[msgtype+1].bytes+"</TD>");
+			WriteHTML("<TD>"+FormatBytesToKB(iostats.received[msgtype+1].bytes)+"</TD>");
+			WriteHTML("<TD>"+FormatBytesToMB(iostats.received[msgtype+1].bytes)+"</TD>");
+			WriteHTML("</TR>");
+		endif
+		SleepMS(2);
+	endfor
+	WriteHTML("</TABLE>");
+	
+	
+	WriteHTML("<P>Queued Packets Sent</P>");
+
+	WriteHTML("<TABLE CELLSPACING='1' CELLPADDING='2' WIDTH='700'>");
+	WriteHTML("<TR>");
+	WriteHTML("<TH><B>Message Type</B></TH><TH><B>Name</B></TH><TH><B>Count</B></TH><TH><B>Bytes</B></TH><TH><B>KB</B></TH><TH><B>MB</B></TH>");
+	WriteHTML("</TR>");
+	iostats := POLCore().queued_iostats;
+
+	for msgtype := 0 to 255
+		if ( iostats.sent[msgtype+1].count )
+			WriteHTML("<TR>");
+			WriteHTML("<TD>"+Hex(msgtype)+"</TD>");
+			WriteHTML("<TD>"+GetMessageName(msgtype)+"</TD>");
+			WriteHTML("<TD>"+iostats.sent[msgtype+1].count+"</TD>");
+			WriteHTML("<TD>"+iostats.sent[msgtype+1].bytes+"</TD>");
+			WriteHTML("<TD>"+FormatBytesToKB(iostats.sent[msgtype+1].bytes)+"</TD>");
+			WriteHTML("<TD>"+FormatBytesToMB(iostats.sent[msgtype+1].bytes)+"</TD>");
+			WriteHTML("</TR>");
+		endif
+		SleepMS(2);
+	endfor
+	WriteHTML("</TABLE>");
+	
+	WriteHTML("<P>Packet Status </P>");
+
+	WriteHTML("<TABLE CELLSPACING='1' CELLPADDING='2' WIDTH='700'>");
+	WriteHTML("<TR>");
+	WriteHTML("<TH><B>Message Type</B></TH><TH><B>Name</B></TH><TH><B>Sub</B></TH><TH><B>Count</B></TH>");
+	WriteHTML("</TR>");
+	ForEach pkt in (PolCore().pkt_status)
+	  If (pkt.count>0)
+  	  WriteHTML("<TR>");
+  	  If (pkt.?sub)
+  			WriteHTML("<TD>&nbsp;</TD>");
+  			WriteHTML("<TD>&nbsp;</TD>");
+  			WriteHTML("<TD>"+Hex(pkt.sub)+"</TD>");
+  	  Else
+  	    WriteHTML("<TD>"+Hex(pkt.pkt)+"</TD>");
+  	    If (pkt.pkt==0)
+  	      WriteHTML("<TD>EncryptedSendBuffer</TD>");
+  	    Else  	      
+  	      WriteHTML("<TD>"+GetMessageName(pkt.pkt)+"</TD>");
+  	    EndIf
+  			WriteHTML("<TD>&nbsp;</TD>");
+  	  EndIf
+  	  WriteHTML("<TD>"+pkt.count+"</TD>");
+  	  WriteHTML("</TR>");
+  	EndIf
+		SleepMS(2);
+	EndForEach
+
+	WriteHTML("</TABLE>");
+	WriteHTML("</DIV>");
+	DoFooter();
+endprogram
+
+Function GetMessageName(msgtype)
+  Case (msgtype)
+    // Packets Sent By Client
+    0x00: Return("Create Character");
+    0x01: Return("Disconnect Notification");
+    0x02: Return("Move Request");
+    0x03: Return("Talk Request");
+    0x04: Return("Request God Mode (God Client)");
+    0x05: Return("Request Attack");
+    0x06: Return("Double Click");
+    0x07: Return("Pick Up Item");
+    0x08: Return("Drop Item");
+    0x09: Return("Single Click");
+    0x0A: Return("Edit (God Client)");
+    0x12: Return("Request Skill etc use");
+    0x13: Return("Drop->Wear Item");
+    0x14: Return("Send Elevation (God Client)");
+    0x16: Return("Request Script Names");
+    0x34: Return("Get Player Status");
+    0x35: Return("Add Resource (God Client)");
+    0x37: Return("Move Item (God Client)");
+    0x38: Return("Drunken Coder");
+    0x3B: Return("Buy Item(s)");
+    0x5D: Return("Login Character");
+    0x69: Return("Change Text/Emote Colors");
+    0x72: Return("Request War Mode");
+    0x73: Return("Ping");
+    0x75: Return("Rename Character");
+    0x7D: Return("Response To Dialog Box");
+    0x80: Return("Login Request");
+    0x83: Return("Delete Character");
+    0x8D: Return("Character Creation (KR)");
+    0x91: Return("Game Server Login");
+    0x9B: Return("Request Help");
+    0x9F: Return("Sell List Reply");
+    0xA0: Return("Select Server");
+    0xA4: Return("Client Spy");
+    0xA7: Return("Request Tip/Notice Window");
+    0xAC: Return("Gump Text Entry Dialog Reply");
+    0xAD: Return("Unicode/Ascii speech request");
+    0xB1: Return("Gump Menu Selection");
+    0xB5: Return("Open Chat Window");
+    0xB6: Return("Send Help/Tip Request");
+    0xD9: Return("Spy On Client");
+    0xE0: Return("Bug Report (KR)");
+    0xE1: Return("Character List Update (KR)");
+    0xE4: Return("KR Encryption Response");
+    0xEB: Return("Report Use KR Hotbar Icon");
+    0xEC: Return("Equip Macro (KR)");
+    0xED: Return("Unequip Item Macro (KR)");
+    0xEF: Return("KR/2D CLient Login/Seed");
+
+    // Packets Sent By Server
+    0x0B: Return("Damage");
+    0x11: Return("Status Bar Info");
+    0x17: Return("Health Bar Status Update (KR)");
+    0x1A: Return("Object Info");
+    0x1B: Return("Char Locale and Body");
+    0x1C: Return("Send Speech");
+    0x1D: Return("Delete Object");
+    0x20: Return("Draw Game Player");
+    0x21: Return("Char Move Rejection");
+    0x23: Return("Dragging Of Item");
+    0x24: Return("Draw Container");
+    0x25: Return("Add Item To Container");
+    0x26: Return("Kick Player");
+    0x27: Return("Reject Move Item Request");
+    0x28: Return("Clear Square (God Client?)");
+    0x29: Return("Paperdoll Clothing Add Ack");
+    0x2B: Return("God Mode (God Client)");
+    0x2D: Return("Mob Attributes");
+    0x2E: Return("Worn Item");
+    0x2F: Return("Fight Occuring");
+    0x30: Return("Attack Ok");
+    0x32: Return("Unknown");
+    0x33: Return("Pause Client");
+    0x3C: Return("Items In Container");
+    0x3E: Return("Versions (God Client)");
+    0x3F: Return("Update Statics (God Client)");
+    0x4E: Return("Personal Light Level");
+    0x4F: Return("Overall Light Level");
+    0x53: Return("Idle Warning");
+    0x54: Return("Play Sound Effect");
+    0x55: Return("Login Complete");
+    0x5B: Return("Time");
+    0x65: Return("Set Weather");
+    0x6D: Return("Play Midi Music");
+    0x6E: Return("Character Animation");
+    0x70: Return("Graphical Effect");
+    0x74: Return("Open Buy Window");
+    0x76: Return("New Subserver");
+    0x77: Return("Update Player");
+    0x78: Return("Draw Object");
+    0x7C: Return("Open Dialog Box");
+    0x82: Return("Login Denied");
+    0x86: Return("Resend Characters After Delete");
+    0x88: Return("Open Paperdoll");
+    0x89: Return("Corpse Clothing");
+    0x8C: Return("Connect To Game Server");
+    0x90: Return("Map Message");
+    0x97: Return("Move Player");
+    0x9A: Return("Text Promt");
+    0x9E: Return("Sell List");
+    0xA1: Return("Update Current Health");
+    0xA2: Return("Update Current Mana");
+    0xA3: Return("Update Current Stamina");
+    0xA5: Return("Open Web Browser");
+    0xA6: Return("Tip/Notice Window");
+    0xA8: Return("Game Server List");
+    0xA9: Return("Characters / Starting Locations");
+    0xAA: Return("Allow/Refuse Attack");
+    0xAB: Return("Gump Text Entry Dialog");
+    0xAE: Return("Unicode Speech message");
+    0xAF: Return("Display Death Action");
+    0xB0: Return("Send Gump Menu Dialog");
+    0xB2: Return("Chat Message");
+    0xB7: Return("Help/Tip Data");
+    0xB9: Return("Enable locked client features");
+    0xBA: Return("Quest Arrow");
+    0xBC: Return("Seasonal Information");
+    0xC0: Return("Graphical Effect");
+    0xC1: Return("Cliloc Message");
+    0xC4: Return("Semivisible (Smurf it!)");
+    0xC6: Return("Invalid Map Enable");
+    0xC7: Return("3D Particle Effect");
+    0xCB: Return("Global Que Count");
+    0xCC: Return("Cliloc Message Affix");
+    0xD2: Return("Extended 0x20");
+    0xD3: Return("Extended 0x78");
+    0xD6: Return("Mega Cliloc");
+    0xD8: Return("Send Custom House");
+    0xDB: Return("Character Transfer Log");
+    0xDC: Return("SE Introduced Revision");
+    0xDD: Return("Compressed Gump");
+    0xDF: Return("Buff/Debuff System");
+    0xE2: Return("Mobile status/Animation update (KR)");
+    0xE3: Return("KR Encryption Request");
+    0xE5: Return("Display Waypoint (KR)");
+    0xE6: Return("Hide Waypoint (KR)");
+    0xE7: Return("Continue Highlight KR UI Element");
+    0xE8: Return("Remove Highlight KR UI Element");
+    0xE9: Return("Toggle Highlight KR UI Element");
+    0xEA: Return("Enable KR Hotbar");
+    0xF0: Return("Krrios client special");
+    0xF3: Return("Object Information");
+    
+    // Packets Sent By Both (BiDirectional)
+    0x0C: Return("Edit Tile Data (God Client)");
+    0x15: Return("Follow");
+    0x22: Return("Character Move ACK");
+    0x2C: Return("Resurrection Menu");
+    0x39: Return("Remove (Unknown)");
+    0x3A: Return("Send Skills");
+    0x56: Return("Map Packet (cartography/treasure)");
+    0x66: Return("Books (Pages, Old Packet)");
+    0x6C: Return("Target Cursor Commands");
+    0x6F: Return("Secure Trading");
+    0x71: Return("Bulletin Board Messages");
+    0x93: Return("Books (Title Page, Old Packet)");
+    0x95: Return("Dye Window");
+    0x98: Return("All Names");
+    0x99: Return("Give Boat/House Placement View");
+    0xB3: Return("Chat Text");
+    0xB8: Return("Request/Char Profile");
+    0xBB: Return("Ultima Messenger");
+    0xBD: Return("Client Version");
+    0xBE: Return("Assist Version");
+    0xBF: Return("General Information Packet");
+    0xC2: Return("Unicode TextEntry");
+    0xC8: Return("Client View Range");
+    0xC9: Return("Get Area Server Ping");
+    0xCA: Return("Get User Server Ping");
+    0xD0: Return("Configuration File");
+    0xD1: Return("Logout Status");
+    0xD4: Return("*New* Book Header");
+    0xD7: Return("Generic AOS Commands");
+    0xDA: Return("Mahjong Game Commands");
+    0xF1: Return("Freeshard List");
+    
+    default: Return("-Unkown-");
+
+  EndCase
+EndFunction
+
+function FormatBytesToKB(bytes)
+	return (CStr(bytes / 1024));
+endfunction
+
+function FormatBytesToMB(bytes)
+	return (CStr(bytes / 1048576));
+endfunction

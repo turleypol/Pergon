@@ -1,0 +1,335 @@
+/////////////////////////////////////////////////////////
+//
+//   quest_escort - OverrideFunction KI Hauptkram in main.inc
+//                  Main_AI3
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     06.05.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+// Quest Escort: Spezielle QuestKI wird über Quests erzeugt und
+//  folgt dann dem Char um Wegpunkte zu erzeugen (plus abundzu Gegnerspawn)
+
+include ":main_ai3:include_common/main_ai";
+CONST NATURE:=NATURE_QUEST_ESKORT;
+include ":main_ai3:include_common/main";
+include ":main_ai3:include_common/common";
+include ":main_ai3:include_nature/quest";
+
+include ":questsystem:questsystem";
+
+Var questcfg:=ReadConfigFile(":questsystem:quests"); //Config für Quests
+var questnpccfg:=ReadConfigFile(":questsystem:questnpc");//Config für den QuestNPC
+
+CONST NEMESIS_WAIT := 30;
+CONST SELF_KILL_WAIT := 60;
+Const MAX_DISTANCE_FOLLOW:=15;
+CONST SPEECH_WAIT := 5;
+
+var hilferuf:=1;
+var folge_schon := 0;
+Var last_waypoint:=0;
+
+Function OnStart()
+  OnStartQuesti();
+EndFunction
+
+Function InitNPC()
+  If (me.name["<random>"])
+    if (Me.getprop("questnpc"))
+      var index:=Me.getprop("questnpc");
+      var npceintrag:=questnpccfg[index];
+      if (npceintrag.name)
+        SetName(me, npceintrag.name + PreserveTitle(me));
+      else
+        SetName(me, RandomName(me));
+      endif
+    else
+      SetName(me, RandomName(me));
+    endif
+  EndIf
+  Habille(me, GetObjProperty(me, "Equipt")); //austatten nach "Equipt"
+  EquipMe(); //ausstatten nach configeintraegen
+EndFunction
+
+Function InitParamsSpezial(byref mytemplate)
+  EnableEvents(SYSEVENT_SPEECH, params[RANGESENSE]);
+  Return;
+  mytemplate:=mytemplate;
+EndFunction
+
+Function Before_Events()
+  Var aufgewacht;
+  if (params[WAKEUPTIME]>0)
+    aufgewacht:=0;
+    while (!HourWithinRange(GetPergonHourOfDay(0),params[WAKEUPTIME],params[SLEEPTIME]))
+      If (!me.hidden)
+        me.hidden:=1;
+        DisableEvents(SYSEVENT_ENGAGED);
+        DisableEvents(SYSEVENT_DISENGAGED);
+        DisableEvents(SYSEVENT_DAMAGED);
+        DisableEvents(SYSEVENT_ENTEREDAREA);
+        DisableEvents(SYSEVENT_LEFTAREA); //brauch ich eigentlich nicht - uninteressant
+        DisableEvents(SYSEVENT_SPEECH);
+        aufgewacht:=1;
+      EndIf
+      Sleep(30);
+      Clear_Event_Queue();
+    endwhile
+    If (aufgewacht)
+      me.hidden:=0;
+      EnableEvents(SYSEVENT_ENGAGED);
+      EnableEvents(SYSEVENT_DISENGAGED);
+      EnableEvents(SYSEVENT_DAMAGED);
+      EnableEvents(SYSEVENT_ENTEREDAREA, params[RANGESENSE]);
+      EnableEvents(SYSEVENT_LEFTAREA, params[RANGESENSE]);
+      EnableEvents(SYSEVENT_SPEECH, params[RANGESENSE]); //fuer die zahmen tiere
+    Endif
+  endif
+EndFunction
+
+Function IdleTime()
+  Return(IdleTime_Common());
+EndFunction
+
+Function Event_DoubleClicked(byref ev)
+  Event_DoubleClicked_Common(ev);
+EndFunction
+
+Function Event_ItemGiven(byref ev)
+  Event_ItemGiven_Common(ev);
+EndFunction
+
+Function Event_Speech(byref ev)
+  if ((GetObjProperty(Me,"questnpc"))&&(lower(" "+ev.text+" ")[" auftrag "]))
+    if (!GetObjProperty(Me,PROP_MASTER))
+      var parms:={};
+      parms[1]:=Me;
+      parms[2]:=ev.source;
+      Start_ScriptPergon(":questsystem:questsystem",parms);
+      Return;
+    endif
+  else
+    If (!RandomInt(3)) // nicht immer reden
+      PrintTextAbovePergon(ev.source,me,
+      Answering({"seid_gegruesst","hallo"}[RandomIntMinMax(1,3)],
+      PlaceName(me), me
+      ));
+    EndIf
+  endif
+  if(GetObjProperty(Me,PROP_MASTER))
+    if(ev.source.serial == GetObjProperty(Me,PROP_MASTER)) //nur wenns der Master war interessierts ueberhaupt
+      if( (ev.text[Lower(Me.name) + " stop"]) || (lower(ev.text) == "all stop") )
+        var master := GetObjProperty(Me,PROP_MASTER);
+        master := SystemFindObjectBySerial(master);
+        SendSysMessagePergon(master,Me.name + " wird aufhören Euch zu folgen.");
+        EraseObjProperty(Me,PROP_GUARD);
+        EraseObjProperty(Me,PROP_FOLLOWMASTER);
+        EraseObjProperty(Me,PROP_STAY);
+        MakeMePeaceful(params[RANGESENSE]);
+        if (folge_schon)
+          Var pos:=struct;
+          pos.+x:=Me.x;
+          pos.+y:=Me.y;
+          ev.type:=EVID_QUEST_NEMESIS;
+          ev.source:=Me;
+          ev.pos:=pos;
+          SendEventWaiterGeneral(Me, NEMESIS_WAIT, ev);
+        endif
+      elseif( (ev.text[Lower(Me.name) + " follow me"]) || (lower(ev.text) == "all follow me") )
+        var master := GetObjProperty(Me,PROP_MASTER);
+        master := SystemFindObjectBySerial(master);
+        SendSysMessagePergon(master,Me.name + " wird Euch hinterherlaufen.");
+        SetObjProperty(Me,PROP_FOLLOWMASTER, GetObjProperty(Me,PROP_MASTER));
+        EraseObjProperty(Me,PROP_STAY); //natuerlich bleibt es nicht gleichzeitig stehen
+        EraseObjProperty(Me,PROP_GUARD); //guard modus wieder wegnehmen
+        //Folgen anwerfen
+        folge_schon := 1;
+        var ev:=struct;
+        ev.+type:=EVID_FOLLOW;
+        ev.+source:=Me;
+        SendEvent(Me, ev);
+      elseif( (ev.text[Lower(Me.name) + " stay"]) || (lower(ev.text) == "all stay") )
+        var master := GetObjProperty(Me,PROP_MASTER);
+        master := SystemFindObjectBySerial(master);
+        SendSysMessagePergon(master,Me.name + " wird hier stehenbleiben.");
+        EraseObjProperty(Me,PROP_GUARD);
+        EraseObjProperty(Me,PROP_FOLLOWMASTER);
+        SetObjProperty(Me,PROP_STAY,GetObjProperty(Me,PROP_MASTER));
+        if (folge_schon)
+          Var pos:=struct;
+          pos.+x:=Me.x;
+          pos.+y:=Me.y;
+          ev.type:=EVID_QUEST_NEMESIS;
+          ev.source:=Me;
+          ev.pos:=pos;
+          SendEventWaiterGeneral(Me, NEMESIS_WAIT, ev);
+        endif
+      elseif( (ev.text[lower(Me.name) + " move"]) || (lower(ev.text) == "all move") )
+        WalkAwayFrom(ev.source);
+        Var parms:=struct;
+        parms.+type:=SYSEVENT_SPEECH;
+        parms.+source:=ev.source;
+        parms.+text:="all stay";
+        SendEvent(me,parms);
+      endif
+    endif
+  endif
+EndFunction
+
+Function Can_Speech_Kill()
+  Return(0);
+EndFunction
+
+Function Can_Speech_Guard()
+  Return(0);
+EndFunction
+
+Function Event_Engaged(byref ev)
+  If (Event_Engaged_Common(ev))
+    UmHilfeRufen();
+    if( !Me.warmode ) //nur wenn er nicht schon kaempft
+      FightQuesti( ev.source, params[RANGESENSE]);
+    endif
+  EndIf
+EndFunction
+
+Function Event_Disengaged(byref ev)
+  Event_Disengaged_Common(ev);
+EndFunction
+
+Function Event_Damaged(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_EnteredArea(byref ev)
+  If (!ev.source.isa(POLCLASS_NPC))
+    wandersteps:=params[IDLESTEPS];//wenn ein Player in Sicht kommt ein bissel rumlatschen
+  EndIf
+EndFunction
+
+Function Event_LeftArea(byref ev)
+  Event_LeftArea_Common(ev);
+EndFunction
+
+Function Event_StillRun(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_LookAround(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Follow(byref ev)
+  Var fmasterserial:=GetObjProperty(Me,PROP_FOLLOWMASTER);
+  if (fmasterserial)
+    ev.source:=SystemFindObjectBySerial(fmasterserial);
+    if (ev.source && (Distance(me, ev.source) < MAX_DISTANCE_FOLLOW))
+      Follow(ev.source);
+      //für weiteres folgen sorgen
+      ev.type:=EVID_FOLLOW;
+      ev.source:=Me;
+      SendEvent(Me, ev);
+    else
+      MakeOneStep();
+      ev.type:=SYSEVENT_SPEECH;
+      ev.source:=Me;
+      ev.+text:="all stay";
+      SendEvent(Me,ev);
+    endif
+  endif
+EndFunction
+
+Function Event_AskJoin(byref ev)
+  Return;
+  ev:=ev;
+  //Event_AskJoin_Common(ev);
+EndFunction
+
+Function Event_GrantJoin(byref ev)
+  Return;
+  ev:=ev;
+  //Event_GrantJoin_Common(ev);
+EndFunction
+
+Function Event_RefuseJoin(byref ev)
+  Return;
+  ev:=ev;
+  //Event_RefuseJoin_Common(ev);
+EndFunction
+
+Function Event_Walk(byref ev)
+  Event_Walk_Common(ev);
+EndFunction
+
+Function Event_Peacemade(byref ev)
+  Event_Peacemade_Common(ev);
+  MakeMePeaceful(params[RANGESENSE]);
+EndFunction
+
+Function Event_Guards_Help(byref ev)
+  Event_Guards_Help_Common(ev);
+EndFunction
+
+Function Event_Cast_Wait(byref ev)
+  If (!Me.warmode)  // Kämpf ich noch?
+    params[FIRSTCAST]:=1;
+    Return;
+  EndIf
+  If (Me.getprop(PROP_OPPONENT))  // Hinkt wegen Lookaround immer hinterher
+    ev.source:=SystemFindObjectBySerial(Me.getprop(PROP_OPPONENT));
+    If (!ev.source)                     // deswegen opp aus cprop holen
+      params[FIRSTCAST]:=1;
+      Return;
+    EndIf
+    If (!Event_Cast_Wait_Common(ev))
+      MakeMePeaceful(params[RANGESENSE]);
+    EndIf
+  Else
+    params[FIRSTCAST]:=1;
+  EndIf
+EndFunction
+
+Function Event_Quest_Waypoint(byref ev)
+  WayPointReached(ev.pos, ev.endspot);
+EndFunction
+
+Function Event_Quest_Speech(byref ev)
+  hilferuf:=1;
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Self_Kill(byref ev)
+  killmobilesilent(me,"EscortQuest beendet");
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Quest_Nemesis(byref ev)
+  if ((ev.pos.x == me.x)&&(ev.pos.y == me.y))
+    CreateNemesis();
+  endif
+EndFunction
+
+Function Event_Reflection(byref ev)
+	Event_Reflection_Common(ev);
+EndFunction
+
+Function OnIdle()
+  OnIdleQuesti();
+EndFunction
+
+
+Function ValidEnemy_Override(byref mob,byref hostile)
+  Return(ValidEnemy_Override_Common(mob));
+  hostile:=hostile;
+EndFunction

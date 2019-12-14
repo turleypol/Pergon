@@ -1,0 +1,12 @@
+// makemoongates.src
+
+use os;
+use uo;
+
+Include "include/moongate";
+Include "include/teleporters";
+
+Program makemoongates()
+    DestroyTeleporters(UOBJECT_PERGON_MOONGATE);
+    CreateMoonGates();
+EndProgram

@@ -1,0 +1,164 @@
+/////////////////////////////////////////////////////////
+// monsternest - Dummy-KI, die nix kann, und nur auf Betreten reagiert
+//
+// basiert auf waypointquest
+
+use npc;
+use os;
+use uo;
+
+include "::include/set";
+
+Program Monsternest()
+    var me := self();
+    var last_spawn := 0;
+
+    me.concealed   := CMDLEVEL_SEER;
+    me.name        := "Monsternest: Finger weg";
+    me.paralyzed   := 1;
+    me.title_guild := "Monsternest";  // Nur mal so zur Sicherheit :)
+    me.setfacing(4, FACING_FORCE); // Damit es schick aussieht
+
+    GrantPrivilege(me, "invul");
+    me.enable("invul");
+    IncRevision(me);
+
+    var config := GetMonsterNestConfig(me);
+    If (CInt(config.template))
+        // get spawn group as array
+        var groups := ReadConfigFile(":spawnnet_new:groups");
+        If (groups[config.template])
+            var template := GetConfigStringArray(
+                groups[config.template], "spawn"
+            );
+            If (template)
+                config.template := template;
+            EndIf
+        EndIf
+    Else
+        // convert string to array
+        config.template := array{config.template};
+    EndIf
+
+
+    // clean-up happens scripts/misc/death
+    var myset := me.getprop("removeset");
+    If (!myset)
+        myset := MakeSet(me, "Monsternest");
+        If (myset)
+            me.setprop("removeset", myset);
+        EndIf
+    EndIf
+
+    EnableEvents(SYSEVENT_DOUBLECLICKED);
+    EnableEvents(SYSEVENT_ENTEREDAREA, 5);
+    While (me)
+  	Sleep(1);
+  	var ev := Wait_For_Event(60);
+  	If (!ev)
+            continue;
+        EndIf
+
+        Case (ev.type)
+        SYSEVENT_ENTEREDAREA:
+            If (
+                // last spawn must be a while ago
+                last_spawn + 60*config.interval > ReadGameClock() or
+                // can only be triggered by players
+                ev.source.isa(POLCLASS_NPC) or
+                ev.source.cmdlevel >= CMDLEVEL_SEER
+            )
+                break;
+            EndIf
+
+            Spawn(me, config);
+            last_spawn := ReadGameClock();
+            break;
+
+        SYSEVENT_DOUBLECLICKED:
+            // Setup fuer Cmdlevel
+            If (ev.source.cmdlevel < CMDLEVEL_SEER)
+                break;
+            EndIf
+
+            config := GetMonsterNestConfig(me);
+            var template := RequestInput(
+                ev.source, myset,
+                "NPC-Template oder Spawn-Gruppe (bisher: "+config.template+"):"
+            );
+            If (template)
+                config.template := template;
+            EndIf
+
+            var amount := RequestInput(
+                ev.source, myset, "Anzahl (bisher: "+config.amount+"):"
+            );
+            If (CInt(amount))
+                config.amount := CInt(amount);
+            EndIf
+
+            var interval := RequestInput(
+                ev.source, myset, "Intervall (bisher: "+config.interval+
+                " Minuten):"
+            );
+            If (CInt(interval))
+                config.interval := CInt(interval);
+            EndIf
+
+            me.setprop("config", config);
+
+            RestartScript(me);
+            break;
+        EndCase
+    EndWhile
+EndProgram
+
+Function Spawn(me, config)
+    var sounds := array{
+        0x050,
+        0x33a,
+        0x5ad
+    };
+    var amount := config.amount;
+    var tries := 15;
+    While (amount and tries)
+        amount -= 1;
+        var x := RandomIntMinMax(me.x-config.range, me.x+config.range);
+        var y := RandomIntMinMax(me.y-config.range, me.y+config.range);
+        var z := GetStandingHeight(x, y, me.z, me.realm).z;
+        var template := config.template.randomentry();
+        var res := CreateNpcFromTemplatePergon(
+            template, x, y, z, 2, 0, 0, me.realm
+        );
+        If (!res)
+            tries -= 1;
+            syslog(
+                "FEHLER: CreateNpcFromTemplatePergon fuer "+template+
+                " ("+x+", "+y+", "+z+", "+me.realm+" gescheitert: "+
+                res.errortext
+            );
+        Else
+            PlaySoundEffectXYZ(x, y, z, sounds.randomentry(), me.realm);
+            PlayStationaryEffectEx(x, y, z, me.realm, 0x3773, 10, 16, 1157);
+            // don't pop up all at the same time
+            SleepMs(RandomIntMinMax(1000, 3000));
+        EndIf
+    EndWhile
+EndFunction
+
+Function GetMonsterNestConfig(npc)
+    var config := npc.getprop("config");
+    If (!config)
+        // defaults
+        config := struct{
+            "amount"   := 5,
+            "interval" := 5,
+            "range"    := 3,
+            "template" := "RockSpider"
+        };
+    EndIf
+
+    return config;
+EndFunction
+
+// vim: nowrap

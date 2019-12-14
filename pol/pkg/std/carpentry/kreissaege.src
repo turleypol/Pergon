@@ -1,0 +1,221 @@
+///////////////////////////////////////////////////////////////////////////
+// kreissaege.src -- Herstellung von Brettern und Rollen
+
+use attributes;
+use cfgfile;
+use os;
+use uo;
+include ":musicianship:common";
+include "include/client";
+include "include/modifyskill";
+include "include/objtype";
+
+Program Kreissaege(who, tool)
+    // Position merken, soll nicht weglaufen
+    var pos := struct{
+        x := who.x,
+        y := who.y
+    };
+    If (
+        (!AccessiblePergon(who, tool)) or
+        (Distance(who, tool) > 1)
+    )
+        SendSysMessagePergon(who,
+            "Ihr könnt die Säge so nicht benutzen.",
+            "You cannot use the saw in this way."
+        );
+        return;
+    EndIf
+
+    // Holzsorte auswaehlen
+    SendSysMessagePergon(who,
+        "Wählt die Hölzer, mit denen Ihr arbeiten wollt.",
+        "Select the wood you want to work with."
+    );
+    var use_on := target(who);
+    If (!use_on)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (!ReserveItem(use_on))
+        SendSysMessagePergon(who,
+            "Das wird schon anderweitig benutzt!",
+            "This is already in use!"
+        );
+        return;
+    EndIf
+
+    // Ausgangsmaterial pruefen
+    var itemcfg_hoelzer := ReadConfigFile(":lumberjacking:itemdesc");
+    var holz := itemcfg_hoelzer[use_on.objtype];
+    If (!holz)
+        SendSysMessagePergon(who,
+            "Das ist keine zulässige Holzsorte!",
+            "This wood type is illegal."
+        );
+        return;
+    EndIf
+
+    // letzte Menge holen bzw. initalisieren
+    var defval := CInt(tool.getprop("#lastamount"));
+    If (!defval)
+        defval := 10;
+    EndIf
+
+    // Produkt und Menge ermitteln
+    var tocreate := ItemSelectionGump(who, array{
+                0x1bd7, 0xaf04, UOBJ_BLANK_SCROLL, UOBJ_BLANKMUSICSCROLL
+    }, defval);
+    If (!tocreate)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    // Menge pruefen
+    var val := tocreate.amount;
+    If (!val or val < 1)
+        SendSysMessagePergon(who,
+            "Ungeeignete Menge. Abbruch", "Invalid amount. Cancelled"
+        );
+        return;
+    EndIf
+
+    // Menge fuer naechste Nutzung sichern
+    tool.setprop("#lastamount", val);
+
+    // nicht mehr herstellen als Material verfuegbar
+    If (val > use_on.amount)
+        val := use_on.amount;
+        SendSysMessagePergon(who,
+            "Ihr könnt höchstens "+val+" Stück herstellen.",
+            "You can only create "+val+" items."
+        );
+    EndIf
+
+    // fuer Bretter Zielholz ermitteln
+    var holz_mat_cfg := ReadConfigFile(":crafting:materials");
+    var holz_special := holz_mat_cfg[use_on.objtype];
+    If (!holz_special)
+        SendSysMessagePergon(who,
+            "Interner Fehler. Staff wird informiert.",
+            "Internal error. Staff is informed."
+        );
+        syslog("Holz "+ItemInfoStr(holz)+" fehlt in den Konfigs!");
+        return;
+    EndIf
+
+    // Herstellschleife, bis 100 Stueck pro Runde
+    var resitem := error{errortext := "Nothing produced"};
+    While (
+        // noch Material da
+        (use_on.amount > 0) and
+        // noch was zu erledigen
+        (val > 0) and
+        // nicht von der Stelle bewegt
+        (pos.x == who.x and pos.y == who.y)
+    )
+        PlaySoundEffect(who, SFX_21D);
+        Sleep(2);
+
+        var amount := Min(100, val);
+        // Skill fuer 100 Staemme (41 aufwaerts)
+        var skill := 40.0+(holz_special.difficulty/100.0);
+        If (amount < 100)
+            // bei Mindermengen skalieren
+            skill *= (amount/100.0);
+        EndIf
+
+        // herzustellende Restmenge fuer naechsten Durchlauf ermitteln
+        val -= amount;
+
+        If (CheckSkillPergon(
+                who, SKILLID_HOLZVERARBEITUNG, CInt(skill), CInt(skill*2)
+        ))
+            SubtractAmount(use_on, amount);
+            Case (tocreate.objtype)
+            0x1bd7:
+                resitem := CreateItemInBackpackPergon(
+                    who, holz_special.brett, amount
+                );
+            default:
+                resitem := CreateItemInBackpackPergon(
+                    who, tocreate.objtype, amount
+                );
+            EndCase
+
+            // neue Runde
+            continue;
+        EndIf
+
+        // hat versagt
+        var tokill := CInt(amount/5);
+        If (tokill)
+            SubtractAmount(use_on, tokill);
+            SendSysMessagePergon(who,
+                "Ihr vernichtet etwas Holz.", "You destroy some wood."
+            );
+        Else
+            SendSysMessagePergon(who,
+                "Ihr versagt.", "You fail."
+            );
+        EndIf
+    EndWhile
+
+    // Abschlussmeldung bei Erfolg
+    If (resitem)
+        SendSysMessagePergon(who,
+            "Ihr habt nun "+resitem.desc+".",
+            "You now have "+resitem.desc+"."
+        );
+    EndIf
+EndProgram
+
+Function ItemSelectionGump(who, itemlist, defamount := 10, x := 100, y := 80) // {{{
+    // Hauptlayout
+    var layout := array{
+        "nodispose", // schliessen per ESC verhindern
+
+        // Hintergrund, Ueberschrift
+        "page 0",
+        "resizepic   0   0 5054 450 300",       // grauer Kasten
+        "text       30  15 0 0",                // Ueberschrift
+        "button    360  15 2073 2072 1 0 0",    // Abbruchknopf
+        // Anzahl-Feld
+        "text      210  15 0 1",                // "Anzahl:"
+        "resizepic 260   9 2620 75 32",         // Hinterlegung
+        "textentry 270  15 50 20 10 1 2"        // Eingabefeld
+    };
+    var data := array{
+        "Was wollt Ihr herstellen?",
+        "Anzahl:",
+        defamount
+    };
+
+    // Items eintragen
+    ForEach item in (itemlist)
+        SleepMs(2);
+        // layout.append("page 1");
+        var obj   := GetItemDescriptor(item);
+        var xgrid := (_item_iter + 1)%2;
+        var ygrid := (_item_iter - 1)/2;
+        layout    += array{
+            "buttontileart "+(50+xgrid*200)+" "+(60+ygrid*120)+
+                " 100 100 1 0 "+
+                obj.objtype+" "+obj.graphic+" "+obj.color+" 50 25",
+            "text "+(70+xgrid*200)+" "+(120+ygrid*120)+" 0 "+data.size()
+        };
+        data.append(DescMehrzahl(obj.desc));
+    EndForEach
+
+    var result := SendDialogGump(who, layout, data, x, y);
+    If (result[0] <= 1)
+        return error{errortext := "Gump cancelled"};
+    EndIf
+
+    var ret := struct{
+        objtype := result[0],
+        amount  := CInt(SplitWords(result[1])[2])
+    };
+    return ret;
+EndFunction // }}}

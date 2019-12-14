@@ -1,0 +1,95 @@
+//
+// .SetOpenClose - Setzt Oeffnungs- und Schliesszeit eines Haendler-Npcs
+//
+//  21.10.2005 Fraggulus: .SetClose und .SetOpen zu .SetOpenClose vereint
+//  23.10.2005 Fraggulus: Reihenfolge der Messages ('ESC' etc.) korrigiert
+//
+
+use uo;
+include "include/msgs";
+
+Program TextCMD_SetOpenClose(who, parm)
+  SendSysMessagePergon(who, "Ziel wählen!", "Choose a target!");
+
+  var ziel := Target(who, TGTOPT_NOCHECK_LOS);
+  If ((!ziel) or (!ziel.isa(POLCLASS_NPC)))
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  var params := SplitWords(parm);
+
+  // Oeffnungszeit
+  var open := GetObjProperty(ziel, "open");
+  If (open)
+    SendSysMessagePergon(who,
+      "derzeitige Öffnungszeit: "+open,
+      "current opening time: "+open
+    );
+  Else
+    SendSysMessagePergon(who,
+      "Eine Öffnungszeit existiert nicht!",
+      "An opening time doesn't exist!"
+    );
+  EndIf
+
+  var newopen := params[1];
+  If (!newopen)
+    SendSysMessagePergon(who,
+      "(ESC) drücken, um das Setzen der Öffnungszeit zu überspringen.",
+      "Press (ESC) to cancel setting opening time."
+    );
+    newopen := RequestInputPergon(who, who.backpack, "Wie ist die neue Öffnungszeit? (Format xx:xx)");
+    if (newopen)
+      newopen := CChrZ(newopen.uc_text);
+    endif
+  EndIf
+  If (newopen)
+    SetObjProperty(ziel, "open", newopen);
+    SendSysMessagePergon(who,
+      "Neue Öffnungszeit gesetzt auf: "+newopen,
+      "New opening time set to: "+newopen
+    );
+    RestartScript(ziel);
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+
+  // Schliesszeit
+  var close := GetObjProperty(ziel, "close");
+  If (close)
+    SendSysMessagePergon(who,
+      "derzeitige Schliesszeit: "+close,
+      "current closing time: "+close
+    );
+  Else
+    SendSysMessagePergon(who,
+      "Eine Schliesszeit existiert nicht!",
+      "An closing time doesn't exist!"
+    );
+  EndIf
+
+  var newclose := params[2];
+  If (!newclose)
+    SendSysMessagePergon(who,
+      "(ESC) druecken, um das Setzen der Schließzeit zu überspringen.",
+      "Press (ESC) to cancel setting closing time."
+    );
+    newclose := RequestInputPergon(who, who.backpack, "Wie ist die neue Schließzeit? (Format xx:xx)");
+    if (newclose)
+      newclose := CChrZ(newclose.uc_text);
+    endif
+  EndIf
+  If (newclose)
+    SetObjProperty(ziel, "close", newclose);
+    SendSysMessagePergon(who,
+      "Neue Zeit gesetzt auf: "+newclose,
+      "New closing time set to: "+newclose
+    );
+    RestartScript(ziel);
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram
+
+// vim: sw=2 sts=2

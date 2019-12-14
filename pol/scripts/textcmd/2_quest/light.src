@@ -1,0 +1,25 @@
+//////////////////////////////////////////////////////////////////////
+// TextCMD Light - Schaltet das Licht fuer den Spieler an oder aus
+//
+// Author: Shinigami
+
+use file;
+use uo;
+include ":daymoonweather:daymoonweather";
+include "include/msgs";
+include "include/quests";
+
+Program TextCMD_Light(who, level)
+    level := Max(-1, Min(MAXNIGHTLIGHT, CInt(level)));
+    If (level == -1)
+        who.eraseprop(LIGHTLEVEL_PROP);
+        SendSysMessagePergon(who, "Setze Lichtlevel zurück");
+    Else
+        SendSysMessagePergon(who,
+            "Lichtlevel "+level+ " (zul. Bereich -1.."+MAXNIGHTLIGHT+")"
+        );
+    EndIf
+    SetLightLevelPergon(who, level, 1800);
+
+    QuestCharLog(who, "TextCMD Light");
+EndProgram

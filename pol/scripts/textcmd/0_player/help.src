@@ -1,0 +1,174 @@
+/////////////////////////////////////////////////////////
+// help -- Hilfe anzeigen (zu Textcmds)
+
+use os;
+use uo;
+include "include/msgs";
+
+Const BASE_CMD      := 20;
+Const BASE_LEVEL    := 10;
+Const CMDS_PER_PAGE := 15;
+Const CMD_HEIGHT    := 25;
+Const HELP_HEIGHT   := 300;
+Const HELP_WIDTH    := 400;
+Const LEVEL_WIDTH   := 25;
+Const LIST_PX       := 200;
+Const LIST_PY       := 20;
+Const LIST_WIDTH    := 310;
+
+// Liste aller Textcmds laden und sortiert in Arrays legen, die
+// wiederum in einem Dict nach Cmdlevel getrennt sind:
+// dict{ 0 -> array{'arm', 'disarm'}}
+Function GetCommandList() // {{{
+    var commands := dictionary{};
+
+    ForEach package in (ListTextCommands());
+        ForEach level in (package)
+            If (!commands.exists(_level_iter))
+                commands.insert(_level_iter, array{});
+            EndIf
+            ForEach command in (level)
+                command := command.script;
+                command[".ecl"] := "";
+                commands[_level_iter].append(command);
+                SleepMS(2);
+            EndForEach
+            commands[_level_iter].sort();
+            SleepMS(2);
+        EndForEach
+        SleepMS(2);
+    EndForEach
+
+    return commands;
+EndFunction
+// }}}
+
+// Textcmd-Liste fuer aktuelle Sektion zeigen, ggf. Hilfe zu Befehl zeigen
+// oder Sektion umschalten (bis Abbruch)
+Function SelectCommandGumpLoop(who, commands) // {{{
+    var section := 0;
+    While (1)
+        var ret := SelectCommandGump(
+            who, commands[section], GetCmdLevelName(section)
+        );
+
+        If (ret == 0)
+            SendSysMessagePergon(who, "Abbruch", "Cancelled");
+            return;
+        ElseIf (ret >= BASE_CMD)
+            // Hilfe fuer gewaehlten Befehl zeigen
+            ShowHelp(who, commands[section][ret-BASE_CMD]);
+        ElseIf (ret >= BASE_LEVEL)
+            // Sektion umschalten
+            // (aber im Bereich Player..eigener Level bleiben)
+            section := Max(CMDLEVEL_PLAYER, Min(who.cmdlevel, ret-BASE_LEVEL));
+        EndIf
+    EndWhile
+EndFunction
+// }}}
+
+Function SelectCommandGump(who, cmd_array, levelname)
+    var data := array{};
+    var layout := array{
+        // Hintergrund
+        "page 0",
+        "nodispose",
+        // "resizepic 0 0 2620 310 "+(CMDS_PER_PAGE*CMD_HEIGHT+92),
+        // "gumppic 20 30 2621",
+        // "checkertrans 5 6 300 "+(CMDS_PER_PAGE*CMD_HEIGHT+80),
+        "resizepic 0 0 9390 "+LIST_WIDTH+" "+(CMDS_PER_PAGE*CMD_HEIGHT+75),
+        "text 40 5 40 0"
+    };
+
+    // Sektions-Umschalter (eine Sektion pro Cmdlevel)
+    If (who.cmdlevel > CMDLEVEL_PLAYER)
+        var begin_center :=
+            // halbe Breite der Gesamtlevel
+            (LIST_WIDTH-who.cmdlevel*LEVEL_WIDTH)/2 -
+            // Korrekturversatz, weil Bilder nicht zentriert positioniert sind
+            LEVEL_WIDTH/2;
+        For level := CMDLEVEL_PLAYER To who.cmdlevel
+            layout.append(
+                "button "+(begin_center+level*LEVEL_WIDTH)+" "+
+                (45+CMDS_PER_PAGE*CMD_HEIGHT)+" "+
+                (11349+level)+" 11341 1 0 "+(BASE_LEVEL+level));
+        EndFor
+        data.append("Textcmd-Hilfe: "+levelname);
+    Else
+        // normale Spielel sehen die Sektionen nicht
+        data.append("Textcmd-Hilfe");
+    EndIf
+
+    var index := 0;
+    var page  := 1;
+
+    layout.append("page "+page);
+
+    ForEach cmd in (cmd_array)
+        // einzelnes Kommando als Text mit Hilfe-Button
+        index += 1;
+        data += cmd;
+        var pos := 40 + (index-1)%CMDS_PER_PAGE * CMD_HEIGHT;
+        layout.append("text 30 "+pos+" 40 "+index);
+        // Help: 2031/2032 5526/5525
+        layout.append(
+            "button "+(LIST_WIDTH-100)+" "+pos+
+            " 5526 5525 1 0 "+(BASE_CMD+index)
+        );
+
+        // Seitenblaetter-Button
+        If (index % CMDS_PER_PAGE == 0)
+            page += 1;
+            // Arrow down: 2706/2707
+            layout.append(
+                "button 280 "+(52+CMDS_PER_PAGE*CMD_HEIGHT)+" 2706 2707 0 "+
+                    page+" 0"
+            );
+            layout.append("page "+page);
+            // Arrow up:   2704/2705
+            layout.append(
+                "button 280 6 2704 2705 0 "+(page-1)+" 0"
+            );
+        EndIf
+        SleepMs(2);
+    EndForEach
+
+    return CInt(SendDialogGump(who, layout, data, LIST_PX, LIST_PY)[0]);
+EndFunction
+
+Function ShowHelp(who, command)
+    var help := GetCommandHelp(who, command);
+    If (!help)
+        SendSysMessagePergon(who,
+            "Fuer den Befehl '"+command+"' ist keine Hilfe verfügbar",
+            "No help available for the command '"+command+"'"
+        );
+        syslog("WARNUNG: Hilfe fuer '"+command+"' fehlt");
+        return;
+    EndIf
+
+    // schoenes Anzeige-Gump
+    var data := array{"Textcmd: ."+command, help};
+    var layout := array{
+        // Hintergrund
+        "page 0",
+        "nodispose",
+        // "resizepic 0 0 2620 310 "+(CMDS_PER_PAGE*CMD_HEIGHT+92),
+        // "gumppic 20 30 2621",
+        // "checkertrans 5 6 300 "+(CMDS_PER_PAGE*CMD_HEIGHT+80),
+        "resizepic 0 0 9390 "+HELP_WIDTH+" "+HELP_HEIGHT,
+        "text 40 5 40 0",
+        "htmlgump 25 35 "+(HELP_WIDTH-50)+" "+(HELP_HEIGHT-70)+" 1 1 1"
+    };
+    SendDialogGump(who, layout, data, LIST_PX+20, LIST_PY+20);
+EndFunction
+
+Program Help(who, command)
+    If (command)
+        ShowHelp(who, command);
+        exit;
+    EndIf
+
+    var commands := GetCommandList();
+    SelectCommandGumpLoop(who, commands);
+EndProgram

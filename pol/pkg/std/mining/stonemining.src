@@ -1,0 +1,228 @@
+///////////////////////////////////////////////////////////////////////////
+// stonemining.src
+//
+// By using a stonepick on cave tile this script allows
+// the harvesting of ore.  You get more stone per dig the higher your
+// skill is.
+//
+// Author Angreal 2/10/00
+
+///////////////////////////////////////////////////////////////////////////
+// Aenderung:
+// 15.02.2003 Commander: skillcheck, wegen stats; bugfixing
+// 04.11.2002 Commander: Item-ID der alten karte geaendert
+//                       (schatzkartenumstellung)
+// 2001/04/23 Pauker:    Vereinfachung (unbenutztes Zeux raus),
+//                       Benutzung eines Werkzeugs
+// 21.10.2000 Fraggulus: Hackzahlen begrenzt
+// 19.10.2000 Fraggulus: Stonemining auch fuer Nicht-Miner machbar machen
+// 11.09.2000 Fraggulus
+
+use attributes;
+use os;
+use uo;
+use util;
+include "include/client";
+include "include/itemnpc";
+include "include/mobile";
+include "include/modifyskill";
+include "include/objtype";
+include "include/resources";
+include "include/utility";
+
+Program UsePicktool(who, tool)
+    If (IsFighting(who))
+        SendSysMessagePergon(who,
+            "Ihr könnt nicht gleichzeitig graben und kämpfen!"
+        );
+        return;
+    EndIf
+
+    If (!IsEquipped (who, tool))
+        SendSysMessagePergon(who,
+            "Zum Hacken müsst Ihr das in die Hand nehmen!"
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Wählt einen Platz zum Hacken aus."
+    );
+
+    var use_on := TargetCoordinates(who);
+    If (!use_on)
+        return;
+    EndIf
+
+    If (Distance(who, use_on) > 2)
+        SendSysMessagePergon(who, "Das ist zu weit weg.");
+        return;
+    EndIf
+
+    If (!(use_on.objtype in (GetUobjLandschaftssteine())))
+        SendSysMessagePergon(who,
+            "Hier könnt Ihr keine Steine abbauen."
+        );
+        // syslog("use_on.objtype: "+use_on.objtype);
+        return;
+    EndIf
+
+    var num :=
+        HarvestResource("stone", use_on.x, use_on.y, 1, 1, use_on.realm);
+    If (num == 0)
+        SendSysMessagePergon(who,
+            "Die Ressourcen hier sind erschöpft."
+        );
+        return;
+    EndIf
+
+    ReserveItem(tool);
+
+    // Werkzeug-Eigenschaften auslesen
+    var werkzeug := GetPropertyItem(tool);
+
+    // quality gibt die %-punkte der tool an gegenueber 100% Maxhp -
+    // also praktisch ob das tool noch scharf ist
+    var quality := werkzeug.hp*100.0 / werkzeug.maxhporig;
+    If (quality<20)
+        SendSysMessagePergon(who,
+            "Eure Steinpicke ist kaum noch zu gebrauchen."
+        );
+    ElseIf (quality<50)
+        SendSysMessagePergon(who,
+            "Eure Steinpicke ist stumpf."
+        );
+    EndIf
+    // 100%-quality%*0.1 von 10 durchlaeufen
+    quality := CInt((100.0-quality)/10.0);
+
+    var num_chops := CInt(Max(
+        1,
+        quality + (100-GetSkillPergon(who, SKILLID_ERZABBAU))/10
+    ));
+    SendSysMessagePergon (who, "Ihr beginnt Steine zu hauen.");
+
+    // Hauptschleife Hacken
+    var res_avail;
+    Repeat
+        res_avail := HackLoop(who, use_on, tool, num_chops);
+        // bis keine Resourcen mehr da
+    Until (res_avail <= 0);
+
+    SendSysMessagePergon(who, "Hier gibt es keine Steine mehr.");
+EndProgram
+
+Function HackLoop(who, use_on, tool, num_chops)
+    var i;
+    For (i := 1; i <= num_chops; i += 1)
+        PerformAction(who, UACTION_PICK);
+        PlaySoundEffect(who, SFX_PICK);
+        Sleep(1);
+        If (CoordinateDistance(who.x, who.y, use_on.x, use_on.y) > 2)
+            SendSysMessagePergon(who,"Das ist zu weit weg.");
+            exit;
+        EndIf
+        If (IsFighting(who))
+            SendSysMessagePergon(who,
+                "Ihr könnt nicht gleichzeitig graben und kämpfen!"
+            );
+            exit;
+        EndIf
+    EndFor
+
+    var res_avail :=
+        HarvestResource("stone", use_on.x, use_on.y, 1, 3, use_on.realm);
+
+    // damit man weiss, wass man gehackt hat
+    var stone_name;
+    // ein paar Bonussteine für Miner
+    var bonus_amount := CInt(GetSkillPergon(who, SKILLID_ERZABBAU)/30);
+
+    // minimaler Skillanstieg
+    var uobj_stone_block;
+    If (CheckSkillPergon(who, SKILLID_ERZABBAU, 12, 15))
+        i := RandomInt(100);
+        If (i<10)
+            uobj_stone_block := UOBJ_MARBLESTONE;  // Marmor
+            stone_name := "Marmor";
+        ElseIf (i<50)
+            uobj_stone_block := UOBJ_GRANITSTONE;  // Granit
+            stone_name := "Granit";
+        Else
+            // Sandstein gibts als default
+            uobj_stone_block := UOBJ_SANDSTONE;
+            stone_name := "Sandstein";
+        EndIf
+
+        var anzahl := randomint(3)+2 + bonus_amount;
+        CreateItemInBackpackPergon(who, uobj_stone_block, anzahl);
+        SendSysMessagePergon(who,
+            "Ihr legt "+anzahl+" "+stone_name+"blöcke in Euren Rucksack."
+        );
+        PerformAction(who, UACTION_PICK);
+        PlaySoundEffect(who, SFX_HAMMER);
+        Sleep(1);
+        If (RandomInt(100) < 3)
+            GiveBonus(who);
+        EndIf
+    Else
+        SendSysMessagePergon(who, "Ihr findet keine brauchbaren Steine.");
+        If (RandomInt(100) < 5)
+            If (GiveMalus(who, tool))
+                exit;
+            EndIf
+        EndIf
+    EndIf
+
+    return res_avail;
+EndFunction
+
+Function GiveBonus(who)
+    var obj;
+    var text;
+    Case (RandomInt(2))
+    0: // Level-3-Karte
+        obj  := 0x6422;
+        text := "Ihr entdeckt eine alte Karte!";
+    1:
+        obj  := 0x0f25;
+        text := "Ihr findet einen fossilen Stein!";
+    EndCase
+
+    If (CreateItemInContainerPergon(who.backpack, obj, 1))
+        SendSysMessagePergon(who, text);
+    EndIf
+EndFunction
+
+Function GiveMalus(who, tool)
+    If (RandomInt(6) == 0)
+        If (CreateNpcFromTemplate(
+                "slime", who.x-1, who.y, who.z, 0, who.realm
+            ) != error
+        )
+            SendSysMessagePergon(who, "Ein Schleim wird auf Euch aufmerksam!");
+        EndIf
+    Else
+        If (SetWerkzeugSchaden(
+            who, tool,
+            "Euer Werkzeug hat gelitten!",
+            "Euer Werkzeug ist stark beschädigt!",
+            "Euer Werkzeug ist zerbrochen!"
+        ))
+            return 1;
+        EndIf
+    EndIf
+    return 0;
+EndFunction
+
+Function IsEquipped(who, pickaxe)
+    If ((!AccessiblePergon(who, pickaxe)) or (Distance(who, pickaxe) > 1))
+        return 0;
+    EndIf
+    ForEach item in ListEquippedItems(who)
+        If (pickaxe.serial == item.serial)
+            return 1;
+        EndIf
+    EndForEach
+    return EquipItem(who, pickaxe);
+EndFunction

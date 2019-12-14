@@ -1,0 +1,4 @@
+<h3 id="barberme">barberme</h3>
+
+<p>Frisur, Bart und eigene Farben verändern. Ab Seer darf der Befehl
+auch auf andere Player angewendet werden.</p>

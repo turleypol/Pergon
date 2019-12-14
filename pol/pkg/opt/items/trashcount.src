@@ -1,0 +1,58 @@
+////////////////////////////////////////////////////////
+// TrashCount -
+// Ein Player wirft etwas in den Abfalleimer (mit Zaehlung)
+
+use os;
+use uo;
+include ":items:cleanup";
+include "include/objtype";
+include "include/pergonutil";
+
+Program Trash(who, trashcan, ign, type, item, item_stack, stack_amount)
+    var values;
+    Case (type)
+    INSERT_ADD_ITEM:
+        values := AmountAndWorth(item);
+    INSERT_INCREASE_STACK:
+        values := AmountAndWorth(item_stack, stack_amount);
+    EndCase
+
+    If (values)
+        var user := LHex(who.serial);
+
+        var crit := Is_Critical();
+        Set_Critical(1);
+
+        // Items/Stacks hochzaehlen
+        var count := GetGlobalProperty(GPROP_TRASHCOUNT);
+        If (!count)
+            count := dictionary{};
+        EndIf
+        If (count.exists(user))
+            count[user] += values.items;
+        Else
+            count.insert(user, values.items);
+        EndIf
+        SetGlobalProperty(GPROP_TRASHCOUNT, count);
+
+        // Goldwert addieren
+        var worth := GetGlobalProperty(GPROP_TRASHWORTH);
+        If (!worth)
+            worth := dictionary{};
+        EndIf
+        If (worth.exists(user))
+            worth[user] += values.worth;
+        Else
+            worth.insert(user, values.worth);
+        EndIf
+        SetGlobalProperty(GPROP_TRASHWORTH, worth);
+
+        Set_Critical(crit);
+    EndIf
+
+    // dann normal entsorgen
+    Start_ScriptPergon("trash-it", {who, trashcan});
+
+    return;
+    ign := 1;
+EndProgram

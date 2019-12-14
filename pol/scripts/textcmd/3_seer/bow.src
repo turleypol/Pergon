@@ -1,0 +1,33 @@
+///////////////////////////////////////////////////////////////////////////
+// bow -- Laesst alle anderen Humans im Umkreis von 15 ne Verbeugung machen
+
+use os;
+use uo;
+include "include/client";
+
+Program Bow(who, count)
+  var tcount;
+
+  If (count)
+    tcount := Cint(count);
+  Else
+    tcount := 1;
+  EndIf
+
+  var i;
+  For (i := 1; i <= tcount; i += 1)
+    ForEach critter in (ListMobilesNearLocation(
+        who.x, who.y, LIST_IGNORE_Z, 15, who.realm
+    ))
+      SleepMs(2);
+      If (critter.cmdlevel >= who.cmdlevel)
+        continue;
+      EndIf
+
+      If (critter.graphic in {0x190, 0x191, 0x25D, 0x25E})
+        PerformAction(critter, ANIM_BOW);
+      EndIf
+    EndForEach
+    Sleep(1);
+  EndFor
+EndProgram

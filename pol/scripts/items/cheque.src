@@ -1,0 +1,54 @@
+///////////////////////////////////////////////////
+// cheque - ein Scheck, von dem mal Gold buchen kann
+
+use os;
+use uo;
+include "include/bank";
+include "include/msgs";
+include "include/server";
+
+Program UseCheque(who, item)
+    If (!ReserveItem(item))
+        SendSysMessagePergon(who,
+            "Dieser Scheck wird bereits anderweitig benutzt.",
+            "Your cheque is already in use"
+        );
+        return;
+    EndIf
+
+    // bis 60k Gold abbuchen
+    var betrag := item.getprop(CPROP_GOLD_ACCT);
+    var worth;
+    If (StrSubtraktion(betrag, "60000"))
+      worth := 60000;
+    Else
+      worth := CInt(betrag);
+    EndIf
+  
+    var i, goldstacks := {};
+    For (i := 0; i < item.amount; i += 1)
+      var gold := CreateItemInBackpackPergon(who, UOBJ_GOLD_COIN, worth);
+      If (!gold)
+        SendSysMessagePergon(who, "Fehler: "+gold.errortext);
+        ForEach goldstack in (goldstacks)
+          DestroyItem(SystemFindObjectBySerial(goldstack));
+        EndForEach
+        return;
+      Else
+        goldstacks.append(gold.serial);
+      EndIf 
+    EndFor
+
+    // Kartenwert reduzieren
+    betrag := StrSubtraktion(betrag, worth);
+    If (betrag == "0")
+        // Scheck leer
+        DestroyItem(item);
+        return;
+    EndIf
+
+    // noch was drauf, Wert sichern
+    item.setprop(CPROP_GOLD_ACCT, betrag);
+    item.name := "Scheck ueber "+betrag+" Goldstuecke";
+    ReleaseItem(item);
+EndProgram

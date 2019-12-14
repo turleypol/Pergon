@@ -1,0 +1,35 @@
+/////////////////////////////////////////////////////////////////////////////
+// pvp - This will display yes or no above the players heads.
+//
+
+/////////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+
+include "include/msgs";
+include "include/server";
+use os;
+use uo;
+
+Program TextCMD_PvP(who)
+    ForEach mob in (ListMobilesNearLocation(
+            who.x, who.y, LIST_IGNORE_Z, 20, who.realm
+    ))
+        SleepMs(2);
+        If (mob.isa(POLCLASS_NPC))
+            continue;
+        EndIf
+
+        If (mob.getprop(PROP_WANTS_PVP) == 0)
+            PrintTextAbovePrivatePergon(mob, "PvP: nein", "PvP: no", who);
+        Else
+            PrintTextAbovePrivatePergon(mob, "PvP: ja", "PvP: yes", who);
+        EndIf
+
+        If (mob.getprop(PROP_WANTS_RP) == 1)
+            PrintTextAbovePrivatePergon(mob, "RP: ja", "RP: yes", who);
+        Else
+            PrintTextAbovePrivatePergon(mob, "RP: nein", "RP: no", who);
+        EndIf
+    EndForEach
+EndProgram

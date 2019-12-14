@@ -1,0 +1,15 @@
+use uo;
+
+Program my_form(who)
+	
+  var graphic := GetObjProperty(who, "myform");
+  If (graphic)
+  	who.graphic := graphic;
+  	EraseObjProperty(who, "myform");
+  ElseIf (who.gender)
+    who.graphic := 0x191;
+  Else
+    who.graphic := 0x190;
+  Endif
+
+EndProgram

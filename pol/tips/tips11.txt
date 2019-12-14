@@ -1,0 +1,5 @@
+Um anderen Spielern laengere Nachrichten zukommen zu lassen, kannst du ".letterbox" benutzen. Dazu musst du aber die Letterbox-Nummer des anderen Spielers kennen. Im Gegensatz zu ".msg" muss der andere Spieler nicht eingeloggt sein.
+
+Die eigene Letterbox-Nummer findest du nach Aufruf des Befehls rechts oben im Fenster. Du kannst sie anderen Spielern mitteilen, damit sie dich kontaktieren koennen.
+
+Wenn neue Nachrichten fuer dich vorliegen, bekommst du einen Hinweis beim Login angezeigt. Um einen Hinweiston ueber eingehende Nachrichten (nicht) zu erhalten, verwende ".status config".

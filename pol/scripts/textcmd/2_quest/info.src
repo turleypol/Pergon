@@ -1,0 +1,1044 @@
+////////////////////////////////////////////////////////////////
+// info.src -- Organized info UI For mobiles
+//
+// Usage: Target a mobile to view its stats, skills,
+//        etc. Also can change values
+//        and perform special actions (kick, etc.).
+//
+// Author(s): Racalac
+//
+// ReWrite
+//
+// Author: Shinigami
+
+// TODO:
+// - Anzeige der PropertyNamen und der Werte trimmen ...
+
+include "include/modifyskill";
+include "include/onlinesearch";
+include "include/quests";
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+//
+// Buttons
+//   1  - Strength
+//   2  - Intelligence
+//   3  - Dexterity
+//   4  - X
+//   5  - Y
+//   6  - Z
+//   7  - Hitpoints/MaxHitpoints
+//   8  - Mana/MaxMana
+//   9 - Stamina/MaxStamina
+//   10 - Armor
+//   11 - Graphic
+//   12 - Color
+//   13 - Truecolor
+//   14 - Geschlecht
+//   15 - Ok-Button (Skills)
+//   16 - Freeze
+//   17 - Unfreeze
+//   18 - Kick
+//   19 - Jail
+//   20 - Bankfach
+//   21 - Backpack
+//   22 - Summon
+//   23 - Name des Mobile
+//   24 - Magicpower
+//   25 - Invul
+
+var layout := {
+  "page 0",                          // Seite 0 (Basisseite)
+  "nodispose",
+
+  "gumppic 10 10 2620",              // Hintergrundflaeche
+  "gumppic 30 10 2621",
+  "gumppic 300 10 2622",
+  "gumppic 10 28 2623",
+  "gumppic 32 28 2624",
+  "gumppic 298 28 2625",
+  "gumppic 10 232 2623",
+  "gumppic 32 232 2624",
+  "gumppic 298 232 2625",
+  "gumppic 10 436 2626",
+  "gumppic 30 436 2627",
+  "gumppic 300 436 2628",
+
+  "text 30 19 5 0",                  // 15 Name des Mobiles
+  "button 295 23 2118 2117 1 1 23",
+  "text 30 44 40 1",                 // Stats & Aktionen
+  "button 78 41 2640 2641 0 1",
+  "text 122 44 40 2",                // Skills
+  "button 176 41 2640 2641 0 3",
+  "text 218 44 40 3",                // Properties
+  "button 266 41 2640 2641 0 3",
+
+  "page 1",                          // Seite 1 (Stats)
+  "button 295 425 2648 2647 0 2",    // Button zu Seite 2
+  "text 24 80 40 4",                 // Strength
+  "text 130 80 5 5",                 // Strength-Wert
+  "button 266 80 2640 2641 1 1 1",   // 27 (nur HighGM)
+  "text 24 100 40 6",                // Intelligence
+  "text 130 100 5 7",                // Intelligence-Wert
+  "button 266 100 2640 2641 1 1 2",  // 30 (nur HighGM)
+  "text 24 120 40 8",                // Dexterity
+  "text 130 120 5 9",                // Dexterity-Wert
+  "button 266 120 2640 2641 1 1 3",  // 33 (nur HighGM)
+  "text 24 140 40 10",               // X
+  "text 130 140 5 11",               // X-Wert
+  "button 266 140 2640 2641 1 1 4",
+  "text 24 160 40 12",               // Y
+  "text 130 160 5 13",               // Y-Wert
+  "button 266 160 2640 2641 1 1 5",
+  "text 24 180 40 14",               // Z
+  "text 130 180 5 15",               // Z-Wert
+  "button 266 180 2640 2641 1 1 6",
+  "text 24 200 40 16",               // Hitpoints/MaxHitpoints
+  "text 130 200 5 17",               // Hitpoints/MaxHitpoints-Wert
+  "button 266 200 2640 2641 1 1 7",
+  "text 24 220 40 18",               // Mana/MaxMana
+  "text 130 220 5 19",               // Mana/MaxMana-Wert
+  "button 266 220 2640 2641 1 1 8",
+  "text 24 240 40 20",               // Stamina/MaxStamina
+  "text 130 240 5 21",               // Stamina/MaxStamina-Wert
+  "button 266 240 2640 2641 1 1 9",
+  "text 24 260 40 22",               // Armor
+  "text 130 260 5 23",               // Armor-Wert
+  "button 266 260 2640 2641 1 1 10", // 54 (nur HighGM)
+  "text 24 280 40 24",               // Graphic
+  "text 130 280 5 25",               // Graphic-Wert
+  "button 266 280 2640 2641 1 1 11",
+  "text 24 300 40 26",               // Color
+  "text 130 300 5 27",               // Color-Wert
+  "button 266 300 2640 2641 1 1 12",
+  "button 291 300 2640 2641 1 1 13",
+  "text 24 320 40 45",               // Geschlecht
+  "text 130 320 5 46",               // Geschlechtsbezeichnung
+  "button 266 320 2640 2641 1 1 14",
+
+  "text 24 340 40 47",               // Serial
+  "text 130 340 66 48",              // Serial-String
+  "text 24 360 40 28",               // CmdLevel
+  "text 130 360 40 29",              // CmdLevel-String
+  "text 24 380 40 30",               // Account
+  "text 130 380 40 31",              // Account-Name
+  "text 24 400 40 49",               // Character-Klasse
+  "text 130 400 40 50",              // Character-Klassenbezeichnung
+  "text 24 420 40 51",               // Beruf
+  "text 130 420 40 52",              // Berufsbezeichnung
+
+  "page 2",                          // Seite 2 (Aktionen)
+  "button 295 45 2650 2651 0 1",     // Button zu Seite 1
+  "text 24 80 40 65",                // Magicpower
+  "button 176 75 2640 2641 1 0 24",
+  "text 24 110 40 32",               // Freeze
+  "button 176 105 2640 2641 1 0 16",
+  "text 24 110 40 33",               // Unfreeze
+  "button 176 105 2640 2641 1 0 17",
+  "text 24 140 40 34",               // Kick
+  "button 176 135 2640 2641 1 0 18", // 84 (nur HighGM)
+  "text 24 170 40 35",               // Jail
+  "button 176 165 2640 2641 1 0 19", // 86 (nur mit Berechtigung AllowedToJail)
+  "text 24 200 40 36",               // Bankfach
+  "button 176 195 2640 2641 1 0 20",
+  "text 24 230 40 37",               // Backpack
+  "button 176 225 2640 2641 1 0 21",
+  "text 24 260 40 38",               // Summon
+  "button 176 255 2640 2641 1 0 22",
+  "text 24 290 40 66",               // Invul
+  "button 176 285 2640 2641 1 0 25", // 94 (nur GL)
+
+  "gumppic 30 320 2621",
+  "text 24 340 40 39",               // Waffe oder SkillID
+  "text 120 340 40 40",              // Waffe oder SkillID
+  "text 24 360 40 41",               // Schaden
+  "text 120 360 40 42",              // Schaden-Formel
+  "text 24 380 40 43",               // Hitpoints/Max oder Armor
+  "text 120 380 40 44",              // Hitpoints/Max oder Armor
+  "text 24 400 40 61",               // Alter          102  (keine NPCs)
+  "text 120 400 40 62",              // Alter in Tagen 103  (keine NPCs)
+  "text 24 420 40 63",               // Spielzeit      104  (keine NPCs)
+  "text 120 420 40 64",              // Spielzeit in Stunden 105 (keine NPCs)
+
+  "button 295 425 2648 2647 0 100"   // Button zu Seite 100 (Deathlocs)
+};
+
+var data := {
+  "",             // 0  Name des Mobiles
+  "Stats",        // 1
+  "Skills",       // 2
+  "Props",        // 3
+  "Strength",     // 4
+  "",             // 5  Strength-Wert
+  "Intelligence", // 6
+  "",             // 7  Intelligence-Wert
+  "Dexterity",    // 8
+  "",             // 9  Dexterity-Wert
+  "X",            // 10
+  "",             // 11 X-Wert
+  "Y",            // 12
+  "",             // 13 Y-Wert
+  "Z",            // 14
+  "",             // 15 Z-Wert
+  "HP/MHP",       // 16
+  "",             // 17 Hitpoints/MaxHitpoints-Wert
+  "MP/MMP",       // 18
+  "",             // 19 Mana/MaxMana-Wert
+  "ST/MST",       // 20
+  "",             // 21 Stamina/MaxStamina-Wert
+  "Armor",        // 22
+  "",             // 23 Armor-Wert
+  "Graphik",      // 24
+  "",             // 25 Graphic-Wert
+  "Farbe",        // 26
+  "",             // 27 Color-Wert
+  "CmdLevel",     // 28
+  "",             // 29 CmdLevel-String
+  "Account",      // 30
+  "",             // 31 Account-Name
+  "Freeze",       // 32
+  "Unfreeze",     // 33
+  "Kick",         // 34
+  "Jail",         // 35
+  "Bankfach",     // 36
+  "Backpack",     // 37
+  "Summon",       // 38
+  "",             // 39 Waffe oder SkillID
+  "",             // 40 Waffe oder SkillID
+  "Schaden",      // 41
+  "",             // 42 Schaden-Formel
+  "",             // 43 Hitpoints/Max oder Armor
+  "",             // 44 Hitpoints/Max oder Armor
+
+  "Geschlecht",   // 45 Geschlecht
+  "",             // 46
+  "Serial",       // 47 Serial
+  "",             // 48
+  "Klasse",       // 49 Character-Klasse
+  "",             // 50
+  "Beruf",        // 51 Beruf
+  "",             // 52
+  "Ber",          // 53 Berufskill
+  "Hau",          // 54 Hauptskill
+  "Neb",          // 55 Nebenskill
+  "Wei",          // 56 Weiterer Skill
+  "Int",          // 57 Integer
+  "Real",         // 58 Gleitkomma
+  "Str",          // 59 String
+  "Kompl",        // 60 Komplex (Array, Struct, Dictionary)
+  "Alter",        // 61 Alter
+  "",             // 62 Alter des Characters in Tagen
+  "Spielzeit",    // 63 Spielzeit
+  "",             // 64 Spielzeit des Characters in Stunden
+  "MagicPower",   // 65 MagicPower als SysMsg
+  "Invul"         // 66 Invul setzen
+};
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program TextCMD_Info(cmdlevelchar, eingabe) // {{{
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+  var who;
+  If (cmdlevelchar.cmdlevel < CMDLEVEL_GM)
+    // Darf nur sich selbst beeinflussen ...
+    who := cmdlevelchar;
+    QuestCharLog(who, "TextCMD Info");
+
+  Else // ...der Rest darf alles beeinflussen
+    If (CInt(eingabe) > 0)
+      // könnte eine Serial sein
+      var found := SystemFindObjectBySerial(
+        CInt(eingabe), SYSFIND_SEARCH_OFFLINE_MOBILES
+      );
+      If (found)
+        who := found;
+      EndIf
+    EndIf
+
+    If (!who and eingabe)
+      var gesuchter := SearchForOnlineCharacter(cmdlevelchar, eingabe);
+      If (gesuchter)
+        who := gesuchter;
+      Else
+        SendSysMessagePergon(cmdlevelchar,
+          eingabe+" konnte nicht gefunden werden."
+        );
+      EndIf
+    EndIf
+
+    If (!who)
+      SendSysMessagePergon(cmdlevelchar, "Wählt ein Mobile!");
+      var tgt := Target(cmdlevelchar, TGTOPT_NOCHECK_LOS);
+      If (tgt)
+        who := tgt;
+      EndIf
+    EndIf
+  EndIf
+
+  // falls ein Item gewaehlt wurde, machen wir eben iteminfo
+  If (!who.isa(POLCLASS_MOBILE))
+    If (who.isa(POLCLASS_ITEM))
+      SendSysMessagePergon(cmdlevelchar, "Wechsele zu .iteminfo ...");
+      var opts := struct{
+        char := cmdlevelchar,
+        item := who
+      };
+      Start_ScriptPergon("::textcmd/2_quest/iteminfo", opts);
+      return;
+    EndIf
+    SendSysMessagePergon(cmdlevelchar, "Ungültiges Ziel.");
+    return;
+  EndIf
+
+  If (who.isa(POLCLASS_NPC)) // Ist wohl leider noetig ...
+    syslog(
+      CharInfoStr(cmdlevelchar)+" untersucht NPC "+
+      CharInfoStr(who, COORDS_REALM)
+    );
+  ElseIf (cmdlevelchar.serial<>who.serial)
+    // ... sich selber muss man nicht loggen
+    syslog(
+      CharInfoStr(cmdlevelchar)+" untersucht Spieler "+
+      CharInfoStr(who, COORDS_REALM)
+    );
+  EndIf
+
+  // Anpassung des Layout an die CMDLevel
+  var editskills := 0;
+  If (AllowedToChangeSkills(cmdlevelchar) || cmdlevelchar.serial == who.serial)
+    editskills := 1;
+  EndIf
+
+  // Spieler duerfen nur von HighGMs beeinflusst werden, aber sich
+  // selber darf jeder Nutzungsberechtigte veraendern
+  If (!who.isa(POLCLASS_NPC) && cmdlevelchar.cmdlevel < CMDLEVEL_HIGHGM && cmdlevelchar.serial != who.serial)
+    layout[27] := ""; // Strength-Button
+    layout[30] := ""; // Intelligence-Button
+    layout[33] := ""; // Dexterity-Button
+    layout[54] := ""; // Armor-Button
+    // Realnames bei Inkognito
+    IGNORE_PROPS := IGNORE_PROPS+"realname realrname ";
+  EndIf
+
+  If (!who.isa(POLCLASS_NPC) && cmdlevelchar.cmdlevel < CMDLEVEL_GL && cmdlevelchar.serial != who.serial)
+    layout[93]:="";layout[94]:=""; // Invul
+  EndIf
+
+  // Spieler darf nur von HighGMs gekickt oder eingeknastet werden
+  If (who.isa(POLCLASS_NPC) || cmdlevelchar.cmdlevel < CMDLEVEL_HIGHGM)
+    layout[83] := "";layout[84]:=""; // Kick
+  EndIf
+  
+  If (!AllowedToJail(cmdlevelchar))
+    layout[85] := "";layout[86]:=""; // Jail
+  EndIf
+
+  FillInStats(who);
+  FillInAktionen(who, cmdlevelchar);
+  FillInProps(who, FillInSkills(who, editskills));
+  var deaths := who.getprop("LastDeathLocation");
+  FillInDeath(who, deaths);
+
+  var result := SendDialogGump(cmdlevelchar, layout, data);
+
+  var reskey;
+  ForEach key in (result.keys)
+    If (key>=1000)
+      reskey := key;
+    EndIf
+  EndForEach
+
+  var loginfo;
+  Case (result[0])
+  1:  // Strength
+  2:  // Intelligence
+  3:  // Dexterity
+  4:  // X
+  5:  // Y
+  6:  // Z
+  7:  // Hitpoints/MaxHitpoints
+  8:  // Mana/MaxMana
+  9: // Stamina/MaxStamina
+  10: // Armor
+  11: // Graphic
+  12: // Color
+  13: // Truecolor
+  14: // Geschlecht
+    loginfo := EditStat(who, cmdlevelchar, result[0]);
+    If (loginfo)
+      LogInfoChange(cmdlevelchar, who, loginfo);
+    EndIf
+
+  15: // Skills (Ok-Button)
+    loginfo := EditSkill(who, cmdlevelchar, reskey-1000);
+    If (loginfo)
+      LogInfoChange(cmdlevelchar, who, loginfo);
+    EndIf
+
+  16: // Freeze
+    PrintTextAbovePrivatePergon(who, who.name+" ist eingefroren.", "", cmdlevelchar);
+    who.frozen := 1;
+    SetObjProperty(who, "frozen", 1);
+    IncRevision(who);
+    
+    If (!who.isa(POLCLASS_NPC))
+      SysLog(CharInfoStr(cmdlevelchar)+" friert "+CharInfoStr(who)+" ein");
+    EndIf
+
+  17: // Unfreeze
+    PrintTextAbovePrivatePergon(who, who.name+" beginnt aufzutauen", "", cmdlevelchar);
+    who.frozen := 0;
+    EraseObjProperty(who, "frozen");
+    IncRevision(who);
+    
+    If (!who.isa(POLCLASS_NPC))
+      SysLog(CharInfoStr(cmdlevelchar)+" taut "+CharInfoStr(who)+" auf");
+    EndIf
+
+  18: // Kick
+    SendSysMessagePergon(who,
+      "Ihr wurdet von "+cmdlevelchar.name+" gekickt."
+    );
+    DisconnectClient(who);
+    SysLog(CharInfoStr(cmdlevelchar)+" kickt "+CharInfoStr(who));
+
+  19: AutoJail(who);
+
+  20: // Bankfach
+    SendOpenSpecialContainer(cmdlevelchar, FindBankBox(who));
+
+  21: // Backpack
+    If (cmdlevelchar.serial<>who.serial)
+      SendOpenSpecialContainer(cmdlevelchar, who.backpack);
+    Else
+      SendViewContainer(who, who.backpack);
+    EndIf
+
+  22: // Summon
+    MoveCharacterToLocationRealm(
+      who, cmdlevelchar,
+      cmdlevelchar.x, cmdlevelchar.y, cmdlevelchar.z, cmdlevelchar.realm
+    );
+
+  23: // Name des Mobile
+    var newname := RequestInput(
+      cmdlevelchar, cmdlevelchar.backpack, "Neuer Name:"
+    );
+    If (newname)
+      SetNamePergon(who, newname, cmdlevelchar);
+    EndIf
+
+  24: // MagicPower-Button
+    Start_ScriptPergon(":newmagic:spellpowercontrol", {who, cmdlevelchar});
+
+  25: // Invul
+    If (!who.enabled("invul"))
+      GrantPrivilege(who, "invul");
+      who.enable("invul");
+      SysLog(CharInfoStr(cmdlevelchar)+" setzt "+CharInfoStr(who)+" auf invul");
+    Else
+      who.disable("invul");
+      RevokePrivilege(who, "invul");
+      SysLog(CharInfoStr(cmdlevelchar)+" entfernt das Privileg 'invul' bei "+CharInfoStr(who));
+    EndIf
+    IncRevision(who);
+
+  // Goto Leiche
+  101: 102: 103: 104: 105: 106: 107: 108: 109: 110:
+    If (deaths[result[0]-100])
+      JumpLocationAdd(cmdlevelchar);
+      MoveObjectToLocation(
+        cmdlevelchar,
+        deaths[result[0]-100][1], // x
+        deaths[result[0]-100][2], // y
+        deaths[result[0]-100][3], // z
+        deaths[result[0]-100][4]  // realm
+      );
+    EndIf
+
+  // Leiche Öffnen
+  111: 112: 113: 114: 115: 116: 117: 118: 119: 120:
+    var leiche := SystemFindObjectBySerial(deaths[result[0]-110][5]);
+    If ((leiche) && (leiche.objtype == 0x2006))
+      JumpLocationAdd(cmdlevelchar);
+      // trotzdem Move, sonst ist er zu weit weg
+      MoveObjectToLocation(
+        cmdlevelchar, leiche.x, leiche.y, leiche.z, leiche.realm
+      );
+      UseItem(leiche, cmdlevelchar);
+    Else
+      SendSysMessagePergon(cmdlevelchar,
+        "Leiche konnte nicht gefunden werden."
+      );
+    EndIf
+  EndCase
+EndProgram // }}}
+
+// MoveCharacterToLocationRealm - Bewegt den Mobile zur Zielposition
+Function MoveCharacterToLocationRealm(who, cmdlevelchar, destx, desty, destz, drealm) // {{{
+  If (
+    who.isa(POLCLASS_NPC) or
+    (cmdlevelchar.cmdlevel >= CMDLEVEL_GL) or
+    // Nicht Admins duerfen Spieler nicht in den Knast summonen
+    (PlaceName(Struct{x := destx, y := desty, realm:=drealm})<>"Gefaengnis")
+  )
+    SysLog(CharInfoStr(cmdlevelchar, COORDS_REALM)+" holt "+CharInfoStr(who, COORDS_REALM)+" zu sich");
+    MoveObjectToLocation(
+      who, destx, desty, destz, drealm, MOVEOBJECT_FORCELOCATION
+    );
+  Else
+    SendSysMessagePergon(cmdlevelchar,
+      "Euch fehlt die nötige Befugnis!",
+      "You are not authorizied!"
+    );
+  EndIf
+EndFunction // }}}
+
+// FillInStats - Setzt alle Werte der Seite 1
+Function FillInStats(who) // {{{
+  data[1]  := "Info von: "+who.name;
+  data[6]  := GetStrPergon(who)+" (Mod "+GetStrModPergon(who)+")";
+  data[8]  := GetIntPergon(who)+" (Mod "+GetIntModPergon(who)+")";
+  data[10] := GetDexPergon(who)+" (Mod "+GetDexModPergon(who)+")";
+  data[12] := who.x;
+  data[14] := who.y;
+  data[16] := who.z;
+  data[18] := GetHPPergon(who)+"/"+GetMaxHPPergon(who);
+  data[20] := GetManaPergon(who)+"/"+GetMaxManaPergon(who);
+  data[22] := GetStaminaPergon(who)+"/"+GetMaxStaminaPergon(who);
+  data[24] := who.ar+" (Mod "+who.ar_mod+")";
+  data[26] := who.graphic+" ("+who.trueobjtype+")";
+  data[28] := who.color+" ("+who.truecolor+")";
+
+  If (who.gender)
+    data[47] := "weiblich";
+  Else
+    data[47] := "maennlich";
+  EndIf
+
+  data[49] := LHex(who.serial);
+
+  var levelname := GetCMDLevelTitle(who.cmdlevel);
+  If (who.isa(POLCLASS_NPC))
+    data[30] := "NPC ("+levelname+")";
+  Else
+    data[30] := levelname;
+  EndIf
+
+  If (who.isa(POLCLASS_NPC))
+    // NPCs haben keinen Account, aber ein Template
+    data[31] := "NPC-Template";
+    data[32] := who.npctemplate;
+  Else
+    data[32] := who.acctname;
+  EndIf
+
+  var klasse := GetObjProperty(who, SKKLASSE);
+  If (!klasse)
+    klasse := "Undefiniert";
+  EndIf
+  data[51] := klasse;
+
+  var beruf := GetObjProperty(who, SKBERUF);
+  If ((!beruf) Or (beruf==KLASSE_BERUF_NIX))
+    beruf := "Undefiniert";
+  EndIf
+  data[53] := beruf;
+
+  If (!who.isa(POLCLASS_NPC)) // NPCs haben kein Alter etc.
+    data[63] := CInt((ReadGameClock()-who.createdat)/86400)+" Tage";
+    data[65] := CInt(CInt(GetObjProperty(who, "lifetime"))/3600)+" Stunden";
+  Else
+    layout[102] := "";layout[103]:="";layout[104]:="";layout[105]:="";
+  EndIf
+EndFunction // }}}
+
+// FillInAktionen - Setzt alle Werte der Seite 2
+Function FillInAktionen(who,whocmdlvl) // {{{
+  If (who.frozen)
+    layout[79] := "";layout[80]:="";
+  Else
+    layout[81] := "";layout[82]:="";
+  EndIf
+  If (!FindBankBox(who))
+    layout[87] := "";layout[88]:="";
+  EndIf
+  If (!who.backpack)
+    layout[89] := "";layout[90]:="";
+  EndIf
+  If (whocmdlvl.cmdlevel<CMDLEVEL_HIGHGM)
+    layout[77] := "";layout[78]:="";
+  EndIf
+
+  If (!who.isa(POLCLASS_NPC))
+    var weapfile := ReadConfigFile(":combat:itemdesc");
+
+    data[40] := "Waffe";
+
+    var idx := Find(who.weapon.name, "[", 1);
+    If (idx<>0)
+      data[41] := who.weapon.desc[1, idx-1];
+    Else
+      If (who.weapon.desc=="nodraw")
+        data[41] := "Wrestling";
+      Else
+        data[41] := who.weapon.desc;
+      EndIf
+    EndIf
+
+    If (data[41][1, 2]=="a ")
+      data[41] := data[41][3, Len(data[41])-2];
+    ElseIf (data[41][1, 3]=="an ")
+      data[41] := data[41][4, Len(data[41])-3];
+    EndIf
+
+    var temp := weapfile[who.weapon.objtype].damage;
+    If (temp)
+      data[43] := temp;
+    Else
+      layout[98] := "";layout[99]:="";
+    EndIf
+
+    data[44] := "HP/Max";data[45]:=who.weapon.hp+" / "+who.weapon.maxhp;
+
+    //UnloadConfigFile(":combat:itemdesc"); // Entladen verursacht Fehler!
+  Else
+
+    var temp := GetNPCConfig(who.npctemplate).attackskillid;
+    If (temp)
+      data[40] := "SkillID";data[41]:=temp;
+    Else
+      layout[96] := "";layout[97]:="";
+    EndIf
+
+    temp := GetNPCConfig(who.npctemplate).attackdamage;
+    If (temp)
+      data[43] := temp;
+    Else
+      layout[98] := "";layout[99]:="";
+    EndIf
+
+    temp := GetNPCConfig(who.npctemplate).ar;
+    If (temp)
+      data[44] := "Armor";data[45]:=temp;
+    Else
+      layout[100] := "";layout[101]:="";
+    EndIf
+  EndIf
+EndFunction // }}}
+
+// FillInSkills - Setzt alle Skills
+Function FillInSkills(who, editskills) // {{{
+  var pages := CInt((MAX_SKILLS+1)/22);
+  If (pages*22<(MAX_SKILLS+1))
+    pages+=1;
+  EndIf
+
+  var page;
+  For (page := 1; page<=pages; page+=1)
+    FillInSkillsPage(who, pages, page, editskills);
+  EndFor
+
+  return (pages+3);
+EndFunction // }}}
+
+// FillInSkillsPage - Einzelseiten erzeugen
+Function FillInSkillsPage(who, pages, page, editskills) // {{{
+  layout.append("page "+CStr(page+2));
+
+  If (pages>1)
+    If (page==1)
+      layout.append("button 295 425 2648 2647 0 4");
+    ElseIf (page==pages)
+      layout.append("button 295 45 2650 2651 0 "+CStr(page+1));
+    Else
+      layout.append("button 295 45 2650 2651 0 "+CStr(page+1));
+      layout.append("button 295 425 2648 2647 0 "+CStr(page+3));
+    EndIf
+  EndIf
+
+  var startskill := page*22-21;
+  var endskill := page*22;
+  If (endskill>(MAX_SKILLS+1))
+    endskill := (MAX_SKILLS+1);
+  EndIf
+
+  var y_mod;
+  var skillid;
+  var color;
+  var skill;
+  var skillsinfo:=GetSkillsSorted();
+  For (skill := startskill; skill<=endskill; skill+=1)
+    y_mod := (skill-startskill)*15;
+    skillid := skillsinfo[skill];
+    var skillinfo:=GetSkillInfo(skillid);
+    Case (GetObjProperty(who, SKILLTYPKENNUNG+skillid))
+      SKILLTYP_BERUF:   color := " 32 ";
+      SKILLTYP_HAUPT:   color := " 66 ";
+      SKILLTYP_NEBEN:   color := " 1 ";
+      SKILLTYP_WEITERE: color := " 23 ";
+
+      default:          color := " 40 ";
+    EndCase
+
+    layout.append("text 24 "+CStr(70+y_mod)+color+CStr(data.size()));
+    data.append(skillinfo.TrainName);
+    layout.append("text 175 "+CStr(70+y_mod)+" 5 "+CStr(data.size()));
+    If (!who.isa(POLCLASS_NPC))
+      data.append(RawSkillToBaseSkillPergon(GetRawSkillPergon(who, skillid))/10.0);
+      layout.append("text 210 "+CStr(70+y_mod)+" 40 "+CStr(data.size()));
+      data.append(GetRawSkillPergon(who, skillid));
+    Else
+      data.append(GetSkillPergon(who, skillid));
+    EndIf
+
+    If (editskills)
+      // Anpassung des Layout an die CMDLevel
+      layout.append(
+        "radio 290 "+CStr(75+y_mod)+" 2362 2361 0 "+(CStr(1000+skill))
+      );
+    EndIf
+  EndFor
+
+  layout.append("text 24 420 32 53");
+  layout.append("text 52 420 66 54");
+  layout.append("text 84 420 1 55");
+  layout.append("text 114 420 23 56");
+  If (editskills)
+    // Anpassung des Layout an die CMDLevel
+    layout.append("button 225 420 2130 2129 3 2 15"); // Ok
+  EndIf
+  layout.append("button 160 420 2121 2120 1 2 -1"); // Cancel
+EndFunction // }}}
+
+// FillInProps - Setzt alle Properties
+Function FillInProps(who, firstpage) // {{{
+  layout[22] := "button 266 41 2640 2641 0 "+CStr(firstpage);
+
+  var properties := { };
+
+  var append;
+  ForEach propname in GetObjPropertyNames(who)
+    append := 1;
+    If (propname[1, 3]==SKILLWERTKENNUNG)
+      var propnamepart := propname;
+      propnamepart[1, 3] := "";
+      If (IsSkillNameDefinied(propnamepart))
+        append := 0;
+      EndIf
+    ElseIf (propname[1, 5]==SKILLTYPKENNUNG)
+      If (IGNORE_TYPES[" "+GetObjProperty(who, propname)+" "])
+        var propnamepart := propname;
+        propnamepart[1, 5] := "";
+        If (IsSkillNameDefinied(propnamepart))
+          append := 0;
+        EndIf
+      EndIf
+    ElseIf (IGNORE_PROPS[" "+propname+" "])
+      append := 0;
+    EndIf
+
+    If (append)
+      properties.append(propname);
+    EndIf
+  EndForEach
+
+  var pages := CInt(properties.size()/22);
+  If (pages*22<properties.size())
+    pages+=1;
+  ElseIf (pages==0)
+    pages := 1;
+  EndIf
+
+  var page;
+  For (page := 1; page<=pages; page+=1)
+    FillInPropsPage(who, properties, pages, page, firstpage-1);
+  EndFor
+EndFunction // }}}
+
+// FillInPropsPage - Einzelseiten erzeugen
+Function FillInPropsPage(who, ByRef properties, pages, page, firstpage) // {{{
+  layout.append("page "+CStr(firstpage+page));
+
+  If (pages>1)
+    If (page==1)
+      layout.append("button 295 425 2648 2647 0 "+CStr(firstpage+page+1));
+    ElseIf (page==pages)
+      layout.append("button 295 45 2650 2651 0 "+CStr(firstpage+page-1));
+    Else
+      layout.append("button 295 45 2650 2651 0 "+CStr(firstpage+page-1));
+      layout.append("button 295 425 2648 2647 0 "+CStr(firstpage+page+1));
+    EndIf
+  EndIf
+
+  var startprop := page*22-21;
+  var endprop := page*22;
+  If (endprop>properties.size())
+    endprop := properties.size();
+  EndIf
+
+  var y_mod;
+  var value;
+  var color;
+  var prop;
+  For (prop := page*22-21; prop<=endprop; prop+=1)
+    y_mod := (prop-startprop)*15;
+    value := GetObjProperty(who, properties[prop]);
+
+    Case (TypeOfInt(value))
+      OT_LONG: color := " 1 ";
+      OT_DOUBLE:  color := " 66 ";
+      OT_STRING:  color := " 32 ";
+      default:   color := " 23 ";
+    EndCase
+
+    layout.append("text 24 "+CStr(70+y_mod)+color+CStr(data.size()));
+    layout.append("text 175 "+CStr(70+y_mod)+" 5 "+CStr(data.size()+1));
+    data.append(properties[prop]);
+    data.append(value);
+  EndFor
+
+  layout.append("text 24 420 1 57");
+  layout.append("text 50 420 66 58");
+  layout.append("text 86 420 32 59");
+  layout.append("text 115 420 23 60");
+EndFunction // }}}
+
+// FillInDeath - Todesort eintragen
+Function FillInDeath(who, byref deaths) // {{{
+  layout += {
+    "page 100",
+    "button 295 45 2650 2651 0 2",     // Zurück zu Page 2
+    "text 24 80 40 "+data.size(),      // Time
+    "text 110 80 40 "+(data.size()+1), // Koords
+    "text 230 80 40 "+(data.size()+2), // Goto
+    "text 270 80 40 "+(data.size()+3)  // Open
+  };
+  data += {"DeathTime", "Koords", "Goto", "Open"};
+  var i := 0;
+  ForEach death in deaths
+    i += 1;
+    If (death.size() <> 6)
+      // ungültiger Eintrag
+      continue;
+    EndIf
+    // 1 - x, 2 - y, 3 - z, 4 - realm, 5 - serial, 6 - time
+
+    var cont := FindDeathContainer(who, death);
+
+    // Zeit
+    layout.append("text 24 "+(80+i*20)+" 5 "+data.size());
+    data.append(StrFormatTime("%H:%M %d.%m",death[6]));
+    // Koords
+    layout.append("text 110 "+(80+i*20)+" 5 "+data.size());
+    data.append(death[1]+" "+death[2]+" "+death[3]);
+    var btgr := "2362"; // blau
+    If (cont)
+      btgr := "2360"; // rot
+      If (EnumerateItemsInContainer(cont).size() >= 3)
+        btgr := "2361"; // gruen
+      EndIf
+    EndIf
+    // Goto
+    layout.append("button 238 "+(85+i*20)+" "+btgr+" 2361 1 0 "+(100+i));
+    // Open
+    layout.append("button 278 "+(85+i*20)+" "+btgr+" 2361 1 0 "+(110+i));
+  EndForEach
+EndFunction // }}}
+
+// Leiche oder Loottasche zu bestimmten Tod finden
+Function FindDeathContainer(who, death) // {{{
+  var cont := SystemFindObjectBySerial(death[5]);
+  If (cont and cont.isa(POLCLASS_CONTAINER) and cont.objtype == 0x2006)
+    // Leiche noch da
+    return cont;
+  EndIf
+
+  // Leiche weg, Umgebung nach Loottaschen durchsuchen
+  ForEach lootbag in (ListItemsNearLocationOfType(
+    death[1], death[2], death[3], 2, 0x669e, death[4]
+  ))
+    var info := lootbag.getprop("corpseinfo");
+    // gucken, ob sie zu Char gehoert
+    If (info and (info[1] == who.serial))
+      return lootbag;
+    EndIf
+  EndForEach
+EndFunction // }}}
+
+// EditStat - Veraendert Werte der Seite 1
+Function EditStat(who, cmdlevelchar, result) // {{{
+  var description;
+  var maxval;
+  Case (result)
+    1:  description := "die Staerke";                             maxval:=6000;
+    2:  description := "die Intelligenz";                         maxval:=6000;
+    3:  description := "die Ausdauer";                            maxval:=6000;
+    4:  description := "die X-Koordinate";                        maxval:=6143;
+    5:  description := "die Y-Koordinate";                        maxval:=4095;
+    6:  description := "die Z-Koordinate";                        maxval:=127;
+    7:  description := "die max. Hitpoints";                      maxval:=100000;
+    8:  description := "die max. Mana";                           maxval:=100000;
+    9:  description := "die max. Stamina";                        maxval:=100000;
+    10: description := "den Ruestungswert ";                      maxval:=32767;
+    11: description := "die Grafik";                              maxval:=1023;
+    12: description := "die Farbe";                               maxval:=65535;
+    13: description := "die Truecolor";                           maxval:=65535;
+    14: description := "das Geschlecht (0=maennlich/1=weiblich)"; maxval:=1;
+  EndCase
+
+  var val := SendTextEntryGump(cmdlevelchar,
+    "Bitte den neuen Wert fuer "+description+" eingeben!",
+    TE_CANCEL_ENABLE, TE_STYLE_NUMERICAL, maxval
+  );
+
+  // numerische 0 ist Abbruch
+  If (val == 0)
+    SendSysMessagePergon(cmdlevelchar, "Abbruch", "Abort");
+    return 0;
+  EndIf
+  // String "0" ist eine eingebene 0
+  val := CInt(val);
+
+  var oldval;
+  Case (result)
+  1: // Strength
+    oldval := GetStrPergon(who);
+    If (val <= 210)
+      SetStrPergon(who, val);
+      SetStrModPergon(who, 0);
+    Else
+      SetStrPergon(who, 210);
+      SetStrModPergon(who, val-210);
+    EndIf
+
+  2: // Intelligence
+    oldval := GetIntPergon(who);
+    If (val <= 210)
+      SetIntPergon(who, val);
+      SetIntModPergon(who, 0);
+    Else
+      SetIntPergon(who, 210);
+      SetIntModPergon(who, val-210);
+    EndIf
+
+  3: // Dexterity
+    oldval := GetDexPergon(who);
+    If (val <= 210)
+      SetDexPergon(who, val);
+      SetDexModPergon(who, 0);
+    Else
+      SetDexPergon(who, 210);
+      SetDexModPergon(who, val-210);
+    EndIf
+
+  4: // Verschiebung um X-Wert
+    oldval := who.x;
+    MoveCharacterToLocationRealm(
+      who, cmdlevelchar, val, who.y, who.z, who.realm
+    );
+
+  5: // Verschiebung um Y-Wert
+    oldval := who.y;
+    MoveCharacterToLocationRealm(
+      who, cmdlevelchar, who.x, val, who.z, who.realm
+    );
+
+  6: // Verschiebung um Z-Wert
+    oldval := who.z;
+    MoveCharacterToLocationRealm(
+      who, cmdlevelchar, who.x, who.y, val, who.realm
+    );
+
+  7: // Hitpoints/MaxHitpoints
+    oldval := GetHPPergon(who);
+    SetHPPergon(who, val);
+
+  8: // Mana/MaxMana
+    oldval := GetManaPergon(who);
+    SetManaPergon(who, val);
+
+  9: // Stamina/MaxStamina
+    oldval := GetStaminaPergon(who);
+    SetStaminaPergon(who, val);
+
+  10: // Armor
+    oldval := who.ar_mod;
+    who.ar_mod := 0;
+    who.ar_mod := val - who.ar;
+
+  11: // Graphic
+    If (IsValidNPCGraphic(val))
+      oldval := who.graphic;who.graphic:=val;
+    Else
+      SendSysMessagePergon(cmdlevelchar,
+        "Ungültige 'Graphic'-Einstellung!",
+        "Invalid 'Graphic' value!"
+      );
+      return 0;
+    EndIf
+
+  12: // Color
+    oldval := who.color;
+    who.color := val;
+
+  13: //TrueColor
+    oldval := who.truecolor;
+    who.truecolor := val;
+    who.color     := val;
+
+  14: // Geschlecht
+    oldval := who.gender;
+    who.gender := val;
+  EndCase
+
+  return ({description, oldval, val});
+EndFunction // }}}
+
+// EditSkill - Veraendert Werte ab Seite 3
+Function EditSkill(who, cmdlevelchar, skill) // {{{
+
+  var skillinfo := GetSkillInfo(GetSkillsSorted()[skill]);
+
+  var val := SendTextEntryGump(cmdlevelchar,
+      "Einen neuen Wert fuer "+skillinfo.TrainName+" eingeben.",
+      TE_CANCEL_ENABLE, TE_STYLE_NUMERICAL, 209
+  );
+  // numerische 0 ist Abbruch
+  If (val == 0)
+    SendSysMessagePergon(cmdlevelchar, "Abbruch", "Abort");
+    return 0;
+  EndIf
+  // String "0" ist eine eingebene 0
+  val := CInt(val);
+
+  var oldval := GetSkillPergon(who, skillinfo.name);
+  SetSkillPergon(who, skillinfo.name, val);
+
+  // wegen Skillaenderungen muss ggf. Fahrerlaubnis neu beantragt werden
+  EraseObjProperty(who, TYPFLIGHT);
+
+  return ({skillinfo.TrainName, oldval, val});
+EndFunction // }}}
+
+// LogInfoChange - oft benutzte Logfunktion fuer Aenderungen
+Function LogInfoChange(taeter, opfer, loginfo) // {{{
+  If (opfer.isa(POLCLASS_NPC)) // Ist wohl leider noetig...
+    syslog(
+      CharInfoStr(taeter)+" aendert "+loginfo[1]+
+      " bei NPC "+CharInfoStr(opfer, COORDS_REALM)+
+      " von "+loginfo[2]+" auf "+loginfo[3]
+    );
+  Else
+    syslog(
+      CharInfoStr(taeter)+" aendert "+loginfo[1]+
+      " bei Spieler "+CharInfoStr(opfer, COORDS_REALM)+
+      " von "+loginfo[2]+" auf "+loginfo[3]
+    );
+  EndIf
+EndFunction // }}}
+
+// vim: sts=2 sw=2

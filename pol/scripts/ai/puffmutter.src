@@ -1,0 +1,659 @@
+///////////////////////////////////////////////////////////////////////////
+// Puffmutter-Script speziell fuer einen NPC im Eingangsbereich des
+// Freudenhauses in Cove
+//
+// Player-Propertys:
+//      Puff_Eintritt - Person hat bezahlt und befindet sich im Puff
+//      Puff_Wunsch   - Wunsch, welche Entspannung
+//      Puff_WunschMW - Maennliche oder Weibliche Entspannung
+//
+// Sklaven-Propertys:
+//      KundenSerial  - Serial des Players
+//      MyProfession  - Art der Entspannung, die der Lustsklave bereitstellt
+///////////////////////////////////////////////////////////////////////////
+
+use npc;
+use os;
+use uo;
+use util;
+include "include/animal";
+include "include/client";
+include "include/eventid";
+include "include/names";
+include "include/npc";      //some new functions
+include "include/objtype";
+include "include/pergonutil";
+include "include/place";
+include "include/vetement"; // need for random clothing
+include "include/mrcspawn";
+
+const HALT_THRESHOLD := 3; // how close before he barks?
+Const PROP_CURRENT_CUSTOMER := "#current_customer";
+
+var me := Self();
+
+Const GUMP_LAYOUT      := 0;
+Const GUMP_DATA_ROOM   := 1;
+Const GUMP_DATA_GENDER := 2;
+
+Function PuffGump(type := GUMP_LAYOUT)
+    If (type == GUMP_LAYOUT)
+        return array{
+            "page 0",
+            "nodispose",
+            "gumppic   0   0 1228",
+            "gumppic 300 150 9013",
+            "button   50  50 2104 2103 1 0 1",
+            "button   50  70 2104 2103 1 0 2",
+            "button   50  90 2104 2103 1 0 3",
+            "button   50 110 2104 2103 1 0 4",
+
+            "text     70  45 0 0",
+            "text     70  65 0 1",
+            "text     70  85 0 2",
+            "text     70 105 0 3"
+        };
+    ElseIf (type == GUMP_DATA_ROOM)
+        return array{
+            "ab ins roemische Zimmer",
+            "ab ins rote Luxuszimmer",
+            "ab ins Naturzimmer",
+            "ab ins SM-Studio"
+        };
+    ElseIf (type == GUMP_DATA_GENDER)
+        return array{
+            "Ich wuensche maennliche Gesellschaft.",
+            "Ich wuensche weibliche Gesellschaft.",
+            "",
+            ""
+        };
+    EndIf
+EndFunction
+
+Program Puffmutter()
+    DropAnchor();
+    SetObjProperty(me,"serial", me.serial);
+
+    EnableEvents(
+        SYSEVENT_SPEECH + SYSEVENT_ENGAGED + SYSEVENT_DISENGAGED +
+        SYSEVENT_DAMAGED + SYSEVENT_ENTEREDAREA + SYSEVENT_LEFTAREA,
+        HALT_THRESHOLD
+    );
+    EnableEvents(SYSEVENT_OPPONENT_MOVED);
+
+    SetWarMode(0);
+    me.frozen := 0;
+    IncRevision(me);
+
+    If (me.name["<random>"])
+        var npcname := RandomName(me);
+        SetName(me, npcname);
+
+        var pos := Find(npcname, ",", 1);
+        If (pos)
+            npcname := npcname[1, pos-1];
+        EndIf
+
+        SetObjProperty(me, "myname", npcname);
+    EndIf
+
+    // Random Clothing
+    Habille(me, GetObjProperty(me, "Equipt"));
+
+    var minename := GetObjProperty(me, "myname");
+
+    me.setmaster(SystemFindObjectBySerial(me.serial));
+    
+    var medata := struct;
+    medata.+merchant_type := "Puffmutter";
+    
+    var storage := FindStorageArea(STORAGE_MERCHANT);
+    If (!storage)
+      syslog(
+        "FEHLER: "+medata.merchant_type+" "+me.name+" -> FindStorageArea"
+      );
+      // Selbstmord, Braindead ...
+      return;
+    EndIf
+
+    medata.+inv_fs := FindOrCreateRootItemInStorage(
+      storage, me.serial+" FS", 0xe7c
+    );
+    If (!medata.inv_fs)
+      syslog("FEHLER: "+medata.merchant_type+" "+me.name+" -> inv_fs");
+      // Selbstmord, Braindead ...
+      return;
+    EndIf
+
+    medata.+inv_pb := FindOrCreateRootItemInStorage(
+      storage, me.serial+" PB", 0xe7c
+    );
+    If (!medata.inv_pb)
+      syslog("FEHLER: "+medata.merchant_type+" "+me.name+" -> inv_pb");
+      // Selbstmord, Braindead ...
+      return;
+    EndIf
+
+    medata.+inv_1c := FindOrCreateRootItemInStorage(
+      storage, me.serial+" 1C", 0xe7c
+    );
+    If (!medata.inv_1c)
+      syslog("FEHLER: "+medata.merchant_type+" "+me.name+" -> inv_1c");
+      // Selbstmord, Braindead ...
+      return;
+    EndIf
+  
+    // ending configure of npc and starting ai
+
+    var ev;
+    While (1)
+        PerformAction(me, UACTION_LOOK_AROUND);
+        ev := Wait_for_EventLogging(120);
+        PerformAction(me, UACTION_LOOK_AROUND);
+
+        If (!ev or ev.source.isa(POLCLASS_NPC) or ev.source.dead)
+            continue;
+        EndIf
+
+        TurnToward (ev.source);
+        Case (ev.type)
+        SYSEVENT_SPEECH:
+            var sayed := ev.text;
+            var talktome := 1;
+            var words := SplitWords(sayed);
+            If (
+                (GetObjProperty(Me,"questnpc")) && (
+                lower(" "+sayed+" ")[" auftrag "])
+            )
+                var parms := array{Me, ev.source};
+                // parms[1]:=Me;
+                // parms[2]:=ev.source;
+                Start_ScriptPergon(":questsystem:questsystem", parms);
+                break;
+            EndIf
+
+            If (lower(words[1]) == lower(minename))
+                SetObjProperty(ev.source, "talkto", minename);
+                words.erase(1);
+                sayed := "";
+                ForEach word in (words)
+                    sayed += word;
+                EndForEach
+            EndIf
+            SleepMS(5);
+
+            If (
+                GetObjProperty(ev.source,"talkto") and
+                GetObjProperty(ev.source,"talkto") != minename
+            )
+                talktome := 0;
+            EndIf
+
+            If (talktome)
+                If (CheckLosAt(me, ev.source.x, ev.source.y, ev.source.z+16))
+                    KundeAbfertigen(ev.source, sayed, medata);
+                Else
+                    Case (RandomInt(6)+1)
+                    1:
+                        PrintTextAbovePergon(
+                            ev.source, me, "Huh? Wer spricht da?"
+                        );
+                    2:
+                        PrintTextAbovePergon(
+                            ev.source, me, "Huh? Wer spricht da?"
+                        );
+                    3:
+                        PrintTextAbovePergon(
+                            ev.source, me, "Meint Ihr mich?"
+                        );
+                    4:
+                        PrintTextAbovePergon(
+                            ev.source, me, "Wo seid Ihr?"
+                        );
+                    5:
+                        PrintTextAbovePergon(
+                            ev.source, me, "Nanu? Wo kommt die Stimme her?"
+                        );
+                    6:
+                        PrintTextAbovePergon(
+                            ev.source, me, "Geisterstimmen ... zu Hilfeee"
+                        );
+                    EndCase
+                EndIf
+            EndIf
+            
+        SYSEVENT_MERCHANT_BOUGHT:
+            // ermitteln, ob Gold ausgezahlt wurde, ggf. nachzahlen {{{
+            var moneycheck := me.getprop("#MoneyCheckSell");
+            me.eraseprop("#MoneyCheckSell");
+            If (moneycheck.customer == ev.source.serial)
+              // nur bei selbem Kunden ist Check sinnvoll
+      
+              var lostmoney :=
+              // Gold, was er rechnerisch haben sollte
+              moneycheck.gold + ev.amount -
+              // Gold, was er hat
+              ev.source.gold;
+      
+              If (lostmoney > 0)
+                SayPergon(me,
+                  "Ich muss etwas Gold auf den Boden legen.",
+                  "I have to put some gold to the ground."
+                );
+                // da stimmt etwas nicht, Restgeld auszahlen
+                While (lostmoney > 0)
+                  var size := Min(lostmoney, 60000);
+                  CreateItemAtLocation(
+                    ev.source.x, ev.source.y, ev.source.z,
+                    UOBJ_GOLD_COIN, size, ev.source.realm
+                  );
+                  lostmoney -= size;
+                EndWhile
+              EndIf
+            EndIf
+            // }}}
+            
+            // Die vom NPC angekauften Sachen zerstoeren
+            ForEach item in (EnumerateItemsInContainer(
+              medata.inv_pb, ENUMERATE_ROOT_ONLY
+            ))
+              SleepMs(2);
+              DestroyItem(item);
+            EndForEach
+      
+            // Den Player ueber seinen Lohn informieren // {{{
+            If (ev.amount > 0)
+              If (CheckLineOfSight(me, ev.source))
+                SayPergon(me,
+                  "Hier sind Eure "+ev.amount+" Gold.",
+                  "Here are your "+ev.amount+" gold."
+                );
+              Else
+                SayPergon(me,
+                  "Wartet. Hier sind noch Eure "+ev.amount+" Gold.", ""
+                );
+              EndIf
+            EndIf
+            // }}}
+      
+            // aktuellen Kunden vergessen, da Handel erledigt
+            me.eraseprop(PROP_CURRENT_CUSTOMER);
+
+        SYSEVENT_ENGAGED:
+            If (ev.source.gender)
+                SayPergon(ev.source, "Na! Nicht so hysterisch!");
+            Else
+                SayPergon(ev.source, "Was wollt Ihr mir schon tun?");
+            EndIf
+            ev.source.frozen := 1;
+            IncRevision(ev.source);
+            Sleep(2);
+            SayPergon(
+                ev.source, "Die örtlichen Wachen werden Euch für eine "+
+                "Weile wegschließen!"
+            );
+            Sleep(3);
+            CharReset(ev.source);
+            AutoJail(ev.source);
+            ev.source.frozen := 0;
+            IncRevision(ev.source);
+
+        SYSEVENT_DISENGAGED:
+            SayPergon(ev.source, "Habt Ihr nochmal Glück gehabt!");
+
+        SYSEVENT_DAMAGED:
+            SayPergon(ev.source, "Was habe ich Euch getan? Zu Hilfe!!!");
+            If (ev.source)
+                Run(ev.source, HALT_THRESHOLD);
+            Else
+                SayPergon(ev.source, "So viele gegen mich alleine? Hilfe!!!");
+            EndIf
+
+        SYSEVENT_ENTEREDAREA:
+            Case (RandomInt(4) + 1)
+            1: SayPergon(ev.source, "Seid gegrüßt.");
+            2: SayPergon(ev.source, "Kommt und entspannt Euch.");
+            3: SayPergon(ev.source, "Tretet ruhig näher.");
+            4: SayPergon(ev.source, "Seid willkommen.");
+            EndCase
+
+        SYSEVENT_LEFTAREA:
+            If (GetObjProperty(ev.source, "talkto") == minename)
+                CharReset(ev.source);
+                EraseObjProperty (ev.source, "talkto");
+            EndIf
+        EndCase
+    EndWhile
+EndProgram
+
+Function KundeAbfertigen(kunde, sayed, medata)
+    If (
+        lower(sayed)["hallo"] or lower(sayed)["seid gegruesst"] or
+        lower(sayed)["seyd gegruesst"] or (lower(sayed) == "hi")
+    )
+        Case (RandomInt(2)+1)
+        1:
+            SayPergon(kunde, "Einen wunderschönen Tag wünsch ich Euch.");
+        2:
+            SayPergon(kunde, "Ich grüße Euch.");
+        Endcase
+
+    ElseIf (lower(sayed)["entspannung"])
+        CharReset(kunde);
+        Case (RandomInt(2)+1)
+        1:
+            SayPergon(kunde, "Welche Art von Entspannung sucht Ihr?");
+        2:
+            SayPergon(kunde, "Ihr sucht Entspannung?");
+            SleepMs(2000);
+            SayPergon(kunde, "Was darf ich Euch anbieten?");
+        Endcase
+
+        // Gump-Auswahl, welche Entspannung gesucht wird
+        var layout := PuffGump(GUMP_LAYOUT);
+        var res := SendDialogGump(
+          kunde, layout, PuffGump(GUMP_DATA_ROOM), 100, 100
+        );
+        Case (res[0])
+        1: SetObjProperty(kunde, "Puff_Wunsch", "ROM");
+        2: SetObjProperty(kunde, "Puff_Wunsch", "LUXUS");
+        3: SetObjProperty(kunde, "Puff_Wunsch", "NATUR");
+        4: SetObjProperty(kunde, "Puff_Wunsch", "SM");
+        default:
+            SayPergon(
+                kunde,
+                "Wie Ihr wollt. Kommt wieder, wenn Ihr Euch entschieden habt."
+            );
+            CharReset(kunde);
+            return;
+        EndCase
+
+        // Gump-Auswahl, ob maennliche oder weibliche Entspannung
+        SayPergon(
+            kunde, "Wünscht Ihr eher männliche oder weibliche Begleitung?"
+        );
+        layout[7] := ""; layout[8] := "";
+        res := SendDialogGump(
+          kunde, layout, PuffGump(GUMP_DATA_GENDER), 100, 100
+        );
+        Case (res[0])
+        1: SetObjProperty(kunde, "Puff_WunschMW", "M");
+        2: SetObjProperty(kunde, "Puff_WunschMW", "W");
+        default:
+            SayPergon(
+                kunde,
+                "Wie Ihr wollt. Kommt wieder, wenn Ihr Euch entschieden habt."
+            );
+            CharReset(kunde);
+            return;
+        EndCase
+
+        // dem Player Geld abknoepfen
+        // ev. Hoehe auch abhaengig von Art der Entspannung machen
+        var Eintrittspreis := 1000;
+        var bezahlt := 0;
+
+        SayPergon(
+            kunde, "Das kostet Euch " + Eintrittspreis + " Goldstücke."
+        );
+        // Geld suchen und vernichten
+        ForEach item in (
+            FindSubstance(kunde.backpack, UOBJ_GOLD_COIN, Eintrittspreis)
+        )
+            If (item.amount >= Eintrittspreis)
+                SubtractAmount(item, Eintrittspreis);
+                SayPergon(kunde, "Danke fuer Euren Beitrag!");
+                bezahlt := 1;
+                break;
+            EndIf
+            SleepMS(2);
+        EndForEach
+
+        If (!bezahlt)
+            SleepMs(2500);
+            SayPergon(kunde, "Leider habt Ihr nicht soviel dabei!");
+            SleepMs(3500);
+            SayPergon(kunde, "Kommt wieder, wenn Ihr genug Gold habt!");
+            CharReset(kunde);
+            return;
+        Endif
+
+        // Lustsklaven bereitstellen, also erstmal versuchen zu createn
+        var LS;
+        var gender := lower(GetObjProperty(kunde, "Puff_WunschMW"));
+        If (gender != "w")
+            gender := "m";
+        EndIf
+
+        // zwecks automatischer Entsorgung Zeit sichern
+        var opts := struct;
+        opts["CProps"] := dictionary;
+        // dem Lustsklaven einen Zeitstempel aufdruecken
+        opts["CProps"]["TimeStamp"] := ReadGameClock();
+        // dem Lustsklaven die Serial des Players mitteilen
+        opts["CProps"]["KundenSerial"] := kunde.serial;
+        // dem Lustsklaven mitteilen, welche Art Entspannung er darstellt
+        opts["CProps"]["MyProfession"] := GetObjProperty(kunde, "Puff_Wunsch");
+
+        Case (GetObjProperty(kunde, "Puff_Wunsch"))
+        "ROM":
+            LS := CreateNpcFromTemplatePergon(
+                "lustsklave"+gender, 2217, 1165, 1, 0, opts, 0, REALM_BRITANNIA
+            );
+
+        "LUXUS":
+            LS := CreateNpcFromTemplatePergon(
+                "lustsklave"+gender, 2217, 1143, 1, 0, opts, 0, REALM_BRITANNIA
+            );
+
+        "NATUR":
+            LS := CreateNpcFromTemplatePergon(
+                "lustsklave"+gender, 2223, 1142, 1, 0, opts, 0, REALM_BRITANNIA
+            );
+
+        "SM":
+            LS := CreateNpcFromTemplatePergon(
+                "lustsklave"+gender, 2211, 1164, 1, 0, opts, 0, REALM_BRITANNIA
+            );
+        EndCase
+
+        // Create erfolgreich?
+        If (!LS)
+            SayPergon(
+                kunde, "Oh! Bei der Registrierung ist ein Fehler aufgetreten."
+            );
+            Sleep(2);
+            SayPergon(
+                kunde,
+                "Betet zu den Göttern, auf dass es wieder seinen korrekten "+
+                "Gang nimmt. Danke."
+            );
+            CharReset(kunde);
+            syslog("FEHLER: "+LS.errortext);
+            return;
+        Endif
+
+        gender := upper(gender);
+
+        Case (GetObjProperty(kunde, "Puff_Wunsch"))
+        "ROM":
+            Habille(LS, "Puff_ROM_"+gender);
+            LS.facing := 2;
+
+        "LUXUS":
+            Habille(LS, "Puff_LUXUS_"+gender);
+            LS.facing := 4;
+
+        "NATUR":
+            Habille(LS, "Puff_NATUR_"+gender);
+            LS.facing := 3;
+            LS.color  := 1004;
+
+        "SM":
+            Habille(LS, "Puff_SM_"+gender);
+            LS.facing := 0;
+        EndCase
+
+        // Player ist nun fertig, zum reingehen, Lustsklave steht auch
+        // bereit noch einmal letzter Check, ob der Player noch in der
+        // Naehe ist (wenn nicht, wird alles Rueckgaengig gemacht)
+
+        If (Distance(me, kunde) > 4)
+            SayPergon(kunde, "Oh!? Wo seid Ihr hin?");
+            Sleep(4);
+            SayPergon(kunde, "Da Ihr scheinbar kein Interesse mehr habt,");
+            SayPergon(kunde, "gibt es keine Entspannung für Euch.");
+
+            CharReset(kunde);
+            // Zum Vernichter
+            MoveObjectToLocation(
+                LS, 5272, 1190, 0, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+            );
+            return;
+        EndIf
+
+        SetObjProperty(kunde, "Puff_Eintritt", 1);
+        SayPergon(kunde, "Ihr könnt nun eintreten.");
+        SleepMs(2000);
+        SayPergon(
+            kunde,
+            "Aber denkt daran: Waffen und schwere Gegenstände sind "+
+            "hier nicht erwünscht."
+        );
+        SleepMs(2000);
+        SayPergon(
+            kunde,
+            "Schafft es lieber zur Bank. Dort ist es sicher aufgehoben."
+        );
+    ElseIf (lower(sayed)["verkaufen"])
+      // mehrere gleichzeitige Kaeufe/Verkaeufe vermeiden
+      If (!CanBeServed(me, kunde))
+        PrintTextAbovePrivatePergon(
+          me, "Tut mir leid, aber ich bediene schon einen Kunden.",
+          "Sorry, I am already serving another customer.", kunde
+        );
+        return;
+      EndIf
+      
+      // Bei sehr vollem Rucksack warnen
+      If (!CountBackpackItemsAndWarn(kunde))
+        SayPergon(me, "Dann eben nicht.", "");
+        // aktuellen Kunden vergessen, da Handel erledigt
+        me.eraseprop(PROP_CURRENT_CUSTOMER);
+        return 1;
+      EndIf
+      
+      // Verkaufliste modifizieren (Preise etc. pp.)
+      ModifyPCSellList(me.npctemplate, medata.merchant_type, kunde);
+  
+      // Goldmenge des Kunden merken
+      var moneycheck := struct{
+        customer := kunde.serial,
+        gold     := kunde.gold
+      };
+      me.setprop("#MoneyCheckSell", moneycheck);
+  
+      // Verkauffenster oeffnen
+      var res := SendSellWindowPergon(
+        kunde, me, medata.inv_fs, medata.inv_pb, medata.inv_1c
+      );
+      
+      If (res)
+        SayPergon(me, "Was wollt ihr mir verkaufen?", "");
+      Else
+        syslog(
+          "FEHLER: "+medata.merchant_type+" "+me.name+
+          " -> SendSellWindowPergon - "+res.errortext
+        );
+      EndIf
+    Else
+        //Event_Speech(me, medata, ev);
+        // Irgendwie noch reinbasteln, sonst kennt der NPC keine normalen Worte
+        SayPergon(kunde, Answering(sayed, PlaceName(me), me));
+    EndIf
+EndFunction
+
+Function CharReset(who)
+  EraseObjProperty(who, "Puff_Wunsch");
+  EraseObjProperty(who, "Puff_WunschMW");
+  EraseObjProperty(who, "Puff_Eintritt");
+EndFunction
+
+// Bei sehr vollem Rucksack warnen und Rueckfrage
+Function CountBackpackItemsAndWarn(who) // {{{
+  var count :=
+    EnumerateItemsInContainer(who.backpack, ENUMERATE_ROOT_ONLY).size();
+  // syslog("CountBackpackItemsAndWarn: "+count);
+  If (!count)
+    // FIXME: Sinnvoll? Vielleicht hat er kein Backpack
+    count := 1;
+  EndIf
+
+  // 999 hoechste Zauberrollen bringen derzeit 42 Goldstacks
+  If (count < 255 - 42)
+    // keine Warnung, Handel erlauben
+    return 1;
+  EndIf
+
+  return SendYesNoGump(who,
+    "Euer Rucksack ist sehr voll, daher kann es zu Problemen beim "+
+    "Handel kommen!<br>Wollt Ihr wirklich handeln?",
+    // "Your backpack is very full.<br>"+
+    // "There could be problems with trading!<br>"+
+    // "Do you really want to trade?"
+    10, 10, TE_CANCEL_ENABLE, TE_SCROLLBAR_ENABLE
+  );
+EndFunction // }}}
+
+// sicherstellen, dass immer nur ein Kunde bedient wird
+Const SERVE_OK := 1;
+Const SERVE_NO := 0;
+Function CanBeServed(merch, cust) // {{{
+  var current := merch.getprop(PROP_CURRENT_CUSTOMER);
+  // Trivialfall: kein Kunde bisher bzw. Handel korrekt abgeschlossen
+  If (!current)
+    SetNewCustomer(merch, cust);
+    return SERVE_OK;
+  EndIf
+
+  // es gibt vielleicht einen Käufer
+  var active := SystemFindObjectBySerial(current.customer);
+
+  If (!active or !active.connected or active.dead)
+    // ausgeloggt oder tot -> neuer Kunde darf
+    SetNewCustomer(merch, cust);
+    return SERVE_OK;
+  EndIf
+
+  If (active.serial == cust.serial)
+    // mehrfach "kaufen" gesagt? Ignorieren und erlauben
+    return SERVE_OK;
+  EndIf
+
+  If (
+    (Distance(merch, active) > 5) or
+    active.hidden or (active.concealed > merch.concealed) or
+    !CheckLineOfSight(merch, active)
+  )
+    // alter Kunde ist "weg" -> neuer Kunde darf
+    SetNewCustomer(merch, cust);
+    return SERVE_OK;
+  EndIf
+
+  If (current.time + 5*60 < ReadGameClock())
+    // laenger als 10 Minuten her? Timeout, neuer Kunde darf
+    SetNewCustomer(merch, cust);
+    return SERVE_OK;
+  EndIf
+
+  return SERVE_NO;
+EndFunction // }}}
+
+// Hilffunktion fuer CanBeServed zum Festlegen des aktuellen Kundens
+Function SetNewCustomer(merch, cust) // {{{
+  var current := struct{
+    customer := cust.serial,
+    time     := ReadGameClock()
+  };
+  merch.setprop(PROP_CURRENT_CUSTOMER, current);
+EndFunction // }}}

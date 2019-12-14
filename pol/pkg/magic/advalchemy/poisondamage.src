@@ -1,0 +1,27 @@
+//
+// 16.11.2000 - Fraggulus - Umleitung auf include/poison
+//
+// Falls diese Datei hier doch von irgendeinem Script benutzt werden sollte,
+//  wird das Ganze nach include/poison umgeleitet, da dort die zentrale Gift-Funktion ist
+//
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/poison";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program PoisonDamage(mobile, attacker)
+  DoPoisoning(mobile, attacker);
+EndProgram

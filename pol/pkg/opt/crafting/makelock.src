@@ -1,0 +1,204 @@
+///////////////////////////////////////////////////////////////////////////
+// makelock -
+// Bringt an verschliessbaren Tueren oder Containern ein Schloss an
+
+use cfgfile;
+use math;
+use storage;
+use uo;
+use util;
+
+include ":housing:house";
+include "include/modifyskill";
+
+Program UseLock(who, lock)
+  // Nur vom Feinschmied hergestellte Schloesser zulassen
+  var schloss   := GetPropertyItem(lock);
+  var difficult := GetObjProperty(lock, "LockDifficulty");
+  If (!schloss || !difficult)
+    SendSysMessagePergon(who,
+      "Ein fehlerhafte Schloss verhinderten Euren Einbauversuch.",
+      "A faulty lock prevents you from attaching it."
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "An welcher Tuer oder welchem Container wollt Ihr das Schloss anbringen?",
+    "To which door or container do you wanna attach this lock?"
+  );
+  var what := target(who, TGTOPT_CHECK_LOS);
+  If (!what)
+    return;
+  EndIf
+
+  If (!HasKey(who, what))
+    // Anbringen eines Schlosses moeglich, falls Schluessel vorhanden
+    var cfg := readconfigfile("::itemdesc");
+    If ((!cfg[what.objtype].lockable) && (!what.multi))
+      SendSysMessagePergon(who,
+        "Das kann nicht verschlossen werden!", "This cannot be locked!"
+      );
+      return;
+    EndIf
+  EndIf
+
+  If (what.locked)
+    SendSysMessagePergon(who,
+      "Das ist schon verschlossen.", "This is already locked."
+    );
+    return;
+  EndIf
+
+  If (GetObjProperty(what, "gmlocked"))
+    SendSysMessagePergon(who,
+      "So sehr Ihr Euch auch bemüht, es ist vergebens.",
+      "Don't bother. It's completely useless."
+    );
+    return;
+  EndIf
+
+  If (what.isa(POLCLASS_CONTAINER))
+    If (what.container.serial != who.backpack.serial)
+      var check := 0;
+      If (GetObjProperty(what, PROP_HS_C_SC_HOUSE))
+        // Check auf Hauscontainer
+        var house := SystemFindObjectBySerial(
+          GetObjProperty(what, PROP_HS_C_SC_HOUSE)
+        );
+        If (IsHouseOwnerOrFriend(house, who))
+          check := 1;
+        Else
+          SendSysMessagePergon(who,
+            "Dies ist nicht Euer Hauscontainer.",
+            "This is not your house container."
+          );
+          return;
+        EndIf
+      EndIf
+
+      If (check == 0)
+        SendSysMessagePergon(who,
+          "Ihr könnt Schlösser nur an Containern anbringen, "+
+          "die direkt in Eurem Rucksack liegen oder an Hauscontainern!",
+          "You can only attach locks to containers "+
+          "lying in your backpack or to house containers."
+        );
+        return;
+      EndIf
+    EndIf
+  ElseIf (what.isa(POLCLASS_DOOR))
+    var house := GetHouseContainingObject(what);
+    If (house and !IsHouseOwner(house, who))
+      SendSysMessagePergon(who,
+        "Dies ist nicht Euer Haus.", "This is not your house."
+      );
+      return;
+    EndIf
+  Else
+    SendSysMessagePergon(who,
+      "Dies ist keine Tuer und auch kein Container.",
+      "This is neither a door nor a container."
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Wählt den Schlüssel, den zu überschreiben Ihr beabsichtigt, "+
+    "oder einen Beschriebenen, um das Schloss anzupassen",
+    "Choose a blank key to overwrite, or a key to accommodate the lock"
+  );
+  var key := target(who, TGTOPT_CHECK_LOS);
+  If (!key)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (key.objtype == UOBJ_KEY_RING)
+    SendSysMessagePergon(who,
+      "Ihr müsst einen einzelnen Schlüssel wählen, keinen Schlüsselring!",
+      "Select a single key, not a key ring!"
+    );
+    return;
+  EndIf
+  If (!IsAKey(key))
+    SendSysMessagePergon(who,
+      "Dies ist kein Schlüssel!", "This is no key!"
+    );
+    return;
+  EndIf
+
+  If (RandomInt(100) >= GetDexPergon(who) - 10)
+    SubtractAmount(lock, 1);
+    SendSysMessagePergon(who,
+      "Ihr scheitert und beschädigt den Verschlussmechanismus.",
+      "You failed and damage the lock."
+    );
+    return;
+  EndIf
+
+  SetObjProperty(what, "LockDifficulty", difficult);
+  SetObjProperty(
+    SystemFindObjectBySerial(CInt(what.getprop("linked"))),
+    "LockDifficulty", difficult
+  );
+
+  If (what.isa(POLCLASS_CONTAINER))
+    SendSysMessagePergon(who,
+      "Ihr verschliesst den Container.", "You lock this container."
+    );
+  Else
+    SendSysMessagePergon(who,
+      "Ihr verschließt die Tür.", "You lock this door."
+    );
+  EndIf
+
+  var lockid := GetObjProperty(key, "lockid");
+  If (lockid)
+    SetObjProperty(what, "lockid", lockid);
+    SetObjProperty(SystemFindObjectBySerial(CInt(what.getprop("linked"))), "lockid", lockid);
+  Else
+    lockid := AllocLockId();
+    SetObjProperty(key, "lockid", lockid);
+    SetObjProperty(what, "lockid", lockid);
+    SetObjProperty(SystemFindObjectBySerial(CInt(what.getprop("linked"))), "lockid", lockid);
+  EndIf
+  what.locked := 1;
+  SubtractAmount(lock, 1);
+  return;
+EndProgram
+
+///////////////////////////////////////////
+// HasKey - hab ich den schluessel dazu?
+///////////////////////////////////////////
+// FIXME: auf :doorsnew:common umbauen
+Function HasKey(me, door)
+  var doorlockid := GetObjProperty(door, "lockid");
+  If (doorlockid)
+    var keylockid;
+
+    ForEach key in EnumerateItemsInContainer(me.backpack)
+      If (key.objtype == UOBJ_KEY_RING)
+        ForEach otherkey in EnumerateItemsInContainer(GetBoxInStorageArea(
+            STORAGE_KEYRINGS, ST_PREF_KEYRINGS+Hex(key.serial)
+        ))
+          keylockid := GetObjProperty(otherkey, "lockid");
+          If (keylockid == doorlockid)
+            return (1);
+          EndIf
+        EndForEach
+      ElseIf (
+        (UOBJ_KEY_START <= key.objtype) And
+        (key.objtype <= UOBJ_KEY_END)
+      )
+        keylockid := GetObjProperty(key, "lockid");
+        If (keylockid == doorlockid)
+          return (1);
+        EndIf
+      EndIf
+      SleepMS(2);
+    EndForEach
+  EndIf
+
+  return (0);
+EndFunction

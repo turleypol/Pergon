@@ -1,0 +1,36 @@
+//////////////////////////////////////////////////
+//
+//   Censor Jehova Init Script v1.0 (2000/10/14)
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2000/10/13 Shinigami: ReWrite
+//
+//////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use util;
+Use math;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/eventid";
+Include "include/clock";
+Include "include/msgs";
+Include "ai/new/include/jehova";
+
+/////////////////////////////////
+// CensorJehova - Hauptprogramm
+/////////////////////////////////
+
+Program CensorJehova(who)
+  Jehova(who, 0);
+EndProgram

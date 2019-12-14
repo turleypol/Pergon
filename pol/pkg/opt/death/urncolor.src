@@ -1,0 +1,26 @@
+///////////////////////////////////////////////////////////////////////////
+// urneumfaerben
+//
+// Faerbt Urne zufaellig um beim Kauf/Erzeugung, damit die nicht alle so
+// ähnlich aussehen
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log
+
+use uo;
+use util;
+
+Program umfaerben(urne)
+    If (GetObjProperty(urne, "colored") != error)
+        // bereits umgefaerbt
+        return 1;
+    EndIf
+
+    // Farbe aus 1-1000 wählen
+    var color := RandomInt(999) + 1;
+    urne.color := color;
+    SetObjProperty(urne, "colored", color);
+
+    return 1;
+EndProgram

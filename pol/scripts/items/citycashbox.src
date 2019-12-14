@@ -1,0 +1,579 @@
+///////////////////////////////////////////////////
+// Phygon's city cash strong-box v1.00 (2003/11/11)
+//
+// Author: Phygon
+//
+// Eine Box mit ".create citycashbox" anlegen und in
+// "Stadtkasse von Yew/Minoc/Vesper/etc" benennen.
+
+// Alle Bürgermeister und GMs (ab cmdlevel 3) können Geld abheben,
+// anlegen und einen neuen Kassenwart bestimmen.
+// Der Kassenwart kann nur Geld abheben/anlegen.
+// Es gibt keine Abfrage, ob der Bürgermeister von der richtigen Stadt ist.
+
+// Per CProp "guildcash" (auf passende Gilden-ID setzen) kann die Box zur
+// Gildenkasse umgerüstet werden. Jedes Mitglied der Gilde kann einzahlen.
+// Abheben dürfen nur Gildenmeister; Kassenwarte gibt es nicht.
+
+use uo;
+
+include "include/client";
+include "include/msgs";
+include "include/place";
+include "include/server";
+include "include/bank";
+
+Enum Buttons
+  BTN_DEPOSIT := 10,
+  BTN_DEBIT,
+  BTN_CHANGEKEEPER,
+  BTN_ROTATE,
+  BTN_PAYTAX
+EndEnum
+
+Program Use_CityCashBox(who, box)
+  If (!ReserveItem(box))
+    SendSysMessagePergon(who, box.desc+" ist bereits in Benutzung!");
+    return;
+  EndIf
+  Show_Box(who, box, box.desc);
+EndProgram
+
+// Gump anzeigen und auswerten
+Const COL := "#CC9933";
+Function Show_Box(who, box, title) // {{{
+  var boxguild := box.getprop("guildcash");
+  var layout := array{
+    "nodispose",
+    "page 0",
+    "gumppic 0 0 1140",
+    "htmlgump 0 45 393 20 0 0 0",
+    "page 1",
+    "htmlgump 60 70 300 20 1 0 0",
+    "htmlgump 80 90 300 20 2 0 0",
+    "htmlgump 80 150 90 20 3 0 0",
+    "button 60 152 1209 1210 1 0 "+BTN_DEPOSIT
+  };
+  
+  If (!boxguild && GetObjProperty(box, "tax_house"))
+    layout += {
+      "htmlgump 80 130 120 20 6 0 0",
+      "button 60 132 1209 1210 1 0 "+BTN_PAYTAX
+    };
+  EndIf
+
+  If (MayUseBox(who, box))
+    layout += { 
+      "htmlgump 170 150 90 20 4 0 0",
+      "htmlgump 280 150 90 20 5 0 0",
+      "button 150 152 1209 1210 1 0 "+BTN_DEBIT,
+      "button 260 152 1209 1210 0 2 0",
+      "page 2",
+      "htmlgump 80 150 100 20 10 0 0",
+      "htmlgump 280 150 100 20 11 0 0",
+      "button 60 152 1209 1210 1 0 "+BTN_ROTATE,
+      "button 260 152 1209 1210 0 1 0"
+    };
+    
+    If (!boxguild)
+      layout += {
+        "htmlgump 60 80 100 20 7 0 0",
+        "htmlgump 80 100 300 20 8 0 0",
+        "htmlgump 80 120 200 20 9 0 0",
+        "button 60 122 1209 1210 1 0 "+BTN_CHANGEKEEPER
+      };
+    EndIf
+  EndIf
+  
+  var data := array{
+    "<center><basefont size=8>"+title+"</center>",
+    "In der Kasse befindliches Gold:",
+    "[Goldmenge]",
+    "Einzahlen",
+    "Abheben",
+    "Optionen",
+    "Steuern zahlen"
+  };
+  
+  // Kassenwart anzeigen
+  var keepername := "Kein Kassenwart";
+  var keeper := GetKeeper(box);
+  If (keeper)
+    keepername := GetRealName(keeper);
+  EndIf
+  data += {
+    "Kassenwart:",
+    "<basefont color="+COL+">"+keepername,
+    "Kassenwart wechseln",
+    "Truhe drehen",
+    "Zurück"
+  };
+
+  var gold := GetAmountGold(box);
+  data[3] := "<basefont color="+COL+">"+StrPrettyPrint(gold);
+
+  var res := SendDialogGump(who, layout, data, 150, 150)[0];
+  Case (res)
+    BTN_DEPOSIT:
+      DoEinzahlen(who, box);
+    BTN_DEBIT:
+      DoAbheben(who, box);
+    BTN_CHANGEKEEPER: // wechselt den Kassenwart
+      ChangeKeeper(who, box);
+    BTN_ROTATE: // Umschalten zwischen Nord/Sued- und Ost/West-Ausrichtung
+      ChangeDirection(who, box);
+    BTN_PAYTAX:
+      PayTax(who, box);
+    default:
+      return;
+  EndCase
+EndFunction // }}}
+
+// Gold abheben
+Function DoAbheben(who, box) // {{{
+  If (!MayUseBox(who, box, BTN_DEBIT))
+    SendSysMessagePergon(who, "Ihr seid dazu nicht befugt!");
+    return;
+  EndIf
+  
+  var gold := GetAmountGold(box);
+  If (gold == "0")
+    SendSysMessagePergon(who, "Die Kasse ist leer, hier gibt es nichts mehr!");
+    return;
+  EndIf
+  
+  var betrag := SendTransactionGump(who, "Wieviel Gold wollt Ihr abheben?", 
+      gold, "(Maximal "+gold+" Goldstücke möglich)"
+  );
+  If (!betrag)
+    If (betrag.errortext)
+      SendSysMessagePergon(who, betrag.errortext);
+    EndIf
+    return;
+  EndIf
+  
+  var gotten := "0", full := 1, tgt;
+  While (betrag != "0")
+    If (full)
+      SendSysMessagePergon(who, "Wählt einen Geldbeutel für die Auszahlung!");
+      tgt := Target(who);
+      If (!tgt)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        break;
+      EndIf
+      
+      If (tgt.isa(POLCLASS_MOBILE) && tgt.isa(POLCLASS_NPC))
+        // Support fuer Packtiere etc.
+        tgt := tgt.backpack;
+        break;
+      EndIf
+    
+      If (!tgt.isa(POLCLASS_CONTAINER))
+        SendSysMessagePergon(who, "Das taugt nicht als Geldbeutel!");
+        break;
+      EndIf
+      
+      If (!IsMine(who, tgt))
+        SendSysMessagePergon(who, "Ist das wirklich Euer Eigentum?");
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        break;
+      EndIf
+      
+      If (!ReserveItem(tgt))
+        break;
+      EndIf
+      
+      full := 0;
+    EndIf
+    
+    // ein wenig Muenzgeklimper
+    If (RandomInt(2))
+      PlaySoundEffectPrivate(box, 0x37, who);
+    Else
+      PlaySoundEffectPrivate(box, 0x38, who);
+    EndIf
+  
+    var payout := "60000";
+    If (!StrSubtraktion(betrag, "60000"))
+      payout := betrag;
+    EndIf
+    
+    var result := CreateItemInContainer(tgt, UOBJ_GOLD_COIN, CInt(payout));
+    If (result)
+      SetAmountGold(box, StrSubtraktion(GetAmountGold(box), payout));  
+      gotten := StrAddition(gotten, payout);
+      betrag := StrSubtraktion(betrag, payout);
+    ElseIf (result.errortext == "That container is full")
+      SendSysMessagePergon(who, "Euer Behälter ist voll!");
+      full := 1;
+      continue;
+    Else
+      SendSysMessagePergon(who, "Ein Fehler ist aufgetreten: "+result.errortext);
+      break;
+    EndIf
+    
+    // falls Verbindungsabbruch
+    If (!who.connected)
+      break;
+    EndIf
+
+    SleepMS(STACK_CONSUME_DELAY);
+    SendStatus(who);
+
+    // Abbruch, falls Person (oder Banker) weggelaufen ist
+    If (Distance(who, box) >= 2)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      break;
+    EndIf
+  EndWhile
+  
+  StopTransaction(who, tgt);
+  SendSysMessagePergon(who,
+    "Ihr hebt "+StrPrettyPrint(gotten)+" Gold ab."
+  );
+EndFunction // }}}
+
+// Gold einzahlen
+Function DoEinzahlen(who, box) // {{{
+  If (!MayUseBox(who, box, BTN_DEPOSIT))
+    SendSysMessagePergon(who, "Ihr seid dazu nicht befugt!");
+    return;
+  EndIf
+
+  SendSysMessagePergon(who, "Was wollt Ihr einzahlen?");
+
+  While (1)
+    var object := Target(who, TGTOPT_CHECK_LOS);
+    If (!object)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      Break;
+    EndIf
+
+    If (AccessiblePergon(who, object) && (distance(who, object) <= 1))
+      If (object.isa(POLCLASS_ITEM))
+        If (object.objtype == UOBJ_GOLD_COIN)
+          // Gold in die Box übertragen
+          var amount := object.amount;
+
+          If (DestroyItem(object))
+            // ein wenig Muenzgeklimper
+            If (RandomInt(2))
+              PlaySoundEffectPrivate(box, 0x37, who);
+            Else
+              PlaySoundEffectPrivate(box, 0x38, who);
+            EndIf
+            SetAmountGold(box, StrAddition(GetAmountGold(box), amount));
+            SendSysMessagePergon(who, "Ihr habt "+amount+" Gold eingezahlt.");
+          Else
+            SendSysMessagePergon(who, "Konnte Gegenstand nicht entfernen. (???)");
+            Break;
+          EndIf
+        ElseIf (object.isA(POLCLASS_CONTAINER))
+          var wholeamount := 0;
+          var amn;
+          ForEach item in (EnumerateItemsInContainer(object))
+            If (item.objtype == UOBJ_GOLD_COIN)
+              amn := item.amount;
+              If (DestroyItem(item))
+                // ein wenig Muenzgeklimper
+                If (RandomInt(2))
+                  PlaySoundEffectPrivate(box, 0x37, who);
+                Else
+                  PlaySoundEffectPrivate(box, 0x38, who);
+                EndIf
+                wholeamount += amn;
+              EndIf
+            EndIf
+            SleepMS(STACK_CONSUME_DELAY);
+          EndForEach
+          If (wholeamount>0)            
+            SetAmountGold(box, StrAddition(GetAmountGold(box), wholeamount));
+            SendSysMessagePergon(who,
+              "Ihr habt "+
+              StrPrettyPrint(wholeamount)+" Gold eingezahlt."
+            );
+          Else
+            SendSysMessagePergon(who, "Es wurde kein Gold gefunden.");
+          EndIf
+        Else
+          SendSysMessagePergon(who, "Ihr könnt nur Goldmünzen einzahlen, oder Container mit Gold.");
+          Break;
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Ihr könnt nur Goldmünzen einzahlen, oder Container mit Gold..");
+        Break;
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Da kommt ihr nicht ran!");
+      Break;
+    EndIf
+  EndWhile
+EndFunction // }}}
+
+// Kassenwart wechseln (Stadtkiste)
+Function ChangeKeeper(who, box) // {{{
+  If (!MayUseBox(who, box, BTN_CHANGEKEEPER))
+    SendSysMessagePergon(who, "Ihr seid dazu nicht befugt!");
+    return;
+  EndIf
+
+  SendSysMessagePergon(who, "Wer soll der neue Kassenwart werden?");
+  var newkeeper := Target(who, TGTOPT_CHECK_LOS);
+  If (!newkeeper)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+  If (!newkeeper.isa(POLCLASS_MOBILE) || (newkeeper.isa(POLCLASS_NPC)))
+      SendSysMessagePergon(who, "Nur Spieler können Kassenwart werden.");
+    return;
+  EndIf
+
+  var keeper := GetKeeper(box);
+  If (keeper)
+    EraseObjProperty(keeper, TYPKASSENWART);
+  EndIf
+
+  SetObjProperty(box, "keeper", newkeeper.serial);
+  SetObjProperty(newkeeper, TYPKASSENWART, 1);
+
+  SendSysMessagePergon(who, newkeeper.name+" ist nun Kassenwart.");
+  SendSysMessagePergon(newkeeper, "Ihr seid nun Kassenwart.");
+EndFunction // }}}
+
+// Kassenwart finden
+Function GetKeeper(box) // {{{
+  var keeper;
+  var serial := GetObjProperty(box, "keeper");
+  If (serial)
+    keeper := SystemFindObjectBySerial(serial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+  EndIf
+
+  return keeper;
+EndFunction // }}}
+
+// wechselt die Grafik der Truhe zwischen Nord/Sued und Ost/West
+Function ChangeDirection(who, box) // {{{
+  If (!MayUseBox(who, box, BTN_ROTATE))
+    SendSysMessagePergon(who, "Ihr seid dazu nicht befugt!");
+    return;
+  EndIf
+
+  If (box.graphic == 0x0E40)
+    box.graphic := 0x0E41;
+  ElseIf (box.graphic == 0x0E41)
+    box.graphic := 0x0E40;
+  Else
+    SendSysMessagePergon(who, "Die Truhe hat eine falsche Grafik!");
+  EndIf
+EndFunction // }}}
+
+// Setzt den Goldbetrag, der in der Kasette liegt
+Function SetAmountGold(box, gold) // {{{
+  return SetObjProperty(box, "amountgold", gold);
+EndFunction // }}}
+
+// Setzt den Goldbetrag, der in der Kasette liegt
+Function GetAmountGold(box) // {{{
+    var gold := GetObjProperty(box, "amountgold");
+    If (!gold)
+      gold := "0";
+    EndIf
+
+  return gold;
+EndFunction // }}}
+
+// prueft, wer die Box wofuer benutzen darf
+Function MayUseBox(who, box, action := BTN_DEBIT) // {{{
+  
+  If (action == BTN_DEPOSIT)
+    // Einzahlen darf Jeder
+    return 1;
+  EndIf
+  
+  var boxguild := CInt(box.getprop("guildcash"));
+  If (boxguild)
+    // Gildenkasse
+
+    If (action == BTN_CHANGEKEEPER)
+      // Gildenkisten haben keinen Kassenwart
+      return error{errortext := "Not allowed on guild boxes"};
+    EndIf
+
+    If (who.cmdlevel >= CMDLEVEL_HIGHGM)
+      // HighGM darf immer
+      return 1;
+    EndIf
+
+    var guild := who.guild;
+    If (!guild)
+      // keine Gildenangehoerigkeit
+      return error{errortext := "No guild ("+guild.errortext+")"};
+    EndIf
+
+    If (boxguild <> who.guildid)
+      // falsche Gilde
+      return error{errortext := "Wrong guild"};
+    EndIf
+
+    var leaders := guild.getprop("leaders");
+    If (!leaders)
+      // Gilde ohne Anfuehrer?
+      return error{
+        errortext := "Guild has no leaders? ("+leaders.errortext+")"
+      };
+    EndIf
+
+    If (who.serial in (leaders))
+      // ah, ein Anfuehrer
+      If (action in (array{BTN_DEBIT, BTN_ROTATE}))
+        return 1;
+      EndIf
+    EndIf
+
+    // sonst nicht
+    return error{errortext := "Only leaders may do that"};
+
+  Else
+    // normale Stadtkasse
+    If (IsPersonBMorGM(who) or GetKeeper(box) == who)
+      return 1;
+    EndIf
+    // nicht befugt
+    return error{errortext := "Usage not allowed"};
+  EndIf
+
+  return error{errortext := "Unexpected condition"};
+EndFunction // }}}
+
+// prüft, ob angegebene Person ein Bürgermeister oder GM ist
+Function IsPersonBMorGM(who) // {{{
+  If (who.cmdlevel >= CMDLEVEL_HIGHGM)
+    return 1;
+  EndIf
+
+  var city := GetObjProperty(who, "MajorOf");
+
+  If (city)     // Bürgermeister einer Stadt?
+    // müsste alle Stadtsteine innerhalb von 0, 0-5000, 5000 finden.
+    var townstones := ListItemsNearLocationOfType(2500, 2500, 10, 2500, UOBJ_TOWNSTONE, REALM_BRITANNIA);
+
+    // Prüft, ob Person noch als Bürgermeister in einer Stadt eingetragen ist.
+    ForEach stone in townstones
+      If ((GetObjProperty(stone, "mayorserial") == who.serial) && (PlaceInfos(who).region == PlaceInfos(stone).region))
+        return 1;
+      EndIf
+    EndForEach
+  EndIf
+
+  return 0;
+EndFunction // }}}
+
+Function PayTax(who, box)
+  var sign, house, counter;
+  ForEach houseserial in GetGlobalProperty("#houselist")
+    house := SystemFindObjectBySerial(houseserial);
+    If (!house)
+      continue;
+    EndIf
+    
+    SleepMs(2);
+    
+    // Jhe'lom ist Ausnahme, weil Gehege auch auf Nord- bzw. Südinsel angemietet werden können.
+    If (IsHouseOwner(houseserial, who) && (PlaceName(house) == PlaceName(box) || (PlaceName(house)["Jhe'lom"] && PlaceName(box)["Jhe'lom"])))
+      If (IsMultiHouse(house))
+        sign := GetMultiHouseSign(house);
+      Else
+        // trifft für statische Häuser zu
+        sign := house;
+      EndIf
+      If (!sign)
+        SendSysMessagePergon(who, "Hausschild konnte nicht gefunden werden!\nAbbruch");
+        SysLog(CharInfoStr(who)+" konnte die Steuern fuer "+ItemInfoStr(house)+" nicht bezahlen: Hausschild nicht gefunden!");
+        return;
+      EndIf
+      If (counter := GetObjProperty(house, PROP_HS_C_RENT_TOPAY))
+        break;
+      Else
+        continue;
+      EndIf
+    EndIf
+  EndForEach
+  
+  // Anscheinend hat der Spieler kein/e Haus/Gehege/Zimmer/Werkstatt in dieser Stadt
+  If (!sign)
+    SendSysMessagePergon(who, "Es wurde nichts gefunden, wofür Ihr Steuern zahlen könntet!\nAbbruch");
+    return;
+  EndIf
+  
+  If (!counter)
+    SendSysMessagePergon(who, "Ihr habt keine offenen Steuern!");
+    return;
+  Else
+    var tax := GetObjProperty(box, "tax_house");
+    var fine := GetObjProperty(box, "fine_house");
+    If (sign.objtype in {0x7062, 0x7063, 0x7064, 0x7065, 0x7069, 0x706a})
+      If (sign.name["Werkstatt"])
+        tax := GetObjProperty(box, "tax_factory");
+        fine := GetObjProperty(box, "fine_factory");
+      ElseIf (sign.name["Herberge"])
+        tax := GetObjProperty(box, "tax_hostel");
+        fine := GetObjProperty(box, "fine_hostel");
+      ElseIf (sign.name["Gehege"])
+        tax := GetObjProperty(box, "tax_compound");
+        fine := GetObjProperty(box, "fine_compound");
+      EndIf
+    EndIf
+
+    If (!tax)
+      SendSysMessagePergon(who, "Steuerhöhe konnte nicht ermittelt werden!");
+      SysLog(ItemInfoStr(box)+" fehlen Steuerinformationen. "+CharInfoStr(who)+" konnte die Steuern fuer "+ItemInfoStr(sign)+" nicht bezahlen!");
+      return;
+    EndIf
+    If (!fine)
+      fine := 0;
+    EndIf
+    
+    If (PlaceName(box)["Jhe'lom"])
+      tax := tax*counter+fine*counter;
+    Else
+      tax := tax*((counter-1)/3+1)+(counter-1)*fine;
+    EndIf
+    
+    var ret := SendYesNoGump(who, "Ihr müsst "+tax+" Gold für '"+sign.name+"' bezahlen, wollt Ihr dies jetzt tun?");
+    If (!ret)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+    
+    If (who.gold < tax)
+      SendSysMessagePergon(who, "Ihr habt nicht genug Gold dabei!");
+      return;
+    Else
+      var success := who.spendgold(tax);
+      If (success)
+        // ein wenig Muenzgeklimper
+        If (RandomInt(2))
+          PlaySoundEffectPrivate(box, 0x37, who);
+        Else
+          PlaySoundEffectPrivate(box, 0x38, who);
+        EndIf
+      
+        var newamount := tax, boxcash := GetObjProperty(box, "amountgold");
+        If (boxcash)
+          newamount := StrAddition(tax, boxcash);
+        EndIf
+        SetObjProperty(box, "amountgold", newamount);
+        
+        sign.color := COLOR_PAID;
+        ResetRent(house, sign);
+        SendSysMessagePergon(who, "Vielen Dank, bis zum nächsten mal!");
+        
+        SysLog(CharInfoStr(who)+" bezahlt "+tax+" Gold fuer "+ItemInfoStr(sign)+" ("+(counter-1)+" Verzugsmonat/e)");
+      Else
+        SendSysMessagePergon(who, "Fehler: "+success.errortext);
+        SysLog("FEHLER: "+CharInfoStr(who)+" konnte "+tax+" Gold fuer "+ItemInfoStr(sign)+" nicht bezahlen: "+success.errortext);
+      EndIf
+    EndIf
+  EndIf
+EndFunction
+    

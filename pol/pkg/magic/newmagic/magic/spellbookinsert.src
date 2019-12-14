@@ -1,0 +1,44 @@
+///////////////////////////////////////////////////////////////////////////
+// SpellBook CanInsert
+// Kann man irgendeinen Gegenstand in das Zauberbuch packen?
+//
+// Author: Shinigami
+
+///////////////////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use uo;
+include "include/msgs";
+include "include/objtype";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program SpellBookCanInsert(who, spellbook, movetype, inserttype, item)
+  return SpellBookCheckInsertion(who, spellbook, item);
+  // Compilerwarnung vermeiden
+  movetype := movetype;
+  inserttype := inserttype;
+EndProgram
+
+///////////////////////////////////////////////////////////////////////
+// SpellBookCheckInsertion - Kann der Gegenstand hinzugefuegt werden?
+///////////////////////////////////////////////////////////////////////
+Function SpellBookCheckInsertion(who, spellbook, item)
+  If (item.objtype<>UOBJ_SPELLPANEL)
+    // Lediglich Spellpanels sind erlaubt
+    If (who)
+      PrintTextAbovePrivatePergon(
+        spellbook, "Euer Buch ist kein Versteck!", "", who
+      );
+    EndIf
+
+    return 0;
+  Else
+    return 1;
+  EndIf
+EndFunction

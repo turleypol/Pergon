@@ -1,0 +1,143 @@
+/////////////////////////////////////////////////////////////////////////////
+// Merchant Script - Control script for NPC Merchants
+//
+
+/////////////////////////////////////////////////////////////////////////////
+// A Merchant NPC must have two object property strings:
+//   MerchantType - A MerchantType found in MRCSPAWN.cfg
+//
+// "[MerchantSerial] FS" is the merchant's "for sale" inventory.
+//   This is restocked periodically by MRCSPAWN.src
+// "[MerchantSerial] PB" contains items bought from players, now for-sale.
+//  (this doesn't work yet)
+
+/////////////
+// Bibliotheken&Includes
+/////////////
+use npc;
+use os;
+use storage;
+Include "include/merchant";
+Include ":newmagic:moonstonemerchant";
+
+///////////////////////////////
+// Merchant - Initialisierung
+///////////////////////////////
+
+Function SetMerchantType(meprototype)
+  meprototype.merchanttype:="Mage";
+  meprototype.speech_name:=1;
+  meprototype.speech_default:=1;
+
+  Return (meprototype);
+EndFunction
+
+/////////////////////
+// Hook_Move_Action
+/////////////////////
+
+Function Hook_Move_Action(me, medata, ev)
+    return;
+    me := medata := ev;
+EndFunction
+
+///////////////////////
+// Hook_Merchant_Sold
+///////////////////////
+
+Function Hook_Merchant_Sold(me, medata, ev)
+    return;
+    me := medata := ev;
+EndFunction
+
+//////////////////////
+// Hook_Entered_Area
+//////////////////////
+
+Function Hook_Entered_Area(me, medata, ev)
+    return;
+    me := medata := ev;
+EndFunction
+
+///////////////////
+// Hook_Left_Area
+///////////////////
+
+Function Hook_Left_Area(me, medata, ev)
+    return;
+    me := medata := ev;
+EndFunction
+
+/////////////////////////////
+// Hook_Item_Given_Sleeping
+/////////////////////////////
+
+Function Hook_Item_Given_Sleeping(me, medata, ev)
+    return;
+    me := medata := ev;
+EndFunction
+
+////////////////////
+// Hook_Item_Given
+////////////////////
+
+Function Hook_Item_Given(me, medata, ev)
+    return;
+    me := medata := ev;
+EndFunction
+
+/////////////////////
+// Hook_Speech_Open
+/////////////////////
+
+Function Hook_Speech_Open(me, medata, ev)
+    return;
+    me := medata := ev;
+EndFunction
+
+/////////////////////////
+// Hook_Speech_Sleeping
+/////////////////////////
+
+Function Hook_Speech_Sleeping(me, medata, ev)
+    return;
+    me := medata := ev;
+EndFunction
+
+/////////////////////
+// Hook_Speech_Name
+/////////////////////
+
+Function Hook_Speech_Name(me, medata, ev)
+  NPCSayTextTraditional(me, "Merkt Euch, bei "+medata.minename+" kauft man gut und gerne.", "");
+  return;
+  ev := ev;
+EndFunction
+
+////////////////////////
+// Hook_Speech_Default
+////////////////////////
+
+Function Hook_Speech_Default(me, medata, ev, sayed)
+  Var proceeded:=0;
+
+  If (sayed["mondstein"])
+    proceeded:=Speech_Mondstein(me, medata, ev);
+  EndIf
+
+  Return (proceeded);
+EndFunction
+
+//////////////////////////////
+// Hook_Ghost_Speech_Default
+//////////////////////////////
+
+Function Hook_Ghost_Speech_Default(me, medata, ev, sayed)
+    return;
+    me := medata := ev := sayed;
+EndFunction
+
+Function Hook_Buy(me, medata, who)
+    return;
+    me := medata := who;
+EndFunction

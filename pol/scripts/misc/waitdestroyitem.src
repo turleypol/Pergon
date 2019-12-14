@@ -1,0 +1,22 @@
+///////////////////////////////////////////////////////////////////////////////
+// WaitDestroyItem Script - Zerstoert ein Item zeitversetzt
+//
+// Wird z.B. von EquipTest benutzt, da es sonst zu einer Exception kommen
+// wuerde (Item wird zerstoert, obwohl die Core es noch benoetigt).
+//
+// Author: Shinigami
+
+use os;
+use uo;
+
+Program WaitDestroyItem(item)
+  // erstmal verschwinden lassen (unequip geht automatisch)
+  item.saveonexit := 0;
+  MoveObjectToLocation(
+    item, 5376, 1181, 0, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+  );
+  // und etwas warten...
+  Sleep(1);
+
+  DestroyItem(item);
+EndProgram

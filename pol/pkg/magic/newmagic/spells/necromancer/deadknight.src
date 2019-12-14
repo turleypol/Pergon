@@ -1,0 +1,195 @@
+//**************************************************************************************************
+// Script file deadknight.src
+//
+//    implements spell 330 <Dead Knight> - "Todesritter"
+//
+//  grants immense damage bonus to spelltarget - spelltarget becomes invulnerable
+//  spelltarget dies after spell duration
+//    [ Reflected / Resisted (Magic) ]
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+use os;
+
+Include "include/thaumaturgy";
+Include "../magicpergon";
+//Include "../resistance";
+Include "../spellattack";
+Include "include/spellcheck";
+
+program cast_deadknight (params)
+
+   Var caster;
+   Var caston;
+   Var spelltarget;
+   Var weapon;
+
+   Var spells:= ReadConfigFile("::spells");                   // load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_NECRO_DEADKNIGHT);
+   Var difficulty:= spell.skill;
+   Var resist:=     spell.resist;
+   Var dmg:=        spell.primary;
+   Var mindmg:=     spell.primarymin;
+   Var maxdmg:=     spell.primarymax;
+   Var itemdmg:=    spell.secondary;
+   Var dur:=        spell.duration;
+   Var mindur:=     spell.durationmin;
+   Var maxdur:=     spell.durationmax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+      send_attack(caston, caster, 330);
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_NECRO_DEADKNIGHT);
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+                                  // get spelltarget -> possible spell reflection
+   spelltarget:= ReflectSpell(caster, caston, dmg, 1, FX_GLOW_SPIKE, 10, 20, 0, SFX_167);
+
+   if (spelltarget)
+
+      //if (GetObjProperty(spelltarget, "spell_curse"))      // check if target is already cursed
+      //   SendSysMessagePergon(caster, "Euer Ziel ist bereits verflucht", "Your target already has been cursed");
+      //   return;
+      //endif
+
+      if (GetObjProperty(spelltarget, "spell_bless")[3] == "holy warrior")    // check if target is Holy Warrior
+         SendSysMessagePergon(caster, "Euer Ziel ist geheiligt und kann nicht zum Todesritter werden",
+                                    "Your target is hallowed and cannot become a Dead Knight");
+         return;
+      endif
+
+      if (spelltarget.dead)
+          SendSysMessagePergon(caster, "Euer Ziel ist bereits tot",
+                                "Your target is already dead");
+          return;
+      endif
+
+      if (GetObjProperty(spelltarget, "spell_statue"))
+          SendSysMessagePergon(caster, "Euer Ziel ist bereits verflucht",
+                                "Your target is already cursed");
+          return;
+      endif
+
+      if (spelltarget.isa(POLCLASS_NPC) && !(GetObjProperty(spelltarget, PROP_SUMMONED) == SUMMON_BY_NECRO))                    // check if target is NPC
+         SendSysMessagePergon(caster, "Euer Ziel kann nicht zum Todesritter werden",
+                              "Your target cannot become a Dead Knight");
+         return;
+      endif
+
+      if (resist)       // calc spell duration according to spelltargets magic resistance and casting power
+         dur:= CInt(MagicResistance(spelltarget, difficulty, resist, power*dur/100.0, 1));
+      else
+         dur:= CInt(power*dur/100.0);
+      endif
+
+      if (mindur and mindur > dur)
+         dur:= mindur;
+      elseif (maxdur and maxdur < dur)
+         dur:= maxdur;
+      endif
+
+      dmg:= CInt(power * dmg / 100.0);                  // calc dmg bonus and item dmg
+
+      if (mindmg and mindmg > dmg)
+         dmg:= mindmg;
+      elseif (maxdmg and maxdmg < dmg)
+         dmg:= maxdmg;
+      endif
+
+      GrantPrivilege(spelltarget, "invul");             // make spelltarget invulnerable
+      if (!spelltarget.enable("invul"))                   // activate privilege
+         Syslog("WARNUNG: Spell Dead Knight - Cannot activate granted privilege invul");
+      endif
+      IncRevision(spelltarget);
+      Var tag:= array;
+
+      tag[1]:= ReadGameClock() + dur;
+      tag[2]:= power;
+      tag[3]:= "dead knight";
+      tag[4]:= spelltarget.color;                   // preserve spelltargets color
+      tag[6]:= ReadMilliSecondClock();
+      SetObjProperty(spelltarget, "spell_curse", tag);      // tag spelltarget for spellchecker
+      SendSpellWaiter(spelltarget, "spell_curse", dur, tag[6], spelltarget);
+
+      spelltarget.color:= 2306;                          // set spelltargets new color
+      SendSysMessagePergon(spelltarget, "Das Böse durchflutet Euch, Ihr spürt nichts mehr und voll Todessehnsucht stürzt Ihr Euch in den Kampf",
+                            "Evil flows through you, you do not feel anything and full of desire for death you hurl yourself into combat");
+
+      weapon:= spelltarget.weapon;                    // get spelltargets weapon
+      itemdmg:= CInt((power/300.0)*(weapon.hp*0.9));
+      if (weapon.objtype <> 0xf020)                   // tag only if caston is armed
+         TagEquipment(weapon, tag, itemdmg, dur, spelltarget, dmg);         // modify and tag weapon
+      endif
+
+      Var equipped:= ListEquippedItems(spelltarget);           // get spelltargets equipped items
+
+      foreach item in equipped                      // for each equipped item
+         if (item.isa(POLCLASS_ARMOR))                  // check if item is armor piece
+          itemdmg:= CInt((power/300.0)*(item.hp*0.9));
+            TagEquipment(item, tag, itemdmg, dur, spelltarget);           // modify and tag armor
+         endif
+      endforeach
+      // spelltarget should be completely black now
+   endif
+
+EndProgram
+
+
+
+Function TagEquipment (item, tag, itemdmg, dur, caston, dmg:= 0)        // modifies and tags equipment
+
+   Var blesstag:= GetObjProperty(item, "spell_bless");      // get possible blessing
+
+   tag[4]:= item.color;                           // preserve item color
+
+   if (blesstag)                                // check if item is blessed
+      if (blesstag[3] == "holy warrior")                // check if bless is holy
+         tag[4]:= blesstag[4];                      // get and preserve original color
+      endif
+
+      EraseObjProperty(item, "spell_bless");              // remove bless spelltag
+   endif
+
+   if (item.isa(POLCLASS_WEAPON))                   // check if item is a weapon
+      tag[5]:= dmg;
+   endif
+   
+   var tagrust := {};
+   tagrust[1] := tag[2];
+   tagrust[2] := item.hp;
+   tagrust[3] := itemdmg;
+   
+   item.hp:= item.hp - itemdmg;           // reduce HP of cursed item
+   item.color:= 2306;                           // set new item color
+
+   SetObjProperty(item, "spell_curse", tag);              // tag item as cursed
+   SetObjProperty(item, "spell_rust", tagrust); 
+   SendSpellWaiter(item, "spell_curse", dur, tag[6], caston);
+   CalcItemQualityBonus(item);                      // calcs new item bonus
+   IncRevision(item);
+EndFunction
+

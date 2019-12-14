@@ -1,0 +1,269 @@
+//
+//  Autor:    Hotny & Turley
+//  Date:     11.09.2007
+//
+//  Ki für den Ansprechpartner für die Einstellungen des dynamischen Dungeon
+//
+//  Modifikation:
+//
+
+Use cfgfile;
+Use npc;
+Use os;
+Use uo;
+Use util;
+
+Include "include/eventid";
+Include "include/itemnpc";
+Include "include/msgs";
+Include "include/party";
+Include "include/pergonutil";
+Include "include/sysevent";
+Include "include/vetement";
+
+Include ":dyndungeon:dyndungeon";  // Konstanten
+
+Var me   := Self();
+Var stat := dictionary;
+
+Program DungeonMaster()
+  ////////////////////////////////////////////////////////////////////////////
+  // Stumpfe KI die nur auf Speechevents wartet und dann
+  // einzelne Gumps für die Eingabe der Player beim Ansprechpartner öffnet
+  // es darf nur ein Player die Gumps bearbeiten.
+  // nach der erfolgreichen und vollständigen Eingabe der Gumps ->
+  //   Starten des DungeonManagers
+  // DungeonManager schickt Event an KI, wenn Dungeon aufgebaut ist
+  ////////////////////////////////////////////////////////////////////////////
+
+  If (!me.getprop("restart_ai"))
+    Habille(me, GetObjProperty(me, "Equipt")); //austatten nach "Equipt"
+    me.setprop("restart_ai",1);
+  EndIf
+
+  RegisterForSpeechEvents(me,2);           //  Sprache aktivieren
+  EnableEvents(SYSEVENT_DOUBLECLICKED,2);  //+ Doppelklick
+
+  Var event;
+  While (1)
+    event:=Wait_For_Event(999);
+    If (event)
+      If (event.type==SYSEVENT_DOUBLECLICKED)
+        If (Distance(me,event.source)<=2)
+          DisableEvents(SYSEVENT_SPEECH); // Für die Zeit auf ruhig stellen
+          DisableEvents(SYSEVENT_DOUBLECLICKED);
+          CheckDungeon(event.source);
+          RegisterForSpeechEvents(me,2); // und wieder reagieren
+          EnableEvents(SYSEVENT_DOUBLECLICKED,2);
+        EndIf
+      ElseIf (event.type==SYSEVENT_SPEECH)
+        If ((lower(" "+event.text+" ")[" dungeon "]))
+          DisableEvents(SYSEVENT_SPEECH); // Für die Zeit auf ruhig stellen
+          DisableEvents(SYSEVENT_DOUBLECLICKED);
+          CheckDungeon(event.source);
+          RegisterForSpeechEvents(me,2); // und wieder reagieren
+          EnableEvents(SYSEVENT_DOUBLECLICKED,2);
+        Else
+          If (RandomInt(10)==1)  // Blahblubber
+            Case (RandomInt(4))
+            0:
+              SayUC(CAscZ("Was für ein herrlicher Tag, um gegen das Böse zu kämpfen."),langcode:="DEU");
+            1:
+              SayUC(CAscZ("Ich mach drei Kreuze wenn dieser Globus endlich mal aufhört sich zu drehen..."),langcode:="DEU");
+              If (RandomInt(10)==1)
+                PlayStationaryEffect(22, 23, 24, 0x3663, 1, 150, 0, REALM_MALAS);
+                SayUC(CAscZ("*kreuzemach*"),langcode:="DEU");
+              EndIf
+            2:
+              SayUC(CAscZ("...Dumdidum..."),langcode:="DEU");
+            3:
+              PlaySoundEffect(me,0x41E);
+              SayUC(CAscZ("Entschuldigung"),langcode:="DEU");
+            EndCase
+          EndIf
+        EndIf
+      EndIf
+    EndIf
+    SleepMS(2);
+  EndWhile
+EndProgram
+
+
+Function CheckDungeon(oWho)
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  //  Partycheck + Aufrufen der restlichen Funktionen
+  //
+  //  Parameter: oWho -> Playerobjekt
+  //
+  ////////////////////////////////////////////////////////////////////////////
+  Var result;
+  // Nur Partyleader dürfen einen Dungeon starten
+  If (
+    oWho.party && (oWho.party.leader==oWho or oWho.getprop("dungeontester"))
+  )
+    If (IsNotActive(oWho.party.leader.serial))  // Hat die Party schon einen Dungeon auf?
+      SayUC(CAscZ("Seid Ihr gekommen, um Euch dem Bösen zu stellen?"),langcode:="DEU");
+
+      result:=aGumpLevel(oWho);  // Dungeontyp auswählen
+      If (result)
+        If (LetDungeonBuild(oWho.party.leader, result))
+          Sleep(1); // Bissle Warten
+          SayUC(CAscZ("Sucht das Böse und tötet es!"),langcode:="DEU");
+        Else  // Kein freies Feld
+          SayUC(CAscZ("Der Eingang ist verschüttet, ich räume ihn gerade frei. Kommt später wieder!"),langcode:="DEU");
+        EndIf
+      Else  // Abbruch User
+        SayUC(CAscZ("Das Böse wird Euch heimsuchen!"),langcode:="DEU");
+      EndIf
+    Else
+      SayUC(CAscZ("Ihr dürft bereits eintreten!"),langcode:="DEU");
+    EndIf
+  Else
+    If ((stat[oWho.serial] := CInt(stat[oWho.serial])+1) < 5)
+      SayUC(CAscZ("Kommt wieder, wenn Ihr nicht mehr alleine seid!"),langcode:="DEU");
+    Else
+      Case (RandomInt(2))
+      0:
+        SayUC(CAscZ("Probiert mal /add oder das Party-Manifest in der Paperdoll."),langcode:="DEU");
+      1:
+        SayUC(CAscZ("Der Party-Leader sollte das Dungeon waehlen."),langcode:="DEU");
+      EndCase
+    EndIf
+  EndIf
+  Clear_Event_Queue();  // Alte Events löschen
+EndFunction
+
+
+Function LetDungeonBuild(oWho, aDungeontype)
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  //  Dungeonmanager wird soll Dungeon aufbauen, warten bis fertig
+  //
+  //  Parameter: oWho -> Playerobjekt
+  //             aDungeontype -> Array {Level string;Länge:5,10,20}
+  //  Returnwert: 1
+  //  Returnwert im Fehlerfall: 0
+  //
+  ////////////////////////////////////////////////////////////////////////////
+  Var script:=Start_ScriptPergon(
+    ":dyndungeon:dungeonmanager",
+    array{oWho,aDungeontype[1],aDungeontype[2],me}
+  );
+  Var pid:=script.pid;  // Speichern damit Ref nicht nötig ist
+  Var ev;
+  If (script)
+    While (1)
+      ev:=Wait_For_Event(999);
+      If (ev)
+        If (EVID_DUNGEONASKFORPLAYER == ev.type)
+          If (ev.pid==pid)
+            Return(ev.state);
+          EndIf
+        EndIf
+      EndIf
+      SleepMS(2);
+    EndWhile
+  Else
+    Return(0);
+  Endif
+EndFunction
+
+
+Function IsNotActive(serial)
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  //  Check ob die Party schon ein Dungeonfeld aktiv hat
+  //
+  //  Parameter: oWho -> Playerobjekt
+  //  Returnwert: 1
+  //  Returnwert im Fehlerfall: 0
+  //
+  ////////////////////////////////////////////////////////////////////////////
+
+  Var dungeons:=GetGlobalProperty(CPROPDUNGEONS);
+  If (dungeons)
+    ForEach dungeonid in dungeons
+      ForEach player in (dungeonid[1])
+        If (serial==player)
+          Return(0);
+        EndIf
+        SleepMS(2);
+      EndForEach
+    EndForEach
+  EndIf
+
+  Return(1);
+EndFunction
+
+
+Function aGumpLevel(oWho)
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  //  Bauen und Anzeigen eines Gumps zur Auswahl der Levelstärke und Dungeonlänge
+  //
+  //  Parameter: oWho -> Playerobjekt
+  //  Returnwert: Array {Level string,Länge:5,10,20}
+  //  Returnwert im Fehlerfall: 0
+  //
+  ////////////////////////////////////////////////////////////////////////////
+
+  Var layout:={"nodispose",
+               "page 0",
+               "gumppic 0 0 101",
+               "gumppic 230 23 102",
+               "htmlgump 22 270 189 20 0 0 0",
+               "htmlgump 255 270 187 20 1 0 0",
+               "button 97 314 1141 1141 1 0 100",
+               "htmlgump 97 317 272 20 8 0 0",
+               "group 1",
+               "radio 74 120 208 209 1 1",
+               "htmlgump 104 120 100 20 2 0 0",
+               "radio 74 150 208 209 0 2",
+               "htmlgump 104 150 100 20 3 0 0",
+               "radio 74 180 208 209 0 3",
+               "htmlgump 104 180 100 20 4 0 0",
+               "group 2",
+               "radio 310 120 208 209 1 4",
+               "htmlgump 340 120 100 20 5 0 0",
+               "radio 310 150 208 209 0 5",
+               "htmlgump 340 150 100 20 6 0 0",
+               "radio 310 180 208 209 0 6",
+               "htmlgump 340 180 100 20 7 0 0"};
+
+  Var data:={"<basefont size=5><center>Wie stark seid Ihr?</center></basefont>",
+             "<basefont size=5><center>Wie tief sucht Ihr?</center></basefont>",
+             "<basefont size=5>Novice</basefont>",
+             "<basefont size=5>Koryphaee</basefont>",
+             "<basefont size=5>Legende</basefont>",
+             "<basefont size=5>Kurz</basefont>",
+             "<basefont size=5>Mittel</basefont>",
+             "<basefont size=5>Lang</basefont>",
+             "<basefont size=5><center>Seid Ihr mutig?</center></basefont>"};
+
+  Var ret,level,laenge;
+
+  ret:=SendDialogGump(oWho,layout,data,50,50);
+
+  If (ret[100]) //OK Button
+    Case (ret.keys[2])  // Schwierigkeitsgrad
+      1: level:=NOVICE;
+      2: level:=KORY;
+      3: level:=LEGEND;
+      default:   Return(0);
+    EndCase
+    Case (ret.keys[3])  // Länge
+      4: laenge:=SMALL;
+      5: laenge:=MID;
+      6: laenge:=LARGE;
+      default:   Return(0);
+    EndCase
+    If (level && laenge)
+      Return({level,laenge});
+    Else
+      Return(0);
+    EndIf
+  Else
+    Return(0);
+  EndIf
+EndFunction

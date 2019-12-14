@@ -1,0 +1,157 @@
+///////////////////////////////////////////////////////////////////////////
+// bladed -- Haeuten und Schlachten
+
+// Prop "c" Chopper -> Aufschlitzer fuer Obduktion
+
+// ToDo:
+//   Corpse-Beschriftung im Client gegenchecken
+//   Den Check wegens UOBJ_HIDES_String in einen Nummerncheck wandeln
+
+// 2014-08-18 Commander:
+//      - large parts rewritten and simplified
+//      - using daggers gets just one piece of each item in the corpse definition
+// 2014-10-08 Commander:
+//      - do not generate butcher items or skins anymore
+
+include "include/animal";
+include "include/party";
+include "include/spellcheck";
+include "include/cutting";
+
+Program Use_Blade(who, blade)
+    // check some preconditions and get the target (function defined in cutting.inc)
+    var object := CheckPreconditionsAndGetTarget(who);
+
+    If (!object)
+        // no message necessary, CheckPreconditionsAndGetTarget is quite talkative
+        return;
+    EndIf
+
+    If (!ReserveItem(blade))
+        SendSysMessagePergon(who, "Das Messer wird bereits benutzt.", "The knife is already in use.");
+        return;
+    EndIf
+
+    If (object.item.objtype == UOBJ_CORPSE)
+        // Leichen
+        CarveCorpse(who, object.item, blade);
+        EraseObjProperty(object.item, CORPSE_IS_BUSY);
+        ReleaseItem(blade);
+    ElseIf (IsFish(object.item))
+        // Fische
+        CarveFish(who, object.item, blade);
+    ElseIf (IsTree(object.objtype))
+        // Statischer Baum
+        CarveTree(who, object);
+    ElseIf (IsTree(object.item.objtype))
+        // Nicht-statischer Baum
+        CarveTree(who, object.item);
+    ElseIf (IsSpiderWeb(object))
+        // Statisches Spinnennetz
+        GetSilk(who, object, blade);
+    Else
+        SendSysMessagePergon(who, "Ihr wisst nicht, wie man das zusammen benutzt.", "You don't know how to use this together.");
+    EndIf
+
+    ReleaseItem(blade);
+EndProgram
+
+// Koerper mit dem Messer zerlegen
+Function CarveCorpse(who, cadaver, blade)
+    // check if someone else is working on this corpse
+    If (GetObjProperty(cadaver, CORPSE_IS_BUSY))
+        SendSysMessagePergon(who, "Diese Leiche wird bereits benutzt.", "This corpse is already in use.");
+        return;
+    EndIf
+
+    var corpseinfo := GetCorpseConfig(cadaver);
+    If (!corpseinfo)
+        syslog("FEHLER: Fuer Kadaver "+Hex(cadaver.corpsetype)+" fehlen noch die Eintraege.");
+        SendSysMessagePergon(who, "Interner Fehler. Staff wurde informiert.", "Internal error, staff has been informed.", _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+        return;
+    EndIf
+
+    // mark this corpse so that no one else may use it
+    SetObjProperty(cadaver, CORPSE_IS_BUSY, 1);
+
+    var isPoly := IsCorpsePolymorphed(cadaver);
+
+    // get the generation ofset of this corpse
+    var generation_offset := GetGenerationOffset(cadaver);
+
+    If (GetObjProperty(cadaver, CORPSE_IS_BUTCHERED))
+        If (isPoly || corpseinfo.cut) // Ist Stufe 2 zugelassen?
+            // Kopf der Leiche erzeugen, benennen und Taeter markieren
+            var myhead := CreateItemAtLocationPergon(cadaver.x, cadaver.y, cadaver.z, UOBJ_HEAD_NEW, 1, cadaver.realm);
+            // nach Moeglichkeit passend schieben
+            MoveObjectToLocation(myhead, myhead.x - 1, myhead.y, myhead.z, myhead.realm);
+
+            var aname := cadaver.name;
+            aname["Leichnam von "] := "";
+            myhead.name := "Der Kopf von "+aname;
+            SetObjProperty(myhead, EV_CHOPPER, who.name);
+            SetObjProperty(myhead, "serial", Hex(cadaver.serial));
+
+            // Gliedmassen der Leiche erzeugen
+            CreateLimbs(cadaver);
+
+            DestroyItem(cadaver);
+            SendSysMessagePergon(who, "Ihr habt die Leiche fachmännisch zerlegt.", "This corpse has been expertly dismembered.");
+        ElseIf (IsWasPackAnimal(cadaver))
+            DestroyItem(cadaver);
+	Else
+	  SendSysMessagePergon(who, "Diese Leiche wurde bereits geschlachtet.", "This corpse has already been butchered.");
+        EndIf
+
+        return;
+    Else
+        // mark this corpse as butchered
+        SetObjProperty(cadaver, CORPSE_IS_BUTCHERED, 1);
+    EndIf
+
+    // Taeter markieren
+    SetObjProperty(cadaver, EV_CHOPPER, who.name);
+
+    // Hat der Char Quests offen?
+    // dann mal lieber schaun ob es die passende Leiche ist
+    If (who.getprop("quest"))
+        If(QuestCarve(who, cadaver))
+            return;
+        EndIf
+    EndIf
+
+    SendSysMessagePergon(who, "Ihr beginnt die Leiche zu zerlegen.", "You start dismembering the corpse.");
+
+    ForEach item in (corpseinfo.item)
+        If (who.cmdlevel >= CMDLEVEL_SEER)
+            SendSysMessagePergon(who, "Item: "+item[1]+" / Menge: "+item[2]+" / Menge Offset: "+CInt(item[2]+(item[2]/100.0*generation_offset)), "");
+        EndIf
+
+        // ignore skins and butcher items
+        If (Lower(item[1]) == "rawlambleg" or Lower(item[1]) == "rawribs" or item[1] in UOBJ_HIDES_String or item[1] == "feather")
+            continue;
+        EndIf
+
+        CreateItemInContainerPergon(cadaver, item[1], 1);
+    EndForEach
+
+    SendSysMessagePergon(who, "Die Benutzung des richtigen Werkzeugs hätte nicht so eine Sauerei verursacht.", "Using the right tool wouldn't have created such a mess.");
+
+    // detach and generate blood if the corpse was butchered
+    var theblood := GenerateBlood(cadaver);
+
+    // after detaching the blade cannot be released as well as the property cannot be erased
+    EraseObjProperty(cadaver, CORPSE_IS_BUSY);
+    ReleaseItem(blade);
+
+    // Script entkoppeln, 2 Minuten warten und Leichen entfernen, 1 Minute
+    // warten und Blut entfernen (Anm. der Kadaver wird ERST in 2 Minuten
+    // vernichtet, man hat also die Chance, vorher noch zu Stufe 2 zu
+    // gelangen. Wenn man dies nicht tut, dann ist er verwest und man hat
+    // Pech gehabt.)
+    Detach();
+    Sleep(120);
+    DestroyItem(cadaver);
+    Sleep(60);
+    DestroyItem(theblood);
+EndFunction

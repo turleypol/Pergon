@@ -1,0 +1,9 @@
+Use uo;
+
+Program TextCMD_Untergang(who, param)
+  If (param)
+    SendPacket(who, "BC0401");
+  Else
+    SendPacket(who, "BC0101");
+  EndIf
+EndProgram

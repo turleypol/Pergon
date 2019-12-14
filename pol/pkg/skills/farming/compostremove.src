@@ -1,0 +1,18 @@
+use uo;
+include ":farming:farm";
+
+Program CompostRemove(heap);
+    var heapitems := heap.getprop(PROP_LIST);
+
+    // alle Haufenitems abklappern
+    ForEach serial in (heapitems)
+        var item := SystemFindObjectBySerial(serial);
+        If (item and item.objtype == 0xda0f)
+            // zerstoeren, wenn es existiert und Typ passt
+            DestroyItem(item);
+        EndIf
+    EndForEach
+
+    // Zerstoerung erlauben
+    return 1;
+EndProgram

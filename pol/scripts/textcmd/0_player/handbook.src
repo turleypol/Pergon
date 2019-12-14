@@ -1,0 +1,15 @@
+////////////////////////////////////////////////////////////////
+// HandBook TextCMD - Oeffnet das Pergon-Handbuch im Browser
+//
+// Author: Shinigami
+
+use uo;
+include "include/msgs";
+include "include/urls";
+
+Program TextCMD_HandBook(who)
+    SendSysMessagePergon(who,
+        "Das Pergon-Handbuch wird im Browser geöffnet ..."
+    );
+    OpenURL(who, URL_HANDBOOK);
+EndProgram

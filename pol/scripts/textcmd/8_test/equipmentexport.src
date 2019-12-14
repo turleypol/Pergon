@@ -1,0 +1,142 @@
+///////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   EquipmentExport - Exportiert das Equipment und den Backpackinhalt in das Containerformat
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+///////////////////////////////////////////////////////////////////////////////////////////////
+//
+// Needs:
+//   statics/container.cfg
+//
+////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use cfgfile;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/itemnpc";
+Include "include/client";
+Include "include/msgs";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_EquipmentExport(who)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  SendSysMessagePergon(who, "Bitte den Spieler auswählen!", "Please choose a character!");
+
+  Var character:=Target(who);
+  If (character.isa(POLCLASS_MOBILE) And (!character.isa(POLCLASS_NPC)))
+    SendSysMessagePergon(who, "EquipmentExport: ExportItems aktiviert...", "EquipmentExport: ExportItems started...");
+    ExportItems(who, character);
+    SendSysMessagePergon(who, "EquipmentExport: ExportItems beendet.", "EquipmentExport: ExportItems done.");
+  Else
+    SendSysMessagePergon(who, "Dies ist kein Spieler!", "This isn't a character!");
+  EndIf
+EndProgram
+
+///////////////////////////////////////
+// ExportItems - Exportiert die Items
+///////////////////////////////////////
+
+Function ExportItems(who, character)
+  Var datafile:=ReadConfigFile("statics/container");
+  If (datafile)
+    Var counter:=GetNextCounterNumber(datafile);
+
+    SetName(character.backpack, character.name);
+    ExportItem(character.backpack, counter);
+    ForEach item in ListEquippedItems(character)
+      If ((!item.newbie) And (item.objtype<>0xe75) And (item.layer<>LAYER_HAIR) And (item.layer<>LAYER_BEARD))
+        ExportItem(item, counter, character.backpack.serial);
+      EndIf
+    EndForEach
+    ForEach item in EnumerateItemsInContainer(character.backpack)
+      If ((!item.newbie) Or ((0x6820<=item.objtype) And (item.objtype<=0x6822)))
+        ExportItem(item, counter);
+      EndIf
+    EndForEach
+
+    UnloadConfigFile("statics/container");
+
+    SendSysMessagePergon(who, "Die Items wurden exportiert.", "Items have been exported.");
+  Else
+    SendSysMessagePergon(who, "Probleme beim Lesen der Configdatei!", "Problems on Reading Config File!");
+  EndIf
+EndFunction
+
+/////////////////////////////////////
+// ExportItem - Exportiert ein Item
+/////////////////////////////////////
+
+Function ExportItem(item, ByRef counter, container:=0)
+  Var elem:={};
+  If (item.isa(POLCLASS_CONTAINER))
+    elem.append({"SERIAL", Lower(Hex(item.serial))});
+  EndIf
+
+  elem.append({"NAME",    EntferneA(item.desc)});
+  elem.append({"OBJTYPE", item.objtype});
+  elem.append({"GRAPHIC", item.graphic});
+  elem.append({"X",       item.x});
+  elem.append({"Y",       item.y});
+  elem.append({"AMOUNT",  item.amount});
+  elem.append({"COLOR",   item.color});
+
+  If (item.isa(POLCLASS_WEAPON) Or item.isa(POLCLASS_ARMOR))
+    elem.append({"HP",      item.hp});
+    elem.append({"QUALITY", item.quality});
+  EndIf
+
+  If (item.isa(POLCLASS_MAP))
+    elem.append({"XWEST",      item.xwest});
+    elem.append({"YNORTH",     item.ynorth});
+    elem.append({"XEAST",      item.xeast});
+    elem.append({"YSOUTH",     item.ysouth});
+    elem.append({"GUMPWIDTH",  item.gumpwidth});
+    elem.append({"GUMPHEIGHT", item.gumpheight});
+  EndIf
+
+  elem.append({"MOVABLE",   item.movable});
+  elem.append({"NEWBIE",    item.newbie});
+  If (container)
+    elem.append({"CONTAINER", Lower(Hex(container))});
+  Else
+    elem.append({"CONTAINER", Lower(Hex(item.container.serial))});
+  EndIf
+
+  ForEach propname in GetObjPropertyNames(item)
+    elem.append({"CPROP", propname+" "+Pack(GetObjProperty(item, propname))});
+  EndForEach
+  elem.append({"CPROP", "ExportedSerial "+Pack(item.serial)});
+
+  AppendConfigFileElem("statics/container", "SECTION", "WORLDITEM "+counter, elem);
+
+  counter:=counter+1;
+EndFunction
+
+/////////////////////////////////////////////////////////
+// GetNextCounterNumber - Die naechste Nummer ermitteln
+/////////////////////////////////////////////////////////
+
+Function GetNextCounterNumber(datafile)
+  Var counter:=GetConfigStringKeys(datafile);
+  If (Len(counter))
+    Return (Len(counter));
+  Else
+    Return (0);
+  EndIf
+EndFunction

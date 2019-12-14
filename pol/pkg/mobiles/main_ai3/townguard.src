@@ -1,0 +1,319 @@
+/////////////////////////////////////////////////////////
+//
+//   townguard - OverrideFunction KI Hauptkram in main.inc
+//               Main_AI3
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     06.05.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+// Ein DirektHack in der common.inc Event_LookAround_Common()
+
+// Townguard: Unsere Stadtwachen
+
+include ":main_ai3:include_common/main_ai";
+CONST NATURE:=NATURE_TOWNGUARD;
+include ":main_ai3:include_common/main";
+include ":main_ai3:include_common/common";
+include ":main_ai3:include_nature/guards";
+Include ":daymoonweather:daymoonweather"; //für IsNight()
+include "include/spellcheck";
+
+
+
+Function OnStart()
+   OnStartGuard();
+EndFunction
+
+Function InitNPC()
+  InitGuard();
+EndFunction
+
+Function InitParamsSpezial(byref mytemplate)
+  params.insert(STARTZONE,struct{});
+  params[STARTZONE].+name:=PlaceName(Me);  // Um Platzzusparen nur die 2 Infos die auch verwendet werden
+  params[STARTZONE].+evilzone:=PlaceEvil(Me);
+  If ((params[STARTZONE].name<>"Cove")// Cove bewahrt Neutralität und interessiert sich somit nicht für Player
+    &&(params[STARTZONE].name<>"Vesper") //Vesper bewahrt ebenfalls Neutralität
+    &&(params[STARTZONE].name<>"Goetterinsel") //Die Götterwachen ebenso
+    &&(params[STARTZONE].name<>"Gefaengnis")) //ins Gefängnis darf auch jeder
+    params[STARTZONE].+neutral:= 0;
+  Else
+    params[STARTZONE].+neutral:= 1;
+  EndIf
+  //Für Stadtwachen (kontrollieren ob auch sinnvoll genutzt!!!)
+  EnableEvents(SYSEVENT_DISENGAGED);
+  EnableEvents(SYSEVENT_SPEECH, params[RANGESENSE]); //fuer die zahmen Tiere und Stadtwachen
+  Return;
+  mytemplate:=mytemplate;
+EndFunction
+
+Function Before_Events()
+  Return;
+EndFunction
+
+Function IdleTime()
+  Return(IdleTime_Common());
+EndFunction
+
+Function Event_DoubleClicked(byref ev)
+  Event_DoubleClicked_Common(ev);
+EndFunction
+
+Function Event_ItemGiven(byref ev)
+  Event_ItemGiven_Common(ev);
+EndFunction
+
+Function Event_Speech(byref ev)
+  If (!Me.warmode)
+    OnSpeechEvent(ev);
+  EndIf
+  Event_Speech_Common(ev);
+EndFunction
+
+Function Can_Speech_Kill()
+  Return(0);
+EndFunction
+
+Function Can_Speech_Guard()
+  Return(0);
+EndFunction
+
+Function Event_Engaged(byref ev)
+  If (Event_Engaged_Common(ev))
+    If (CheckIgnore(ev.source))
+      SayPergon(ev.source, "Auf den Trick falle ich nicht zweimal rein!");
+    Else
+      SayPergon(ev.source, "Das werdet Ihr bereuen!");
+      If (ev.source.cmdlevel <= CMDLEVEL_COUNSELOR)
+        If (ev.source.enabled("invul"))
+          SendSysMessagePergon(ev.source,
+            "Euer Schutz verliert seine Wirkung.", ""
+          );
+          // statuen und todesritter dürfen nicht direkt umgesetzt werden, weil die klamotten unbeweglich sind
+          // deswegen einmal ordentlich über den spellchecker umsetzen lassen
+          If (ev.source.getprop("spell_statue")) // ist eine statue
+	        var tag:= GetObjProperty(ev.source, "spell_statue");
+	        // update spelltag for spellchecker
+	        tag[1]:= ReadGameClock();
+	        tag[5]+=1;
+	        SetObjProperty(ev.source, "spell_statue", tag);
+	        SendSpellWaiter(ev.source, "spell_statue", 1, tag[5], ev.source);
+	        ForEach equip in (ListEquippedItems(ev.source))
+	          SleepMS(2);
+	          tag:=GetObjProperty(equip, "spell_statue");
+	          If (tag)
+	            tag[1]:= ReadGameClock();
+	            tag[5]+=1;
+	            SetObjProperty(equip, "spell_statue", tag);
+	            SendSpellWaiter(equip, "spell_statue", 1, tag[5], ev.source);
+	          EndIf
+	        EndForEach
+          ElseIf (ev.source.getprop("spell_curse")) // Todesritter
+          	var tag := ev.source.getprop("spell_curse");
+	        If (tag[3]=="dead knight")
+        	  tag[1]:= ReadGameClock();
+              tag[6]+=1;
+              SetObjProperty(ev.source, "spell_curse", tag);
+              SendSpellWaiter(ev.source, "spell_curse", 1, tag[6], ev.source);
+              ForEach equip in (ListEquippedItems(ev.source))
+	            SleepMS(2);
+	            tag:=GetObjProperty(equip, "spell_curse");
+	            If (tag)
+	              If (tag[3] == "dead knight")
+	                tag[1]:= ReadGameClock();
+	                tag[6]+=1;
+	                SetObjProperty(equip, "spell_curse", tag);
+	                SendSpellWaiter(equip, "spell_curse", 1, tag[6], ev.source);
+	              EndIf
+	            EndIf
+	          EndForEach
+	        EndIf
+	      Else // kA wodurch es noch geht
+	      	ev.source.disable("invul");
+            IncRevision(ev.source);
+	      EndIf
+        EndIf
+        // EndIf
+      EndIf
+      If (!me.warmode) //nur wenn er nicht schon kaempft
+        FightGuard(ev.source);
+      EndIf
+    EndIf
+  EndIf
+EndFunction
+
+Function Event_Disengaged(byref ev)
+  Event_Disengaged_Common(ev);
+EndFunction
+
+Function Event_Damaged(byref ev)
+  If (Event_Damaged_Common(ev))
+    //!!! Problem mit mehreren aufgelaufenen DAMAGE Events und Laberschwall
+    If (ev.source == me.opponent)
+      // mein aktueller Gegner hat mich verletzt
+      If (RandomInt(100) < 10)
+        SayPergon(ev.source, "Ein harmloser Kratzer!");
+      EndIf
+    Else
+      SayPergon(ev.source, "Hilfe! Da greift mich noch wer an!");
+    EndIf
+    If (!me.warmode) //nur wenn er nicht schon kaempft
+      FightGuard(ev.source);
+    Else
+      If( !RandomInt(7) ) //14%chance hinrennen wenn mir jemand mehrfach schaden zufügt (Problem war das die Stadtwache auf einen unerreichbaren Gegner geht und ein Player Bogenschiesen an ihr trainiert hat)
+        //Gegnerwechsel
+        TestMessage("MainLoop: Gegnerwechsel",1);
+        SetWarmode(0); //neuen gegner setzen ermoeglichen
+        FightGuard(ev.source);
+      EndIf
+    EndIf
+  EndIf
+EndFunction
+
+Function Event_EnteredArea(byref ev)
+  If (Event_EnteredArea_Common(ev))
+    OnEnteredAreaEvent(ev);
+  EndIf
+EndFunction
+
+Function Event_LeftArea(byref ev)
+  Event_LeftArea_Common(ev);
+EndFunction
+
+Function Event_StillRun(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_LookAround(byref ev)
+  ev.source:= Event_LookAround_Common(ev);
+  var pass := ev.source.getprop("pass");
+  If (ev.source==-1)
+    MakeMePeaceful_Guard();
+  ElseIf (ev.source)
+    If (CheckIgnore(ev.source) or (params[STARTZONE].name == pass.town))
+      // einfach ignorieren, den kann man eh nicht erreichen
+      // (ein Lookaround darf auch mal ins Leere gehen wenn einer der
+      // Gegner auf der Ignore Liste steht, sonst müsste in der eh schon
+      // schwer strapazierten LookForNextOpponent auch noch jeder in der
+      // Gegend auf Ignore geprüft werden)
+    Else
+      FightGuard(ev.source);
+    EndIf
+  EndIf
+EndFunction
+
+Function Event_Follow(byref ev)
+  ev.source:=GetObjProperty(Me, PROP_FOLLOW);
+  If (ev.source)
+    If (ev.source==ev.master)
+      FollowPlayer(ev.source);
+    Else
+      //Fehlerfall
+      TestMessage("MainLoop: Follow Fehler follow="+ev.source.serial+" serial="+ev.master, 1);
+      EraseObjProperty(Me, PROP_FOLLOW);
+      SleepMs(10);
+    EndIf
+  Else
+    //Folgen wurde abgebrochen durch CProp löschen
+    SleepMs(10);
+  EndIf
+EndFunction
+
+Function Event_AskJoin(byref ev)
+  Return;
+  ev:=ev;
+  //Event_AskJoin_Common(ev);
+EndFunction
+
+Function Event_GrantJoin(byref ev)
+  Return;
+  ev:=ev;
+  //Event_GrantJoin_Common(ev);
+EndFunction
+
+Function Event_RefuseJoin(byref ev)
+  Return;
+  ev:=ev;
+  //Event_RefuseJoin_Common(ev);
+EndFunction
+
+Function Event_Walk(byref ev)
+  Event_Walk_Common(ev);
+EndFunction
+
+Function Event_Peacemade(byref ev)
+  Event_Peacemade_Common(ev);
+  MakeMePeaceful_Guard();
+EndFunction
+
+Function Event_Guards_Help(byref ev)
+  If (!Me.warmode)
+    SayPergon(ev.source, "Jemand ruft um Hilfe...");
+    //Besser wäre ein Blaulichtrun
+    Var ev2 := struct;
+    ev2.+type:=EVID_LOOKAROUND;
+    ev2.+source:=Me;
+    ev2.+range:=params[RANGEFOLLOW]; //Bei Hilferuf wird mit erhöhter Reichweite nach Gegner gesucht
+    ev2.+help:=ev.source; //Angreifer des Hilferufers anvisieren, aber beachten der Hilferuf gilt auch wenn ein PK nur vorbei rennt
+    SendEvent(Me,ev2);
+  EndIf
+EndFunction
+
+Function Event_Cast_Wait(byref ev)
+  If (!Me.warmode)  // Kämpf ich noch?
+    params[FIRSTCAST]:=1;
+    Return;
+  EndIf
+  If (Me.getprop(PROP_OPPONENT))  // Hinkt wegen Lookaround immer hinterher
+    ev.source:=SystemFindObjectBySerial(Me.getprop(PROP_OPPONENT));
+    If (!ev.source)                     // deswegen opp aus cprop holen
+      params[FIRSTCAST]:=1;
+      Return;
+    EndIf
+    Event_Cast_Wait_Common(ev);
+  Else
+    params[FIRSTCAST]:=1;
+  EndIf
+EndFunction
+
+Function Event_Quest_Waypoint(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Quest_Speech(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Self_Kill(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Quest_Nemesis(byref ev)
+  Return;
+  ev:=ev;
+EndFunction
+
+Function Event_Reflection(byref ev)
+	Event_Reflection_Common(ev);
+EndFunction
+
+Function OnIdle()
+  OnIdleGuard();
+EndFunction
+
+Function ValidEnemy_Override(byref mob, byref hostile)
+  If (CheckOpponent(mob, hostile))
+    Return 1;
+  Else
+    Return 0;
+  EndIf
+EndFunction

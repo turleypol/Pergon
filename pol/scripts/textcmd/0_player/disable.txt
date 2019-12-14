@@ -1,0 +1,8 @@
+<h3 id="disable">disable</h3>
+
+<h4>Parameter: <kbd>&lt;privileg&gt;</kbd></h4>
+
+<p>Privileg abschalten. Mögliche Privilegien siehe
+<a data-href="http://docs.polserver.com/pol097/privilages.php">Pol-Doku</a>.</p>
+
+<p>Siehe auch: <a data-href="#enable">enable</a></p>

@@ -1,0 +1,217 @@
+//
+//  Pot.src - Umfuellen von Gefaessen - by Pauker
+//
+//  01.12.2002 Fraggulus: nur leere Gefaesse können befuellt werden
+//  23.10.2003 Fraggulus: Gefaesse, die festgemacht sind, aber nicht in Multis stehen, können nicht befuellt werden
+//  09.08.2005 Turley:    West-Ost Richtung bei Wassertrog eingefügt
+//  18.09.2005 Fraggulus: Troege können auch ausserhalb von Multis befuellt werden (wichtig in Gildenhaeusern)
+//  10.10.2006 Turley:    Check auf .movable
+//
+
+use os;
+use uo;
+use cfgfile;
+
+include "include/objtype";
+include "include/modifyskill";
+include "include/itemnpc";
+
+var cfg := readconfigfile("::itemdesc");
+
+var TROEGE := {0x7042, 0x7044, 0x7046, 0x7048};
+
+Program Pottet(char, pot1)
+  If (!pot1.movable and !(pot1.objtype in TROEGE))
+    If (GetObjProperty(pot1, "set_name"))
+      Start_ScriptPergon(":wasser:brunnen", struct{ who := char, item := pot1 });
+      return;
+    EndIf
+    SendSysMessagePergon(char, "Ihr wisst nicht ob dieses Wasser geniessbar ist.");
+    return;
+  EndIf
+  
+  If (!ReserveItem(pot1))
+    SendSysMessagePergon(char,
+      "Dies ist bereits in Benutzung.", "This is already in use."
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(char, "Wählt ein anderes Gefäß zum Umfüllen oder auf sich selbst, um den Inhalt anzuzeigen.");
+  var pot2 := Target(char, TGTOPT_CHECK_LOS);
+
+  // Entfernung checken...
+  If (Distance(char, pot2) > 2)
+    SendSysMessagePergon(char,
+      "Ihr kommt dort nicht ran. Das ist zu weit entfernt.", ""
+    );
+    return;
+  EndIf
+  
+  If (pot1.serial == pot2.serial)
+    var filled := GetObjProperty(pot1, "filled");
+    If (filled)
+      SendSysMessagePergon(char, pot1.desc+" gefüllt mit "+filled+" Liter.");
+    Else
+      SendSysMessagePergon(char, pot1.desc+" ist leer.");
+    EndIf
+    return;
+  EndIf
+
+  // Behaelter, die fest gemacht sind und nicht in Multihaeusern stehen,
+  // sind ausgenommen (sonst werden sie vom Spieler eingesammelt) (betrifft
+  // alles, was nach dem Befuellen im Rucksack des Spielers landet)
+  If (!pot2.movable && !pot2.multi)
+    If (!(pot2.objtype in TROEGE))
+      SendSysMessagePergon(char, "Dort könnt Ihr nichts einfüllen.");
+      return;
+    EndIf
+  EndIf
+
+  var potcfg := readconfigfile("pot");
+  If (!potcfg)
+    Syslog("FEHLER: Konnte pot.cfg nicht oeffnen.");
+    return;
+  EndIf
+
+  var pot1cfg := potcfg[pot1.objtype];
+  If (!pot1cfg)
+    Syslog("WARNUNG: Konnte Eintrag fuer " + pot1.objtype + " nicht finden.");
+    SendSysMessagePergon(char, "Es ist ein Fehler aufgetreten.");
+    return;
+  EndIf
+
+  If (!pot1cfg.startitem)
+    Syslog("WARNUNG: Konnte "+ pot1.objtype + " StartItem nicht finden.");
+    SendSysMessagePergon(char, "Es ist ein Fehler aufgetreten.");
+    return;
+  EndIf
+
+  // Gefaess muss leer sein
+  If (pot2.isa(POLCLASS_CONTAINER))
+    If (EnumerateItemsInContainer(pot2).size()>0)
+      SendSysMessagePergon(char, "Dieses Gefäß ist nicht leer. Benutzt ein anderes!");
+      return;
+    EndIf
+  EndIf
+
+  var i   := pot1cfg.startitem;
+  var Sai :=0;
+  var Ok  :=0;
+  var Elm;
+
+  While (!Sai and !Ok);
+    Elm := potcfg[i];
+    If (!Elm)
+      Sai := 1;
+    Else
+      // Werte aus der Config auslesen
+      If (pot2.objtype == Elm.objpot2)
+        Ok := 1;
+      EndIf
+      i += 1;
+    EndIf
+  EndWhile;
+
+  If (Ok)
+    If (Elm.targetitem)
+      pot1_pot2_leer(char, pot1, pot2, Elm.targetitem);
+    Else
+      pot1_pot2(char, pot1, pot2);
+    EndIf
+  Else
+    SendSysMessagePergon(char, "Das könnt Ihr dazu nicht benutzen.");
+  EndIf
+EndProgram
+
+Function pot1_pot2(char, pot1, pot2)
+
+  var item;
+  var filled1  := GetObjProperty(pot1, "filled");
+  var filled2  := GetObjProperty(pot2, "filled");
+  var pot2_cfg := cfg[pot2.objtype];
+  var filled2_max := pot2_cfg.filledmax;
+  var liter_transfer := filled2_max - filled2;
+  If (liter_transfer < 0.5)
+    SendSysMessagePergon(char, "Das Gefäß ist schon voll.");
+    return;
+  Else
+    If (liter_transfer > filled1)
+      liter_transfer := filled1;
+    EndIf
+    SetObjProperty(pot2, "filled", filled2 + liter_transfer);
+    If (filled1 - liter_transfer < 0.5)
+      var pot1_cfg := cfg[pot1.objtype];
+      If (pot1.objtype in TROEGE)
+        item := CreateItemAtLocationPergon(pot1.x, pot1.y, pot1.z, pot1_cfg.targetitem, 1, pot1.realm);
+        DestroyItem(pot1);
+      ElseIf(pot1.container)
+        item := CreateItemInContainerPergon(pot1.container, pot1_cfg.targetitem);
+        MoveItemToContainer(item, pot1.container, pot1.x, pot1.y);
+        DestroyItem(pot1);
+      Else
+        var loc := struct;
+        loc.+x  := pot1.x;
+        loc.+y  := pot1.y;
+        loc.+z  := pot1.z;
+        loc.+realm := pot1.realm;
+        DestroyItem(pot1);
+        item := CreateItemAtLocationPergon(loc.x, loc.y, loc.z, pot1_cfg.targetitem, 1, loc.realm);
+      EndIf
+    Else
+      SetObjProperty(pot1, "filled", filled1 - liter_transfer);
+    EndIf
+  EndIf
+EndFunction
+
+Function pot1_pot2_leer(char, pot1, pot2, targetitem)
+
+  var item2;
+  var item;
+  var filled1  := GetObjProperty(pot1, "filled");
+  var pot2_cfg := cfg[targetitem];
+  var liter_transfer := pot2_cfg.filledmax;
+
+  If (pot2.objtype in TROEGE)
+    item2 := CreateItemAtLocationPergon(pot2.x, pot2.y, pot2.z, targetitem, 1, pot2.realm);
+    DestroyItem(pot2);
+  ElseIf(pot2.container)
+    item2 := CreateItemInContainerPergon(pot2.container, targetitem);
+    MoveItemToContainer(item2, pot2.container, pot2.x, pot2.y);
+    DestroyItem(pot2);
+  Else
+    var loc := struct;
+    loc.+x  := pot2.x;
+    loc.+y  := pot2.y;
+    loc.+z  := pot2.z;
+    loc.+realm := pot2.realm;
+    DestroyItem(pot2);
+    item2 := CreateItemAtLocationPergon(loc.x, loc.y, loc.z, targetitem, 1, loc.realm);
+  EndIf
+
+  If (liter_transfer > filled1)
+    liter_transfer := filled1;
+  EndIf
+  SetObjProperty(item2, "filled", liter_transfer);
+  If (filled1 - liter_transfer < 0.5)
+    Var pot1_cfg := cfg[pot1.objtype];
+    If (pot1.objtype in TROEGE)
+      item := CreateItemAtLocationPergon(pot1.x, pot1.y, pot1.z, pot1_cfg.targetitem, 1, pot1.realm);
+      DestroyItem(pot1);
+    ElseIf(pot1.container)
+      item := CreateItemInContainerPergon(pot1.container, pot1_cfg.targetitem);
+      MoveItemToContainer(item, pot1.container, pot1.x, pot1.y);
+      DestroyItem(pot1);
+    Else
+      var loc := struct;
+      loc.+x  := pot1.x;
+      loc.+y  := pot1.y;
+      loc.+z  := pot1.z;
+      loc.+realm := pot1.realm;
+      DestroyItem(pot1);
+      item := CreateItemAtLocationPergon(loc.x, loc.y, loc.z, pot1_cfg.targetitem, 1, loc.realm);
+    EndIf
+  Else
+    SetObjProperty(pot1, "filled", filled1 - liter_transfer);
+  EndIf
+EndFunction

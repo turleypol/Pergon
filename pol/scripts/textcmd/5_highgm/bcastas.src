@@ -1,0 +1,47 @@
+//
+//  11.10.2005 Fraggulus: .BCastAs tut nun das, was der Name erwarten laesst.. Broadcasts mit Alias verschicken
+//  06.02.2007 Turley:    UnicodeMsg wenn nur ein param
+//
+
+use uo;
+
+Include "include/client";
+Include "include/msgs";
+
+Program bcastas(who, params, uctext)
+
+  params := SplitWords(params);
+
+  If (params && (len(params) >= 2))
+    Var alias := params[1];
+    Var text := "", i;
+    For (i := 2; i <= len(params); i += 1);
+      text += params[i] + " ";
+    EndFor
+    
+    If (uctext)  // Unicode
+      Var ucalias:={};
+      For (i:=1;i<=(len(alias)+1);i+=1)
+        ucalias.append(uctext[1]);
+        uctext.erase(1); 
+      EndFor
+      ucalias.erase(ucalias.size());
+      
+      BroadcastPergon(CChrZ(ucalias)+": "+CChrZ(uctext), CChrZ(ucalias)+": "+CChrZ(uctext), _DEFAULT_UCFONT, 438);
+    Else
+      BroadcastPergon(alias+": "+text, who.name+": "+text, _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+    EndIf
+    SysLog(CharInfoStr(who)+" alias "+alias+": "+text);
+  ElseIf (params[1])
+    Var text:=RequestInputPergon(who, who.backpack, Struct{uc_text:=CAscZ("Welche Nachricht wollen Sie schicken?"), lang:="DEU"},
+	                                                  Struct{uc_text:=CAscZ("Which message do you want to send?"), lang:="ENG"});
+    If (text)
+    	BroadcastPergon(params[1]+": "+CChrZ(text.uc_text), params[1]+": "+CChrZ(text.uc_text), _DEFAULT_UCFONT, 438);
+    	SysLog(CharInfoStr(who)+" alias "+params[1]+": "+CChrZ(text.uc_text));
+    Else
+    	SendSysMessagePergon(who,"Abbruch","Abort");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "USAGE: .BCastAs aliasname [text]", "USAGE: .BCastAs aliasname [text]");
+  EndIf
+EndProgram

@@ -1,0 +1,196 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Priesterrunen
+//
+// Rune wird gelegt und "schiesst" Ladungen auf Ziele im Umkreis
+
+include ":newspells:resistance";
+include "common";
+include "include/modifyskill";
+include "include/packets";
+include "include/spellcheck";
+use cfgfile;
+use os;
+use uo;
+use util;
+
+Program ClericRune(who, item)
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  // Rune muss auf dem Boden liegen
+  If (item.container)
+    SendSysMessagepergon(who,
+      "Ihr müsst die Rune zuerst platzieren",
+      "You have to place the rune first"
+    );
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var delay := artefact.delay;
+  var dist := artefact.distance; // Auslösedistanz
+  var charges := artefact.charges;
+  var lifeTime := artefact.lifetime; // Zeit die die Falle maximal besteht
+  var difficulty := artefact.useskill; // Benutzungsschwierigkeit
+  var damage := SplitWords(GetConfigString(artefact, "Damage"));
+  var minDamage := CInt(damage[1]);
+  var maxDamage := CInt(damage[3]);
+
+  // die niederen Fallen kann jeder nutzen
+  If (difficulty and GetSkillPergon(who, SKILLID_SEGNEN) < difficulty)
+    SendSysMessagePergon(who,
+      "Ihr könnt das nicht benutzen", "You cannot use this"
+    );
+    return;
+  EndIf
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", (ReadGameClock() + delay));
+  PlaySoundEffect(item, 0x202);
+  item.movable := 0;
+
+  Detach();
+
+  Sleep(3);
+  PlaySoundEffect(item, 0x1ec);
+
+  var freezable  := array;
+  var damageable := array;
+
+  // Arrays zusammenbauen, die angeben, welche Rune was kann
+  Case (item.objtype)
+  0xe231: // Schutzrune
+    freezable  := {};
+    damageable := {"skeleton"};
+
+  0xe241: // Abwehrrune
+    freezable  := {"skeleton"};
+    damageable := {"skeleton", "undead"};
+
+  0xe251: // Rune der Obhut
+    freezable  := {"skeleton", "undead"};
+    damageable := {"skeleton", "undead"};
+
+  0xe261: // Gesegnete Rune
+    freezable  := {"skeleton", "undead"};
+    damageable := {"skeleton", "undead", "daemon"};
+
+  0xe271: // Heilige Rune
+    freezable  := {"skeleton", "undead", "daemon"};
+    damageable := {"skeleton", "undead", "daemon"};
+  EndCase
+
+  SetObjProperty(item, "Lifetime", (ReadGameClock() + lifeTime));
+
+  // angegriffene Viecher merken damit keins 2 mal erwischt wird
+  var freezedMobs := {};
+  var damagedMobs := {};
+  // es wird abwechelnd gefreezed und Schaden gemacht
+  var freeze := 0;
+
+  var i := 0;
+  While (charges > 0)
+    ForEach victim in (ListMobilesNearLocationEx(
+        item.x, item.y, item.z, dist,
+        LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN, item.realm
+    ))
+      SleepMs(2);
+
+      var victimTemplate := GetNPCConfig(victim.npctemplate);
+
+      If (freeze == 1)
+        // dieses mal wird gefreezed
+        If (!(victimTemplate.species in freezable))
+          continue;
+        EndIf
+
+        If (victim.serial in freezedMobs)
+          continue;
+        EndIf
+
+        var j;
+        For (j := 0; j <= 20; j += 1)
+          PlayMovingEffect(item, victim, 0x3779, 10);
+          SleepMS(10);
+        EndFor
+        PlaySoundEffect(victim, SFX_SPELL_PARALYZE);
+        PlayObjectCenteredEffect(victim, FX_SMOKE, 10);
+
+        victim.paralyzed := 1;
+        victim.frozen    := 1;
+        IncRevision(victim);
+
+        var tag := array;
+        tag[1] := ReadGameClock() + 30;
+        tag[2] := 100;
+        tag[5] := ReadMilliSecondClock();
+
+        // Victim für spellchecker merken
+        SetObjProperty(victim, "spell_paralyze", tag);
+        SendSpellWaiter(victim, "spell_paralyze", 30, tag[5], victim);
+
+        // Ladung von Rune abziehen
+        charges -= 1;
+        // Victim merken damit es nicht nochmal getroffen wird
+        freezedMobs.append(victim.serial);
+
+      Else
+        // dieses mal wird Schaden gemacht
+        If (!(victimTemplate.species in damageable))
+          continue;
+        EndIf
+
+        If (victim.serial in damagedMobs)
+          continue;
+        EndIf
+
+        var j;
+        For(j := 0; j <= 20; j += 1)
+          PlayMovingEffect(item, victim, 0x3818, 10);
+          SleepMS(10);
+        EndFor
+        PLaySoundEffect(victim, SFX_29);
+        PlayLightningBoltEffect(victim);
+
+        var rawDamage := RandomIntMinMax(minDamage, 1+maxDamage);
+        ApplyRawDamagePergon(victim, rawDamage);
+
+        // Ladung von Rune abziehen
+        charges -= 1;
+        // Victim merken damit es nicht nochmal getroffen wird
+        damagedMobs.append(victim.serial);
+      EndIf
+
+      Sleep(3);
+      break;
+    EndForEach
+
+    // Umschalten zwischen Schaden und Freezen
+    freeze := 1 - freeze;
+
+    // maximal jede Sekunde nach neuen Opfern suchen
+    Sleep(1);
+
+    i += 1;
+    If (i == delay)
+      // nach gewisser Zeit ist Player nicht mehr für Rune verantwortlich
+      SetScriptController(0);
+    EndIf
+
+    If (GetObjProperty(who, "Lifetime") < ReadGameClock())
+      // Lebenszeit abgelaufen
+      break;
+    EndIf
+  EndWhile
+
+  PlayStationaryEffect(
+    item.x, item.y, item.z - 10, 0x374a, 1, 0, 0, item.realm
+  );
+  PlaySoundEffect(item, 0x1e5);
+  Sleep(2);
+  DestroyItem(item);
+EndProgram
+
+// vim: sw=2 sts=2

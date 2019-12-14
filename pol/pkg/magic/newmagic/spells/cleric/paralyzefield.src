@@ -1,0 +1,101 @@
+//**************************************************************************************************
+// Script file paralyzefield.src
+//
+//    implements spell 221 <Paralyze Field> - "Paralysefeld"
+//
+//	creates a paralyzing field
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 03.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use os;
+use util;
+
+Include "../magicpergon";
+Include "../fields";
+
+program cast_paralyzefield (params)
+
+   Var caster;
+   Var where;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_PARALYZEFIELD);
+   Var dur:=    spell.duration;
+   Var mindur:= spell.durationmin;
+   Var maxdur:= spell.durationmax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      where:=struct{x,y,z,realm};
+      where.x:=params[4].x;
+      where.y:=params[4].y;
+      where.z:=params[4].z;
+      where.realm:=params[4].realm;
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      where:=  TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_PARALYZEFIELD);
+      where:= TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, where);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   Var fields:= {};
+
+   Var x:= where.x;
+   Var y:= where.y;
+   Var z:= where.z;
+														// calc direction of paralyze field using function from fields.inc
+   case (GetDirection(caster, x, y))	// create paralyze field
+      "nord":	fields:= CreateNorthSouthField(caster, power, UOBJ_PARAFIELD_NS, x, y, z, 2);
+      "sued":	fields:= CreateNorthSouthField(caster, power, UOBJ_PARAFIELD_NS, x, y, z, 2);
+      "ost":	fields:= CreateEastWestField(caster, power, UOBJ_PARAFIELD_EW, x, y, z, 2);
+      "west":	fields:= CreateEastWestField(caster, power, UOBJ_PARAFIELD_EW, x, y, z, 2);
+      default:	case (randomint(2))
+		   			      0:	fields:= CreateNorthSouthField(caster, power, UOBJ_PARAFIELD_NS, x, y, z, 2);
+        	   		  1:	fields:= CreateEastWestField(caster, power, UOBJ_PARAFIELD_EW, x, y, z, 2);
+					      endcase
+   endcase
+
+   detach();
+
+   dur:=CInt(power*dur/100.0);					// calc duration of spell according to casting power
+   if (mindur and mindur > dur)
+      dur:= mindur;
+   elseif (maxdur and maxdur < dur)
+      dur:= maxdur;
+   endif
+
+   Var i;
+   for (i:= 0; i <= dur; i+=10)					// wait duration
+       foreach fieldpart in fields						// and play paralyzing sound from time to time
+          PlaySoundEffect(fieldpart, SFX_231);
+          sleep(2);
+       endforeach
+   endfor
+
+   sleep(5);
+
+   foreach fieldpart in fields					// eventually destroy paralyzefield
+      PlaySoundEffect(fieldpart, SFX_11D);
+      DestroyItem(fieldpart);
+   endforeach
+
+endprogram

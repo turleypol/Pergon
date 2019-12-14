@@ -1,0 +1,63 @@
+///////////////////////////////////////////////////////////////////////////
+// SignControl - Hausschildfunktionalitaet normaler Multi-Playerhaeuser
+//
+// Author: Shinigami
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+include "house";
+include "include/eventid";
+include "include/itemnpc";
+include "include/msgs";
+include "include/server";
+include "include/string";
+include "include/onlinesearch";
+use os;
+use uo;
+use util;
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+var house;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program ControlSign(sign)
+  var houseserial := GetObjProperty(sign, PROP_HS_M_HOUSE);
+  If (!houseserial)
+    return;
+  EndIf
+
+  house := SystemFindObjectBySerial(houseserial); // Das Haus suchen...
+  If (!house.isa(POLCLASS_HOUSE))
+    syslog(
+      "WARNUNG: Das Schild "+ItemInfoStr(sign, COORDS_REALM)+
+      " scheint keinem Haus zugeordnet zu sein!"
+    );
+    return;
+  EndIf
+
+  Inventur(house);
+
+  // Auf Kommandos der Spieler warten
+  ControlHouseSign(sign, house, 30);
+EndProgram
+
+////////////////////////////////////////////////////////////////////////////
+// CheckModZ - Prueft und korrigiert (ggf.) die Veraenderung in Z-Richtung
+////////////////////////////////////////////////////////////////////////////
+
+Function CheckModZ(itemz, modz)
+  If (modz<house.z-itemz)
+    modz := house.z-itemz;     // Mindestens auf Bodenhoehe des Hauses
+  EndIf
+  If (modz>60+house.z-itemz)
+    modz := 60+house.z-itemz;  // Maximal 3 Etagen hoch
+  EndIf
+
+  return (modz);
+EndFunction

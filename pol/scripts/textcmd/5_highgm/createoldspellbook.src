@@ -1,0 +1,13 @@
+use uo;
+
+Include "include/itemnpc";
+Include "include/objtype";
+Include "include/msgs";
+
+program textcmd_spellbook( who )
+    Var book := CreateItemInBackpackPergon(who, UOBJ_SPELLBOOK, 1);
+    Var i;
+    for (i := 0x1f2d; i <= 0x1f6c; i += 1)
+        CreateItemInContainerPergon(book,  i, 1);
+    endfor
+endprogram

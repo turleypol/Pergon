@@ -1,0 +1,78 @@
+//////////////////////////////////////////////////////////////
+//
+// .writequip [tag] - save a targetted character's equipment
+//                    to EQUIP.cfg for later
+//
+//  20.09.2005 Fraggulus: Kleine Korrektur am Text
+//
+//////////////////////////////////////////////////////////////
+
+Use cfgfile;
+Use uo;
+
+Include "include/msgs";
+
+Program TextCMD_WritEquip(who, tag)
+  If (tag && (tag != "?"))
+    Var EquipFilePath := "equip2";
+    Var EquipFile := ReadConfigFile(EquipFilePath);
+    If (EquipFile)
+      Var EquipInfo:=FindConfigElem(EquipFile, tag);
+      If (!EquipInfo)
+        SendSysMessagePergon(who, "Wählt den Mobile, von dem das Equipment gesichert werden soll!");
+
+        Var whom:=Target(who);
+        If (whom)
+          SendSysMessagePergon(who, "Das Equipment wird gespeichert unter '"+tag+"'.");
+
+          Var props:={ };
+          Var prop:=struct;
+          prop.+name;
+          prop.+value;
+
+          Var propcount:=0;
+
+          ForEach eqitem in ListEquippedItems(whom)
+            prop.name:="Equip";
+            prop.value:=Hex(eqitem.objtype);
+
+            If (eqitem.color)
+              prop.value:=prop.value+" "+Hex(eqitem.color);
+            EndIf
+
+            prop.value:=PadStr(prop.value, 16);
+            prop.value:=prop.value+"// "+eqitem.desc;
+
+            propcount:=propcount+1;
+            props[propcount]:=prop;
+          EndForEach
+
+          AppendConfigFileElem(EquipFilePath, "Equipment", tag, props);
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Den Equipbezeichner '"+tag+"' gibt es bereits!");
+      EndIf
+
+      UnloadConfigFile(EquipFilePath);
+    Else
+      SendSysMessagePergon(who, "Die Datei '"+EquipFilePath+".cfg' existiert nicht!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr müsst noch einen Equipbezeichner angeben, also '.savequip bezeichner'.");
+  EndIf
+EndProgram
+
+/////////////////////////////////////////////////////////////
+// PadStr - Fuellt mit Leerzeichen auf, zwecks Formatierung
+/////////////////////////////////////////////////////////////
+
+Function PadStr(str, newlen)
+  Var addcount:=newlen-Len(str);
+
+  While (addcount>0)
+    str+=" ";
+    addcount-=1;
+  EndWhile
+
+  Return (str);
+EndFunction

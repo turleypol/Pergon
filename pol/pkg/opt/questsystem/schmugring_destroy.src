@@ -1,0 +1,26 @@
+/////////////////////////////////////////////////////////
+//
+// Schmugglerring-DestroySkript:
+// 						Setzt das wantedlevel zurueck, bei dem der es zerstoert
+//						
+//             
+//     Author: Hotny
+//
+//   Modifications:
+//
+/////////////////////////////////////////////////////////
+Use uo;
+
+program schmugring__destroy(item)
+	if (item.getprop("owners"))
+		var last_owner:=SystemFindObjectBySerial(item.getprop("owners"));
+		var last_owner_count := GetObjProperty(last_owner,"quest_mostwanted");
+		if (last_owner_count>0)
+				last_owner_count -= 1;
+		else
+				last_owner_count:=0;
+		endif
+		SetObjProperty(last_owner,"quest_mostwanted",last_owner_count);
+	endif
+	return 1;
+endprogram

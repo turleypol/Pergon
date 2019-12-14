@@ -1,0 +1,9 @@
+<h3 id="disarm">disarm</h3>
+
+<h4>Parameter: keine, <kbd>1</kbd> oder <kbd>2</kbd></h4>
+
+<p>Legt ein Waffenset in den Rucksack. Falls ein Parameter angegeben wird,
+kann man später mit arm unter Angabe desselben Parameters das
+Waffenset erneut anlegen.</p>
+
+<p>Siehe auch: <a data-href="#arm">arm</a></p>

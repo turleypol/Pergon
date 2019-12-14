@@ -1,0 +1,21 @@
+//////////////////////////////////////////////////////////////////////
+//
+//		namequestregion - QuestZone mit bestimmten Namen im Onlinefull versehen
+//
+//		Author: Hotny
+//
+//////////////////////////////////////////////////////////////////////
+
+use uo;
+
+Include "include/msgs";
+
+program TextCMD_namequestregion(who,regionname)
+	if (regionname)
+		SetGlobalProperty("questzonename",regionname);
+		SendSysMessagePergon(who, "QuestZone auf " +regionname+ " gesetzt");
+	else
+		EraseGlobalProperty("questzonename");
+		SendSysMessagePergon(who, "Name auf QuestZone zurück gesetzt");
+	endif	
+endprogram

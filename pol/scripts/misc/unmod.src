@@ -1,0 +1,71 @@
+use uo;
+use os;
+
+Include "include/modifyskill";
+
+program DeMod (params)
+
+   Var mod := lower(params[1]);
+   Var who := params[2];
+   Var amt := params[3];
+   Var duration := params[4];
+
+   if (who.isa(POLCLASS_NPC))
+      sleep(duration);
+      undo_mod(who, mod, amt);
+   else
+      Var retval := 0;
+
+      while (!retval)
+         sleep(duration);
+         retval := undo_mod(who, mod, amt);
+      endwhile
+   endif
+
+   EraseModFlags(who, mod);
+
+endprogram
+
+Function Undo_mod(who, mod, amt)
+  If (who && !who.dead)
+    Case (mod)
+      "str": SetStrModPergon(who, GetStrModPergon(who)-amt);
+      "dex": SetDexModPergon(who, GetDexModPergon(who)-amt);
+      "int": SetIntModPergon(who, GetIntModPergon(who)-amt);
+      "ar":  who.ar_mod := who.ar_mod - amt;
+      "p":   who.paralyzed := 0;
+             If ((!GetObjProperty(who, "frozen"))&&(!GetObjProperty(who," spell_statue"))) // unfreeze Mobile, sofern kein GM-Freeze erfolgte
+               who.frozen:=0;
+             EndIf
+      "b":   SetIntModPergon(who, GetIntModPergon(who)-amt);
+             SetDexModPergon(who, GetDexModPergon(who)-amt);
+             SetStrModPergon(who, GetStrModPergon(who)-amt);
+      "c":   SetIntModPergon(who, GetIntModPergon(who)+amt);
+             SetDexModPergon(who, GetDexModPergon(who)+amt);
+             SetStrModPergon(who, GetStrModPergon(who)+amt);
+    EndCase
+    IncRevision(who);
+    Return (1);
+  EndIf
+EndFunction
+
+function EraseModFlags (who, stat)
+
+   Var mod;
+
+   case (stat)
+      "str":	mod := "#ss";
+      "dex":	mod := "#dd";
+      "int":	mod := "#ii";
+      "ar":	mod := "#aa";
+      "p":	mod := "#pp";
+      "b":	mod := "#bb";
+      "c":	mod := "#cc";
+   endcase
+
+   if (who)
+      EraseObjProperty(who, mod);
+      return;
+   endif
+
+endfunction

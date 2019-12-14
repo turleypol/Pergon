@@ -1,0 +1,97 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file cure.src
+//
+// implements spell 202 <Cure> - "Gegengift"
+// cures poison in spelltarget (lowers poison level)
+//
+// Vers. 0.9       - 19.11.2001 Sebastian 'Bihinos' Giese
+// Vers. 1.1       - 02.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+// 20.12.2005 Turley - #partyheal für :partysystem:partyheal_cure
+
+use util;
+include ":drinking:common";
+include "../magicpergon";
+include "include/poison";
+
+Program cast_cure (params)
+    var caster;
+    var caston;
+    var power;
+    If (params[1] == "#MOB")
+        caster := params[2];
+        power  := params[3];
+        caston := params[4];
+    ElseIf (params[1] == "#SCROLL")
+        caster := params[2];
+        power  := params[3];
+        caston := TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+        If (!caston)
+            SendSysMessagePergon(caster, "Kein Ziel", "No target");
+            return;
+        EndIf
+    Else
+        caster := params[1];
+
+        power  := GetCastPowerPergon(caster, SPELLID_CLERIC_CURE);
+        caston := TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+        If (!caston)
+            SendSysMessagePergon(caster, "Kein Ziel", "No target");
+            return;
+        EndIf
+    EndIf
+
+    // Caster waehrend Zielauswahl verstorben etc.?
+    If (!caster or caster.dead)
+        return;
+    EndIf
+
+    TurnCharTo(caster, caston);
+    PerformAction(caster, ANIM_CAST_DIR);
+
+    // load spelldata
+    var spells := ReadConfigFile("::spells");
+    var spell  := FindConfigElem(spells, SPELLID_CLERIC_CURE);
+
+    // calc spelleffect according to casting power
+    var amnt := CInt(power*spell.primary/100.0);
+    If (spell.primarymin and spell.primarymin > amnt)
+        amnt := spell.primarymin;
+    ElseIf (spell.primarymax and spell.primarymax < amnt)
+        amnt := spell.primarymax;
+    EndIf
+
+    // at least a 50% chance of 1 point granted
+    If (amnt == 0)
+        amnt := RandomInt(2);
+    EndIf
+
+    PlaySoundEffect(caston, SFX_SPELL_CURE);
+    PlayObjectCenteredEffect(caston, FX_BLESS_EFFECT, 10, 10);
+
+    // decrease poison level
+    var poisonlevel := AddPoisonLevel(caston, -amnt);
+    If (amnt > 0)
+        caston.setprop(PROP_ALCOHOL, ALC_LEVEL_SOBER);
+    EndIf
+
+    // check if poison is (not) entirely removed
+    If (poisonlevel > 0)
+        SendSysMessagePergon(caster,
+            "Ihr lindert die Vergiftung von "+caston.name,
+            "You weakened the poison in "+caston.name+"'s body"
+        );
+        PrintTextAbovePrivatePergon(
+            caston, caster.name+" hat Eure Vergiftung gelindert",
+            caster.name+" weakened the poison flowing through you", caston
+        );
+    Else
+        SendSysMessagePergon(caster,
+            caston.name+" wurde durch Euch vom Gift befreit",
+            "You released "+caston.name+" from the poison"
+        );
+        PrintTextAbovePrivatePergon(
+            caston, caster.name+" hat Euch vom Gift befreit",
+            caster.name+" released you from the poison", caston
+        );
+    EndIf
+EndProgram

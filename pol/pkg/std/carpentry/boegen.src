@@ -1,0 +1,568 @@
+///////////////////////////////////////////////////////////////////////////
+//
+//   Modification:
+//     2001/05/23 Pauker: mit dem Schnitzwerkzeug, dazu gehoert die boegen.cfg
+//                        Holz + Bogensehne
+//     2001/11/13 Shinigami: Meldung, wenn man zu wenig Skill hat eingebaut
+//     18.03.2002 Fraggulus: den except-Skillcheck von statisch 80% auf dynamisch skill+40 geaendert
+//     10.04.2002 Fraggulus: wegens Schwere im Ledern und Einheitlichkeit auf (skill+35) gesetzt
+//     20.04.2002 Shinigami: wegens praktischer Unmoeglichkeit auf (skill+15) runtergesetzt
+//     17.03.2003 Fraggulus: Bogensehnenqualitaet existiert nicht und wurde somit aus der Berechnung entfernt
+//                           Bogen.Hp wird bei der Herstellung an die Bogen.MaxHp angepasst
+//     21.03.2003 Shinigami: Produzierbare Waffen an die neuen Tabellen angepasst
+//     27.10.2003 Phygon:    10 Bögen auf einmal herstellbar. Mengenabfrage auch bei Pfeilschäften.
+//     27.10.2003 Fraggulus: Material der Sehne wird uebernommen (sofern es keine normale ist)
+//     19.11.2003 Phygon:  Neues MenufactureGump
+//     01.12.2004 Commander: staerkerer Materialeinfluss auf Skillcheck; Material der Sehne geht
+//                           ebenso in Skillcheck und Qualitaet der Items ein; ExceptCheck angepasst
+//     04.14.2004 Commander: Werkzeugschaden auch bei Erfolg
+//     07.12.2004 Commander: Exc. Check modifiziert; Anpassung an Thaumaturgie/HS
+//     16.12.2004 Commander: Exc. Check an neue max. Werkzeugquali angepasst; Werkzeug braucht gewisse Quali um gute
+//                           Materialien verarbeiten zu können
+//     09.01.2005 Commander: dead-Check in Herstellungsschleife
+//     07.02.2005 Commander: Qualitaet von NPC - Werkzeugen auf 0.5 festgesetzt
+//     09.02.2005 Commander: Goldsehnen eingepflegt
+//     09.02.2005 Turley:    Mehrfachnutzung verhindert
+//     2005/04/20 Shinigami: nun sind auch wieder Meisterstuecke herstellbar... war ein Logikfehler drin
+//     2005/04/20 Shinigami: Meisterstueck/Except-Wahrscheinlichkeit komplett veraendert
+//     12.09.2005 Fraggulus: Namensgebung der Pfeilschaefte ueberarbeitet
+//
+///////////////////////////////////////////////////////////////////////////
+
+use attributes;
+use cfgfile;
+use file;
+use os;
+use polsys;
+use uo;
+use util;
+include "include/clock"; // logging
+include "include/manufacturegump";
+include "include/modifyskill";
+include "include/objtype";
+include "include/resources";
+
+Var meister_oder_except;
+Var werkzeugqual;
+
+program make_bow(character, Tool)
+  Var toolinfocprop:=struct;
+  If (!AccessiblePergon(character,Tool))
+    SendSysMessagePergon(character, "Ihr kommt nicht an das Werkzeug heran!");
+    Return 0;
+  endif
+
+  If (distance(character, Tool) > 1)
+    SendSysMessagePergon(character, "Das Werkzeug ist zu weit entfernt!");
+    Return 0;
+  EndIf
+  ReserveItem(Tool);
+
+  Var Mat_Cfg := ReadConfigFile(":crafting:materials");
+  Var mat2desc;                       //  string des materials der bogensehne
+
+  SendSysMessagePergon(character, "Worauf wollt Ihr das anwenden?");
+  Var use_on := target(character);
+
+  if (!use_on)
+    SendSysMessagePergon(character, "Kein gültiges Ziel!");
+    Return;
+  EndIf
+
+  If (!AccessiblePergon(character,use_on))
+    SendSysMessagePergon(character, "Ihr kommt da nicht ran!");
+    Return 0;
+  endif
+
+  If (distance(character, use_on) > 1)
+    SendSysMessagePergon(character, "Das ist zu weit entfernt!");
+    Return 0;
+  EndIf
+
+  If (!ReserveItem(use_on))
+    SendSysMessagePergon(character, "Dieser Gegenstand ist bereits in Gebrauch.");
+    return;
+  EndIf
+
+  Var holz := FindConfigelem(Mat_Cfg, use_on.objtype);
+  if (!holz)
+    SendSysMessagePergon(character, "Abbruch", "Abort");
+    Return;
+  EndIf
+
+  Var BowcraftConfigFile := ReadConfigFile("boegen");
+
+  if (use_on.objtype in GetUobjHoelzer())
+
+    // Werkzeug-Eigenschaften auslesen
+    Var werkzeug:=GetPropertyItem(tool);
+
+    // NPC - Werkzeug
+    If (!werkzeug.quality)
+      werkzeugqual := 0.5;
+    Else
+      werkzeugqual := werkzeug.quality;
+    EndIf
+
+    // commander: werkzeug gut genug fuer material?; kein check bei mischholz
+    If ((holz.quality > werkzeugqual) and (use_on.objtype != 0x1bdd))
+      SendSysMessagePergon(character, "Euer Werkzeug ist nicht gut genug fuer dieses Material!");
+      Return;
+    EndIf
+
+    // ---Auswahlmenue --- abhaengig vom jeweiligen Skill in Holzverarbeitung + Tool.skill und der Difficulty des Holzes
+
+    Var skillMod := (holz.difficulty/100.0) - werkzeugqual;
+    Var menu := MGCreateMenuFromCFG(character, "boegen", "boegen", Tool, SKILLID_HOLZVERARBEITUNG, skillMod);
+    If (!menu)
+      SendSysMessagePergon(character, "Ihr könnt mit dem Material nichts anfangen.");
+      Return;
+    EndIf
+
+    Var Auswahl_item := MGSelect(character, menu);
+    If (!Auswahl_item)
+      SendSysMessagePergon(character, "Abbruch", "Abort");
+      Return;
+    EndIf
+
+    If (!Auswahl_item.amount || Auswahl_item.amount < 0)
+      SendSysMessagePergon(character, "Abbruch", "Abort");
+      Return;
+    EndIf
+
+    If (Auswahl_item.amount > 10)
+      Auswahl_item.amount := 10;
+    EndIf
+    Var number := Auswahl_item.amount;
+
+    // --- Defaults im Tool speichern ---
+    MGSetDefault( Tool, "boegen", Auswahl_item);
+
+    Var ObjectConfig := BowcraftConfigFile[Auswahl_item.key];
+    if (!ObjectConfig)
+      SendSysMessagePergon(character, "Abbruch", "Abort");
+      Return;
+    EndIf
+
+    // für Schaefte gibts ne eigene Funktion, damit das ganze übersichtlicher wird.
+    if (auswahl_item.objtype == UOBJ_SHAFTS)
+      make_shafts(character, tool, use_on, holz, ObjectConfig);
+      Return;
+    EndIf
+
+    Var material   := ObjectConfig.material;
+    Var difficulty := ObjectConfig.Skill;
+    Var pointvalue := ObjectConfig.pointvalue;
+
+    if (material > use_on.amount)
+      SendSysMessagePergon(character, "Ihr habt nicht genug Holzstämme, um das zu fertigen.");
+      Return;
+    EndIf
+
+    Var bogensehne;
+
+    // beim Bogenbau braucht man auch eine Sehne
+    SendSysMessagePergon(character, "Wählt die Bogensehne aus, um einen Bogen oder eine Armbrust herzustellen.");
+    bogensehne := target(character);
+    if (!bogensehne)
+      SendSysMessagePergon(character, "Kein gültiges Ziel!");
+      Return;
+    Elseif ((bogensehne.objtype) != 0x1421)
+      SendSysMessagePergon(character, "Das ist keine Bogensehne.");
+      Return;
+    EndIf
+    ReserveItem(bogensehne);
+
+    Var SehnenContainer := bogensehne.container;
+
+
+    /*Var number := CInt(SendTextEntryGump(character, "Wieviele wollt Ihr anfertigen? (Max 10)", TE_STYLE_NUMERICAL, 2));
+    If (!number || number < 0)
+    SendSysMessagePergon(character, "Abbruch", "Abort");
+    ReleaseItem(bogensehne);
+    ReleaseItem(use_on);
+    Return;
+    ElseIf (number > 10)
+    number := 10;
+    EndIf*/
+
+    Var OldX:=character.x;
+    Var OldY:=character.y;
+
+    Var i;
+    For (i:=0;i<number;i+=1)
+      toolinfocprop:=struct;
+      // Abbruch durch Bewegen
+      If (OldX <> character.x || OldY <> character.y || character.dead)
+        break;
+      Else
+
+        If (material > use_on.amount)
+          SendSysMessagePergon(character, "Ihr habt nicht genug Holzstämme, um das zu fertigen.");
+          Return;
+        EndIf
+
+
+        If (!bogensehne)
+          bogensehne:=FindSubstance(SehnenContainer,0x1421,1,1)[1];
+        EndIf
+
+        If (!bogensehne)
+          SendSysMessagePergon(character, "Ihr habt keine Bogensehnen mehr.");
+          Return;
+        EndIf
+
+        // Man merkt erst später, dass man den Bogen verhunzt hat.
+        playsoundeffect(character, SFX_57);
+        SleepMs(1800);
+        playsoundeffect(character, SFX_57);
+        SleepMs(1800);
+
+        // Commander, sehnenmetalldifficulty beim skillcheck beruecksichtigen
+        Var sehnen_difficulty := GetChordDiff(bogensehne);
+        Var sehnen_quality:= GetChordQual(bogensehne);
+
+        Var skill       := CInt(difficulty + (holz.difficulty / 100.0) * 0.8 + sehnen_difficulty * 0.2);
+        Var skilloffset := CInt(skill - werkzeugqual);
+        If (skilloffset<1)
+          skilloffset:=1;
+        EndIf
+
+        If (CheckSkillPergon(character, SKILLID_HOLZVERARBEITUNG, skilloffset, CInt (difficulty*pointvalue)))
+          playsoundeffect(character, SFX_57);
+          SleepMs(2400);
+
+          Var bow := CreateItemInBackpackPergon(character, auswahl_item.objtype, 1);
+          If (!bow)
+            SendSysMessagePergon(character, "In Eurem Rucksack ist zu wenig Platz.");
+            bow := CreateItemAtLocationPergon(character.x, character.y, character.z, auswahl_item.objtype, 1,character.realm); // Dann halt aufm Boden versuchen
+            If (!bow)
+              SendSysMessagePergon(character, "Der Bogen konnte nicht erzeugt werden!"); // Dann halt gar nicht
+              Return;
+            EndIf
+          EndIf
+          bow.movable := 1;
+
+          //bow.name := bow.desc + " aus " + holz.shortdesc;
+          bow.name:=bow.desc;
+          toolinfocprop.+material:=holz.shortdesc;
+          mat2desc := GetChordName(bogensehne);     // Funktion extrahiert Material der Bogensehne
+          If (len(mat2desc) > 4)              // -> keine NPC - Sehne
+            toolinfocprop.material+=" und "+mat2desc;
+            //bow.name := bow.desc + " und " + mat2desc;
+          EndIf
+
+          Var bow_quality := (60 + GetSkillPergon(character, SKILLID_HOLZVERARBEITUNG))/100.0;
+          Var bow_preis:= CInt(material * GetPropertyPrice(use_on) + GetPropertyPrice(bogensehne));
+
+          // Logging
+          // Var text:=bow.desc+" ["+Lower(Hex(auswahl_item.objtype))+"] mit "+tool.desc+" ["+Lower(Hex(tool.objtype))+" / "+werkzeug+"] aus "+
+          //   use_on.desc+" "+holz.quality+" ["+Lower(Hex(use_on.objtype))+"] und "+
+          //   bogensehne.desc+" "+sehnen_quality+" ["+Lower(Hex(bogensehne.objtype))+"] ";
+          // Var time:=GetDateTimeStr();
+
+          // Meisterstuecke und Excepts
+          //   matquality   [Rohstoffe]         = 0.69  bis 3.79
+          //   werkzeugqual [Werkzeug]          = 0.552 bis 4.7375
+          //   char_skill   [Herstellungsskill] = 0     bis 130
+
+          Var matquality:=holz.quality*0.8+sehnen_quality*0.2; // In die tatsaechlichen Boegen geht mehr der Skill ein, aber auch dies
+          Var char_skill:=GetSkillPergon(character, SKILLID_HOLZVERARBEITUNG);
+
+          // Logging
+          // text+="mit Skill "+SKILLID_HOLZVERARBEITUNG+" (Check "+skilloffset+"% von "+char_skill+"%) und Meister/Excep-Rate=(("+
+          //   matquality+"-0.69)*(-62.9)+250)+("+werkzeugqual+"*6.333)+("+char_skill+"/8.67)="+
+          //   (((matquality-0.69)*(-62.9)+250)+(werkzeugqual*6.333)+(char_skill/8.67));
+
+          If ((RandomInt(5000)<((matquality-0.69)*(-62.9)+250)+(werkzeugqual*6.333)+(char_skill/8.67)) And (char_skill>40))
+            CheckSkillPergon(character, SKILLID_HOLZVERARBEITUNG, (char_skill-40)*0.78+50, 120); // Meisterstuecke/Excepts geben auch Punkte
+
+            If (CheckSkillPergon(character, SKILLID_HOLZVERARBEITUNG, skilloffset + 15, difficulty * 2))
+              // Logging
+              // text:="Exceptional "+text;
+
+              bow.name    := "Exceptional " + bow.name;// + " [" + character.name + "]";
+              toolinfocprop.+manufacturer:=character.name;
+              bow_quality *= 1.5;
+              bow_preis   *= 1.5;
+              meister_oder_except := 1;
+            Else
+              // Logging
+              // text:="Meisterstueck "+text;
+
+              bow.name    := "Meisterstueck " + bow.name;// + " [" + character.name + "]";
+              toolinfocprop.+manufacturer:=character.name;
+              bow_quality *= 1.2;
+              bow_preis   *= 1.2;
+              meister_oder_except := 0.5;
+            EndIf
+
+            //  Commander: Anpassung an Thaumaturgie, CProp status_except [0;20]
+            //  Werkzeug, Skill, Material & Zufall geht zu gleichen Teilen ein
+            //  Holz/Metallqualitaet maximal 3.79
+            //  Skill / 25 -> ab Legende 5 Punkte
+            //  Werkzeug - Qualitaet ist maximal 4.7375, auf [0;5] skalieren
+            //  abschliessend Zufallswert in [0;5]
+            //  Check, ob irgendwie mehr als 20 rauskommt (eigentlich nicht moeglich)
+            //  Meisterstueck nur die Haelfte des Bonus
+
+            Var except_bonus;
+            except_bonus := CInt(GetSkillPergon(character, SKILLID_HOLZVERARBEITUNG) / 25);
+            except_bonus += CInt(werkzeugqual / 4.7375 * 5);
+
+            except_bonus += CInt((holz.quality + sehnen_quality) / 7.58 * 5);
+
+            except_bonus += RandomInt(6);
+
+            If (except_bonus >= 20)
+              except_bonus := 20;
+            EndIf
+
+            except_bonus := CInt(except_bonus * meister_oder_except);
+
+            SetObjProperty( bow, "status_except", except_bonus );
+
+          EndIf
+
+          SendSysMessagePergon(character, "Ihr fertigt "+bow.name);
+          bow.setprop(TOOLINFO,toolinfocprop);
+          IncRevision(bow);
+          // Veraendern der Eigenschaften der Boegen durch die versch. Holzeigenschaften
+
+
+          // Commander: sehnenquali mit beruecksichtigen
+          bow_quality *= (0.5 + matquality/3.0);
+
+          Var dummy;
+          dummy := GetConfigInt(holz, "Color");
+          if (dummy)
+            bow.color := dummy;
+          EndIf
+          //        dummy := GetConfigInt(holz, "Weight");
+          //        if (dummy)
+          //          bow.weight := (bow.weight * dummy);
+          //        EndIf
+
+          //Var itemdesc := ReadConfigFile("::itemdesc");
+          //Var bogen:=itemdesc[bow.objtype]; // Eigenschaften aus globaler itemdesc.cfg
+          /*
+          if (character.cmdlevel >= CMDLEVEL_SEER)
+          print("*******boegen.src*********");
+          print("Tool_quality:"+werkzeugqual);
+          print("Tool_hp:"+werkzeug.hp);
+          print("--------------------------");
+          print("Skill:"+skilloffset);
+          print("Rohpoints:"+CInt (difficulty*pointvalue));
+          print("Quali Material1:"+holz.quality);
+          print("Quali Bogensehne:"+bogensehne.quality);
+          print("Material.hp"+(holz.hp/10.0));
+          print("Material.difficulty:"+(holz.difficulty/100.0));
+          print("Quality: "+bow.quality);
+          print("Color: "+bow.color);
+          print("Gewicht: "+bow.weight);
+          print("Price Holz: "+GetPropertyPrice(use_on));
+          print("Price Sehne: "+GetPropertyPrice(Auswahl_bogensehne));
+          print("Price: "+bow_preis);
+          print("*************************");
+          EndIf
+          */
+          // SetPropertyItem(item, quality, hp, maxhp, qualityorig, maxhporig, type, skillid, skillrepair, price)
+
+          bow.quality := bow_quality;
+          SetPropertyItem(bow, bow.quality, bow.maxhp, bow.maxhp, bow.quality, bow.maxhp, "c", SKILLID_HOLZVERARBEITUNG, skill, CInt(bow_preis));
+
+          // Logging
+          // text:=character.name+" ["+character.x+", "+character.y+"] "+text+" ("+GetObjProperty(bow, "Werkzeug")+")";
+          // LogToFile("z_boegen.log", time+text);
+          // LogToFile("z_char_b_"+character.name+" - "+Lower(Hex(character.serial))+".log", time+text);
+
+          If (bow.hp != bow.maxhp)
+            Syslog("HINWEIS: Bogen.hp != Bogen.MaxHp: " + bow.serial);
+            bow.hp := bow.maxhp;
+          EndIf
+
+          SubtractAmount(use_on, material);
+          SubtractAmount(bogensehne,1);
+
+          //  kleine Wahrscheinlichkeit auf Beschaedigung der Werkzeugs
+          If (RandomInt(100) < 2)
+            If (SetWerkzeugSchaden(character, tool, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!"))
+              Return;
+            EndIf
+          EndIf
+
+        Else  // CheckSkillPergon hat nicht geklappt
+
+          Var SchredderHolz := RandomInt(CInt(material/2.0));
+          If (SchredderHolz < 1)
+            SchredderHolz := 1;
+          EndIf
+          SubtractAmount(use_on, SchredderHolz);
+          If (bogensehne)
+            SubtractAmount(bogensehne,1);
+          EndIf
+          SendSysMessagePergon(character, "Ihr vernichtet einige Holzstämme.");
+          If (SetWerkzeugSchaden(character, tool, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!"))
+            Return;
+          EndIf
+
+        EndIf // CheckSkillPergon
+      EndIf  // hat der Char sich auch nicht bewegt?
+    EndFor  // Wieviel soll hergestellt werden?
+
+  Else
+    SendSysMessagePergon(character, "Ihr wisst nicht, wie man das zusammen benutzt.");
+  EndIf
+endprogram
+
+////////////////////////////////
+// Produktion der Pfeilschäfte
+////////////////////////////////
+
+Function make_shafts(character, werkzeug_obj, holz_obj, holz, ObjectConfig)
+
+  Var difficulty := ObjectConfig.difficulty;
+  Var pointvalue := ObjectConfig.pointvalue;
+
+  Var skilloffset:=CInt(difficulty - werkzeugqual + (holz.difficulty/100));
+  //Var skill:=CInt(difficulty+(holz.difficulty/100));
+  If (skilloffset<1)
+    skilloffset:=1;
+  EndIf
+
+  If (holz_obj.amount < 10) // mind. 10 Stueck auf einmal, um Massenschnitzen fuer Skillsteigerung zu verhindern
+    SendSysMessagePergon(character, "Es lohnt sich nicht, daraus etwas zu fertigen.");
+    Return;
+  EndIf
+
+  Var number := CInt(SendTextEntryGump(character, "Wieviele wollt Ihr anfertigen? (10-"+holz_obj.amount+")", TE_STYLE_NUMERICAL));
+  If (!number || number < 10)
+    SendSysMessagePergon(character, "Abbruch", "Abort.");
+    ReleaseItem(holz_obj);
+    Return;
+  ElseIf (number > holz_obj.amount)
+    number := holz_obj.amount;
+  EndIf
+
+  If (CheckSkillPergon(character, SKILLID_HOLZVERARBEITUNG, skilloffset, CInt(difficulty*pointvalue)))
+    playsoundeffect(character, SFX_57);
+    SleepMs(1800);
+    playsoundeffect(character, SFX_57);
+    SleepMs(1800);
+    playsoundeffect(character, SFX_57);
+    SleepMs(2400);
+
+    // Erzeugt die Pfeilschäfte in der richtigen Farbe und dem richtigen Gewicht
+    Var bshafts := CreateItemInBackpackPergon(character, GetItemDescriptor(UOBJ_SHAFTS), number, holz.color);
+    If (bshafts)
+      If (!bshafts.name[" aus "])
+        bshafts.name := "Pfeilscha%efte/ft% aus " + holz.shortdesc;  // "Pfeilscha%efte/ft%" hardcoden, da sonst beim Namen nur Muell rauskommt
+      ElseIf (!bshafts.name[" aus "+holz.shortdesc])
+        SysLog("FEHLER: Der bestehende Shaft-Stack '"+bshafts.name+"' sollte in irgendwas aus '"+holz.shortdesc+"' umbenannt werden!");
+      EndIf
+
+      SubtractAmount(holz_obj, number);
+      SendSysMessagePergon(character, "Ihr fertigt einige Schäfte und legt sie in Euren Rucksack.");
+    Else
+      SendSysMessagePergon(character, "Die Schäfte konnten nicht erzeugt werden! Ist der Rucksack zu voll?");
+      Return;
+    EndIf
+
+  Else // CheckSkillPergon hat nicht geklappt:
+
+    Var SchredderHolz := RandomInt(10 + 5);
+    If (SchredderHolz > number)
+      SchredderHolz := CInt(number/2.0);
+    ElseIf (SchredderHolz < 1)
+      SchredderHolz := 1;
+    EndIf
+
+    SubtractAmount(holz_obj, SchredderHolz);
+    SendSysMessagePergon(character, "Ihr vernichtet einige Holzstämme.");
+    If (SetWerkzeugSchaden(character, werkzeug_obj, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!"))
+      Return;
+    EndIf
+
+  EndIf // CheckSkillPergon
+
+EndFunction
+
+//
+// liefert metalltyp der sehne
+//
+Function GetChordType(chord)
+
+  Var metal_cfg:= ReadConfigFile(":blacksmithy:materials_local");
+  Var chord_type;
+  Case (chord)
+    "Eisen":      chord_type := FindConfigelem(metal_cfg, 0x6300);
+    "Molybdaen":  chord_type := FindConfigelem(metal_cfg, 0x6301);
+    "Mangan":     chord_type := FindConfigelem(metal_cfg, 0x6302);
+    "Iridium":    chord_type := FindConfigelem(metal_cfg, 0x6303);
+    "Tenerum":    chord_type := FindConfigelem(metal_cfg, 0x6304);
+    "Indium":     chord_type := FindConfigelem(metal_cfg, 0x6305);
+    "Cerium":     chord_type := FindConfigelem(metal_cfg, 0x630b);
+    "Prodymium":  chord_type := FindConfigelem(metal_cfg, 0x630c);
+    "Lanthan":    chord_type := FindConfigelem(metal_cfg, 0x6306);
+    "Neodymium":  chord_type := FindConfigelem(metal_cfg, 0x630d);
+    "Wolfram":    chord_type := FindConfigelem(metal_cfg, 0x6307);
+    "Promethium": chord_type := FindConfigelem(metal_cfg, 0x630e);
+    "Samarium":   chord_type := FindConfigelem(metal_cfg, 0x630f);
+    "Ropium":     chord_type := FindConfigelem(metal_cfg, 0x6310);
+    "Platin":     chord_type := FindConfigelem(metal_cfg, 0x6308);
+    "Gadonium":   chord_type := FindConfigelem(metal_cfg, 0x6311);
+    "Terbium":    chord_type := FindConfigelem(metal_cfg, 0x6312);
+    "Chrom":      chord_type := FindConfigelem(metal_cfg, 0x6309);
+    "Holmium":    chord_type := FindConfigelem(metal_cfg, 0x6313);
+    "Solarum":    chord_type := FindConfigelem(metal_cfg, 0x6315);
+    "Hydrium":    chord_type := FindConfigelem(metal_cfg, 0x6316);
+    "Lavarium":   chord_type := FindConfigelem(metal_cfg, 0x6317);
+    "Teradium":   chord_type := FindConfigelem(metal_cfg, 0x6318);
+    "Titanium":   chord_type := FindConfigelem(metal_cfg, 0x630a);
+    "Erbium":     chord_type := FindConfigelem(metal_cfg, 0x6314);
+    "Teratum":    chord_type := FindConfigelem(metal_cfg, 0x6319);
+    "Energium":   chord_type := FindConfigelem(metal_cfg, 0x631a);
+    "Gold":       chord_type := FindConfigelem(metal_cfg, 0x1be9);
+
+    default: Return (0);
+  EndCase
+  Return (chord_type);
+EndFunction
+
+//
+//  liefert schwierigkeit des sehnenmetalls
+//
+Function GetChordDiff(chord)
+  Var metal_type := GetChordType(GetChordName(chord));
+  Return (metal_type.difficulty);
+EndFunction
+
+//
+//  liefert qualitaet des sehnenmetalls
+//
+Function GetChordQual(chord)
+  Var metal_type := GetChordType(GetChordName(chord));
+  Return (metal_type.quality);
+EndFunction
+
+//
+//  liefert name des sehnenmaterials
+//
+Function GetChordName(chord)
+  // Material der Sehne anhaengen, wenns keine normale ist
+  Var chord_material;
+  If (chord.getprop(TOOLINFO));
+    Return (chord.getprop(TOOLINFO).material);
+  EndIf
+  Var loc := find(chord.desc, "]", 1);      // bei except-Bogensehnen den Namen "[Quandor aus Vesper]" überspringen
+  If (!(loc > 0))
+    loc := 0;
+  EndIf
+  loc := find(lower(chord.desc), " aus ", loc+1);
+  If (loc > 0)
+    chord_material := chord.desc[loc + 5, len(chord.desc) - loc];
+    Return (chord_material);
+  Else
+    Return ("");
+  EndIf
+EndFunction

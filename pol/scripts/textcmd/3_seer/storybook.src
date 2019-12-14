@@ -1,0 +1,96 @@
+////////////////////////////////////////
+//
+//   StoryBook - Erzeugt ein Storybuch
+//
+//
+////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/itemnpc";
+Include "include/msgs";
+
+////////////////////////
+// Klassendefinitionen
+////////////////////////
+
+Var content:=struct;              // Buchinhalt
+       content.+titleauthor:={ }; //   Titel und Autor
+       content.+story:="";        //   Inhalt
+
+/////////////////////
+// Buchdefinitionen
+/////////////////////
+
+Var empty:=content;
+       empty.titleauthor:={"", "Die Geschichte", "von", "Pergon", "", "Zoltan Nebar"};
+       empty.story:="Mein Name ist Zoltan Nebar. Ich bin Gelehrter der "+
+         "Wissenschaften der Natur und Geschichte. Die sind die Fakten, "+
+         "die ich ueber unsere Welt bisher zusammengetragen habe. Viele "+
+         "der Hinweise sind nur sehr vage und aus alten, muendlichen "+
+         "Ueberlieferungen. Wie lange diese Welt schon existiert weis "+
+         "keiner genau. Eins aber ist sicher, seit der Erschaffung der "+
+         "Welt wird sie unter 2 Goettern aufgeteilt. Ihre Namen sind Khas "+
+         "und Osin. Beide zusammen stellten ein Gleichgewicht dar. Pergon "+
+         "war kaum besiedelt, als es zu einem Streit zwischen den Goettern "+
+         "kam. Auf ihren Welten brachen Kriege aus. Pergon spielte wegen "+
+         "der nur kleinen Anzahl an Glaeubigen eine geringe Rolle in dem "+
+         "Konflikt. Im Verlaufe des Krieges gelang es Khas die Heimatwelt "+
+         "von Osin zu erobern. Dabei konnte er seinen einzigen Sohn, "+
+         "Orssol, gefangen nehmen. Osin war gezwungen sich aus dem Konfikt "+
+         "zurueckzuziehen, um neue Kraefte zu sammeln. Vor etwa 10000 "+
+         "Jahren begann Osin damit, hier auf Pergon einen neue Streitmacht "+
+         "zu formieren, die 'Himmlische Armee'. Er versammelte seine "+
+         "treuesten und glaeubigsten Anhaenger um sich herum. Natuerlich "+
+         "erfuhr Khas davon und begann seine eigenen Legionen zu versammeln. "+
+         "Die Armee ist bis heute als 'Dunkele Horde' bekannt. Die folgenden "+
+         "Jahrehunderte muessen fuer die damaligen Bewohner grausam und "+
+         "bitter gewesen sein. Die tobenden Schlachten vernichteten ganze "+
+         "Kontinente. Viele der Pergoner starben. Die ist wohl auch ein "+
+         "Grund warum so wenig ueber die Geschichte bekannt ist. Die "+
+         "entscheidene Schlacht soll ueber dem offenem Meer gefuehrt worden "+
+         "sein. Osin unterlag aber der verblieben Streitmacht der Dunkelen "+
+         "Horde und zog sich auf das letzte Stueck Land Pergon`s zurueck. "+
+         "Dies ist die Insel auf der wir heute noch leben. Osin errichtete "+
+         "mit einem mystischen Artefakt eine Schutzbarriere um einen Teil "+
+         "des Landes. Khas belagerte diese Barriere mehere Jahrzehnte, "+
+         "jedoch gelang es ihm nicht sie zu durchbrechen. Osin wurde nicht "+
+         "mehr gesehen und Khas brach die Belagerung ab, um als Sieger "+
+         "ueber die Welten zu herrschen. Seit diesem Tag gab es keine "+
+         "grossen Kriege mehr auf Pergon. Soweit die Erzaehlungen. Wenn "+
+         "die Legende stimmt sind wir Nachkommen der letzten Pergoner und "+
+         "vielleicht steckt in uns ein Teil der Himmlischen Armee. Osin "+
+         "ist nicht wieder gesehen worden. Haelt er sich noch immer hier "+
+         "auf ? Was ist mit seinem Sohn passiert ? Die Barriere jedefalls, "+
+         "die uns vor Angriffen von Monstern schuetzt, haelt bis heute. "+
+         "Diese mystische Artefakt muss also noch intakt sein und sich "+
+         "irgendwo auf Pergon befinden. Ein Teil des Volkes glaubt fest an "+
+         "die alten Legenden, dass Osin wieder auftauchen wird und Pergon "+
+         "eine neue, bessere Zeit erleben wird. Ich als Gelehrter werde "+
+         "weiter nach Hinweisen und Spuren suchen, bevor ich mich in einen "+
+         "fanatischen Glauben stuerze, der schon soviel Leid gebracht hat. "+
+         "[weitere Zeilen befinden sich in der Bibliothek]";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_StoryBook(who)
+  Var book:=CreateItemInBackpackPergon(who, 0x0fef, 1);
+  If (book)
+    book.name:="Die Geschichte von Pergon";
+    SetObjProperty(book, "bookcontent", empty);
+    SetObjProperty(book, "writeable", 0);
+  Else
+    SysLog(who.name+" mag kein Buch !");
+  EndIf
+EndProgram

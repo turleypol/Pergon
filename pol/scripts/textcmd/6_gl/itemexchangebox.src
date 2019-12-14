@@ -1,0 +1,149 @@
+//////////////////////////////////////////////////////////////////
+//
+//   StaticsExchange - Exchange all Objects from Source to Dest Location
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+//////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/errormsg";
+Include "include/itemnpc";
+Include "include/msgs";
+
+///////////////
+// Konstanten
+///////////////
+
+Const ERRORMSGS_GERMAN:=
+  "{}StaticsExchange: ExchangeBox aktiviert..."+
+  "{}StaticsExchange: ExchangeBox beendet."+
+  "{}X1 muss kleiner-gleich X2 bzw. Y1 muss kleiner-gleich Y2 sein. Z1 muss kleiner-gleich Z2 sein!"+
+  "{}%% darf nur 0 bis 4095 sein!"+
+  "{}%% darf nur 0 bis 6143 sein!"+
+  "{}%% darf nur -128 bis 127 sein!"+
+  "{}%% darf nur 0 bis 16383 sein!"+
+  "{}Sie muessen 8 Paramter angeben: X1 Y1 Z1 X2 Y2 Z2 ObjType1 ObjType2"+
+  "{}Die Objekte wurden vertauscht."+
+  "{}Abbruch";
+Const ERRORMSGS_ENGLISH:=
+  "{}StaticsExchange: ExchangeBox started..."+
+  "{}StaticsExchange: ExchangeBox done."+
+  "{}X1 must be lower/equal X2 and Y1 must be lower/equal Y2 and Z1 must be lower/equal Z2!"+
+  "{}%% must be between 0 and 4095!"+
+  "{}%% must be between 0 and 6143!"+
+  "{}%% must be between -128 and 127!"+
+  "{}%% must be between 0 and 16383!"+
+  "{}U've to enter 8 Paramters: X1 Y1 Z1 X2 Y2 Z2 ObjType1 ObjType2"+
+  "{}Objects have been exchanged."+
+  "{}Cancel";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_StaticsMove(who, params)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  params:=SplitWords(params);
+  If ((params.size()>=8) And (params.size()<=9))
+    If ((0<=CInt(params[1])) And (CInt(params[1])<6144))
+      If ((0<=CInt(params[2])) And (CInt(params[2])<4096))
+        If ((-129<CInt(params[3])) And (CInt(params[3])<128))
+          If ((0<=CInt(params[4])) And (CInt(params[4])<6144))
+            If ((0<=CInt(params[5])) And (CInt(params[5])<4096))
+              If ((-129<CInt(params[6])) And (CInt(params[6])<128))
+                If ((0<=CInt(params[7])) And (CInt(params[7])<16384))
+                  If ((0<=CInt(params[8])) And (CInt(params[8])<16384))
+
+                    If ((CInt(params[1])<=CInt(params[4])) And (CInt(params[2])<=CInt(params[5])) And
+                        (CInt(params[3])<=CInt(params[6])))
+                      Var prescolor;
+                      If (params[7])
+                        prescolor:= 1;
+                      Else
+                        prescolor:= 0;
+                      EndIf
+
+                      PrintErrorMessage(1);
+                      ExchangeBox(who, CInt(params[1]), CInt(params[2]), CInt(params[3]), CInt(params[4]),
+                                       CInt(params[5]), CInt(params[6]), CInt(params[7]), CInt(params[8]), prescolor);
+                      PrintErrorMessage(2);
+                    Else
+                      PrintErrorMessage(3, {}, who);
+                    EndIf
+                  Else
+                    PrintErrorMessage(7, {"ObjType2"}, who);
+                  EndIf
+                Else
+                  PrintErrorMessage(7, {"ObjType1"}, who);
+                EndIf
+              Else
+                PrintErrorMessage(6, {"Z2"}, who);
+              EndIf
+            Else
+              PrintErrorMessage(5, {"Y2"}, who);
+            EndIf
+          Else
+            PrintErrorMessage(4, {"X2"}, who);
+          EndIf
+        Else
+          PrintErrorMessage(6, {"Z1"}, who);
+        EndIf
+      Else
+        PrintErrorMessage(5, {"Y1"}, who);
+      EndIf
+    Else
+      PrintErrorMessage(4, {"X1"}, who);
+    EndIf
+  Else
+    PrintErrorMessage(8, {}, who);
+  EndIf
+EndProgram
+
+///////////////////////////////////////
+// ExchangeBox - Vertauscht die Items
+///////////////////////////////////////
+
+Function ExchangeBox(who, x1, y1, z1, x2, y2, z2, olditem, newitem, colorpreserve)
+  Var x, y, z;
+  Var movable;
+  Var color;
+  Var item;
+
+  ForEach object in ListObjectsInBox(x1, y1, z1, x2, y2, z2,who.realm)
+    If (object.isa(POLCLASS_ITEM) And (object.objtype==olditem))
+      x:= object.x;
+      y:= object.y;
+      z:= object.z;
+      movable:=object.movable;
+      If (colorpreserve)
+        color:= object.color;
+      Else
+      	color:= 0;
+      EndIf
+
+      DestroyItem(object);
+      item:= CreateItemAtLocationPergon(x, y, z, newitem, 1,who.realm);
+      If (item)
+        item.movable:= movable;
+        item.color:= color;
+        item.decayat:= 0;
+      EndIf
+    EndIf
+  EndForEach
+
+  PrintErrorMessage(9, {}, who);
+EndFunction

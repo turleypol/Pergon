@@ -1,0 +1,42 @@
+//**************************************************************************************************
+// Script file blinded.src
+//
+//    is called, when a Player is blinded by the Necromancer's Spell
+//
+//      Vers. 0.9       - 19.11.2001 Sebastian 'Bihinos' Giese
+//      Vers. 1.1       - 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//***************************************************************************************************
+
+use os;
+use uo;
+
+Include "include/client";
+Include "include/npc";
+Include "include/msgs";
+Include ":daymoonweather:daymoonweather";
+
+program blinded (params)
+
+  Var who:= params[1];                  // get char and duration
+
+  If (!params[2]) // logon aufruf
+    PrintTextAbovePrivatePergon(who, "Ihr seid plötzlich mit Blindheit geschlagen",
+                                     "Suddenly your are afflicted with blindness", who);
+  Else
+    PrintTextAbovePrivatePergon(who, "Ihr seid mit Blindheit geschlagen",
+                                     "Your are afflicted with blindness", who);
+  EndIf
+  while (GetObjProperty(who, "spell_blind"))
+    If (!who.connected)  // Ausgeloggt also beenden, logon startet neue Instanz
+      Return;
+    EndIf
+    SetLightLevelPergon(who, MAXNIGHTLIGHT, 3);                 // set lightlevel for 3 seconds to ultimate darkness
+    sleep(3);                     // sleep for 3 seconds
+  endwhile
+
+  PlaySoundEffect(who, SFX_SPELL_NIGHT_SIGHT);
+  PrintTextAbovePrivatePergon(who, "Die Blindheit wurde von Euch genommen",
+                                   "Your Blindness has been taken from you", who);
+
+endprogram

@@ -1,0 +1,109 @@
+//////////////////////////////////////////////////////////////////////////////
+//
+//   harvest - Wildniskundepflanzen ernten
+//
+//
+//     Author: Turley
+//
+//
+//   Modification:
+//     21.05.07 Turley - Init
+//     29.07.07 Taya - Text gehändert Zeile 107
+//
+//////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+
+Include "include/modifyskill";
+Include ":newspells:magicpergon";
+
+Program harvest(who,plant)
+  Var products,product,maxamount, amount:=0;
+  If (GetObjProperty(who, "#UsesSkill") > ReadGameClock())
+    SendSysMessagePergon(who, "Ihr müsst noch ein wenig warten.");
+    Return(0);
+  EndIf
+
+  SetObjProperty(who, "#UsesSkill", ReadGameClock() + 2);           // Delay bis zur nächsten Nutzung eines Skills 2 Sekunden
+
+  If (!AccessiblePergon(who, plant))
+    SendSysMessagePergon(who, "Ihr kommt da nicht ran!", "You cannot reach that!");
+    Return;
+  EndIf
+
+  Var cfg:=ReadConfigFile("camping");
+  Var ID:=plant.getprop("ID");
+  Var plant_cfg:=cfg[ID];
+  If (!plant_cfg)
+    Return;
+  EndIf
+  Var difficulty:=CInt(plant_cfg.Difficulty);
+
+  var preview_product:=plant.getprop("preview");  // Wurde schonmal etwas gemacht?
+  If (!preview_product)
+    products:=GetConfigStringArray(plant_cfg,"product");
+    product:=products[RandomInt(products.size())+1];
+    product:=SplitWords(product);
+    maxamount:=CInt(product[2]);
+    product:=CInt(product[1]);
+    plant.setprop("preview",{product,maxamount,0});
+  Else
+    product:=preview_product[1];
+    maxamount:=preview_product[2];
+    amount:=preview_product[3];
+  EndIf
+
+  Var item:=plant.getprop("blink"); // Geblinke zerstören
+  If (item)
+    item:=SystemFindObjectBySerial(item);
+    If (item)
+      DestroyItem(item);
+      plant.eraseprop("blink");
+    EndIf
+  EndIf
+
+  If (!ReserveItem(plant))
+    SendSysMessagePergon(who,"An dieser Pflanze wird schon gearbeitet","");
+    Return;
+  EndIf
+
+  // Messer im Backpack?
+  If (!(FindSubstance(who.backpack, 0x0f51, 1, 0) || FindSubstance(who.backpack, 0x13f6, 1, 0)
+     || FindSubstance(who.backpack, 0x0ec4, 1, 0) || FindSubstance(who.backpack, 0x0ec2, 1, 0)))
+    SendSysMessagePergon(who,
+      "Euch fehlt ein Messer zum Bearbeiten der Pflanzen.",
+      "A knife is missing to process the plants."
+    );
+    return;
+  EndIf
+
+  Var oldx:=who.x;
+  Var oldy:=who.y;
+  TurnCharTo(who, plant); // der Farmende soll richtung pflanze schauen
+  While ((amount<maxamount) && (who.connected))
+    If ((oldx<>who.x) || (oldy<>who.y))
+      SendSysMessagePergon(who,"Ihr beendet das Ernten.");
+      Return;
+    EndIf
+    PerformAction(who, 0x0020);
+    PlaySoundEffect(who, 0x56);
+    If (CheckSkillPergon(who, SKILLID_WILDNISKUNDE, difficulty, difficulty*2))
+       item:=CreateItemInBackpackPergon(who,product,1);
+       SendSysMessagePergon(who, "Ihr legt das Produkt in Euren Rucksack.", "You put the product in your backpack.");
+       If (!item)
+         item:=CreateItemAtLocationPergon(who.x, who.y, who.z,product,1, who.realm);
+         SendSysMessagePergon(who, "Euer Rucksack ist voll!", "Your backpack is full!");
+       EndIf
+       item.movable:=1;
+    Else
+      SendSysMessagePergon(who, "Ihr scheitert beim Ernten");
+    EndIf
+    amount+=1;
+    plant.setprop("preview",{product,maxamount,amount});
+    Sleep(1);
+  EndWhile
+
+  SendSysMessagePergon(who,"Ihr beendet das Ernten.");
+
+  DestroyItem(plant);
+EndProgram

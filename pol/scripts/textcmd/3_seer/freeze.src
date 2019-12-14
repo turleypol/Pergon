@@ -1,0 +1,25 @@
+/*
+ *  Textbefehl .freeze, um ein Mobile einzufrieren
+ */
+ 
+Include "include/msgs";
+
+Program TXTCMD_Freeze(who)
+    
+  SendSysMessagePergon(who, "Wen wollt Ihr einfrieren?");
+  
+  var tgt := Target(who, TGTOPT_NOCHECK_LOS+TGTOPT_NEUTRAL);
+  If (tgt.isa(POLCLASS_MOBILE))
+    tgt.frozen := 1;
+    IncRevision(tgt);
+    
+    // damit der Spellchecker es nicht einfach entfernt
+    SetObjProperty(tgt, "frozen", 1);
+    PrintTextAbovePrivatePergon(tgt, tgt.name+" ist eingefroren.", "", who);
+    If (!tgt.isa(POLCLASS_NPC))
+      SysLog(CharInfoStr(who)+" friert "+CharInfoStr(tgt)+" ein");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

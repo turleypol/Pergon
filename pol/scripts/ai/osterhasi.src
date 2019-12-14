@@ -1,0 +1,164 @@
+///////////////////////////////////////////////////////////////////////////
+// osterhasi.src  -  Kleines Wegrennscript für nen Osterhasi :)
+//
+// Author: Turley
+
+use math;
+use npc;
+use os;
+use uo;
+use util;
+include "include/mobile";
+include "include/npc";
+include "include/place";
+
+Const MAX_RADIUS := 10;
+
+Program osterhasi()
+  var radius     := MAX_RADIUS;
+  var hasi       := Self();
+  var nextegg    := ReadGameClock()+RandomIntMinMax(30, 60);
+  var extrasleep := 0;
+
+  If (PlaceName(hasi)["Jhe'lom"])
+    // fuer Newbies jagbar machen
+    var def := GetNPCConfig(hasi);
+    hasi.run_speed      := CInt(def.dex/5);
+    extrasleep          := 50;
+    hasi.ar_mod         := - CInt(hasi.ar*3/4);
+    hasi.weapon.dmg_mod := -50;
+    hasi.setprop("OverrideHits", CInt(def.hits/5));
+    RecalcVitals(hasi);
+  EndIf
+
+  var gradold := 0;
+  var path := 0;
+  While (1)
+    SleepMS(100);
+
+    If (ReadGameClock() >= nextegg)
+      hasi.frozen := 1;
+      PrintTextAboveLocalizedPergon(hasi, "*ei leg*", "*laying egg*");
+      Sleep(RandomIntMinMax(5, 10));
+      var eggcolors := array{3, 25, 36, 46, 61, 82};
+      var eggtemplate   := GetItemDescriptor(0x09b5);
+      eggtemplate.name  := "Osterei";
+      eggtemplate.desc  := "Osterei";
+      eggtemplate.color := eggcolors.randomentry();
+      var egg := CreateItemAtLocation(
+        hasi.x, hasi.y, hasi.z, eggtemplate, 1, hasi.realm
+      );
+      If (egg)
+        egg.name    := "Osterei";
+        egg.decatat := 0;
+      Else
+        syslog("FEHLER: Ei nicht gelegt: "+egg.errortext);
+        PrintTextAboveLocalizedPergon(hasi, "*rohrkrepier*", "*damp squib*");
+      EndIf
+
+      nextegg := ReadGameClock()+RandomIntMinMax(60, 120);
+      TestMessage("Jetzt: "+ReadGameClock()+", Ei legen um: "+nextegg, 1);
+      hasi.frozen := 0;
+    EndIf
+
+    var grad;
+    If ((grad==30) || (grad==330))
+      var rnd := RandomInt(6);
+      Case (rnd)
+        0:
+        1:  grad := 30;
+            If (gradold==grad)
+              grad := 210;
+            EndIf
+        2:
+        3:  grad := 330;
+            If (gradold==grad)
+              grad := 150;
+            EndIf
+        4:  grad := 150;
+            If (gradold==grad)
+              grad := 330;
+            EndIf
+        5:  grad := 210;
+            If (gradold==grad)
+              grad := 30;
+            EndIf
+      EndCase
+    Else
+      var rnd := RandomInt(6);
+      Case (rnd)
+        0:
+        1:  grad := 150;
+            If (gradold==grad)
+              grad := 330;
+            EndIf
+        2:
+        3:  grad := 210;
+            If (gradold==grad)
+              grad := 30;
+            EndIf
+        4:  grad := 30;
+            If (gradold==grad)
+              grad := 210;
+            EndIf
+        5:  grad := 330;
+            If (gradold==grad)
+              grad := 150;
+            EndIf
+      EndCase
+    EndIf
+    var x := CInt(hasi.x+radius*sin(ConstPi()*grad/180));
+    var y := CInt(hasi.y+radius*cos(ConstPi()*grad/180));
+    var z := GetStandingHeight(x, y, hasi.z, hasi.realm);
+
+
+    If (!z)
+      // in Engstelle etc. gerannt, Suchradius verringern
+      TestMessage("Fehler bei X: "+x+", Y: "+y, 3);
+      If (radius > 1)
+        radius -= 1;
+      Else
+        // syslog(
+        //   "FEHLER: "+CharInfoStr(hasi, COORDS_REALM)+" hat sich auf Weg "+
+        //   "nach ("+x+", +"y+") festgefressen wegen "+z.errortext+
+        //   " mit Werten (Grad: "+grad+", Gradold: "+gradold+"), "+
+        //   "Versuche Restart"
+        // );
+        RestartScript(hasi);
+      EndIf
+      continue;
+    EndIf
+
+    TestMessage("Wegfindung fuer X: "+x+", Y: "+y+" Z: "+z.z, 5);
+    var hasipath := FindPath(
+      hasi.x, hasi.y, hasi.z, x, y, z.z, hasi.realm,
+      FP_IGNORE_MOBILES+FP_IGNORE_DOORS, 6
+    );
+    If (hasipath)
+      If (radius < MAX_RADIUS)
+        // Pathfinding geht, Radius wieder zum Maximum veraendern
+        radius += 1;
+      EndIf
+      gradold := 0;
+      path := 0;
+      var j;
+      For (j := 1; j <= hasipath.size(); j += 1)
+        If ((!hasi.frozen) || (!hasi.paralyzed))
+          SleepMs(2+extrasleep);
+          var res := RunTowardLocation(hasipath[j].x, hasipath[j].y);
+          If (!res)
+            break;
+          EndIf
+        EndIf
+      EndFor
+    Else
+      gradold := grad;
+      path += 1;
+      If (path > 4)
+        SleepMS(1000);
+      EndIf
+    EndIf
+  EndWhile
+EndProgram
+
+// vim: sw=2 sts=2

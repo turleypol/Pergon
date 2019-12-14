@@ -1,0 +1,436 @@
+//////////////////////////////////////////////////////////////////////////////
+// recipewriting - Rezept schreiben
+//
+// Author: Hotny&Turley
+// eMail:  ham 2
+
+use cfgfile;
+use os;
+use uo;
+include ":alchemie:alchemy";
+include "include/modifyskill";
+include "include/msgs";
+include "include/objtype";
+
+Enum Reags
+  REAG_1 := 1001,
+  REAG_2,
+  REAG_3,
+  REAG_4,
+  REAG_5,
+  REAG_6,
+  REAG_7,
+  REAG_8,
+  REAG_9,
+  REAG_10
+EndEnum
+
+Enum Items
+  ITEM_1 := 100,
+  ITEM_2
+//  ITEM_3,
+EndEnum
+
+Enum MiscButtons
+  CREATE := 2,
+  NAME,
+  ANZ,
+  REAGS_START := 2000
+EndEnum
+
+Enum Position
+  NAME_POS := 13,
+  ANZ_POS,
+  ITEM_1_POS := 51,
+  ITEM_2_POS := 53,
+  ITEM_3_POS := 55
+EndEnum
+
+Const LASTUSECPROP := "lastalchyrecipe";
+
+Program RecipeWriting(who)
+  var paper, penink, anzahl;
+  var akt_x, akt_y;
+  var recipedesc, recipepaper;
+  var wirkungsfaktoren;
+
+  If (who.getprop("#alchemie"))
+    SendSysMessagePergon(who,struct{uc_text := CAscz("Ihr beschäftigt euch bereits mit Alchemie!"),lang:="DEU"},
+                             struct{uc_text := CAscz("You are already doing alchemy!"),lang:="ENU"});
+    return(0);
+  EndIf
+  who.setprop("#alchemie",1);
+
+  SendSysMessagePergon(who,struct{uc_text := CAscz("Was wollt Ihr benutzen?"),lang:="DEU"},
+                           struct{uc_text := CAscz("What do you want to use?"),lang:="ENU"});
+  paper := Target(who);
+  If (!paper)
+    SendSysMessagePergon(who,struct{uc_text := CAscz("Abbruch"),lang:="DEU"},
+                             struct{uc_text := CAscz("Abort"),lang:="ENU"});
+    who.eraseprop("#alchemie");
+    return(0);
+  EndIf
+  If (paper.objtype<>UOBJ_BLANK_SCROLL) // selbe Rollen wie bei inscription
+    SendSysMessagePergon(who,struct{uc_text := CAscz("Das könnt ihr nicht benutzen!"),lang:="DEU"},
+                             struct{uc_text := CAscz("You cannot use that!"),lang:="ENU"});
+    who.eraseprop("#alchemie");
+    return(0);
+  EndIf
+  If (!paper.movable)
+    SendSysMessagePergon(who,struct{uc_text := CAscz("Ihr müsst den Gegenstand zuerst losmachen!"),lang:="DEU"},
+                             struct{uc_text := CAscz("You've to unlock this item first!"),lang:="ENU"});
+    who.eraseprop("#alchemie");
+    return(0);
+  EndIf
+  If ((!AccessiblePergon(who, paper)) || (!ReserveItem(paper)))
+    SendSysMessagePergon(who,struct{uc_text := CAscz("Ihr kommt da nicht ran!"),lang:="DEU"},
+                             struct{uc_text := CAscz("You can't reach that!"),lang:="ENU"});
+    who.eraseprop("#alchemie");
+    return(0);
+  EndIf
+
+  penink := FindSubstance(who.backpack,0xfc0,1,1);
+  If (!penink)
+    SendSysMessagePergon(who,struct{uc_text := CAscz("Ihr benötigt Tinte und Feder in eurem Rucksack, um schreiben zu können!"),lang:="DEU"},
+                             struct{uc_text := CAscz("You need pen and ink in your backpack to write!"),lang:="ENU"});
+    who.eraseprop("#alchemie");
+    return(0);
+  EndIf
+
+  var recipe := BuildAndGetRecipe(who);
+  If (recipe)
+    anzahl := recipe[2];
+    recipe := recipe[1];
+    If (anzahl>=1)
+      If (anzahl>10)
+        anzahl := 10;
+      EndIf
+    Else
+      SendSysMessagePergon(who,struct{uc_text := CAscz("Abbruch"),lang:="DEU"},
+                               struct{uc_text := CAscz("Abort"),lang:="ENU"});
+      who.eraseprop("#alchemie");
+      return(0);
+    EndIf
+    var temp := recipe; // Für cprop Anzahl dranpappen
+    temp.+anzahl := anzahl;
+    who.setprop(LASTUSECPROP,temp); // Merken fürs nächstemal
+    wirkungsfaktoren := FindeWirkungsfaktoren(recipe.Reagenzien);
+
+    If (who.cmdlevel>=CMDLEVEL_SCRIPTER)
+      SendSysMessagePergon(who,"rezeptname: "+recipe.Name);
+      SendSysMessagePergon(who,"tools:      "+recipe.Tools);
+      SendSysMessagePergon(who,"reags:      "+recipe.Reagenzien);
+      SendSysMessagePergon(who,"reags:      "+recipe.Reagsname);
+      SendSysMessagePergon(who,"anzahl:     "+anzahl);
+      SendSysMessagePergon(who,"wirkung:    "+wirkungsfaktoren);
+    EndIf
+
+    If (!wirkungsfaktoren)
+      SendSysMessagePergon(who,struct{uc_text := CAscz("Dieses Rezept ergibt keinen Sinn."),lang:="DEU"},
+                               struct{uc_text := CAscz("This recipe makes no sense."),lang:="ENU"});
+      who.eraseprop("#alchemie");
+      return;
+    EndIf
+
+    var sortWirkung := WirkungsKorrektur(wirkungsfaktoren,GetSkillPergon(who,SKILLID_REZEPTE_SCHREIB));
+    var difficulty := GetDifficulty(sortWirkung);
+
+    If (who.cmdlevel>=CMDLEVEL_SCRIPTER)
+      SendSysMessagePergon(who,"sort:       "+sortWirkung);
+      SendSysMessagePergon(who,"diff:       "+difficulty);
+      SendSysMessagePergon(who,"skaliert:   "+BerechneSkalierteWirkungen(sortWirkung,difficulty,GetSkillPergon(who,SKILLID_REZEPTE_SCHREIB),0));
+    EndIf
+
+    If (GetSkillPergon(who,SKILLID_REZEPTE_SCHREIB)<(difficulty-20))
+      SendSysMessagePergon(who,struct{uc_text := CAscz("Ihr könnt euch noch keine Wirkung vorstellen!"),lang:="DEU"},
+                               struct{uc_text := CAscz("You cannot imagine any effect!"),lang:="ENU"});
+      who.eraseprop("#alchemie");
+      return;
+    EndIf
+
+    akt_x := who.x; // Akt. Koordinaten sichern
+    akt_y := who.y;
+    recipedesc := GetItemDescriptor(UOBJ_RECIPE); // Rezept richtig zusammenbauen
+    recipedesc.cprops.insert("recipe", recipe);
+    var prop := struct;
+    prop.+buyprice := 5*difficulty;
+    recipedesc.cprops.insert("potion", prop);
+    recipedesc.cprops.insert("name",recipe.Name);
+
+    While ((anzahl) && (paper.amount) && (!who.dead)) // Noch was schreiben und noch was zum Schreiben da?
+      If ((akt_x==who.x) && (akt_y==who.y))  // Hab ich mich wegbewegt?
+        SubtractAmount(paper, 1);             // Eine Rolle verbraucht
+        anzahl-=1;                            // Einen Versuch "verbraucht"
+
+        If (CheckSkillPergon(who, SKILLID_REZEPTE_SCHREIB, difficulty, 2*difficulty))
+          Sleep(6); // Etwas warten
+          recipepaper := CreateItemInBackpackPergon(who, recipedesc, 1);
+          SetName(recipepaper,"Rezept%e%: '"+recipe.Name+"'");
+          If (recipepaper)
+            PlaySoundEffect(who, SFX_24A);
+            SendSysMessagePergon(who,struct{uc_text := CAscz("Ihr beschreibt eine Rolle und legt sie in Euren Rucksack."),lang:="DEU"},
+                                     struct{uc_text := CAscz("You write a recipe and put it in your backpack."),lang:="ENU"});
+          Else
+            SendSysMessagePergon(who,struct{uc_text := CAscz("Euer Rucksack ist voll!"),lang:="DEU"},// Dieser Fall tritt nicht auf, da die Rollen auf dem Boden erfolgreich erzeugt werden wenn das Backpack voll ist
+                                     struct{uc_text := CAscz("Your backpack is full!"),lang:="ENU"});
+          EndIf
+        Else
+          PlaySoundEffect(who, SFX_50);
+          SendSysMessagePergon(who,struct{uc_text := CAscz("Ihr verschreibt Euch und müsst daraufhin die Rolle wegwerfen."),lang:="DEU"},
+                                   struct{uc_text := CAscz("You fail to inscribe the scroll, and the scroll is ruined."),lang:="ENU"});
+          Sleep(4); // Etwas warten
+        EndIf
+      Else
+        SendSysMessagePergon(who,struct{uc_text := CAscz("Ihr verliert Eure Konzentration!"),lang:="DEU"},
+                                 struct{uc_text := CAscz("You lost your concentration!"),lang:="ENU"});
+        Break;
+      EndIf
+    EndWhile
+  Else
+    SendSysMessagePergon(who,struct{uc_text := CAscz("Abbruch"),lang:="DEU"},
+                             struct{uc_text := CAscz("Abort"),lang:="ENU"});
+  EndIf
+  who.eraseprop("#alchemie");
+EndProgram
+
+
+///////////////////////////////////////////////////////////////////
+// BuildAndGetRecipe - Gump aufbauen und Rezept zusammenbasteln
+///////////////////////////////////////////////////////////////////
+
+Function BuildAndGetRecipe(who)
+  var layout := {"nodispose",
+               "page 0",
+               "gumppic 50 70 11055",  // ReagsBuch
+               "gumppic 50 310 11008", // ReagsAuswahlBuch
+               "resizepic 170 10 9200 300 50",  // Titel
+               "gumppic 275 0 30061",
+               "gumppic 275 45 30077",
+               "resizepic 460 72 9200 96 231",  // Itemauswahl
+               "gumppic 445 57 30079",
+               "gumppic 511 218 30081",
+               "htmlgump 180 20 50 50 11 0 0",
+               "textentrylimited 230 20 200 50 0 "+NAME+" 12 44",
+               "button 110 330 5042 5042 1 0 "+REAG_1,
+               "resizepic 110 330 9300 137 26",
+               "htmlgump 110 333 137 26 0 0 0",
+               "button 110 360 5042 5042 1 0 "+REAG_2,
+               "resizepic 110 360 9300 137 26",
+               "htmlgump 110 363 137 26 1 0 0",
+               "button 110 390 5042 5042 1 0 "+REAG_3,
+               "resizepic 110 390 9300 137 26",
+               "htmlgump 110 393 137 26 2 0 0",
+               "button 110 420 5042 5042 1 0 "+REAG_4,
+               "resizepic 110 420 9300 137 26",
+               "htmlgump 110 423 137 26 3 0 0",
+               "button 110 450 5042 5042 1 0 "+REAG_5,
+               "resizepic 110 450 9300 137 26",
+               "htmlgump 110 453 137 26 4 0 0",
+               "button 270 330 5042 5042 1 0 "+REAG_6,
+               "resizepic 260 330 9300 137 26",
+               "htmlgump 260 333 137 26 5 0 0",
+               "button 260 360 5042 5042 1 0 "+REAG_7,
+               "resizepic 260 360 9300 137 26",
+               "htmlgump 260 363 137 26 6 0 0",
+               "button 260 390 5042 5042 1 0 "+REAG_8,
+               "resizepic 260 390 9300 137 26",
+               "htmlgump 260 393 137 26 7 0 0",
+               "button 260 420 5042 5042 1 0 "+REAG_9,
+               "resizepic 260 420 9300 137 26",
+               "htmlgump 260 423 137 26 8 0 0",
+               "button 260 450 5042 5042 1 0 "+REAG_10,
+               "resizepic 260 450 9300 137 26",
+               "htmlgump 260 453 137 26 9 0 0",
+               "button 105 480 30083 30084 1 0 "+CREATE,
+               "htmlgump 130 482 127 26 10 0 0",
+
+               "gumppic 485 100 30009",  // FixeItems
+               "tilepic 495 100 3739",   // Mörser
+               "gumppic 485 140 30009",
+               "tilepic 495 140 6218",   // Bunsenbrenner
+               "gumppic 485 180 30009",
+               "tilepic 495 180 6236",   // Reagenziensets
+               "checkbox 485 220 30008 30009 0 "+ITEM_1,
+               "tilepic 495 220 6225",   // Waage
+               "checkbox 485 260 30008 30009 0 "+ITEM_2,
+               "tilepic 495 260 3624"   // Destillierbecher
+//               "checkbox 485 300 30008 30009 0 "+ITEM_3,
+//               "tilepic 495 300 5154"   // Bienenwachs
+              };
+
+  var data := {"","","","","","","","","","",
+             "<basefont size=8>Rezept schreiben</basefont>",
+             "<basefont size=8>Name:</basefont>",
+             "","1"};
+  var i := 1,x:=108,y:=1, nextpage:=2;
+  var reags := {}, reagsname:={};
+  var milch := {65425,8073,8076,2477,2544};
+  var bier := {2463,2542,2543,8085,8086};
+  var wein := {2503,8077,8080,8091,8092};
+  var apfelwein := {65426,8061,8064,8087,8088};
+  var schnaps := {2459,8069,8072,8089,8090};
+  var asche := 3562;
+  var objarray := {}, gefunden:=0;
+  var elements := {};
+
+  layout.append("gumppic 300 480 2444"); // Anzahl
+  layout.append("textentry 315 482 30 15 0 "+ANZ+" 13");
+  layout.append("page 1");
+  ForEach element in GetConfigStringKeys(fWirkcfg)  // alle möglichen Reags besorgen
+    If (!GetObjProperty(who, I_AM_GOD)) // Godmodus bekommt alles angezeigt
+      If (!FindSubstance(who.backpack,CInt(element),1,0)) // Nur wenn auch im Backpack vorhanden
+        objarray := {};
+        gefunden := 0;
+        If (CInt(element) in milch)
+          objarray := milch;
+        ElseIf (CInt(element) in bier)
+          objarray := bier;
+        ElseIf (CInt(element) in wein)
+          objarray := wein;
+        ElseIf (CInt(element) in apfelwein)
+          objarray := apfelwein;
+        ElseIf (CInt(element) in schnaps)
+          objarray := schnaps;
+        EndIf
+        If (objarray<>{})
+          ForEach item in objarray
+            If (FindSubstance(who.backpack,item,1,0))
+              gefunden := 1;
+              Break;
+            EndIf
+          EndForEach
+          If (!gefunden)
+            Continue;
+          EndIf
+        Else
+          Continue;
+        EndIf
+      EndIf
+    EndIf
+    elements.append({element,fWirkcfg[element].name});
+    SleepMS(2);
+  EndForEach
+  elements := SortArrayABC( elements, 1, 2); // Nach Name sortieren
+  ForEach element in elements
+  	element := element[1];
+    layout.append("button "+x+" "+(75+(30*y))+" 5042 5042 1 0 "+(REAGS_START+i));
+    layout.append("resizepic "+x+" "+(75+(30*y))+" 9300 137 26");
+    
+    var a := 0;
+    If (CInt(element) == asche)
+    	a := 20;
+    EndIf
+    
+    If (x==108)
+      layout.append("tilepichue "+(x-5)+" "+(80-a+(30*y))+" "+CInt(fWirkcfg[element].graphic)+" "+CInt(fWirkcfg[element].color));
+      layout.append("htmlgump "+(x-3)+" "+(78+(30*y))+" 137 26 "+data.size()+" 0 0");
+      data.append("<p align=right>"+fWirkcfg[element].name+"</p>");
+    Else
+      layout.append("tilepichue "+(x+95)+" "+(80-a+(30*y))+" "+CInt(fWirkcfg[element].graphic)+" "+CInt(fWirkcfg[element].color));
+      layout.append("htmlgump "+(x+3)+" "+(78+(30*y))+" 137 26 "+data.size()+" 0 0");
+      data.append("<p align=left>"+fWirkcfg[element].name+"</p>");
+    EndIf
+    y+=1;
+    If (y>5)
+      If (x==108)
+        x := 260;
+        y := 1;
+      Else
+        x := 108;
+        y := 1;
+        layout.append("button 371 79 2236 2236 0 "+nextpage+" 0");
+        layout.append("page "+nextpage);
+        layout.append("button 99 79 2205 2205 0 "+(nextpage-1)+" 0");
+        nextpage+=1;
+      EndIf
+    EndIf
+    i+=1;
+    reags.append(CInt(element));
+    reagsname.append(fWirkcfg[element].name);
+    SleepMS(2);
+  EndForEach
+
+  var ret,j, choosed_reags := {}, choosed_name:={};
+
+  // Letztes Rezept laden
+  var lastuse := who.getprop(LASTUSECPROP);
+  If (lastuse)
+    data[NAME_POS] := lastuse.Name;
+    layout[ITEM_1_POS][30] := CStr(lastuse.Tools[6225]);
+    layout[ITEM_2_POS][30] := CStr(lastuse.Tools[3624]);
+//    layout[ITEM_3_POS][30] := CStr(lastuse.Tools[5154]);
+    choosed_reags := lastuse.Reagenzien;
+    choosed_name := lastuse.Reagsname;
+    ForEach reag in (lastuse.Reagsname)
+      data[_reag_iter] := "<center>"+reag+"</center>";
+    EndForEach
+    If (lastuse.Anzahl)
+      data[ANZ_POS] := CStr(lastuse.Anzahl);
+    EndIf
+  EndIf
+
+  Repeat
+    ret := SendDialogGump(who,layout,data,50,50);
+
+    data[NAME_POS] := ret[NAME];  // Name, Anzahl und Werkzeug Speichern
+    data[NAME_POS][1,3] := "";
+    data[ANZ_POS] := ret[ANZ];
+    data[ANZ_POS][1,3] := "";
+    If (ret[ITEM_1])
+      layout[ITEM_1_POS][30] := "1";
+    Else
+      layout[ITEM_1_POS][30] := "0";
+    EndIf
+    If (ret[ITEM_2])
+      layout[ITEM_2_POS][30] := "1";
+    Else
+      layout[ITEM_2_POS][30] := "0";
+    EndIf
+//    If (ret[ITEM_3])
+//      layout[ITEM_3_POS][30] := "1";
+//    Else
+//      layout[ITEM_3_POS][30] := "0";
+//    EndIf
+
+    If (ret.keys[ret.keys.size()]>=REAGS_START) // Neue Reagenzie hinzufügen
+      For (j := 1;j<=10;j+=1)
+        If (data[j]=="") // Erstes freies Feld wird genommen
+          data[j] := "<center>"+reagsname[ret.keys[ret.keys.size()]-REAGS_START]+"</center>";
+          choosed_reags[j] := reags[ret.keys[ret.keys.size()]-REAGS_START];
+          choosed_name[j] := reagsname[ret.keys[ret.keys.size()]-REAGS_START];
+          Break;
+        EndIf
+      EndFor
+
+    ElseIf (ret.keys[ret.keys.size()]>=REAG_1)  // Hinzugefügte Reagenzie löschen
+      data[ret.keys[ret.keys.size()]-REAG_1+1] := "";
+      choosed_reags[ret.keys[ret.keys.size()]-REAG_1+1] := "";
+      choosed_name[ret.keys[ret.keys.size()]-REAG_1+1] := "";
+
+    ElseIf (ret[CREATE])  // Los gehts
+      For (i := 1;i<=choosed_reags.size();i+=1)  // Arrays bereinigen
+        If ((!choosed_reags[i]) || (choosed_reags[i]==""))
+          choosed_reags.erase(i);
+          choosed_name.erase(i);
+          i-=1;
+        EndIf
+      EndFor
+      var rezept := struct{
+        Name:=data[NAME_POS],
+        Reagenzien := choosed_reags,
+        Reagsname := choosed_name,
+        Tools := dictionary{
+          3739 -> 1,                              // Mörser
+          6218 -> 1,                              // Bunsenbrenner
+          6236 -> 1,                              // Reagenzienset
+          6225 -> CInt(layout[ITEM_1_POS][30]),   // Waage
+          3624 -> CInt(layout[ITEM_2_POS][30])}}; // Destillierbecher
+          // 5154 -> CInt(layout[ITEM_3_POS][30])}}; // Bienenwachs
+
+      return({rezept,CInt(data[ANZ_POS])});
+    Else
+      return(0);
+    EndIf
+  Until (!who.connected);
+
+EndFunction

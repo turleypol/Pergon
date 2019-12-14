@@ -1,0 +1,196 @@
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+//   BattleChessAI - KI für BattleChess
+//
+//   Author: Turley
+//
+//   Modifications:
+//     30.10.05 Turley - Erste "fertige" Version
+//     21.02.06 Turley - Reperatur von en passant
+//
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+//   ToDo:
+//////////////////////////////////////////////////////////////////////////////////////////
+//
+// ev:
+//    ev.x - Ziel x
+//    ev.y - Ziel y
+//    ev.angriff - Anzugreifendes Monster
+//    ev.passant - en passant
+//////////////////////////////////////////////////////////////////////////////////////////
+
+use os;
+use uo;
+use npc;
+
+include "include/eventid";
+include "include/modifyskill";
+Include "include/client";
+
+var me;
+var wboard, bboard;
+
+Program BattleChessAI()
+  me:=Self();
+  If (GetObjProperty(me, "frozen"))
+    me.frozen:=1;
+    IncRevision(me);
+  EndIf
+ 
+  wboard:=GetObjProperty(me,"wboard");
+  wboard:=SystemFindObjectBySerial(wboard);
+  bboard:=GetObjProperty(me,"bboard");
+  bboard:=SystemFindObjectBySerial(bboard);
+  If ((!wboard) || (!bboard))
+    Syslog("WARNUNG: BATTELCHESS: Fehler finde keine Schachbretter "+me.serial);
+    SetObjProperty(wboard,"canceled",1);
+    SetObjProperty(bboard,"canceled",1);
+  EndIf
+  SetWarMode(0);
+  If (me.npctemplate[6,1]=="W")
+    me.setfacing(4,FACING_FORCE);
+  Else
+    me.setfacing(0,FACING_FORCE);
+  EndIf
+  MainLoop();
+EndProgram
+
+////////////////////////////////////////
+// MainLoop - Warten auf Event 0x0021
+////////////////////////////////////////
+
+Function MainLoop()
+  var ev;
+  While(1)
+    ev:=Wait_For_Event(10);
+    If (ev)
+      If (ev.type==EVID_CHESSCMD)
+        If ((ev.source==wboard) || (ev.source==bboard))
+          me.frozen:=0;
+          IncRevision(me);
+          Process_Event(ev);
+          me.frozen:=1;
+          IncRevision(me);
+          SetWarMode(0);
+        EndIf
+      EndIf
+    EndIf
+  EndWhile
+EndFunction
+
+////////////////////////////////////////
+// Process_Event - Angriff, Bewegen, ...
+////////////////////////////////////////
+
+Function Process_Event(ev)
+  Var result, x, y;
+  If (!ev.passant)
+    If ((ev.x) && (ev.y))
+      If (ev.angriff)  //Schlagen
+        x:=ev.x;
+        y:=ev.y;
+        result:=SetOpponent(ev.angriff);
+        RevokePrivilege(ev.angriff, "invul");
+        IncRevision(ev.angriff);
+        If (!result)
+          Say("Wo ist mein Gegner hin?");
+          SetObjProperty(wboard,"canceled",1);
+          SetObjProperty(bboard,"canceled",1);
+        EndIf
+        Repeat
+          result:=RunToward(ev.angriff);
+        Until ((distance(ev.angriff,me)==1) || (!result));
+        If (!result)
+          Say("Kann Gegner nicht erreichen!");
+          SetObjProperty(wboard,"canceled",1);
+          SetObjProperty(bboard,"canceled",1);
+          Return;
+        EndIf
+        WaitForKill(ev.angriff);
+        Repeat
+          result:=WalkTowardLocation(x,y);
+        Until (((me.x==x) && (me.y==y)) || (!result));
+        If (me.npctemplate[6,1]=="B")  //Schwarze Figur? Dann nach Norden schauen
+          TurnTowardLocation(x,y-1);
+        Else
+          TurnTowardLocation(x,y+1);
+        EndIf
+      Else  // normales Bewegen
+        Repeat
+          result:=WalkTowardLocation(ev.x,ev.y);
+        Until (((me.x==ev.x) && (me.y==ev.y)) || (!result));
+        If (!result)
+          SetObjProperty(wboard,"canceled",1);
+          SetObjProperty(bboard,"canceled",1);
+          Say("Kann Ziel nicht erreichen! "+ev.x+" "+ev.y);
+          Return;
+        EndIf
+        If (me.npctemplate[6,1]=="B")  //Schwarze Figur? Dann nach Norden schauen
+          TurnTowardLocation(ev.x,ev.y-1);
+        Else
+          TurnTowardLocation(ev.x,ev.y+1);
+        EndIf
+      EndIf
+    Else
+      SetObjProperty(wboard,"canceled",1);
+      SetObjProperty(bboard,"canceled",1);
+    EndIf
+  Else  //en passant
+    If ((!ev.x) || (!ev.y) || (!ev.angriff))
+      SetObjProperty(wboard,"canceled",1);
+      SetObjProperty(bboard,"canceled",1);
+    EndIf
+    RevokePrivilege(ev.angriff, "invul");
+    IncRevision(ev.angriff);
+    SetOpponent(ev.angriff);
+    Repeat
+      result:=RunToward(ev.angriff);
+    Until ((distance(ev.angriff,me)==1) || (!result));
+    WaitForKill(ev.angriff);
+    Repeat
+      result:=WalkTowardLocation(ev.x,ev.y);
+    Until (((me.x==ev.x) && (me.y==ev.y)) || (!result));
+    If (!result)
+      SetObjProperty(wboard,"canceled",1);
+      SetObjProperty(bboard,"canceled",1);
+      Say("Kann Ziel nicht erreichen! "+ev.x+" "+ev.y);
+      Return;
+    EndIf
+    If (me.npctemplate[6,1]=="B")  //Schwarze Figur? Dann nach Norden schauen
+      TurnTowardLocation(ev.x,ev.y-1);
+    Else
+      TurnTowardLocation(ev.x,ev.y+1);
+    EndIf
+  EndIf
+  SetObjProperty(ev.source,"monsterdone",1);  //Es kann weitergehen im Hauptscript
+EndFunction
+
+////////////////////////////////////////
+// WaitForKill - Na wann isser denn endlich Tot
+////////////////////////////////////////
+
+Function WaitForKill(opponent)
+  Var npctemplate:=opponent.npctemplate;
+  Repeat
+    SleepMS(100);
+  Until (!opponent);
+  PlaySoundChess(npctemplate);
+EndFunction
+
+////////////////////////////////////////
+// PlaySound - Todessounds plus Spielendeerkennung bei Königstod
+////////////////////////////////////////
+
+Function PlaySoundChess(npctemplate)
+  Case (npctemplate[11,1])
+    "D": PlaySoundEffect(me,0x32F);
+    "K": PlaySoundEffect(me,0x424);
+         SetObjProperty(wboard,"canceled",1);
+         SetObjProperty(bboard,"canceled",1);
+    "L":
+    "S":
+    "T":
+    "B":
+  EndCase
+EndFunction

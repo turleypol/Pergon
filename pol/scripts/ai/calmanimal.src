@@ -1,0 +1,147 @@
+///////////////////////////////////////////////////////////////////////////////
+// CalmAnimal - Beruhigtes Tier v1.0 (2000/11/xx)
+//
+// Dieses Script laeuft bei dem Viech, sobald der Zaehmer seine Arbeit
+// beginnt. Wird das Tierchen irgendwie abgelenkt, oder geht das Zaehmen
+// schief, kehrt es in sein altes Script zurueck. Hat der Zaehmer Erfolg,
+// wird bei dem Tier, "tamedanimal" gestartet.
+//
+// Author: DeMohn
+// eMail:  ?
+//
+// Modificator: Shinigami
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// 2000/11/xx DeMohn:           First Release
+// 2001/05/24 Shinigami:        ReWrite
+// 2008-04-25 mehdorn:          Debug-Message montiert
+
+///////////////////////////////////////////////////////////////////////////
+// Benutzte CProp's
+//   CInt(npc.roamsfreeat) - Wann verliert das Tier sein Interesse?
+//   CInt(npc.tametimer)   - Wie lange laesst sich das Tier nicht zaehmen?
+// Benutzte zusaetzliche Prop's
+//   CInt(npc.senserange) - Sicht-Bereich (ENTERED_AREA etc.)
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+include "include/animal";
+include "include/eventid";
+include "include/msgs";
+include "include/npc";
+use npc;
+use os;
+use uo;
+
+//////////////////////
+// Globale Variable
+//////////////////////
+var me := Self(); // Referenz auf sich selbst
+
+Program CalmAnimal()
+  ////////////////////
+  // Initialisierung
+  ////////////////////
+
+  // Konstanten [aus dem Template] auslesen
+  var mytemplate := GetNPCConfig(me.npctemplate);
+
+  // Sicht-Bereich (ENTERED_AREA etc.)
+  var senserange := mytemplate.senserange;
+  If (!senserange)
+    senserange := 10;
+  EndIf
+
+  // Wann verliert das Tier sein Interesse?
+  var roamsfreeat := GetObjProperty(me, "RoamsFreeAt");
+  If (!roamsfreeat)
+    roamsfreeat := ReadGameClock()+30;
+  EndIf
+
+  SetWarMode(0);
+
+  // Events aktivieren
+  EnableEvents(SYSEVENT_DAMAGED);
+  EnableEvents(SYSEVENT_ENTEREDAREA, senserange);
+
+  //////////////////
+  // Hauptschleife
+  //////////////////
+  var tametimer := 60; // Wie lange laesst sich das Tier nicht zaehmen?
+
+  While (roamsfreeat > ReadGameclock())
+    // Event holen und bearbeiten
+    var ev := Wait_for_EventLogging(120);
+    Case (ev.type)
+    SYSEVENT_DAMAGED: // Verletzen
+      If (ev.source == me.master)
+        // der eigene Meister hat mich angegriffen
+        tametimer := 3600; // Wie lange laesst sich das Tier nicht zaehmen?
+
+        If (me.master.connected)
+          SendSysMessagePergon(me.master,
+            me.master.name+", Ihr solltet Euch wahrlich schämen!",
+            "", 3, 0x22
+          );
+        EndIf
+
+      Else
+        // jemand anderes
+        tametimer := 600;  // Wie lange laesst sich das Tier nicht zaehmen?
+
+        If (me.master.connected)
+          SendSysMessagePergon(me.master,
+            "Das Tier zuckt unter dem Angriff zusammen.",
+            "", 3, 0x22
+          );
+        EndIf
+      EndIf
+
+      // Tier wurde abgelenkt
+      break;
+
+    SYSEVENT_ENTEREDAREA: // Jemand ist ins Sichtfeld gelaufen
+      If (CheckHateLove(me, ev.source) in {1, 2})
+        // ich hasse mein Gegenueber oder fuerchte ich mich davor
+        tametimer := 120;
+
+        If (me.master.connected)
+          SendSysMessagePergon(me.master,
+            "Das Tier schaut sich nervös um.", "", 3, 0x22
+          );
+        EndIf
+
+        // Tier wurde abgelenkt
+        break;
+      EndIf
+    EndCase
+
+    Sleep(1);
+  EndWhile
+
+  //////////////////////////////////////////////////////
+  // Tier hat Interessse verloren oder wurde abgelenkt
+  //////////////////////////////////////////////////////
+
+  // Tier akzeptiert Meister nicht mehr
+  If (me.master.connected)
+    SendSysMessagePergon(me.master,
+      "Das Tier wird wieder wild...", "", 3, 0x58
+    );
+  EndIf
+  me.setmaster(0);
+
+  // Wie lange laesst sich das Tier nicht zaehmen?
+  SetObjProperty(me, "TameTimer", ReadGameClock()+tametimer);
+  // Wann verliert das Tier sein Interesse?
+  EraseObjProperty(me, "RoamsFreeAt");
+
+  // Wieder urspruengliches Script und Namen setzen
+  me.name := mytemplate.name;
+  me.script := mytemplate.script;
+  RestartScript(me);
+EndProgram
+
+// vim: sw=2 sts=2

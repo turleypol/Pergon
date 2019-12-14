@@ -1,0 +1,400 @@
+/////////////////////////////////////////////////////////////////////////
+//
+//   Wandelt einen Besitzschein in ein Item
+//
+//   Modifications:
+//     2001/04/xx Paukerli:  ReWrite (Werkzeug (Bastel-Skill) benutzen,
+//                           Betten aufstellen, etc.)
+//     2001/05/23 Paukerli:  Bastel-Skill wieder entfernt
+//                           Jeder Char kann Haus-Ad-On's aufstellen
+//     2002/11/10 Shinigami: ReWrite
+//     29.09.2003 Fraggulus: Im Multihaus alles auf z+1 createn lassen
+//
+/////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+
+use cfgfile;
+use os;
+use uo;
+
+include ":housing:house";
+
+///////////////
+// Konstanten
+///////////////
+
+Const UOBJECT_WERKZEUGKASTEN := 0x1eba;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Place_Deed(who, deed)
+  ReserveItem(deed);
+
+  If (!AccessiblePergon(who, deed))
+    SendSysMessagePergon(who, "Ihr kommt da nicht ran!");
+    return;
+  EndIf
+
+  // Sicherheitsabfrage bitte nicht wieder deaktivieren !!!!! (sonst kommt Pauker mit der dicken Kriegskeule)
+  var house := GetHouseContainingObject(who);
+  If (!IsHouseOwnerOrFriend(house, who) And (who.cmdlevel<CMDLEVEL_SEER))
+    SendSysMessagePergon(who, "Ihr müsst Euch in einem Haus befinden und Besitzer oder Freund sein, um das Item aufzustellen!");
+    return;
+  EndIf
+
+  SendSysMessagePergon(who, "Wählt den Werkzeugkasten mit dem Ihr arbeiten wollt!");
+
+  var werkzeugkasten := Target(who);
+  If (werkzeugkasten.objtype<>UOBJECT_WERKZEUGKASTEN) // gr. Werkzeugkasten
+    SendSysMessagePergon(who, "Das ist nicht das richtige Werkzeug!");
+    return;
+  EndIf
+
+  // Item-Deed-Eigenschaften werden ausgelesen
+  var itemcfg := ReadConfigFile("itemdesc");
+  If (itemcfg)
+    var bauanleitung := itemcfg[deed.objtype];
+    If (bauanleitung)
+      var besitzschein := CInt(bauanleitung.besitzschein);
+      var color := deed.color;
+      var desc := deed.desc; // die Bezeichnung vom Bauplan wird ausgelesen und an alle Create-Items weitergereicht
+
+      var itemtypes;
+      var x := who.x;
+      var y := who.y;
+      var z := who.z;
+      If (who.multi)  // Im Multihaus alles z+1 setzen, damits nicht im Fussboden verschwindet
+        z += 1;
+      EndIf
+
+      var deedtype := CInt(bauanleitung.deedtype);
+      Case (deedtype)
+        1: itemtypes := GetItemTypes(bauanleitung, 1); // einzelnes Item
+
+           If (!CheckForDoors(who, x, y, z))
+             var item := CreateItemAtLocationPergon(x, y, z, itemtypes[1], 1,who.realm);
+             If (item)
+               item.color := color;item.movable := 0;SetName(item, desc);
+
+               CreateBesitzschein(who, item, 2, besitzschein, color, desc, x, y, z, deedtype, itemtypes, deed);
+             Else
+               SendSysMessagePergon(who, "An dieser Stelle kann man das Haus-Add-On nicht aufstellen!");
+             EndIf
+           EndIf
+
+        2: itemtypes := GetItemTypes(bauanleitung, 2); // kleines Bett west
+           x -= 1;
+
+           If ((!CheckForDoors(who, x, y, z)) And (!CheckForDoors(who, x-1, y, z)))
+             var item1 := CreateItemAtLocationPergon(x,   y, z, itemtypes[1], 1,who.realm);
+             var item2 := CreateItemAtLocationPergon(x-1, y, z, itemtypes[2], 1,who.realm);
+             If (item1 And item2)
+               item1.color := color;item1.movable := 0;SetName(item1, desc);
+               item2.color := color;item2.movable := 0;SetName(item2, desc);
+
+               CreateBesitzschein(who, item1, 2, besitzschein, color, desc, x, y, z, deedtype, itemtypes, deed);
+             Else
+               SendSysMessagePergon(who, "An dieser Stelle kann man das Bett nicht aufstellen!");
+               DestroyItem(item1);DestroyItem(item2);
+             EndIf
+           EndIf
+
+        3: itemtypes := GetItemTypes(bauanleitung, 2); // kleines Bett nord
+           y -= 1;
+
+           If ((!CheckForDoors(who, x, y, z)) And (!CheckForDoors(who, x, y-1, z)))
+             var item1 := CreateItemAtLocationPergon(x, y,   z, itemtypes[1], 1,who.realm);
+             var item2 := CreateItemAtLocationPergon(x, y-1, z, itemtypes[2], 1,who.realm);
+             If (item1 And item2)
+               item1.color := color;item1.movable := 0;SetName(item1, desc);
+               item2.color := color;item2.movable := 0;SetName(item2, desc);
+
+               CreateBesitzschein(who, item1, 2, besitzschein, color, desc, x, y, z, deedtype, itemtypes, deed);
+             Else
+               SendSysMessagePergon(who, "An dieser Stelle kann man das Bett nicht aufstellen!");
+               DestroyItem(item1);DestroyItem(item2);
+             EndIf
+           EndIf
+
+        4: itemtypes := GetItemTypes(bauanleitung, 4); // grosses Bett west
+           x -= 1;
+
+           If ((!CheckForDoors(who, x,   y, z)) And (!CheckForDoors(who, x,   y-1, z)) And
+               (!CheckForDoors(who, x-1, y, z)) And (!CheckForDoors(who, x-1, y-1, z)))
+             var item1 := CreateItemAtLocationPergon(x,   y,   z, itemtypes[1], 1,who.realm);
+             var item2 := CreateItemAtLocationPergon(x,   y-1, z, itemtypes[2], 1,who.realm);
+             var item3 := CreateItemAtLocationPergon(x-1, y,   z, itemtypes[3], 1,who.realm);
+             var item4 := CreateItemAtLocationPergon(x-1, y-1, z, itemtypes[4], 1,who.realm);
+             If (item1 And item2 And item3 And item4)
+               item1.color := color;item1.movable := 0;SetName(item1, desc);
+               item2.color := color;item2.movable := 0;SetName(item2, desc);
+               item3.color := color;item3.movable := 0;SetName(item3, desc);
+               item4.color := color;item4.movable := 0;SetName(item4, desc);
+
+               CreateBesitzschein(who, item1, 4, besitzschein, color, desc, x, y, z, deedtype, itemtypes, deed);
+             Else
+               SendSysMessagePergon(who, "An dieser Stelle kann man das Bett nicht aufstellen!");
+               DestroyItem(item1);DestroyItem(item2);DestroyItem(item3);DestroyItem(item4);
+             EndIf
+           EndIf
+
+        5: itemtypes := GetItemTypes(bauanleitung, 4); // grosses Bett nord
+           y -= 1;
+
+           If ((!CheckForDoors(who, x,   y, z)) And (!CheckForDoors(who, x,   y-1, z)) And
+               (!CheckForDoors(who, x+1, y, z)) And (!CheckForDoors(who, x+1, y-1, z)))
+             var item1 := CreateItemAtLocationPergon(x,   y,   z, itemtypes[1], 1,who.realm);
+             var item2 := CreateItemAtLocationPergon(x,   y-1, z, itemtypes[2], 1,who.realm);
+             var item3 := CreateItemAtLocationPergon(x+1, y,   z, itemtypes[3], 1,who.realm);
+             var item4 := CreateItemAtLocationPergon(x+1, y-1, z, itemtypes[4], 1,who.realm);
+             If (item1 And item2 And item3 And item4)
+               item1.color := color;item1.movable := 0;SetName(item1, desc);
+               item2.color := color;item2.movable := 0;SetName(item2, desc);
+               item3.color := color;item3.movable := 0;SetName(item3, desc);
+               item4.color := color;item4.movable := 0;SetName(item4, desc);
+
+               CreateBesitzschein(who, item1, 4, besitzschein, color, desc, x, y, z, deedtype, itemtypes, deed);
+             Else
+               SendSysMessagePergon(who, "An dieser Stelle kann man das Bett nicht aufstellen!");
+               DestroyItem(item1);DestroyItem(item2);DestroyItem(item3);DestroyItem(item4);
+             EndIf
+           EndIf
+
+        6: itemtypes := GetItemTypes(bauanleitung, 3); // grosser Holztisch west
+           x -= 1;
+
+           var y_ende := CInt(SendTextEntryGump(who, "Wie breit soll der Tisch werden (3 bis 5) ?", 40));
+           If ((3<=y_ende) And (y_ende<=5))
+             var x_ende := CInt(SendTextEntryGump(who, "Wie lang soll der Tisch werden (3 bis 10) ?", 40));
+             If ((3<=x_ende) And (x_ende<=10))
+               x_ende := x-x_ende+1;y_ende := y-y_ende+1;
+
+               For x_pos := x_ende To x
+                 For y_pos := y_ende To y
+                   If (CheckForDoors(who, x_pos, y_pos, z))
+                     return;
+                   EndIf
+                 EndFor
+               EndFor
+
+               For x_pos := x_ende To x
+                 For y_pos := y_ende To y
+                   If (x_pos == x)
+                     CreateSingleItem(who, itemtypes[1], x_pos, y_pos, z, color, desc);
+                   ElseIf (x_pos == x_ende)
+                     CreateSingleItem(who, itemtypes[3], x_pos, y_pos, z, color, desc);
+                   Else
+                     CreateSingleItem(who, itemtypes[2], x_pos, y_pos, z, color, desc);
+                   EndIf
+                 EndFor
+               EndFor
+
+               var item_return := CreateBesitzschein(who, 0, 0, besitzschein, color, desc, x, y, z, deedtype, itemtypes, deed);
+               If (item_return)
+                 SetObjProperty(item_return, "maxx", x_ende);
+                 SetObjProperty(item_return, "maxy", y_ende);
+               EndIf
+             Else
+               SendSysMessagePergon(who, "Abbruch", "Abort");
+             EndIf
+           Else
+             SendSysMessagePergon(who, "Abbruch", "Abort");
+           EndIf
+
+        7: itemtypes := GetItemTypes(bauanleitung, 3); // grosser Holztisch nord
+           y -= 1;
+
+           var x_ende := CInt(SendTextEntryGump(who, "Wie breit soll der Tisch werden (3 bis 5) ?", 40));
+           If ((3<=x_ende) And (x_ende<=5))
+             var y_ende := CInt(SendTextEntryGump(who, "Wie lang soll der Tisch werden (3 bis 10) ?", 40));
+             If ((3<=y_ende) And (y_ende<=10))
+               x_ende := x_ende+x-1;y_ende := y-y_ende+1;
+
+               For x_pos := x To x_ende
+                 For y_pos := y_ende To y
+                   If (CheckForDoors(who, x_pos, y_pos, z))
+                     return;
+                   EndIf
+                 EndFor
+               EndFor
+
+               For x_pos := x To x_ende
+                 For y_pos := y_ende To y
+                   If (y_pos == y)
+                     CreateSingleItem(who, itemtypes[1], x_pos, y_pos, z, color, desc);
+                   ElseIf (y_pos == y_ende)
+                     CreateSingleItem(who, itemtypes[3], x_pos, y_pos, z, color, desc);
+                   Else
+                     CreateSingleItem(who, itemtypes[2], x_pos, y_pos, z, color, desc);
+                   EndIf
+                 EndFor
+               EndFor
+
+               var item_return := CreateBesitzschein(who, 0, 0, besitzschein, color, desc, x, y, z, deedtype, itemtypes, deed);
+               If (item_return)
+                 SetObjProperty(item_return, "maxx", x_ende);
+                 SetObjProperty(item_return, "maxy", y_ende);
+               EndIf
+             Else
+               SendSysMessagePergon(who, "Abbruch", "Abort");
+             EndIf
+           Else
+             SendSysMessagePergon(who, "Abbruch", "Abort");
+           EndIf
+
+        8: itemtypes := GetItemTypes(bauanleitung, 2); // 2 Items nebeneinander
+           x -= 1;
+
+           If ((!CheckForDoors(who, x, y, z)) And (!CheckForDoors(who, x, y-1, z)))
+             var item1 := CreateItemAtLocationPergon(x, y,   z, itemtypes[1], 1,who.realm);
+             var item2 := CreateItemAtLocationPergon(x, y-1, z, itemtypes[2], 1,who.realm);
+             If (item1 And item2)
+               item1.color := color;item1.movable := 0;SetName(item1, desc);
+               item2.color := color;item2.movable := 0;SetName(item2, desc);
+
+               CreateBesitzschein(who, item1, 2, besitzschein, color, desc, x, y, z, deedtype, itemtypes, deed);
+             Else
+               SendSysMessagePergon(who, "An dieser Stelle kann man das nicht aufstellen!");
+               DestroyItem(item1);DestroyItem(item2);
+             EndIf
+           EndIf
+
+        9: itemtypes := GetItemTypes(bauanleitung, 2); // 2 Items nebeneinander
+           y -= 1;
+
+           If ((!CheckForDoors(who, x, y, z)) And (!CheckForDoors(who, x+1, y, z)))
+             var item1 := CreateItemAtLocationPergon(x,   y, z, itemtypes[1], 1,who.realm);
+             var item2 := CreateItemAtLocationPergon(x+1, y, z, itemtypes[2], 1,who.realm);
+             If (item1 And item2)
+               item1.color := color;item1.movable := 0;SetName(item1, desc);
+               item2.color := color;item2.movable := 0;SetName(item2, desc);
+
+               CreateBesitzschein(who, item1, 2, besitzschein, color, desc, x, y, z, deedtype, itemtypes, deed);
+             Else
+               SendSysMessagePergon(who, "An dieser Stelle kann man das nicht aufstellen!");
+               DestroyItem(item1);DestroyItem(item2);
+             EndIf
+           EndIf
+
+        10: itemtypes := GetItemTypes(bauanleitung, 2); // 2 Items uebereinander (an selber Stelle)
+
+            If (!CheckForDoors(who, x, y, z))
+              var item1 := CreateItemAtLocationPergon(x, y, z, itemtypes[1], 1,who.realm);
+              var item2 := CreateItemAtLocationPergon(x, y, z, itemtypes[2], 1,who.realm);
+              If (item1 And item2)
+                item1.color := 0;    item1.movable := 0;SetName(item1, desc);
+                item2.color := color;item2.movable := 0;SetName(item2, desc);
+
+                CreateBesitzschein(who, item1, 2, besitzschein, color, desc, x, y, z, deedtype, itemtypes, deed);
+              Else
+                SendSysMessagePergon(who, "An dieser Stelle kann man das nicht aufstellen!");
+                DestroyItem(item1);DestroyItem(item2);
+              EndIf
+            EndIf
+
+        default: syslog("FEHLER: Bauanleitung "+Lower(Hex(deed.objtype))+" ("+Lower(Hex(deed.serial))+") besitzt einen falschen 'deedtype' ("+deedtype+") !");
+      EndCase
+
+    Else
+      syslog("FEHLER: Bauanleitung "+Lower(Hex(deed.objtype))+" wurde nicht in der itemdesc.cfg gefunden!");
+    EndIf
+  Else
+    syslog("FEHLER: Konnte die itemdesc.cfg nicht oeffnen!");
+  EndIf
+EndProgram
+
+///////////////////////////////////////////////////
+// GetItemTypes - Liefert alles 'itemtypeX'-Props
+///////////////////////////////////////////////////
+
+Function GetItemTypes(bauanleitung, number)
+  var itemtypes := {};
+
+  For i := 1 To number
+    itemtypes.append(GetConfigInt(bauanleitung, "itemtype"+i));
+  EndFor
+
+  return (itemtypes);
+EndFunction
+
+///////////////////////////////////////////////////////////
+// CheckForDoors - Prueft, ob eine Tuer in der Naehe ist
+///////////////////////////////////////////////////////////
+
+Function CheckForDoors(who, x, y, z)
+  ForEach item in ListItemsNearLocation(x, y, z, 1,who.realm)
+    If ((UOBJECT_DOORS_START<=item.objtype) And (item.objtype<=UOBJECT_DOORS_END))
+      SendSysMessagePergon(who, "Das ist zu nah an der Tür!");
+      return (1);
+    EndIf
+  EndForEach
+EndFunction
+
+///////////////////////////////////////////////
+// CreateBesitzschein - Besitzschein erzeugen
+///////////////////////////////////////////////
+
+Function CreateBesitzschein(who, drehitem, soundnumber, besitzschein, color, desc, x, y, z, deedtype, itemtypes, deed)
+  If (drehitem)
+    TurnPlayerToItem(who, drehitem);
+
+    For i := 1 To soundnumber
+      PlaySoundEffect(who, SFX_HAMMER);Sleep(1);
+    EndFor
+  EndIf
+
+  var item_return := CreateItemInBackpackPergon(who, besitzschein, 1);
+  If (item_return)
+    item_return.color := color;SetName(item_return, desc);
+
+    SetObjProperty(item_return, "lage_x", x);
+    SetObjProperty(item_return, "lage_y", y);
+    SetObjProperty(item_return, "lage_z", z);
+    SetObjProperty(item_return, "type", deedtype);
+
+    var i := 1;
+    ForEach itemtype in itemtypes
+      SetObjProperty(item_return, "itemtype"+i, itemtype);
+      i += 1;
+    EndForEach
+
+    SetObjProperty(item_return, "bauanleitung", deed.objtype);
+  EndIf
+
+  DestroyItem(deed);
+
+  return (item_return);
+EndFunction
+
+//////////////////////////////////////////////////
+// CreateSingleItem - Erzeugt ein einzelnes Item
+//////////////////////////////////////////////////
+
+Function CreateSingleItem(who, itemtype, x, y, z, color, desc)
+  var item := CreateItemAtLocationPergon(x, y, z, itemtype, 1,who.realm);
+  If (item)
+    item.color := color;item.movable := 0;SetName(item, desc);
+
+    TurnPlayerToItem(who, item);
+    PlaySoundEffect(who, SFX_HAMMER);Sleep(1);
+    PlaySoundEffect(who, SFX_HAMMER);Sleep(1);
+  Else
+    SendSysMessagePergon(who, "An dieser Stelle kann man das Tischteil nicht aufstellen!");
+  EndIf
+EndFunction
+
+////////////////////////////////////////////////////////
+// TurnPlayerToItem - Dreht den Spieler zum Gegenstand
+////////////////////////////////////////////////////////
+
+Function TurnPlayerToItem(who, item)
+  If ((who.x == item.x) && (who.y == item.y))
+    return;
+  EndIf
+  who.facing := GetFacing(who.x, who.y, item.x, item.y);
+EndFunction

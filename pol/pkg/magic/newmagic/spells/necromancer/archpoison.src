@@ -1,0 +1,98 @@
+//**************************************************************************************************
+// Script file archpoison.src
+//
+//    implements spell 310 <Arch Poison> - "Erzgift"
+//
+//	poisons several spelltargets simultaneously (raises poison level)
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+Include "../magicpergon";
+Include "../spellattack";
+Include "include/poison";
+
+program cast_archpoison (params)
+
+   Var caster;
+   Var where;
+   Var victims;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_NECRO_ARCHPOISON);
+   Var dmg:=      spell.primary;
+   Var mindmg:=   spell.primarymin;
+   Var maxdmg:=   spell.primarymax;
+   Var range:=    spell.range;
+   Var minrange:= spell.rangemin;
+   Var maxrange:= spell.rangemax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      where:=struct{x,y,z,realm};
+      where.x:=params[4].x;
+      where.y:=params[4].y;
+      where.z:=params[4].z;
+      where.realm:=params[4].realm;
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      where:=  TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+      
+      power:= GetCastPowerPergon(caster, SPELLID_NECRO_ARCHPOISON);
+      where:= TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, where);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   dmg:=   CInt(power*dmg/100.0);		// calc spell damage and spell range according to casting power
+   range:= CInt(power*range/100.0);
+
+   if (mindmg and mindmg > dmg)
+      dmg:= mindmg;
+   elseif (maxdmg and maxdmg < dmg)
+      dmg:= maxdmg;
+   endif
+   if (minrange and minrange > range)
+      range:= minrange;
+   elseif (maxrange and maxrange < range)
+      range:= maxrange;
+   endif
+
+   victims:= ListMobilesNearLocationEx(where.x, where.y, where.z, range, LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN,where.realm);		// get victims
+
+   if (victims.size())
+      foreach victim in victims															// for each victim
+
+         if (victim <> caster && !victim.dead)   									// preserve caster and ghosts
+            PlaySoundEffect(victim, SFX_206);
+            PlayObjectCenteredEffect(victim, FX_CURSE_EFFECT, 10, 15);
+            PrintTextAbovePrivatePergon(victim, "Ihr wurdet magisch vergiftet",
+                                                "You have been magically poisoned", victim);
+
+            AddPoisonLevel(victim, dmg, caster); 												// poison victim
+
+            if (victim.isa(POLCLASS_NPC))
+               send_attack(victim, caster, 310);
+            endif
+         endif
+
+      endforeach
+   endif
+
+endprogram

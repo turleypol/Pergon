@@ -1,0 +1,172 @@
+<html>
+
+<head>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+<title>POL Object Reference - Account</title>
+</head>
+
+<body>
+
+<table border="0" width="100%">
+  <tr>
+    <td valign="top" width="100%"><strong><big>Account </big></strong></td>
+    <td width="50%" valign="top" align="right" nowrap><a href="objref.htm"><small>POL </small><br>
+    <small>Object Reference</small></a></td>
+  </tr>
+</table>
+
+<p>Special note on Account methods: all methods that change the state of an Account flush
+the accounts data file (data/accounts.txt) to disk immediately.&nbsp; </p>
+
+<h3>Methods</h3>
+
+<table border="0" width="80%">
+  <tr>
+    <td width="25%"><a href="#ban">ban</a></td>
+    <td width="25%"><a href="#unban">unban</a></td>
+    <td width="25%"></td>
+    <td width="25%"></td>
+  </tr>
+  <tr>
+    <td width="25%"><a href="#disable">disable</a></td>
+    <td width="25%"><a href="#enable">enable</a></td>
+    <td width="25%"></td>
+    <td width="25%"></td>
+  </tr>
+  <tr>
+    <td width="25%"><a href="#setname">setname</a></td>
+    <td width="25%"><a href="#setpassword">setpassword</a></td>
+    <td width="25%"></td>
+    <td width="25%"></td>
+  </tr>
+</table>
+
+<h3>Properties</h3>
+
+<table border="0" width="80%">
+  <tr>
+    <td width="25%"><a href="#banned">banned</a></td>
+    <td width="25%"><a href="#enabled">enabled</a></td>
+    <td width="25%"><a href="#name">name</a></td>
+    <td width="25%"></td>
+  </tr>
+</table>
+
+<hr width="50%">
+
+<h3>Methods</h3>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td width="100%" colspan="2"><a name="ban"><strong><big>account.ban()</big></strong></a></td>
+  </tr>
+  <tr>
+    <td>Function:</td>
+    <td width="100%">Bans the account.&nbsp; If any character owned by this account is online,
+    it will be disconnected</td>
+  </tr>
+</table>
+
+<p>&nbsp;</p>
+
+<table border="1" width="80%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="100%" colspan="2"><a name="unban"><strong><big>account.unban()</big></strong></a></td>
+  </tr>
+  <tr>
+    <td>Function:</td>
+    <td width="100%">Unbans the account.</td>
+  </tr>
+</table>
+
+<p>&nbsp;</p>
+
+<table border="1" width="80%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="100%" colspan="2"><a name="disable"><strong><big>account.disable()</big></strong></a></td>
+  </tr>
+  <tr>
+    <td>Function:</td>
+    <td width="100%">Disables the account.</td>
+  </tr>
+</table>
+
+<p>&nbsp;</p>
+
+<table border="1" width="80%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="100%" colspan="2"><a name="enable"><strong><big>account.enable()</big></strong></a></td>
+  </tr>
+  <tr>
+    <td>Function:</td>
+    <td width="100%">Enables the account.</td>
+  </tr>
+</table>
+
+<p>&nbsp;</p>
+
+<table border="1" width="80%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="100%" colspan="2"><a name="setname"><strong><big>account.setname( newname :
+    string )</big></strong></a></td>
+  </tr>
+  <tr>
+    <td>Function:</td>
+    <td width="100%">Changes the account name. It is advisable to save world state after
+    changing an account name.</td>
+  </tr>
+</table>
+
+<p>&nbsp;</p>
+
+<table border="1" width="80%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="100%" colspan="2"><a name="setpassword"><strong><big>account.setpassword(
+    newpassword : string )</big></strong></a></td>
+  </tr>
+  <tr>
+    <td>Function:</td>
+    <td width="100%">Changes the account password.&nbsp; Note there is no way to read an
+    account password.</td>
+  </tr>
+</table>
+
+<p>&nbsp;</p>
+
+<h3>Properties</h3>
+
+<table border="1" width="80%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="100%" colspan="2"><a name="enabled"><strong><big>account.enabled</big></strong></a></td>
+  </tr>
+  <tr>
+    <td>Meaning:</td>
+    <td width="100%">True/false indicator of whether or not the account is enabled</td>
+  </tr>
+</table>
+
+<p>&nbsp;</p>
+
+<table border="1" width="80%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="100%" colspan="2"><a name="banned"><strong><big>account.banned</big></strong></a></td>
+  </tr>
+  <tr>
+    <td>Meaning:</td>
+    <td width="100%">True/false indicator of whether ot not the account is banned</td>
+  </tr>
+</table>
+
+<p>&nbsp;</p>
+
+<table border="1" width="80%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="100%" colspan="2"><a name="name"><strong><big>account.name</big></strong></a></td>
+  </tr>
+  <tr>
+    <td>Meaning:</td>
+    <td width="100%">The account name</td>
+  </tr>
+</table>
+</body>
+</html>

@@ -1,0 +1,175 @@
+//**************************************************************************************************
+// Script file uncurse.src
+//
+//    implements spell 207 <Uncurse> - "Gegenfluch"
+//
+//  lifts curse from an (randomly choosen) (equipped) item
+//  entfernt - wenn vorhanden - DeBuffs von einem Player
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+use util;
+
+Include "include/thaumaturgy";
+Include "../magicpergon";
+Include "include/spellcheck";
+
+Program cast_uncurse(params)
+
+  var caster;
+  var caston;
+  var power;
+
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  := params[3];
+    caston := params[4];
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_CLERIC_UNCURSE);
+    caston := TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  If (caston.isa(POLCLASS_MULTI))    // check if casted on NPC, multi or house
+    SendSysMessagePergon(caster, "Das kann nicht verflucht worden sein", "This cannot have been cursed");
+    return;
+  EndIf
+
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  If (caston.isa(POLCLASS_MOBILE))  // spell has been casted on player
+
+    TurnCharTo(caster, caston);
+    PlayObjectCenteredEffect(caston, FX_BLESS_EFFECT, 7, 7);
+
+    var spellprop := caston.getprop("spell_curse");
+    
+    var armor := {};
+    var item;
+    var equipped := ListEquippedItems(caston);                // equipped items on spelltarget
+
+    ForEach item in equipped                         // gather armor from equipped
+      If (item.isa(POLCLASS_ARMOR) || item.isa(POLCLASS_WEAPON))
+        If (item.getprop("spell_curse"))
+          armor.append(item);
+        Endif
+      EndIf
+    EndForEach
+
+    If (!spellprop && !armor.size())
+      SendSysMessagePergon(caster, "Euer Ziel ist nicht verflucht","Your target isn't cursed");
+      return;
+    EndIf
+    
+    If (spellprop[3] == "dead knight")               // check if curse is deadly
+      SendSysMessagePergon(caster, "Der Fluch auf " + caston.name + " ist tödlich und kann nicht gelöst werden",
+                                   "The curse upon " + caston.name + " is deadly and cannot be lifted");
+      return;
+    EndIf
+    
+    If (!spellprop && armor.size())
+      item := armor.randomentry();
+      uncurse_item(caster, power, item); 
+      return;
+    EndIf
+
+    var powerskill := spellprop[8];
+    var skilldiff  := spellprop[7];
+
+    If (skilldiff > 200)
+      skilldiff:=200;
+    EndIf
+
+    var res := skilldiff - GetSkillPergon(caster,SKILLID_SEGNEN);
+    var respower := powerskill - power;
+
+    If (res <= 25) //drüber klappt es eh nicht
+      If (RandomInt(100) > res + 50 && RandomInt(100) > respower + 50)
+
+        PlaySoundEffect(caston, SFX_1E1);
+        PrintTextAbovePrivatePergon(caston, "Euer Fluch wurde von " + caster.name + " gelöst",
+                                            "Your curse was cleared", caston);
+        PrintTextAbovePrivatePergon(caster, "Ihr löst den Fluch von " + caston.name,
+                                            "You break the curse of " + caston.name,caster);
+
+        SendSpellWaiter(caston, "spell_curse", 0, spellprop[6], caston);
+      Else
+        PlaySoundEffect(caston, SFX_1E2);
+        SendSysMessagePergon(caster, "Ihr konntet den Fluch noch nicht lösen",
+                                     "The Curse is to strength for you");
+        return;
+      EndIf
+    Else
+      PlaySoundEffect(caston, SFX_1E2);
+      SendSysMessagePergon(caster, "Der Fluch ist für Euch zu stark",
+                                   "The curse is too hard for you to break");
+      return;
+    EndIf
+  ElseIf (caston.isa(POLCLASS_WEAPON) || caston.isa(POLCLASS_ARMOR)) // spell has been casted on item (equipment)
+    uncurse_item(caster, power, caston);    
+  EndIf
+
+EndProgram
+
+Function uncurse_item(caster, power, caston)
+  
+  var container := caston.container;
+  If (container)
+    While (container.container)
+      container := container.container;
+    EndWhile
+    TurnCharTo(caster, container);
+    PlayObjectCenteredEffect(container, FX_BLESS_EFFECT, 7, 7);
+  Else
+    TurnCharTo(caster, caston);
+    PlayStationaryEffect(caston.x, caston.y, caston.z, FX_BLESS_EFFECT, 7, 7);
+  EndIf
+
+  If (GetObjProperty(caston, "spell_curse"))        // check if spelltarget is cursed
+
+    var tag:= GetObjProperty(caston, "spell_curse"); // get spelltag
+    If (tag[3] == "dead knight")               // check if curse is deadly
+      PlaySoundEffect(caster, SFX_1E2);
+      SendSysMessagePergon(caster, "Der Fluch auf " + caston.container.name + " ist tödlich, "+caston.desc+" kann nicht entflucht werden",
+                                   "The curse upon " + caston.container.name + " is deadly and "+caston.desc+" cannot be uncursed");
+      return;
+    EndIf
+
+    If (power - CInt(tag[2]) + 20 >= RandomInt(41))    // check if curse gets lifted
+      PlaySoundEffect(caster, SFX_1E1);
+      SendSysMessagePergon(caster, "Ihr löst den Fluch von " + caston.desc,
+                                   "You break the curse upon " + caston.desc);
+
+      If (tag[3] == "dead knight")        // check if curse has been deadly
+        caston.color:= tag[4];         // restore original color
+      EndIf
+
+      EraseObjProperty(caston, "spell_curse");      // lift curse
+      CalcItemQualityBonus(caston);             // calcs new item bonus
+      IncRevision(caston);
+    Else
+      PlaySoundEffect(caster, SFX_1E2);
+      SendSysMessagePergon(caster, "Ihr schafft es nicht, den Fluch von " + caston.desc + " zu lösen",
+                                   "You do not succeed in breaking the curse upon " + caston.desc);
+    EndIf
+  Else
+    PlaySoundEffect(caster, SFX_1E1);
+    SendSysMessagePergon(caster, "Das ist nicht verflucht", "This is not cursed");
+  EndIf
+  
+EndFunction

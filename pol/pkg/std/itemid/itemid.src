@@ -1,0 +1,94 @@
+//
+//  30.06.2003 Fraggulus: Bei Identifikation einer Tuer wird das FingerPrint-Script aufgerufen (siehe auch: Schloesserknacken)
+//  22.01.2006 Seppel:    Delay eingebaut
+//
+
+use attributes;
+use uo;
+
+include "include/client";
+include "include/modifyskill";
+
+program do_itemid(character)
+    
+    If (GetObjProperty(character, "#UsesSkill") > ReadGameClock())
+      SendSysMessagePergon(character, "Ihr müsst noch ein wenig warten bevor ihr euch wieder etwas identifizieren könnt");
+      Return(0);
+    EndIf
+
+    SetObjProperty(character, "#UsesSkill", ReadGameClock() + 2);           // Delay bis zur nächsten Nutzung eines Skills 2 Sekunden
+    
+    Var thepoints := GetSkillDefaultPoints(SKILLID_GEGENSTAENDE_IDENT);
+    Var the_item;
+    Var true_name;
+    Var ncharges;
+
+    SendSysMessagePergon(character, "Wählt ein Objekt zum Identifizieren aus.");
+    the_item := target(character, TGTOPT_CHECK_LOS);
+    if (!the_item)
+        SendSysMessagePergon(character, "Zielen abgebrochen");
+        return;
+    endif
+
+    If (!the_item.isa(POLCLASS_ITEM))
+        SendSysMessagePergon(character, "Das ist kein Gegenstand!");
+        return;
+    EndIf
+
+    If (the_item.isa(POLCLASS_DOOR))
+        Start_ScriptPergon("fingerprint", {character, the_item, "item_id"});
+        return;
+    EndIf
+
+    if (GetObjProperty(the_item, "IDed"))                                        // no macro exploits, please
+        SendSysMessagePergon(character, "Dieser Gegenstand wurde bereits identifiziert.");
+        return;
+    endif
+
+    if (CheckSkillPergon(character, SKILLID_GEGENSTAENDE_IDENT, -1, thepoints))
+
+        true_name := GetObjProperty(the_item, "tname");                          // This block is DW's check for enchanting.
+        if (true_name != error)                                                  // It's similar to the check for magic
+            SendSysMessagePergon (character, true_name);                               // weapons and armor, but not good enough
+            // I'd like to put a friendlier message like "that is a ..." but     // to reuse the code.
+            // I don't want to check for vowels!
+            if (GetObjProperty(the_item, "charges"))
+                ncharges := GetObjProperty(the_item, "charges");
+                if (ncharges)
+                    SendSysMessagePergon(character, "Charges: " + ncharges);
+                endif
+            endif
+            Setname(the_item, true_name);
+
+        elseif (GetObjProperty(the_item, "prefix") || GetObjProperty(the_item, "suffix"))         // The item is some kinda magic
+            if (GetObjProperty(the_item, "prefix"))                                               // if 'prefix' magic
+                Var space := find(the_item.desc, "[magisch]", 1);                                 // Anm.:     in [magisch] geaendertes prefix suchen
+                Var currdesc := the_item.desc;                                                    //  find "a magic" and strip it off
+                Var newname := currdesc[space+9,len(the_item.desc)];                              //
+                SetName(the_item, GetObjProperty(the_item, "prefix") + newname);                  // new name is prefix str plus old name
+                EraseObjProperty(the_item, "prefix");                                             // delete the prefix prop
+
+                if( GetObjProperty(the_item, "suffix"))                                           // Might also have a suffix prop
+                    Var currdesc := the_item.desc;
+                    SetName(the_item, currdesc + " " + GetObjProperty(the_item, "suffix"));       // new name is old name plus suffix str
+                    EraseObjProperty(the_item, "suffix");                                         // delete the suffix prop
+                endif
+
+            elseif( GetObjProperty(the_item, "suffix"))                                           // only a suffix prop
+                Var space := find(the_item.desc, "[magisch]", 1);                                     // \
+                Var currdesc := the_item.desc;                                                    //  find "a magic" and strip it off
+                Var newname := currdesc[space+9,len(the_item.name)];                              // /
+                SetName(the_item, newname + " " + GetObjProperty(the_item, "suffix"));            // new name is old name plus suffix str
+                EraseObjProperty(the_item, "suffix");                                             // delete the suffix prop
+            endif
+
+            SendSysMessagePergon(character, "Ihr identifiziert: " + the_item.desc);                     // user message
+            SetObjProperty(the_item, "IDed" , 1);                                                 // check this prop later to combat exploits
+        else
+            SendSysMessagePergon(character, "Das ist ein normales Item.");                              // no magic props were found
+        endif
+    else
+        SendSysMessagePergon(character, "Ihr seid Euch nicht sicher . . .");                            // you failed
+    endif
+
+endprogram

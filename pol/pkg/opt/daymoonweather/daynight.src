@@ -1,0 +1,130 @@
+/////////////////////////////////////////////////////////////////////
+// DayNight - Cycle
+//
+// Author: Shinigami
+
+use os;
+include "daymoonweather";
+include "include/clock";
+include "include/msgs";
+include "include/place";
+
+Program DayNightCycle()
+  syslog("Tag/Nacht-Zyklus wird aktiviert...");
+
+  CheckGlobalProperty("SeasonDays");
+
+  Var daylength  := CInt(60*PERGON_LENGTH_DAY);
+  Var night      := CInt(60*PERGON_LENGTH_NIGHT);
+  Var transition := CInt(60*PERGON_LENGTH_TRANSITON);
+  Var phase:=0;
+
+  While (1)
+    Var time := CInt(GetPergonTime())+(night/2);
+    If (time<0)
+      time+=daylength;
+    ElseIf (time>=daylength)
+      time-=daylength;
+    EndIf
+
+    If (time<night)
+      If (phase<>1)
+        BroadcastPergon(
+          "Dunkelheit erfüllt das Land ...",
+          "Darkness flows over the land ..."
+        );
+        SetDayLight(NIGHTLIGHT);
+        ChangeSeason();
+
+        phase:=1;
+      Else
+        Sleep(60);
+      EndIf
+
+      Sleep(night-time);
+    ElseIf (time<night+transition)
+      If (phase<>2)
+        BroadcastPergon(
+          "Die ersten Sonnenstrahlen am Horizont ...",
+          "The sun rises at the horizon ..."
+        );
+        DawnTransition(transition, transition-(night+transition-time));
+
+        phase:=2;
+      Else
+        Sleep(night+transition-time+60);
+      EndIf
+    ElseIf (time<daylength-transition)
+      If (phase<>3)
+        BroadcastPergon("Ein neuer Tag beginnt ...", "A new day begins ...");
+        SetDayLight(DAYLIGHT);
+
+        phase:=3;
+      Else
+        Sleep(60);
+      EndIf
+
+      Sleep(daylength-transition-time);
+    Else
+      If (phase<>4)
+        BroadcastPergon("Die Sonne geht unter ...", "The sun goes down ...");
+        DuskTransition(transition, transition-(daylength-time));
+
+        phase:=4;
+      Else
+        Sleep(daylength-time+60);
+      EndIf
+    EndIf
+  EndWhile
+EndProgram
+
+///////////////////////////////////////////////////
+// ChangeSeason - Schaltet die Jahreszeiten durch
+///////////////////////////////////////////////////
+
+Function ChangeSeason()
+  Var seasondays:=GetGlobalProperty("SeasonDays")+1;
+  If (seasondays>=28) // Vorher waren es 7...
+    Var season:=GetGlobalProperty("Season")+1;
+    If (season==4)
+      season:=0;
+    EndIf
+    SetGlobalProperty("Season", season);
+
+    SetSeasonSpecialPergon(season);
+    seasondays:=0;
+  EndIf
+  SetGlobalProperty("SeasonDays", seasondays);
+EndFunction
+
+//////////////////////////////////////////////////////////////
+// DawnTransition - Die ersten Sonnenstrahlen am Horizont...
+//////////////////////////////////////////////////////////////
+
+Function DawnTransition(transition, time)
+  Var inter_level_time:=CInt(transition/(NIGHTLIGHT-DAYLIGHT-1));
+  Var lightamt:=NIGHTLIGHT-CInt(((time*1.0)/transition)*(NIGHTLIGHT-DAYLIGHT-1))-1;
+
+  While (lightamt>DAYLIGHT)
+    SetDayLight(lightamt);
+    lightamt-=1;
+
+    Sleep(inter_level_time);
+  EndWhile
+EndFunction
+
+/////////////////////////////////////////////
+// DuskTransition - Die Sonne geht unter...
+/////////////////////////////////////////////
+
+Function DuskTransition(transition, time)
+  Var inter_level_time:=CInt(transition/(NIGHTLIGHT-DAYLIGHT-1));
+  Var lightamt:=CInt(((time*1.0)/transition)*(NIGHTLIGHT-DAYLIGHT-1))+1;
+
+  While (lightamt<NIGHTLIGHT)
+    SetDayLight(lightamt);
+    lightamt+=1;
+
+    Sleep(inter_level_time);
+  EndWhile
+EndFunction

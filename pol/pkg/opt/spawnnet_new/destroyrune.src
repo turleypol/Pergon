@@ -1,0 +1,74 @@
+/////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   Spawnrune Destroyscript 
+//    (Eigentlich 1:1 Kopie aus dem Manager)
+//
+//		Author: Turley
+//
+//   Modifications:
+//		02.08.2007 Turley: Init
+//    01.02.2008 Turley: Endlich fertig...
+//    
+/////////////////////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+
+Include ":spawnnet_new:spawnnet";
+Include "include/modifyskill";
+
+
+Program RuneDestroy(rune)
+	SendSpawnNet(rune, rune.serial, EVID_SPAWNPOINT_DEL, 0, 1); // Aus dem Zeitqueue entfernen
+	
+	//Gespawnte Sachen zerstören/killen
+	Var spawndata:=rune.getprop(CPROP_DATA);
+	Var userdata:=rune.getprop(CPROP_USER);
+	Var spawns;
+	
+	If (userdata.spawntype<>TYPE_CONTAINER)
+		If (userdata.spawntype==TYPE_ITEM)  // serials aktualisieren
+			ItemCount(rune,spawndata,userdata);
+		EndIf
+	  ForEach spawn in (spawndata.serials)
+		  spawns:=SystemFindObjectBySerial(spawn);
+		  If (userdata.spawntype==TYPE_NPC)
+		    If ((spawns) && (spawns.getprop(CPROP_NR)[1]==rune.serial))
+		      RevokePrivilege(spawns, "invul");
+          spawns.setprop("guardkill", 1);
+          KillMobile(spawns, "spawnnet-destroyrune");
+        EndIf
+      ElseIf ((spawns) && (spawns.getprop(CPROP_NR)==rune.serial))
+     	  DestroyItem(spawns);
+		  EndIf
+    EndForEach
+  Else
+	  spawns:=SystemFindObjectBySerial(spawndata.container);
+  	If (spawns)
+  		DestroyItem(spawns);
+  	EndIf
+  EndIf
+  
+  Return(1);
+EndProgram
+
+Function ItemCount(byref rune, byref spawndata, byref userdata)
+	If (userdata.flags & ITEM_IN_CONTAINER_SPAWN)
+		Return;
+	EndIf
+	Var item, temp:={};
+	ForEach serial in (spawndata.serials)
+		item:=SystemFindObjectBySerial(serial);
+		If (item)  // Existenz
+			If (item.getprop(CPROP_NR)==rune.serial)  // Selbe Rune
+				If ((!item.container) && (!item.multi))  // in keinem Container oder Multi
+					If (Distance(item,rune)<=userdata.range)  // Entfernung passend?
+						temp.append(item.serial);
+					EndIf
+				EndIf
+			EndIf
+		EndIf
+		SleepMS(2);
+	EndForEach
+	spawndata.serials:=temp;
+EndFunction

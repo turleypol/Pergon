@@ -1,0 +1,94 @@
+//////////////////////////////////////////////////////
+// TextCMD ConcealMe - Verbirgt einen CMDLevelChar
+//
+// Author: Shinigami
+
+// .concealme      setzt einen auf seine höchste concealstufe
+// .concealme x    setzt einen auf die concealstufe x (0 - 8)
+// .concealme lvl  setzt einen auf die concealstufe x (player - developer)
+
+use file;
+use uo;
+include "include/msgs";
+include "include/quests";
+include ":sqlmanager:sqlmanager";
+
+Program TextCMD_ConcealMe(who, param)
+    If (!who.isa(POLCLASS_MOBILE)) // Externer Aufruf?
+        param := who[2];
+        who   := who[1];
+    EndIf
+
+    param := lower(CStr(param));
+    var level := 0;
+    If (param["help"] or param["?"])
+        SendSysMessagePergon(who,
+            "Usage: .concealme <level> ('level' als Zahl oder String)",
+            "Usage: .concealme <level> ('level' as integer or string)"
+        );
+        return;
+    ElseIf (param["0"] or param["player"])
+        level := CMDLEVEL_PLAYER;
+    ElseIf (param["1"] or param["coun"])
+        level := CMDLEVEL_COUNSELOR;
+    ElseIf (param["2"] or param["quest"])
+        level := CMDLEVEL_QUESTCHAR;
+    ElseIf (param["3"] or param["seer"])
+        level := CMDLEVEL_SEER;
+    ElseIf (param["5"] or param["highgm"])
+        level := CMDLEVEL_HIGHGM;
+    ElseIf (param["4"] or param["gm"])
+        level := CMDLEVEL_GM;
+    ElseIf (param["6"] or param["gl"] or param["gameleader"])
+        level := CMDLEVEL_GL;
+    ElseIf (param["7"] or param["script"])
+        level := CMDLEVEL_SCRIPTER;
+    ElseIf (param["8"] or param["dev"] or param["test"])
+        level := CMDLEVEL_DEVELOPER;
+    Else
+        // setzt einen auf höchste erlaubte Concealstufe
+        level := who.cmdlevel;
+    EndIf
+
+    If (level > who.cmdlevel)
+        level := who.cmdlevel;
+    EndIf
+
+    // hoeher als eigener Cmdlevel darf man nicht concealen
+    who.concealed := Min(level, who.cmdlevel);
+    If (level == 0)
+        // enttarnt
+        syslog(CharInfoStr(who, COORDS_REALM)+" hat sich enttarnt");
+        If (param["hidden"])
+            SetObjProperty(who, PROP_HIDE_STAFF_ONLINE, 1);
+        Else
+            // falls man von "0 hidden" auf "0" wechselt
+            EraseObjProperty(who, PROP_HIDE_STAFF_ONLINE);
+        EndIf
+
+        If (param["bcast"])
+            ForEach char in EnumerateOnlineCharacters()
+                SleepMs(2);
+                If (char.serial <> who.serial)
+                    SendSysMessagePergon(char,
+                        who.name+" hat sich enttarnt.",
+                        who.name+" has unconcealed.", _DEFAULT_TEXT_FONT, 38
+                    );
+                EndIf
+            EndForEach
+            SendSysMessagePergon(who, "Ihr habt Euch lautstark enttarnt.");
+            // immer online zeigen, sonst wundern sich die Spieler noch
+            EraseObjProperty(who, PROP_HIDE_STAFF_ONLINE);
+        EndIf
+    Else
+        // getarnt
+        syslog(
+            CharInfoStr(who, COORDS_REALM)+" hat sich getarnt (Level "+
+            level+")"
+        );
+        EraseObjProperty(who, PROP_HIDE_STAFF_ONLINE);
+    EndIf
+    IncRevision(who);
+    SendSQLManager(who, SQLStatus_Concealed);
+    QuestCharLog(who, "TextCMD ConcealMe");
+EndProgram

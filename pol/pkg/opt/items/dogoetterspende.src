@@ -1,0 +1,101 @@
+///////////////////////////////////////////////////////////////////
+// Goetterspende - Ein Player wirft etwas in die Spendenkiste
+//               - Ein Tor Richtung Goetterinsel wird geoeffnet
+//
+// Author: Fraggulus
+// Date:   28.11.2002
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+include ":teleporters:common";
+include "include/client";
+include "include/itemnpc";
+include "include/msgs";
+include "include/objtype";
+include "include/server";
+use os;
+use uo;
+use util;
+
+Const MIN_GOLD := 50;
+
+Program SpendenCheck(p)
+    // Set_Debug(1);
+    If (!p.who)
+        // da will gar niemand spenden?
+        return;
+    EndIf
+
+    // wurde Gold gespendet?
+    If (p.item.objtype <> UOBJ_GOLD_COIN)
+        PrintTextAbovePrivatePergon(
+            p.who, "Eine Spende in Form von "+MIN_GOLD+
+            " Goldstücken wäre Euch dienlicher.",
+            "A small donation of "+MIN_GOLD+
+            " gold pieces would help you.", p.who
+        );
+        MoveItemToContainer(p.item, p.who.backpack);
+        return;
+    EndIf
+
+    // wurde genug Gold gespendet?
+    If (p.item.amount < MIN_GOLD)
+        PrintTextAbovePrivatePergon(
+            p.who, "Eure Spende fiel etwas zu gering aus.",
+            "Your donation was underdosed.", p.who
+        );
+        MoveItemToContainer(p.item, p.who.backpack);
+        return;
+    EndIf
+
+    // Gold vernichten
+    DestroyItem(p.item);
+
+    // CProp setzen, dass derjenige gezahlt hat
+    SetObjProperty(p.who, PROP_GODDONATION, ReadGameClock());
+
+    // ein wenig Bla-Bla
+    PrintTextAbovePrivatePergon(
+        p.who, "Eure Spende wurde dankend angenommen.",
+        "Your donation was taken in thanks.", p.who
+    );
+
+    // fuer Tempel auf Jhe'lom, wenn Festlaender vorbeikommen
+    If (p.chest.getprop("nogate"))
+        return;
+    EndIf
+
+    Sleep(3);
+    SendSysMessagePergon(p.who,
+        "Ein Tor wird geöffnet.",
+        "A gate will be opened."
+    );
+    Sleep(3);
+
+    // I-Stein im Knast erzeugen
+    var gate := CreateItemAtLocation(
+        5288, 1190, 0, 0x70d0, 1, REALM_BRITANNIA
+    );
+    If (!gate)
+        SendSysMessagePergon(p.who,
+            "Aus unerfindlichen Gründen bleibt Euch das Tor verschlossen. "+
+            "Ruft einen GM.",
+            "Due to incomprehensible causes this gate won't open. Call a GM.",
+            _DEFAULT_TEXT_FONT, FONTCOLOR_RED
+        );
+        syslog(
+            "FEHLER: I-Stein konnte nicht erzeugt werden: "+gate.errortext
+        );
+        return;
+    EndIf
+
+    // Stein konfigurieren
+    gate.facing := 29;
+    BasicSetup(gate, 11);
+
+    // Gate zur korrekten Position schieben
+    MoveObjectToLocation(
+        gate, 2718, 512, 35, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+    );
+EndProgram

@@ -1,0 +1,182 @@
+///////////////////////////////////////////////////////////////////////////
+// hallucination
+// implements spell 312 <Hallucination> - "Halluzination"
+//
+// creates a double of the caster
+
+use os;
+use vitals;
+include "../magicpergon";
+
+Program cast_hallucination (params)
+  var caster;
+  var where;
+
+  // load spelldata
+  var spells := ReadConfigFile("::spells");
+  var spell := FindConfigElem(spells, SPELLID_NECRO_HALLUCINATION);
+  var dur := spell.duration;
+  var mindur := spell.durationmin;
+  var maxdur := spell.durationmax;
+  var power;
+
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power := params[3];
+    where := struct{x, y, z, realm};
+    where.x := params[4].x;
+    where.y := params[4].y;
+    where.z := params[4].z;
+    where.realm := params[4].realm;
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power := params[3];
+    where := TargetArea(caster);
+    If (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+
+    power := GetCastPowerPergon(caster, SPELLID_NECRO_HALLUCINATION);
+    where := TargetArea(caster);
+    If (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  TurnCharTo(caster, where);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  // prepare controlscript for double
+  var parms := struct;
+  parms.+CProps := dictionary;
+  parms.+script := "enticedanimal";
+  If (caster.gender)
+    If (caster.race)
+      parms.+graphic := CID_ELF_FEMALE;
+      parms.+race := 1;
+    EndIf
+  Else
+    If (caster.race)
+      parms.+graphic := CID_ELF_MALE;
+      parms.+race := 1;
+    EndIf
+  EndIf
+  // mark as summoned by necro
+  parms.CProps.insert(PROP_SUMMONED, SUMMON_BY_NECRO);
+  // set caster as master
+  parms.+Master := caster.serial;
+  parms.CProps.insert("master", caster.serial);
+  // set enticed time (high enough)
+  parms.CProps.insert("RoamsFreeAt", ReadGameClock() + dur + 60);
+  // Exp löschen für selbstbeschworene Viecher
+  parms.CProps.insert("exp", 0);
+  // set color of hallu to casters
+  parms.+color := caster.color;
+  // set true color of hallu to casters
+  parms.+truecolor := caster.truecolor;
+  // set name of hallu to casters
+  parms.+name := caster.name;
+  parms.+facing := caster.facing;
+  // set intelligence, dexterity and strength
+  parms.+INT := GetIntPergon(caster)/2;
+  parms.+DEX := GetDexPergon(caster)/2;
+  parms.+STR := GetStrPergon(caster)/2;
+  parms.CProps.insert("OverrideHits", GetMaxHPPergon(caster)/2);
+  parms.CProps.insert("OverrideMana", GetMaxManaPergon(caster)/2);
+  parms.CProps.insert("OverrideStamina", GetMaxStaminaPergon(caster)/2);
+  // set vitals
+  parms.+HITS := GetHPPergon(caster)/2;
+  parms.+MANA := GetManaPergon(caster)/2;
+  parms.+STAM := GetStaminaPergon(caster)/2;
+
+  // calc spell duration according to casting power
+  dur := CInt(power*dur/100.0);
+  If (mindur and mindur > dur)
+    dur := mindur;
+  ElseIf (maxdur and maxdur < dur)
+    dur := maxdur;
+  EndIf
+
+  PlayStationaryEffect(
+    where.x, where.y, where.z, FX_MARK_EFFECT, 10, 10, 0, where.realm
+  );
+  var hallu;
+  // get gender of caster and create double -> hallu
+  If (caster.gender)
+    hallu := CreateNpcFromTemplate(
+      "hallucinationw", where.x, where.y, where.z, parms, where.realm
+    );
+  Else
+    hallu := CreateNpcFromTemplate(
+      "hallucinationm", where.x, where.y, where.z, parms, where.realm
+    );
+  EndIf
+  If (!hallu)
+    SendSysMessagePergon(caster, "Interner Fehler! Staff wurde informiert.");
+    syslog("FEHLER: Halluzination nicht erzeugt: "+hallu.errortext);
+    return;
+  EndIf
+  PlaySoundEffect(hallu, SFX_SPELL_SUMMON_CREATURE);
+
+  SendSysMessagePergon(caster,
+    "Ihr beschwört eine Trugbild von Euch",
+    "You summon a double of yourself"
+  );
+  // set cmdlvl to Player
+  If (hallu.cmdlevel >= CMDLEVEL_COUNSELOR)
+    hallu.cmdlevel := CMDLEVEL_PLAYER;
+  EndIf
+  // Invul hallucination should not happen anymore 
+  If (hallu.enabled("invul"))
+	hallu.disable("invul");
+  EndIf
+  // set skills
+  For skillid:=0 to MAX_SKILLS
+    SetSkillPergon(hallu, skillid, CInt(GetSkillPergon(caster, GetSkillName(skillid))/2));
+    SleepMS(2);
+  EndFor
+  // set critters magic resistance
+  SetSkillPergon(hallu, SKILLID_MAGIERESISTENZ, power*2/5);
+
+  // for each equipped item on caster
+  ForEach item in ListEquippedItems(caster)
+    SleepMS(2);
+    If (item.graphic == 0x0e75)
+      // Backpacktasche nicht erzeugen, kann eh nicht equipped werden
+      continue;
+    EndIf
+
+    // Duplikat auf GreenAcres erzeugen
+    var newitem := CreateItemCopyAtLocation(
+        5376, 1081, 0, item, REALM_BRITANNIA
+    );
+    newitem.movable := 1;
+    // equip item to hallu
+    If (!EquipItem(hallu, newitem));
+      // Sachen die sich dem equippen wiedersetzen, wie Masken
+      // wieder löschen (bei der Backpacktasche gings so nicht)
+      DestroyItem(newitem);
+    EndIf
+  EndForEach
+
+  Detach();
+
+  // wait duration
+  Sleep(dur);
+
+  If (hallu)
+    // double is still alive
+    PlaySoundEffect(hallu, SFX_SPELL_MANA_VAMPIRE);
+    PlayStationaryEffect(
+      hallu.x, hallu.y, hallu.z, FX_SMOKE, 10, 10, 0, hallu.realm
+    );
+
+    // hide and kill hallu
+    hallu.hidden := 1;
+    KillNPC(hallu, "necro-hallucination", KILLNPC_NOCORPSE);
+  EndIf
+EndProgram

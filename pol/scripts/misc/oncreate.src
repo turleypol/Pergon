@@ -1,0 +1,155 @@
+/////////////////////////////////////////////////////////////////////////
+// OnCreate - Erzeugt einen neuen Character
+//
+// Parameters:
+//   who      - Character created
+//   skillids - Array of SkillId Integers
+//
+//   (Runs Critical - May be changed to just Run to Completion)
+//
+//   Author: Shinigami
+
+use os;
+use uo;
+include ":drinking:common";
+include "include/names";
+include "include/onlinesearch";
+include "include/server";
+include "include/starteqp";
+
+Program OnCreate(who)
+  
+  var time       := ReadGameClock();
+  var account    := who.acct;
+  var name       := account.getprop(ACCT_NEWCHAR_NAME);
+  var cmdlvlkenn := CInt(account.getprop(ACCT_NEWCHAR_CMDLVL));  
+
+// turley&chaos: deactivated no automatic cmdlevel on POL-MAPs
+//  If (GetGlobalProperty(BAUSERVER))
+//    // auf dem Bauserver ist man mindestens Seer
+//    cmdlvlkenn := Max(cmdlvlkenn, CMDLEVEL_SEER);
+//  EndIf
+  If (GetGlobalProperty(GPROP_DEBUG_ACCOUNT))
+    SysLog("DEBUG: Account: OnCreate gestartet, Cmdlevel "+cmdlvlkenn);
+  EndIf
+  
+  who.cmdlevel := cmdlvlkenn;
+  If (who.cmdlevel >= CMDLEVEL_QUESTCHAR)
+    SendSysMessagePergon(
+      who, "Euer Character ist ein "+GetCMDLevelTitle(who.cmdlevel)+"."
+    );
+  Else
+    // normaler Char bekommt ein Buch (mal umbauen auf starteqp?)
+    Create_Book(who);    
+    who.setprop(TYPNEWBIE, 1);
+  EndIf
+  
+  // Beim Anlegen eingegebenen Namen zur Prüfung schicken
+  CheckPlayerName(who, name);
+
+  // Wann wurde der Account zuletzt benutzt?
+  account.setprop(ACCT_LAST_USE, time);
+
+  // Verschiedene Initialwerte setzen
+  who.setprop(PROP_ALCOHOL, ALC_LEVEL_SOBER);
+  who.setprop(PROP_HUNGER, 10.0);
+  who.setprop(PROP_THIRST, 10.0);
+  who.setprop(PROP_NO_START_EQUIP, 1);    
+
+  // Initial Attribut-RawWerte setzen
+  SetDexPergon(who, GetDexPergon(who)-GetDexModPergon(who));
+  SetIntPergon(who, GetIntPergon(who)-GetIntModPergon(who));
+  SetStrPergon(who, GetStrPergon(who)-GetStrModPergon(who));
+  // per Default Int kuerzen
+  SetAttributeLock(who, ATTRIBUTEID_DEXTERITY,    ATTRIBUTE_LOCK_UP);
+  SetAttributeLock(who, ATTRIBUTEID_STRENGTH,     ATTRIBUTE_LOCK_UP);
+  SetAttributeLock(who, ATTRIBUTEID_INTELLIGENCE, ATTRIBUTE_LOCK_DOWN);
+
+  // Duerfte eigentlich nie passieren, aber man weiss ja nie ...
+  If (who.x != 1363 || who.y != 3901 || who.z != -2)
+    SysLog(
+      "FEHLER: Falsche Startlocation fuer "+CharInfoStr(who, COORDS_REALM)
+    );
+    MoveObjectToLocation(
+      who, 1363, 3901, -2, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+    );
+  EndIf
+
+  // Account bereinigen
+  If (GetGlobalProperty(GPROP_DEBUG_ACCOUNT))
+    SysLog("DEBUG: Account: OnCreate bereinigt Account");
+  EndIf
+  account.eraseprop(ACCT_NEWCHAR_NAME);
+  account.eraseprop(ACCT_NEWCHAR_CMDLVL);
+  account.setprop("Character"+who.serial, name+" "+time+" ["+GetCMDLevelTitle(who.cmdlevel)+"]");
+
+  SysLog(
+    CStr(who.name)+" (Account: "+CStr(who.acctname)+" / IP: "+who.ip+" ["+GetCMDLevelTitle(who.cmdlevel)+"]) wurde um "+time+" ["+polcore().systime+
+    "] erzeugt."
+  );
+  return 1;
+EndProgram
+
+// Create_Book - Erzeugt ein Story-Einstiegsbuch
+Function Create_Book(who) // {{{
+  var book := CreateItemInBackpackPergon(who, 0x0fef, 1);
+  If (book)
+    // Buchdefinition
+    var pergonstory := struct;
+    pergonstory.+titleauthor := {
+      "", "Die Geschichte", "von", "Pergon", "", "Zoltan Nebar" };
+    pergonstory.+story :=
+      "Mein Name ist Zoltan Nebar. Ich bin Gelehrter der "+
+      "Wissenschaften der Natur und Geschichte. Dies sind die Fakten, "+
+      "die ich ueber unsere Welt bisher zusammengetragen habe. Viele "+
+      "der Hinweise sind nur sehr vage und aus alten, muendlichen "+
+      "Ueberlieferungen. Wie lange diese Welt schon existiert weis "+
+      "keiner genau. Eins aber ist sicher, seit der Erschaffung der "+
+      "Welt wird sie unter 2 Goettern aufgeteilt. Ihre Namen sind Khas "+
+      "und Osin. Beide zusammen stellten ein Gleichgewicht dar. Pergon "+
+      "war kaum besiedelt, als es zu einem Streit zwischen den Goettern "+
+      "kam. Auf ihren Welten brachen Kriege aus. Pergon spielte wegen "+
+      "der nur kleinen Anzahl an Glaeubigen eine geringe Rolle in dem "+
+      "Konflikt. Im Verlaufe des Krieges gelang es Khas die Heimatwelt "+
+      "von Osin zu erobern. Dabei konnte er seinen einzigen Sohn, "+
+      "Orssol, gefangen nehmen. Osin war gezwungen sich aus dem Konfikt "+
+      "zurueckzuziehen, um neue Kraefte zu sammeln. Vor etwa 10000 "+
+      "Jahren begann Osin damit, hier auf Pergon eine neue Streitmacht "+
+      "zu formieren, die 'Himmlische Armee'. Er versammelte seine "+
+      "treuesten und glaeubigsten Anhaenger um sich herum. Natuerlich "+
+      "erfuhr Khas davon und begann seine eigenen Legionen zu versammeln. "+
+      "Die Armee ist bis heute als 'Dunkle Horde' bekannt. Die folgenden "+
+      "Jahrhunderte muessen fuer die damaligen Bewohner grausam und "+
+      "bitter gewesen sein. Die tobenden Schlachten vernichteten ganze "+
+      "Kontinente. Viele der Pergoner starben. Dies ist wohl auch ein "+
+      "Grund warum so wenig ueber die Geschichte bekannt ist. Die "+
+      "entscheidene Schlacht soll ueber dem offenen Meer gefuehrt worden "+
+      "sein. Osin unterlag aber der verbliebenen Streitmacht der 'Dunklen "+
+      "Horde' und zog sich auf das letzte Stueck Land Pergons zurueck. "+
+      "Dies ist die Insel auf der wir heute noch leben. Osin errichtete "+
+      "mit einem mystischen Artefakt eine Schutzbarriere um einen Teil "+
+      "des Landes. Khas belagerte diese Barriere mehrere Jahrzehnte, "+
+      "jedoch gelang es ihm nicht sie zu durchbrechen. Osin wurde nicht "+
+      "mehr gesehen und Khas brach die Belagerung ab, um als Sieger "+
+      "ueber die Welten zu herrschen. Seit diesem Tag gab es keine "+
+      "grossen Kriege mehr auf Pergon. Soweit die Erzaehlungen. Wenn "+
+      "die Legende stimmt sind wir Nachkommen der letzten Pergoner und "+
+      "vielleicht steckt in uns ein Teil der Himmlischen Armee. Osin "+
+      "ist nicht wieder gesehen worden. Haelt er sich noch immer hier "+
+      "auf? Was ist mit seinem Sohn passiert? Die Barriere jedenfalls, "+
+      "die uns vor Angriffen von Monstern schuetzt, haelt bis heute. "+
+      "Dieses mystische Artefakt muss also noch intakt sein und sich "+
+      "irgendwo auf Pergon befinden. Ein Teil des Volkes glaubt fest an "+
+      "die alten Legenden, dass Osin wieder auftauchen wird und Pergon "+
+      "eine neue, bessere Zeit erleben wird. Ich als Gelehrter werde "+
+      "weiter nach Hinweisen und Spuren suchen, bevor ich mich in einen "+
+      "fanatischen Glauben stuerze, der schon soviel Leid gebracht hat. "+
+      "[weitere Zeilen befinden sich in der Bibliothek]";
+    book.name := "Die Geschichte von Pergon";
+    SetObjProperty(book, "bookcontent", pergonstory);
+    SetObjProperty(book, "writeable", 0);
+    book.newbie := 1;
+  Else
+    SysLog(who.name+" mag kein Buch!");
+  EndIf
+EndFunction

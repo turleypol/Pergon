@@ -1,0 +1,149 @@
+use uo;
+use os;
+use attributes;
+use cfgfile;
+include "farm";
+include "include/modifyskill";
+include "include/objtype";
+include "include/client";
+
+Program PotPlants(who, pot)
+  If (!AccessiblePergon(who, pot))
+    SendSysMessagePergon(who,
+      "Ihr kommt da nicht ran!",
+      "You cannot reach that!",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+    );
+    return;
+  EndIf
+
+  If (!ReserveItem(pot))
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Wählt die Pflanze, die Ihr eintopfen möchtet.",
+    "Choose the plant to pot."
+  );
+  var plant := Target(who);
+  If ((!plant) || (!plant.isA(POLCLASS_ITEM)))
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+  If (!AccessiblePergon(who, plant))
+    SendSysMessagePergon(who,
+      "Ihr kommt da nicht heran!",
+      "You cannot reach that!",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+    );
+    return;
+  EndIf
+  If (!ReserveItem(plant))
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  var config := ReadConfigFile("::itemdesc");
+  var item_cfg := config[plant.objtype];
+  If ((!item_cfg) || (!item_cfg.Plant))
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (CInt(item_cfg.Pot)<>pot.objtype) // Passender Topf zur Pflanze
+    SendSysMessagePergon(who,
+      "Dieser Topf ist für diese Pflanze nicht geeignet.",
+      "This is the wrong pot for this plant.",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+    );
+    return;
+  EndIf
+
+  var humus := FindSubstance(
+    who.backpack, UOBJ_HUMUS, CInt(item_cfg.Humus), 1
+  );
+  If (!humus)
+    SendSysMessagePergon(who,
+      "Ihr besitzt nicht genug Humus.",
+      "You dont possess enough fertile soil.",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Ihr beginnt die Pflanze einzutopfen.",
+    "You begin to pot the plant."
+  );
+
+  If (!UseWaterVessel(who, CInt(item_cfg.Wasser)))
+    SendSysMessagePergon(who,
+      "Ihr besitzt nicht genug Wasser.",
+      "You dont possess enough water.",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+    );
+    return;
+  EndIf
+
+  For i := 1 To 3
+    PlaySoundEffectPrivate(who, SFX_127, who);
+    SleepMS(500);
+  EndFor
+  PlaySoundEffectPrivate(who, SFX_2D7, who);
+
+  var tempamount := 0;
+  var done := 0;
+  ForEach item in humus  // Humus abziehen
+    If (tempamount == CInt(item_cfg.Humus)) // Genug abgezogen
+      done := 1;
+      break;
+    EndIf
+    If (item.amount>=(CInt(item_cfg.Humus)-tempamount))
+      SubtractAmount(item,CInt(item_cfg.Humus)-tempamount);
+      done := 1;
+      break;
+    Else
+      tempamount += item.amount;
+      SubtractAmount(item,item.amount);
+    EndIf
+  EndForEach
+  If (!done)
+    SendSysMessagePergon(who,
+      "Ihr besitzt nicht genug Humus.",
+      "You don't possess enough fertile soil.",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+    );
+    return;
+  EndIf
+
+  For i := 1 To 3
+    PlaySoundEffectPrivate(who, SFX_127, who);
+    SleepMS(500);
+  EndFor
+
+  If (!CheckSkillPergon(
+      who, SKILLID_ACKERBAU, CInt(item_cfg.PotDiff), CInt(item_cfg.PotDiff)*2)
+  )
+    SendSysMessagePergon(who,
+      "Ihr scheitert.", "You failed.",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_FAIL
+    );
+    // 50/50 Chance, dass Pflanze oder Topf zerstört wird
+    If (RandomInt(2) == 1)
+      DestroyItem(pot);
+    ElseIf (RandomInt(2) == 1)
+      DestroyItem(plant);
+    EndIf
+    return;
+  EndIf
+
+  DestroyItem(plant);
+  DestroyItem(pot);
+  CreateItemInBackpackPergon(who, CInt(item_cfg.Plant), 1);
+  SendSysMessagePergon(who,
+    "Erfolgreich topft Ihr die Planze ein.",
+    "You successfully pot the plant.",
+    _DEFAULT_TEXT_FONT, MSG_COLOR_SUCC
+  );
+EndProgram

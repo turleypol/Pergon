@@ -1,0 +1,183 @@
+//**************************************************************************************************
+// Script file chainlightning.src
+//
+//    implements spell 132 <Chain Lightning> - "Gewitter"
+//
+//  caster creates a thunderstorm which deals enormous air(lightning) damage
+//    [ Resisted (Elemental - Air) ]
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 30.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//            - 21.09.2005 Seppel - nochmal überarbeitet - vergleicht jetzt auf "species" Tag aus der npcdesc
+//
+//**************************************************************************************************
+use vitals;
+use os;
+use util;
+
+Include "../magicpergon";
+Include "../resistance";
+Include "../spellattack";
+Include "include/packets";
+
+program cast_chainlightning (params)
+
+  Var caster;
+  Var where;
+  Var victims:= {};
+
+  Var spells:= ReadConfigFile("::spells");                   // load spelldata
+  Var spell:=  FindConfigElem(spells, SPELLID_MAGE_CHAINLIGHTNING);
+  Var resist;
+  Var dmg;
+  Var basedmg:=  spell.primary;
+  Var mindmg:=   spell.primarymin;
+  Var maxdmg:=   spell.primarymax;
+  Var range:=    spell.range;
+  Var minrange:= spell.rangemin;
+  Var maxrange:= spell.rangemax;
+  Var power;
+
+  if (params[1] == "#MOB")
+    caster:= params[2];
+    power:=  params[3];
+    where:=struct{x,y,z,realm};
+    where.x:=params[4].x;
+    where.y:=params[4].y;
+    where.z:=params[4].z;
+    where.realm:=params[4].realm;
+  elseif (params[1] == "#SCROLL")
+    caster:= params[2];
+    power:=  params[3];
+    where:=  TargetArea(caster);
+    if (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    endif
+  else
+    caster:= params[1];
+
+    power:= GetCastPowerPergon(caster, SPELLID_MAGE_CHAINLIGHTNING);
+    where:= TargetArea(caster);
+    if (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    endif
+  endif
+
+  TurnCharTo(caster, where);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  basedmg:= CDbl(power*basedmg/100.0);             // calc spell range and spell damage
+  range:=   CInt(power*range/100.0);               // according to casting power
+  if (minrange and minrange > range)
+    range:= minrange;
+  elseif (maxrange and maxrange < range)
+    range:= maxrange;
+  endif
+
+  Var candidates;
+  Var candidate;
+  Var victim;
+  Var srch;
+
+  for (srch:= 0; srch <= range; srch+= 1)     // get victim determing type of victims
+    candidates:= ListMobilesNearLocationEx(where.x, where.y, where.z, srch, LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN,where.realm);
+    if (candidates.size())
+      if (srch == 0)
+        candidate:= candidates[1];
+      else
+        candidate:= candidates.randomentry();
+      endif
+      srch:= range + 1;
+    endif
+  endfor
+
+  if (!candidate)
+    return;
+  endif
+  // get candidate und his species
+  Var mytemplate;
+  Var victype;
+  if (candidate.isa(POLCLASS_NPC))
+    mytemplate:=GetNPCConfig(candidate.npctemplate);
+    victype:=mytemplate.species;
+    if(!victype)
+      victype:= "something";                  //when the NPC has no entry he is "something"
+    endif
+  else
+    victype:= "human";                         //players are human
+  endif
+  // get possible victims in spell range
+  victims:= ListMobilesNearLocationEx(where.x, where.y, where.z, range, LISTEX_FLAG_HIDDEN + LISTEX_FLAG_NORMAL,where.realm);
+  candidates:= {};                                               // reset candidates
+
+  Var actualvictype;
+  foreach victim in victims                                      // get all candidate victims according
+    If (victim.isA(POLCLASS_NPC))
+      mytemplate:=GetNPCConfig(victim.npctemplate);
+      actualvictype:= mytemplate.species;
+      if (!actualvictype)
+        actualvictype:= "something";
+      endif
+    Else
+      actualvictype:="human";
+    EndIf
+    if (actualvictype == victype && victim <> caster &&   // to type of candidate; preserve caster and ghosts
+      victim <> candidate && !victim.dead)                    // and exclude candidate
+      candidates.append(victim);
+    endif
+  endforeach
+
+  victims:= {};                                                  // reset victims
+  if (candidate <> caster)                                       // set candidate to first victim and
+    victims.append(candidate);                                  // preserve caster
+    victim:= 1;
+  else
+    victim:= 0;
+  endif
+
+  if (candidates.size())                                         // get range random victims out of candidates
+    while (candidates.size())
+      srch:= RandomInt(candidates.size()) + 1;                 // get candidate
+      victims.append(candidates[srch]);                        // move to victims
+      candidates.erase(srch);
+      victim+= 1;                                     // count victims
+    endwhile
+  endif
+
+  Var lvx:= caster.x;                                            //bolt from caster to first victim
+  Var lvy:= caster.y;
+  Var lvz:= caster.z;
+
+  if (victims.size())
+    foreach victim in victims
+      if (victim)                                      //is victim still alive?
+        PlayMovingEffectXYZ(lvx, lvy, lvz + 10, victim.x ,victim.y, victim.z + 10, 0x3818, 1, 1, 0,victim.realm); // moving from last to actual victim
+        SleepMS(1000);
+        if (victim.isa(POLCLASS_NPC))
+          send_attack(victim, caster, 132);
+        endif
+
+        resist:= 1 - CDbl(GetResistance(victim, "air"));   // get victims air resistance
+        dmg:= CInt(basedmg * resist);                      // alter spell damage
+        if (mindmg and mindmg > dmg)
+          dmg:= mindmg;
+        elseif (maxdmg and maxdmg < dmg)
+          dmg:= maxdmg;
+        endif
+
+        lvx:= victim.x;                                    // remember victimposition for animation
+        lvy:= victim.y;
+        lvz:= victim.z;
+        PlayLightningBoltEffect(victim);                   // flash victim
+        PlaySoundEffect(victim, SFX_2A);
+        ApplyRawDamagePergon(victim, dmg);                 // apply altered damage to victim
+      endif
+    endforeach
+  endif
+
+  SleepMS(500);
+  PlaySoundEffect(caster, SFX_207);
+
+endprogram

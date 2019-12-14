@@ -1,0 +1,277 @@
+//////////////////////////////////////////////////////
+//
+//   DoorsNew - MethodScript
+//
+//
+//     Author: Turley
+//
+//  Modifications:
+//
+//////////////////////////////////////////////////////
+
+use uo;
+use os;
+use cfgfile;
+
+include "include/client";
+
+Program Install()
+  Return(1);
+EndProgram
+
+//////////////////////////////////////////////////////////
+// .IsOpen - Coreersatz
+//////////////////////////////////////////////////////////
+
+exported function IsOpen(door)
+  Return (CInt(door.getprop("Open")));
+EndFunction
+
+//////////////////////////////////////////////////////////
+// .Toggle - Coreersatz
+//////////////////////////////////////////////////////////
+
+exported function Toggle(door)
+  If (IsOpen(door))
+    Close(door);
+  Else
+    Open(door);
+  Endif
+
+  Return(1);
+EndFunction
+
+//////////////////////////////////////////////////////////
+// .Open - Coreersatz
+//////////////////////////////////////////////////////////
+
+exported function Open(door)
+  var old_crit:=Is_Critical();
+  Set_Critical(1);
+
+  If (IsSlide(door))
+    ChangeDoorSlide(door,0);  //Schiebetür
+  ElseIf (IsLinked(door))
+    ChangeDoorLinked(door,0);  // 2teilige Tür/Fenster
+  Else
+    ChangeDoor(door,0);  // Standard
+  EndIf
+  door.setprop("Open",1);
+
+  Case (Lower(Config(door).doortype))
+    "stone":
+    "metal": PlaySoundEffect(door, SFX_OPEN_METAL_DOOR);
+    "wood":  PlaySoundEffect(door, SFX_OPEN_WOODEN_DOOR);
+    "tent":  PlaySoundEffect(door, SFX_OPEN_TENT_DOOR);
+    "slide": PlaySoundEffect(door, SFX_OPEN_SLIDE_DOOR);
+  EndCase
+  Set_Critical(old_crit);
+  Return(1);
+EndFunction
+
+//////////////////////////////////////////////////////////
+// .Close - Coreersatz
+//////////////////////////////////////////////////////////
+
+exported Function Close(door)
+  var old_crit:=Is_Critical();
+  Set_Critical(1);
+
+  If (IsSlide(door))
+    ChangeDoorSlide(door,1);  // Schiebetür
+  ElseIf (IsLinked(door))
+    door:=ChangeDoorLinked(door,1);  // 2teilige Tür/Fenster
+  Else
+    ChangeDoor(door,1);  // Standard
+  EndIf
+
+  door.eraseprop("Open");
+
+  Case (Lower(Config(door).doortype))
+    "stone":
+    "metal": PlaySoundEffect(door, SFX_CLOSE_METAL_DOOR);
+    "wood":  PlaySoundEffect(door, SFX_CLOSE_WOODEN_DOOR);
+    "tent":  PlaySoundEffect(door, SFX_CLOSE_TENT_DOOR);
+    "slide": PlaySoundEffect(door, SFX_CLOSE_SLIDE_DOOR);
+  EndCase
+
+  Set_Critical(old_crit);
+  Return(1);
+EndFunction
+
+//////////////////////////////////////////////////////////
+// .IsLinked - Mehrteilige Tür/Fenster?
+//////////////////////////////////////////////////////////
+
+exported Function IsLinked(door)
+  Return(CInt(door.getprop("linkeddoor")));
+EndFunction
+
+//////////////////////////////////////////////////////////
+// .IsSlide - Schiebetür?
+//////////////////////////////////////////////////////////
+
+exported Function IsSlide(door)
+  Return(CInt(door.getprop("slide")));
+EndFunction
+
+
+//////////////////////////////////////////////////////////
+// Private Functions
+//////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////
+// ChangeDoor - Standard
+//////////////////////////////////////////////////////////
+
+Function ChangeDoor(door,shouldclose)
+  Var move_state:=door.movable;
+  Var door_info:=Config(door);
+
+  door.movable:=1;
+  If (UnPack(door_info.change)==CInt(door.graphic)) //Speziell für Fallgatter
+    If (shouldclose)
+      MoveDoor(door, door.x+CInt(door_info.xmodc), door.y+CInt(door_info.ymodc), door.z+CInt(door_info.zmodc));
+    Else
+      MoveDoor(door, door.x+CInt(door_info.xmod), door.y+CInt(door_info.ymod), door.z+CInt(door_info.zmod));
+    EndIf
+  Else // Standard
+    door.graphic:=UnPack(door_info.change);
+    MoveDoor(door, door.x+CInt(door_info.xmod), door.y+CInt(door_info.ymod), door.z+CInt(door_info.zmod));
+  EndIf
+  door.movable:=move_state;
+
+  Return(1);
+EndFunction
+
+//////////////////////////////////////////////////////////
+// ChangeDoorLinked - Mehrteilige Tür/Fenster
+//////////////////////////////////////////////////////////
+
+Function ChangeDoorLinked(door,shouldclose)
+  Var move_state, linked, door_linked;
+  Var door_info_linked;
+  Var door_info:=Config(door);
+
+  If (!shouldclose)
+    door.graphic:=UnPack(door_info.opengraph)[1];
+    door_linked:=UnPack(door_info.opengraph)[2];
+    door_info_linked:=Config(door_linked);  // Zusätzliches Item erzeugen
+    linked:=CreateItemAtLocation(door.x+CInt(door_info_linked.xmod), door.y+CInt(door_info_linked.ymod), door.z+CInt(door_info_linked.zmod),door_linked,1,door.realm);
+    linked.movable := 0;
+    linked.setprop("Open",1);
+    linked.setprop("linked",door.serial);
+    linked.setprop("linkeddoor",1);
+    door.setprop("linked",linked.serial);
+
+    move_state:=door.movable;
+    door.movable:=1;
+    MoveDoor(door, door.x+CInt(door_info.xmod), door.y+CInt(door_info.ymod), door.z+CInt(door_info.zmod));
+    door.movable:=move_state;
+  Else
+    linked:=SystemFindObjectBySerial(CInt(door.getprop("linked")));
+    door_info_linked:=Config(linked);
+    If (door.getprop("destroy")) // Zusätzliches Item gegebenenfalls Löschen
+      DestroyItem(door);
+    Else
+      move_state:=door.movable;
+      door.movable:=1;
+      MoveDoor(door, door.x+CInt(door_info.xmod), door.y+CInt(door_info.ymod), door.z);
+      door.movable:=move_state;
+      door.graphic:=UnPack(door_info.opengraph)[1];
+    EndIf
+    If (linked.getprop("destroy")) // Zusätzliches Item gegebenenfalls Löschen
+      DestroyItem(linked);
+    Else
+      move_state:=linked.movable;
+      linked.movable:=1;
+      MoveDoor(linked, linked.x+CInt(door_info_linked.xmod), linked.y+CInt(door_info_linked.ymod), linked.z+CInt(door_info_linked.zmod));
+      linked.movable:=move_state;
+      linked.graphic:=UnPack(door_info.opengraph)[1];
+    EndIf
+  EndIf
+
+  If (door)  // "überlebenes" Item zurückgeben
+    Return(door);
+  Else
+    Return(linked);
+  EndIf
+EndFunction
+
+//////////////////////////////////////////////////////////
+// ChangeDoorSlide - Schiebetür
+//////////////////////////////////////////////////////////
+
+Function ChangeDoorSlide(door,shouldclose)
+  Var move_state, linked, door_linked;
+  Var door_info_linked;
+  Var door_info:=Config(door);
+
+  If (!door.getprop("linked"))  // Init falls unvollständig
+    door_linked:=UnPack(door_info.part);
+    door_info_linked:=Config(door_linked);
+    linked:=CreateItemAtLocation(door.x+CInt(door_info_linked.xmodi), door.y+CInt(door_info_linked.ymodi), door.z+CInt(door_info_linked.zmodi),door_linked,1,door.realm);
+    linked.setprop("linked",door.serial);
+    door.setprop("linked",linked.serial);
+  EndIf
+
+  If (!shouldclose)
+
+    move_state:=door.movable;
+    door.movable:=1;
+    MoveDoor(door, door.x+CInt(door_info.xmodc), door.y+CInt(door_info.ymodc), door.z+CInt(door_info.zmodc));
+    door.movable:=move_state;
+
+    If (CInt(door.getprop("linked"))!=1) // einteilige
+      linked:=SystemFindObjectBySerial(CInt(door.getprop("linked")));
+      door_info_linked:=Config(linked);
+      move_state:=linked.movable;
+      linked.movable:=1;
+      MoveDoor(linked, linked.x+CInt(door_info_linked.xmodc), linked.y+CInt(door_info_linked.ymodc), linked.z+CInt(door_info_linked.zmodc));
+      linked.movable:=move_state;
+      linked.setprop("Open",1);
+    EndIf
+  Else
+
+    move_state:=door.movable;
+    door.movable:=1;
+    MoveDoor(door, door.x+CInt(door_info.xmod), door.y+CInt(door_info.ymod), door.z+CInt(door_info.zmod));
+    door.movable:=move_state;
+
+    If (CInt(door.getprop("linked"))!=1) //einteilige
+      linked:=SystemFindObjectBySerial(CInt(door.getprop("linked")));
+      door_info_linked:=Config(linked);
+      move_state:=linked.movable;
+      linked.movable:=1;
+      MoveDoor(linked, linked.x+CInt(door_info_linked.xmod), linked.y+CInt(door_info_linked.ymod), linked.z+CInt(door_info_linked.zmod));
+      linked.movable:=move_state;
+      linked.eraseprop("Open");
+    EndIf
+  EndIf
+
+  Return(1);
+EndFunction
+
+//////////////////////////////////////////////////////////
+// Config - CfgElement laden
+//////////////////////////////////////////////////////////
+
+Function Config(door)
+  Var cfg:=ReadConfigFile(":doorsnew:itemdesc");
+  If (!door.graphic)
+    Return(cfg[door]);
+  Else
+    Return(cfg[door.graphic]);
+  EndIf
+EndFunction
+
+// Tuer bewegen (aber nur in freier Wildbahn)
+Function MoveDoor(door, x, y, z)
+    If (door.container)
+        // nicht ins Meer werfen
+        return;
+    EndIf
+    return MoveObjectToLocation(
+        door, x, y, z, door.realm, MOVEOBJECT_FORCELOCATION
+    );
+EndFunction

@@ -1,0 +1,295 @@
+/////////////////////////////////////////////////////////
+// generatorcontrol -
+//
+// Author: Turley
+
+use os;
+use uo;
+use util;
+include "include/eventid";
+include "include/poison";
+include "include/quests";
+include "include/server";
+
+Enum Buttons
+  BTN_LEFT := 100,
+  BTN_UP,
+  BTN_RIGHT,
+  BTN_DOWN
+EndEnum
+
+var laenge := RandomInt(2)+5;
+
+// Initialisieren
+Program GeneratorControl(item) // {{{
+  If (TypeOfInt(item) == OT_ARRAY)
+    // externen Aufruf als Controller
+    ControlGame(item[1], item[2], item[3]);
+    return;
+  EndIf
+
+  // Farbe erst falsch setzen damit erkennbar wann fertig
+  item.color := 237;
+
+  // ggf. fehlende Items erzeugen {{{
+  var items := {};
+  If (!item.getprop("items"))
+    // noch nicht aufgebaut
+    MoveObjectToLocation(
+      item, item.x, item.y, item.z+1, item.realm,
+      MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+    );
+
+    // sich selbst noch einfuegen
+    items.append(item.serial);
+
+    var temp;
+    temp := CreateItemAtLocation(item.x, item.y, item.z-1, 0xffa4);
+    temp.graphic := 0x73;
+    temp.color := 1160;
+    items.append(temp.serial);
+    temp := CreateItemAtLocation(item.x-1, item.y, item.z-1, 0xffa4);
+    temp.graphic := 0x76;
+    temp.color := 1160;
+    items.append(temp.serial);
+    temp := CreateItemAtLocation(item.x, item.y-1, item.z-1, 0xffa4);
+    temp.graphic := 0x75;
+    temp.color := 1160;
+    items.append(temp.serial);
+    temp := CreateItemAtLocation(item.x-1, item.y-1, item.z-1, 0xffa4);
+    temp.graphic := 0x77;
+    temp.color := 1160;
+    items.append(temp.serial);
+    // Stirn
+    temp := CreateItemAtLocation(item.x, item.y, item.z+18, 0xffa4);
+    temp.graphic := 0x73;
+    temp.color := 1160;
+    items.append(temp.serial);
+    // Feuer"augen"
+    temp := CreateItemAtLocation(item.x, item.y, item.z+16, 0xffa4);
+    temp.graphic := 0x36f4;
+    temp.color := 0;
+    items.append(temp.serial);
+    // Schwertgeist"haar"
+    temp := CreateItemAtLocation(item.x, item.y, item.z+28, 0xffa4);
+    temp.graphic := 0x380A;
+    temp.color := 1109;
+    items.append(temp.serial);
+    // Paras
+    temp := CreateItemAtLocation(item.x-1, item.y+1, item.z-3, 0xffa4);
+    temp.graphic := 0x3967;
+    temp.color := 1160;
+    items.append(temp.serial);
+    temp := CreateItemAtLocation(item.x+1, item.y-1, item.z-3, 0xffa4);
+    temp.graphic := 0x3979;
+    temp.color := 1160;
+    items.append(temp.serial);
+    temp := CreateItemAtLocation(item.x, item.y-1, item.z-3, 0xffa4);
+    temp.graphic := 0x3967;
+    temp.color := 1160;
+    items.append(temp.serial);
+    temp := CreateItemAtLocation(item.x-1, item.y, item.z-3, 0xffa4);
+    temp.graphic := 0x3979;
+    temp.color := 1160;
+    items.append(temp.serial);
+    // feuerball
+    temp := CreateItemAtLocation(item.x, item.y, item.z+37, 0xffa4);
+    temp.graphic := 0x36fe;
+    temp.color := 0;
+    items.append(temp.serial);
+
+    item.setprop("items", items);
+  EndIf
+  // }}}
+
+  var path := {};
+  var i:=0;
+  Repeat
+    SleepMS(5);
+	i+=1;
+	If (i>1000)
+	  break;
+	EndIf
+  Until (!PathFind(path));
+
+  item.setprop("path", path);
+  item.setprop("laenge", laenge);
+
+  // fertig, korrekt faerben
+  item.color := 1109;
+EndProgram // }}}
+
+// Pfad durch Labyrinth erzeugen
+Function PathFind(byref path) // {{{
+  var i, j, restart := 0;
+  var curx := 1, cury := 1, possible, choise;
+  var visited := {};
+
+  // Init Path
+  path := {};
+  For (i := 1;i <= laenge;i += 1)
+    visited[i] := {};
+    For (j := 1;j <= laenge;j += 1)
+      visited[i].append(0);
+    EndFor
+  EndFor
+
+  // Lösung finden ($Pathfind)
+  visited[1][1] := 1;
+  While (1)
+    restart += 1;
+    If (restart>1000)
+      return(1);
+    EndIf
+    possible := {};
+    If ((curx>1) && (!visited[cury][curx-1])) // links möglich?
+      possible.append(BTN_LEFT);
+    EndIf
+    If ((cury>1) && (!visited[cury-1][curx]))  // oben möglich
+      possible.append(BTN_UP);
+    EndIf
+    If ((curx<laenge) && (!visited[cury][curx+1]))  // rechts möglich
+      possible.append(BTN_RIGHT);
+    EndIf
+    If ((cury<laenge) && (!visited[cury+1][curx]))  // unten möglich
+      possible.append(BTN_DOWN);
+    EndIf
+
+    If (possible<>{})
+      choise := possible.randomentry();
+      path.append({curx, cury});  // Wegspeichern
+      Case (choise)
+        BTN_LEFT:  curx -= 1;
+        BTN_UP:    cury -= 1;
+        BTN_RIGHT: curx += 1;
+        BTN_DOWN:  cury += 1;
+      EndCase
+      visited[cury][curx] := 1;
+    Else
+      visited[cury][curx] := 0;
+      curx := path[path.size()][1];
+      cury := path[path.size()][2];
+      path.erase(path.size());
+    EndIf
+
+    If ((curx == laenge) && (cury == laenge))
+      path.append({curx, cury});
+      Break;
+    EndIf
+    SleepMS(1);
+  EndWhile
+EndFunction // }}}
+
+// Char eine Runde spielen lassen
+Function ControlGame(who, item, fireball) // {{{
+  PrintTextAbovePergon(item, "Wer wagt es meine Ruhe zu stören?", "Who dares to disturb me?");
+
+  var lastspawn  := ReadGameClock();
+  var lastdamage := ReadGameClock();
+  var dmgcounter := 0;
+  var whox       := who.x;
+  var whoy       := who.y;
+  While (item)
+    // var event :=
+    Wait_For_Event(10);
+
+    // Abbruchbedingungen {{{
+    If (!item)
+      // Abbruch, falls Steinlord zerstoert wird
+      exit;
+    EndIf
+
+    If (!who or !who.connected)
+      break;
+    EndIf
+
+    If (whox <> who.x or whoy <> who.y)
+      PrintTextAbovePergon(fireball, "Ihr gebt auf? Gut!", "You surrender? Fine.");
+      break;
+    EndIf
+
+    If (who.dead)
+      PrintTextAbovePergon(fireball, "Er war nicht gut genug!", "He was not good enough!");
+      break;
+    EndIf
+    // }}}
+
+    // If (event)
+    //   Case (event.type)
+    //     EVID_GENERATOR_DMG:
+    //       If (!lastdamage)
+    //         lastdamage := ReadGameClock()+10;
+    //       EndIf
+    //   EndCase
+    // EndIf
+
+    // Monster alle 60s {{{
+    If (lastspawn + 60 < ReadGameClock())
+      lastspawn := ReadGameClock();
+      CreateRandomNPC(who);
+    EndIf
+    // }}}
+
+    // Schaden alle 10s {{{
+    If (lastdamage + 10 < ReadGameClock())
+      dmgcounter += 1;
+      lastdamage := ReadGameClock();
+      If (fireball.graphic == 1) // Hauptscript macht gerade Schaden
+        Sleep(1);
+      EndIf
+      PrintTextAbovePergon(fireball, "Stirb!", "Die!");
+      // Ball oben für die Zeit verschwinden lassen
+      fireball.graphic := 1;
+      PlayMovingEffectXYZ(
+        item.x, item.y, item.z+37, who.x, who.y, who.z+10,
+        0x36fe, 5, 0, 0, who.realm
+      );
+      PlaySoundEffect(who, 0x44c);
+      PrintTextAbovePrivatePergon(who,
+        "Deine Haut wird von sengender Hitze verbrannt.",
+        "Searing heat scorches thy skin.", who, FONT_NORMAL, 238
+      );
+      var dmg :=
+        CInt((1 - CDbl(GetResistance(who, "fire")))*(RandomInt(11)));
+      ApplyRawDamagePergon(who, dmg);
+      SleepMS(700);
+      fireball.graphic := 0x36fe;
+      If (dmgcounter >= 3)
+        dmgcounter := 0;
+        lastdamage := 0;
+      EndIf
+    EndIf
+    // }}}
+  EndWhile
+EndFunction // }}}
+
+// versuchen, in der Naehe einen NPC zu erzeugen
+Function CreateRandomNPC(who) // {{{
+  var templates := array{
+    "Troll1", "Troll2", "Troll3", "Troll4", "Troll5", "Troll6",
+    "TrollArcher",      "TrollArcher2",     "TrollArcher3",
+    "TrollMarksman",    "TrollMarksman2"
+  };
+
+  var tries := 0;
+  While (tries <= 15)
+    var x := who.x + RandomIntMinMax(-3, 3);
+    var y := who.y + RandomIntMinMax(-3, 3);
+    var z := GetStandingHeight(x, y, who.z - 15, who.realm).z;
+    var npc := CreateNpcFromTemplatePergon(
+      templates.randomentry(), x, y, z, 0, 0, 0, who.realm
+    );
+    If (npc)
+      var zoneopts := QuestZoneIsIn(who, QZ_ISIN_OPT);
+      If (zoneopts.size() >= 1)
+        // Restriktionen aus der Questzone setzen
+        QuestZoneApplyRestrictions(npc, zoneopts);
+        // speichern, dass er in Questzone gebaut wurde
+        npc.setprop(PROP_QUESTBUILT, who.serial);
+      EndIf
+      return 1;
+    EndIf
+  EndWhile
+
+  return 0;
+EndFunction // }}}

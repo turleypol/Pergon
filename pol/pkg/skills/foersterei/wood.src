@@ -1,0 +1,93 @@
+//  ControlScript wood.src - zerstoeren von Baeumen...
+//
+//  17.09.2005 Fraggulus:  If-Abfrage, ob Item/Baum ueberhaupt noch existiert (sonst wirds Logfile vollgespamt)
+//  20.09.2005 Fraggulus:  Kleine Korrektur der If-Abfrage (Zeile mit Sleep getauscht)
+//  10.01.2006 Unforgiven: Bäume vom forestscript werden nicht zerstört
+//  23.02.07 Turley :      Setserials werden per CProp gespeichert ->keine Planlose Änderung der CProps über ChangePropertySet
+//                         ->Geschwindigkeit^2 oder so
+//  09.03.07 Turley :      GM Createte Bäume verlassen das Script frühzeitig
+
+use cfgfile;
+use os;
+use uo;
+use util;
+include "include/itemnpc";
+include "include/set";
+
+Program wood(item)
+  Sleep(10) ;
+
+  var test := GetObjProperty(item, "ttl") ;
+
+  If (test)
+    // syslog("Baum beendet");
+    return;
+  EndIf
+
+  //   syslog("Baum aktiv");
+  If (!item.getprop("same")) // Kein Förstereibaum?
+    return;
+  EndIf
+
+  Sleep(60 * 10 + RandomInt(60));
+
+  // nur, wenn Baum noch steht, d.h. der Baum nicht zum Baumstumpf
+  // abgeholzt wurde
+  If (item)
+    var cfg := readconfigfile("::itemdesc");
+    var pflanze_cfg := cfg[item.objtype];
+
+    If (!pflanze_cfg)
+      syslog("FEHLER: Baum " + Lower(Hex(item.objtype)) + " nicht in der itemdesc.cfg gefunden: " + pflanze_cfg + "!");
+      return;
+    EndIf
+
+    // Wenn die Pflanze nicht abgeerntet wird, so entsteht der Samen an der Stelle
+    var same := GetObjProperty(item, "same");
+    var fserial := Getobjproperty(item, "fserial");
+    var set := Getobjproperty(item, "set");
+    var maintree := SystemFindObjectBySerial(fserial);
+
+    If (GetObjProperty(Item, "seedling") >= 1)
+      var amount := CInt(Getobjproperty(item, "wood"));
+      If (amount >= 1)
+        var seed := CreateItemAtLocationPergon(Item.x + 1, Item.y, Item.z + 2, same, CInt(amount/10.0), Item.realm);
+        If (seed)
+          // normalen Decay etwas ausbremsen
+          seed.decayat := ReadGameClock() + 2*3600;
+        EndIf
+      EndIf
+    EndIf
+
+    If (maintree.getprop("items"))  // Schnelle Variante?
+      var items := maintree.getprop("items");
+      var temp;
+      ForEach slave in items
+        temp := SystemFindObjectBySerial(slave);
+        If (temp)
+          temp.setprop("wood",0);
+        EndIf
+      EndForEach
+    Else
+      ChangePropertySet(set, fserial, "wood", 0);
+    EndIf
+    // If (!ChangePropertySet(set, fserial, "wood", 0))
+    //   Print("Fehler, Holzmenge konnte nicht vom Baum abgezogen werden");
+    //   Sleep(30);
+    // EndIf
+
+    If (maintree.getprop("items"))  // Schnelle Variante?
+      var items := maintree.getprop("items");
+      var temp;
+      ForEach slave in items
+        temp := SystemFindObjectBySerial(slave);
+        If (temp)
+          DestroyItem(temp);
+        EndIf
+      EndForEach
+    Else
+      // DestroySet(set,fserial);
+      DestroySet(fserial);
+    EndIf
+  EndIf
+EndProgram

@@ -1,0 +1,28 @@
+use os;
+use uo;
+include "include/pergonutil";
+
+Program TextCMD_DelAccount(who, accountname)
+  // Compilerwarnung unterdruecken
+  who := who;
+  var account := FindAccount(accountname);
+  If (!account)
+    syslog("'"+accountname+"' gibt es nicht !");
+    return;
+  EndIf
+
+  syslog("'"+accountname+"' wird geloescht ...");
+
+  var charnr;
+  For (charnr := 1; charnr <= 6; charnr := charnr+1)
+    var char := account.getcharacter(charnr);
+    If (char)
+      syslog("  "+char.name+" wird geloescht...");
+      syslog("    Status der Loeschung = "+DeleteCharacterPergon(
+          account, charnr
+      ));
+    EndIf
+  EndFor
+  syslog("Loesche Account "+account.name);
+  account.delete();
+EndProgram

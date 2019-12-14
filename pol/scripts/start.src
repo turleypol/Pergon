@@ -1,0 +1,226 @@
+///////////////////////////////////////////////////////////////////////////
+// start.src - script that is run during startup of server.
+
+use os;
+use polsys;
+use storage;
+use uo;
+use file;
+include "include/animal";
+include "include/bank";
+include "include/berufe";
+include "include/clock";
+include "include/modifyskill";
+include "include/moongate";
+include "include/onlinesearch";
+include "include/pergoninfos";
+include "include/pergonstatistik";
+include "include/server";
+include "include/storage";
+include "include/teleporters";
+
+Program Start()
+  // liest pol.cfg & servspecopt.cfg aus und speichert in Globale
+  ReadPolCFG();
+  ReadSSOptCFG();
+
+  // Startet die zentrale Steuerung der Events für die KI's
+  Start_ScriptPergon("control/eventwaitershort");
+  Start_ScriptPergon("control/eventwaiterlong");
+
+  // spezielles Realm fuer den NPC-Tod
+  var newrealm := AddRealm(REALM_DEATH, REALM_BRITANNIA);
+  If (!newrealm and newrealm.errortext <> "Realmname already defined.")
+    syslog("FEHLER: Todesrealm nicht erzeugbar: "+newrealm.errortext);
+  EndIf
+
+  // diverse Props etc. initialisieren {{{
+  // Speichern der Wörter welche beim Sprechen in ein extra Logfile kommen
+  Var quirolantencfg:=ReadConfigFile("::quirolanten");
+  Var quirolantenwords:=GetConfigStringArray(quirolantencfg["words"],"word");
+  SetGlobalProperty("quirolantenwords",quirolantenwords);
+  UnloadConfigFile("::quirolanten");
+
+  // FIXME: nach einmaligem Start entsorgt
+  EraseGlobalProperty("MemoryCombat");
+
+  If (GetGlobalProperty("MemoryFarming"))
+    SysLog("MemoryFarming = "+GetGlobalProperty("MemoryFarming"));
+  EndIf
+  SetGlobalProperty("MemoryFarming", 0);
+
+  // Fuehrt teilweise :) nuetzliche Statistik-Erfassungen durch
+  InitStatistik();
+
+  // Initialisiert die Gump-Funktionen
+  InitGump();
+
+  // Bank-Storage ggf. anlegen
+  OpenWorldBank();
+
+  FindOrCreateStorage(STORAGE_MERCHANT);
+
+  // DAYNIGHT - moved to a package
+  // SAVER - moved to a package
+  // SPAWNER - moved to a package
+
+  // Enables dungeon teleporters and moongates.
+  CreateMoongates();
+  CreateTeleporters();
+
+  // Initialisiert die zusaetzlichen Skills
+  InitSkillsMore();
+
+  // Prueft sicherheitshalber, ob der eingetragene NPC ueberhaupt noch
+  // existiert
+  // CheckCharmedNPC();
+
+  // Ueberprueft die Werkzeug-Eigenschaften
+  CheckWholePropertyConfig();
+
+  // Ueberprueft, ob die Container keine UseScripts aufweisen
+  // CheckItemDescContainerUseScripts();
+
+  // Ueberprueft, ob die Items einen korrekten ObjType haben
+  CheckItemsForIllegalObjType();
+
+  // Bestimmte Werte in den Accounts ueberpruefen (z.B. eMail-Adresse)
+  CheckAccountProperties();
+
+  // Ueberprueft bestimmte Werte in der NPCDesc
+  // CheckNPCDescProperties();
+
+  // }}}
+
+  // Statistiken {{{
+  // Kram für alle Accounts
+//  ForEach accountname in ListAccounts()
+//    Var account:=FindAccount(accountname);
+//    If (account)
+//      For charnr:=1 To 5
+//        Var char:=account.getcharacter(charnr);
+//        If (char) // Der Character existiert auch (muss nicht zwingend!)
+//        EndIf
+//      EndFor
+//    Else
+//      SysLog("FEHLER: '"+accountname+"' gibt es nicht !");
+//    EndIf
+//  EndForEach
+
+  // Wieviele NPCs welchen Templates wurden in der letzten Sitzung getoetet?
+  Var deathnpcs:=GetGlobalProperty("deathnpcs");
+  If (deathnpcs And (deathnpcs.keys()))
+    SysLog("In der letzten Sitzung wurden folgende NPCs getoetet:");
+
+    ForEach npctemplate in (deathnpcs.keys())
+      SysLog("NPC-Tod: "+deathnpcs[npctemplate]+" "+npctemplate);
+    EndForEach
+  EndIf
+  SetGlobalProperty("deathnpcs", Dictionary);
+
+  // Wieviele Events wurden in der letzten Sitzung abgeholt? (alter Stil)
+  Var events:=GetGlobalProperty("events");
+  If (events And (events.keys()))
+    SysLog("In der letzten Sitzung wurden folgende Events abgeholt:");
+
+    ForEach event in (events.keys())
+      SysLog("Event: "+events[event]+" "+Lower(Hex(event)));
+    EndForEach
+  EndIf
+  SetGlobalProperty("events", Dictionary);
+
+  // Wieviele Events wurden in der letzten Sitzung abgeholt? (neuer Stil)
+  Var eventspropnames:=GetGlobalProperty("eventpropnames");
+  If (eventspropnames And (eventspropnames.size()))
+    SysLog("In der letzten Sitzung wurden folgende Events abgeholt:");
+
+    ForEach eventspropname in eventspropnames
+      Var scriptname:=eventspropname;
+      scriptname["events_"]:="";
+      SysLog("Script: "+scriptname);
+
+      Var events:=GetGlobalProperty(eventspropname);
+
+      ForEach event in (events.keys())
+        SysLog("Event: "+events[event]+" "+Lower(Hex(event)));
+      EndForEach
+
+      EraseGlobalProperty(eventspropname);
+    EndForEach
+  EndIf
+  EraseGlobalProperty("eventpropnames");
+
+  // Wieviele Character wurden in letzter Zeit benutzt?
+  Var zahlen:=CountActiveCharacters();
+  SysLog(
+    "Accounts/Character-Statistik ('aktiv' -> in "+
+    Format_Time(zahlen[1])+" benutzt)"
+  );
+  // Accounts
+  SysLog(
+    "  "+zahlen[2]+" Accounts, davon "+
+    zahlen[3]+" mit CommandLevel-Character - "+
+    zahlen[4]+" aktive Accounts, davon "+
+    zahlen[5]+" mit CommandLevel-Character,"
+  );
+  // Character
+  SysLog(
+    "  "+zahlen[6]+" Character, davon "+
+    zahlen[7]+" mit CommandLevel - "+
+    zahlen[8]+" aktive Character, davon "+
+    zahlen[9]+" mit CommandLevel."
+  );
+
+  // Welche Berufe werden verwendet?
+  SysLog("Berufstatistik: "+ListBerufe());
+  // }}}
+
+  // diverse Scripte starten {{{
+  // Pol094-Linux-BUG - Permanent-Spectator
+  //Start_ScriptPergon(":spectator:spectator");
+
+
+  If (!GetGlobalProperty(BAUSERVER))
+    // AutoJailScript anwerfen
+    Start_ScriptPergon("control/autojailcontrol");
+
+    // ObserveSkills anwerfen
+    // Start_ScriptPergon("textcmd/8_test/observeskills");
+  EndIf
+
+  // Regelmaessige Aufgaben (monatliche Todesliste, taegliche Statistik)
+  Start_ScriptPergon(":timer:cronlike");
+
+  // Script starten, dass Items im Bereich 0, 0 - 500, 500 sichert
+  // (landen dort meist durch kaputte Scripte)
+  Start_ScriptPergon("control/lostandfound");
+
+  // .Bautool aufrufen um Datafile zu erzeugen
+  Start_ScriptPergon("textcmd/3_seer/bautool", {"Init"});
+  // .createpkgitem aufrufen um Datafile zu erzeugen
+  Start_ScriptPergon("textcmd/5_highgm/createpkgitem", {"Init"});
+  // .go aufrufen um Datafile zu erzeugen
+  Start_ScriptPergon("textcmd/2_quest/go", {"Init"});
+  // .changepermissions aufrufen um Datafile zu erzeugen
+  If (!GetGlobalProperty("PermissionsActive"))
+    Start_ScriptPergon("textcmd/5_highgm/changepermissions", {"Init"});
+  EndIf
+  Start_ScriptPergon(":sqlmanager:sqlmanager");
+
+  Start_ScriptPergon(":dyndungeon:dungeonmanager");
+  // }}}
+
+  // Startzaehler erhoehen
+  SetGlobalProperty(
+    SERVER_STARTUPS, 1+CInt(GetGlobalProperty(SERVER_STARTUPS))
+  );
+
+  // Das Spiel laeuft nun ...
+  // (so können diverse Log-Geschichten gezielt gestartet werden)
+  SetGlobalProperty("#GameActive", 1);
+  
+  // Alte Daten löschen
+  EraseGlobalProperty("DailyAccs");
+  EraseGlobalProperty("DailyChars");
+EndProgram
+// vim: sw=2 sts=2

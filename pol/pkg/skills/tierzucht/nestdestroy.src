@@ -1,0 +1,30 @@
+use os;
+use uo;
+include ":housing:house";
+
+Program NestDestroy(nest);
+    If (!nest.getprop(PROP_HS_C_FIXED))
+        // nicht festgemacht
+        return 1;
+    EndIf
+
+    var house := GetHouseContainingObject(nest);
+    If (!house)
+        syslog(
+            "FEHLER: "+ItemInfoStr(nest, COORDS_REALM)+" war festgemacht, "+
+            "aber befand sich in keinem Haus"
+        );
+        return 1;
+    EndIf
+
+    var oldcrit := Is_Critical();
+    Set_Critical(1);
+    // erst austragen
+    house.setprop(
+        PROP_HS_C_FIX_NUM, 1+house.getprop(PROP_HS_C_FIX_NUM)
+    );
+    nest.eraseprop(PROP_HS_C_FIXED);
+    Set_Critical(oldcrit);
+
+    return 1;
+EndProgram

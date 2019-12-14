@@ -1,0 +1,693 @@
+//////////////////////////////////////////////////////////////////////////////
+// potionbrew - Trank brauen
+// Author: Hotny&Turley
+// eMail:  ham 2
+
+use cfgfile;
+use os;
+use uo;
+include ":alchemie:alchemy";
+include "include/client";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/msgs";
+include "include/objtype";
+include "include/poison";
+
+Enum Buttons
+  ADD:=90,
+  SORT,
+  OK,
+  DEL:=100,
+  UP:=200,
+  DOWN:=300,
+  RENAME:=400,
+  ANZ:=500,
+  CREATE:=600,
+EndEnum
+
+Const BOOKRECIPES:="recipes";
+
+Program potionbrew(who, book)
+  Var akt_x, akt_y;
+  Var reagenzien;
+  Var anzahl, i;
+  Var tools:=dictionary, alchytable:=0;
+  Var potiondesc, potion, cprop:=struct;
+  Var skill;
+  Var toolqualitys:=0, explWahrscheinlichkeit, damage;
+
+  If (who.getprop("#alchemie"))
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr beschäftigt euch bereits mit Alchemie!"),lang:="DEU"},
+                             struct{uc_text:=CAscz("You are already doing alchemy!"),lang:="ENU"});
+    Return(0);
+  EndIf
+  who.setprop("#alchemie",1);
+
+  Var recipedict:=book.getprop(BOOKRECIPES);
+  Var recipe:=BuildAndGetRecipe(who, book, recipedict);
+
+  If (recipe==ADD)
+    AddRecipe(who, book, recipedict);
+  ElseIf (recipe==SORT)
+    SortRecipes(who, book, recipedict);
+  ElseIf (recipe==0)
+    SendSysMessagePergon(who,"Abbruch","Abort");
+  Else
+    Var wirkungsfaktoren:=FindeWirkungsfaktoren(recipedict[recipe].Reagenzien);
+
+    If (who.cmdlevel>=CMDLEVEL_SCRIPTER)
+      SendSysMessagePergon(who,"rezept:     "+recipe);
+      SendSysMessagePergon(who,"anzahl:     "+recipedict[recipe].Anzahl);
+      SendSysMessagePergon(who,"rezeptname: "+recipedict[recipe].Name);
+      SendSysMessagePergon(who,"tools:      "+recipedict[recipe].Tools);
+      SendSysMessagePergon(who,"reags:      "+recipedict[recipe].Reagenzien);
+      SendSysMessagePergon(who,"reags:      "+recipedict[recipe].Reagsname);
+      SendSysMessagePergon(who,"wirkung:    "+wirkungsfaktoren);
+    EndIf
+
+    If (!wirkungsfaktoren)
+      SendSysMessagePergon(who,struct{uc_text:=CAscz("Dieses Rezept ergibt keinen Sinn."),lang:="DEU"},
+                               struct{uc_text:=CAscz("This recipe makes no sense."),lang:="ENU"});
+      who.eraseprop("#alchemie");
+      Return;
+    EndIf
+
+    Var sortWirkung:=WirkungsKorrektur(wirkungsfaktoren,GetSkillPergon(who,SKILLID_ALCHEMIE));
+    Var difficulty :=GetDifficulty(sortWirkung);
+    Var skaliert   :=BerechneSkalierteWirkungen(sortWirkung,difficulty,GetSkillPergon(who,SKILLID_ALCHEMIE),recipedict[recipe].Tools[6225]);
+    Var trankfarbe :=FindeFarbe(skaliert[1][1][1]);
+    Var werfbar:=0;
+    Var range:=0;
+    If (recipedict[recipe].Tools[6225]) // Waage verwendet also gegebenenfalls Werfbar und Diff+10%
+      difficulty:=Min(149,CInt(difficulty*1.1)); // durch Waage könnte auch so 152 sonst rauskommen
+      ForEach wirk in (skaliert[1])  // positive wirkungen
+        If (wirk[1]=="explodierend")
+          werfbar:=1;
+          If (_wirk_iter>1)
+            skaliert[1].erase(_wirk_iter); // löschen, damit kein Schaden gemacht wird
+          EndIf
+          Break;
+        EndIf
+      EndForEach
+      If (werfbar)
+        range:=CInt(Max(1,Min(6,skaliert[1][1][2]/40*1.5)));  // pos. Hauptwirkung bestimmt Radius 1..6
+      EndIf
+    EndIf
+
+    If (who.cmdlevel>=CMDLEVEL_SCRIPTER)
+      SendSysMessagePergon(who,"sort:       "+sortWirkung);
+      SendSysMessagePergon(who,"diff:       "+difficulty);
+      SendSysMessagePergon(who,"skal:       "+skaliert);
+      SendSysMessagePergon(who,"trankfarbe  "+trankfarbe);
+      SendSysMessagePergon(who,"werfbar     "+werfbar);
+      SendSysMessagePergon(who,"range       "+range);
+    EndIf
+
+
+    If (GetSkillPergon(who,SKILLID_ALCHEMIE)<(difficulty-20))
+      SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr haltet euch für nicht gut genug!"),lang:="DEU"},
+                               struct{uc_text:=CAscz("You think that you are not good enough!"),lang:="ENU"});
+      who.eraseprop("#alchemie");
+      Return;
+    EndIf
+
+    reagenzien:=GetReagenzien(recipedict[recipe].Reagenzien,recipedict[recipe].Reagsname);  // Sortierter Dict aus Array erstellen
+    reagenzien[CInt(UOBJ_EMPTY_BOTTLE)]:={1,"leere Flaschen"};
+//    If (recipedict[recipe].Tools[5154]) // Wird abgezogen, Rest bekommt nur Schaden
+//      reagenzien[5154]:={1,"Bienenwachs"};
+//    EndIf
+    // Tools finden und Reservieren
+    If (!GetObjProperty(who, I_AM_GOD)) // Godmodus benötigt keine
+      ForEach item in (recipedict[recipe].Tools)
+        If (item) // Ausgewählt
+          tools[_item_iter]:=FindSubstance(who.backpack,_item_iter,1,1);
+          If (!tools[_item_iter])
+            Case (_item_iter)
+              3739:  SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr besitzt keinen Mörser."),lang:="DEU"},
+                                              struct{uc_text:=CAscz("You dont have a Mortar."),lang:="ENU"});
+              6218:  SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr besitzt keinen Bunsenbrenner."),lang:="DEU"},
+                                              struct{uc_text:=CAscz("You dont have a bunsenburner."),lang:="ENU"});
+              6236:  SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr besitzt kein Reagenzienset."),lang:="DEU"},
+                                              struct{uc_text:=CAscz("You dont have empty vials."),lang:="ENU"});
+              6225:  SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr besitzt keine Waage."),lang:="DEU"},
+                                              struct{uc_text:=CAscz("You dont have a scale."),lang:="ENU"});
+              3624:  SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr besitzt keinen Destillierbecher."),lang:="DEU"},
+                                              struct{uc_text:=CAscz("You dont have a still."),lang:="ENU"});
+            EndCase
+            who.eraseprop("#alchemie");
+            Return;
+          EndIf
+          If (!_item_iter==6225) // Waage zählt nicht dazu
+            toolqualitys+=tools[_item_iter][1].quality;
+          EndIf
+        EndIf
+      EndForEach
+    EndIf
+
+    // Nach Alchemietisch in der Nähe suchen ->Senkung der Explosionswahrscheinlichkeit
+    ForEach item in ListItemsNearLocation(who.x,who.y,who.z,1,who.realm)
+      If (item.objtype in {0x2DD3,0x2DD4,0x3077,0x3078,0x3079,0x307A})
+        alchytable:=1;
+        Break;
+      EndIf
+      SleepMS(2);
+    EndForEach
+
+    akt_x:=who.x; // Akt. Koordinaten sichern
+    akt_y:=who.y;
+    anzahl:=recipedict[recipe].Anzahl;
+    potiondesc:=GetItemDescriptor(UOBJ_ALCHYPOTION); // Trank zusammenbauen
+    cprop.+posWirk:=skaliert[1];
+    cprop.+negWirk:=skaliert[2];
+    cprop.+Werfbar:=werfbar;
+    cprop.+Range:=range;
+    cprop.+difficulty:=difficulty;
+    cprop.+buyprice:=10*difficulty;
+    cprop.+name:=recipedict[recipe].Name;
+    potiondesc.cprops.insert("potion", cprop);
+    potiondesc.color:=trankfarbe;
+    While ((anzahl) && (who.connected) && (!who.dead))
+      If ((akt_x==who.x) && (akt_y==who.y))  // Hab ich mich wegbewegt?
+        If (!SubtractAlchyReags(who,reagenzien))
+          Break;
+        EndIf
+        For (i:=1; i<=recipedict[recipe].Reagsname.size(); i+=1) // Pro Zutat einmal
+          PlaySoundEffect(who, SFX_243);
+          SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr zermahlt die Zutaten."),lang:="DEU"},
+                                   struct{uc_text:=CAscz("You grind the ingredients."),lang:="ENU"});
+          Sleep(1);
+        EndFor
+        If (!DamageTools(who,tools))
+          Break;
+        EndIf
+        If (CheckSkillPergon(who, SKILLID_ALCHEMIE, difficulty, 4*difficulty))
+          PlaySoundEffect(who, 0x5B0);
+          potion:=CreateItemInBackpackPergon(who, potiondesc, 1);
+          SetName(potion,"'"+recipedict[recipe].Name+"' Tr%aenke/unk");
+          SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr kredenzt den Trank und legt ihn in Eurem Rucksack ab."),lang:="DEU"},
+                                   struct{uc_text:=CAscz("You mix the potion and put in into your backpack."),lang:="ENU"});
+        Else
+          SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr scheitert beim Brauen des Trankes."),lang:="DEU"},
+                                   struct{uc_text:=CAscz("You fail to create a useful potion."),lang:="ENU"});
+          explWahrscheinlichkeit:=CInt(difficulty+20-skill-toolqualitys*2-15*alchytable);
+          If (RandomInt(100)<explWahrscheinlichkeit)
+            damage:=CInt((RandomInt(90)+1)*(difficulty/100.0));
+            DoDamage(who,damage,RandomInt(2));
+            DamageTools(who,tools,1,damage);
+            Break;
+          EndIf
+        EndIf
+        anzahl-=1;
+      Else
+        SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr verliert Eure Konzentration!"),lang:="DEU"},
+                                 struct{uc_text:=CAscz("You lost your concentration!"),lang:="ENU"});
+        Break;
+      EndIf
+    EndWhile
+  EndIf
+
+  who.eraseprop("#alchemie");
+EndProgram
+
+
+///////////////////////////////////
+// GetReagenzien - Array in sortierten Dict umwandeln
+///////////////////////////////////
+
+Function GetReagenzien(reagsarray, namearray)
+  Var reagsdict:=dictionary;
+  ForEach reag in reagsarray
+    If (!reagsdict[reag])
+      reagsdict[reag]:={1,namearray[_reag_iter]};
+    Else
+      reagsdict[reag][1]+=1;
+    EndIf
+  EndForEach
+  Return(reagsdict);
+EndFunction
+
+
+///////////////////////////////////
+// DoDamage - Schaden am Player
+///////////////////////////////////
+
+Function DoDamage(who,damage,type)
+  Case (type)
+    0: // Explosion
+      PlayObjectCenteredEffect(who, FX_EXPLODE_3, 10,10);
+      PlaySoundEffect(who, SFX_SPELL_EXPLOSION);
+      PrintTextAbovePrivatePergon(who,struct{uc_text:=CAscz("Die instabile Mischung explodiert."),lang:="DEU"},
+                                      struct{uc_text:=CAscz("The instable mixture explodes."),lang:="ENU"},
+                                      who,FONT_NORMAL,0xEE);
+      damage:=CInt((1 - CDbl(GetResistance(who, "fire")))*damage);
+      ApplyRawDamagePergon(who, damage);
+
+    1: // Gift
+      PlayStationaryEffect(who.x,who.y,who.z,0x113A,10,25,0,who.realm);
+      PlaySoundEffect(who,SFX_231);
+      PrintTextAbovePrivatePergon(who,struct{uc_text:=CAscz("Diese Mixtur setzt ätzende Dämpfe frei."),lang:="DEU"},
+                                      struct{uc_text:=CAscz("The mixture frees up acidic vapors."),lang:="ENU"},
+                                      who,FONT_NORMAL,0x44);
+      AddPoisonLevel(who, CInt(damage/10));
+  EndCase
+EndFunction
+
+///////////////////////////////////
+// DamageTools - Schaden an Tools verteilen
+///////////////////////////////////
+
+Function DamageTools(who, tools, spezial:=0, damage:=0)
+  If (GetObjProperty(who, I_AM_GOD)) // Godmodus benötigt keine Tools
+    Return(1);
+  EndIf
+  Var heile:=1;
+  Var text;
+  If (!spezial)
+    ForEach tool in tools
+      tool:=tool[1];
+      Case (CInt(tool.objtype))
+        3739:  text:={"Euer Mörser hat gelitten!", "Euer Mörser ist stark beschädigt!","Euer Mörser ist zerbrochen!"};
+        6218:  text:={"Euer Bunsenbrenner hat gelitten!", "Euer Bunsenbrenner ist stark beschädigt!","Euer Bunsenbrenner ist zerbrochen!"};
+        6236:  text:={"Euer Reagenzienset hat gelitten!", "Euer Reagenzienset ist stark beschädigt!","Euer Reagenzienset ist zerbrochen!"};
+        6225:  text:={"Eure Waage hat gelitten!", "Eure Waage ist stark beschädigt!","Eure Waage ist zerbrochen!"};
+        3624:  text:={"Euer Destillierbecher hat gelitten!", "Euer Destillierbecher ist stark beschädigt!","Euer Destillierbecher ist zerbrochen!"};
+      EndCase
+
+      If (RandomInt(100) < 2) //geringe Wahrscheinlichkeit das was kaputt geht
+        If (SetWerkzeugSchaden(who, tool, text[1],text[2],text[3]))
+          heile:=0;
+        EndIf
+      EndIf
+      SleepMS(2);
+    EndForEach
+  Else
+    // Zufällig ein Werkzeug wählen
+    Var tool:=tools[tools.keys()[RandomInt(tools.keys().size())+1]];
+    tool:=tool[1];
+    If (RandomInt(2)) // 50% Wahrscheinlichkeit
+      Case (CInt(tool.objtype))
+        3739:  text:={{struct{uc_text:=CAscz("Euer Mörser hat gelitten!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your mortar has been afflicted!"),lang:="ENU"}},
+                      {struct{uc_text:=CAscz("Euer Mörser ist stark beschädigt!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your mortar is badly damaged!"),lang:="ENU"}},
+                      {struct{uc_text:=CAscz("Euer Mörser ist zerbrochen!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your mortar is broken!"),lang:="ENU"}}};
+                       
+        6218:  text:={{struct{uc_text:=CAscz("Euer Bunsenbrenner hat gelitten!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your bunsenburner has been afflicted!"),lang:="ENU"}},
+                      {struct{uc_text:=CAscz("Euer Bunsenbrenner ist stark beschädigt!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your bunsenburner is badly damaged!"),lang:="ENU"}},
+                      {struct{uc_text:=CAscz("Euer Bunsenbrenner ist zerbrochen!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your bunsenburner is broken!"),lang:="ENU"}}};
+                       
+        6236:  text:={{struct{uc_text:=CAscz("Euer Reagenzienset hat gelitten!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your empty vials has been afflicted!"),lang:="ENU"}},
+                      {struct{uc_text:=CAscz("Euer Reagenzienset ist stark beschädigt!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your empty vials is badly damaged!"),lang:="ENU"}},
+                      {struct{uc_text:=CAscz("Euer Reagenzienset ist zerbrochen!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your empty vials is broken!"),lang:="ENU"}}};
+                       
+        6225:  text:={{struct{uc_text:=CAscz("Eure Waage hat gelitten!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your scale has been afflicted!"),lang:="ENU"}},
+                      {struct{uc_text:=CAscz("Eure Waage ist stark beschädigt!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your scale is badly damaged!"),lang:="ENU"}},
+                      {struct{uc_text:=CAscz("Eure Waage ist zerbrochen!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your scale is broken!"),lang:="ENU"}}};
+                       
+        3624:  text:={{struct{uc_text:=CAscz("Euer Destillierbecher hat gelitten!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your still has been afflicted!"),lang:="ENU"}},
+                      {struct{uc_text:=CAscz("Euer Destillierbecher ist stark beschädigt!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your still is badly damaged!"),lang:="ENU"}},
+                      {struct{uc_text:=CAscz("Euer Destillierbecher ist zerbrochen!"),lang:="DEU"},
+                       struct{uc_text:=CAscz("Your still is broken!"),lang:="ENU"}}};
+      EndCase
+      Var werkzeug:=GetPropertyItem(tool);
+      If (werkzeug)
+        SendSysMessagePergon(who,text[1][1],text[1][2]);
+      EndIf
+
+      werkzeug.hp-=CInt(damage/10);
+
+      If (werkzeug.hp<2)
+        DestroyItem(tool);
+        SendSysMessagePergon(who, text[3][1],text[3][2]);
+        heile:=0;
+      ElseIf (werkzeug.hp<=15)
+        SendSysMessagePergon(who, text[2][1],text[2][2]);
+      EndIf
+
+      SetPropertyItem(tool, werkzeug.quality, werkzeug.hp, werkzeug.maxhp, werkzeug.qualityorig, werkzeug.maxhporig,
+                      werkzeug.type, werkzeug.skillid, werkzeug.skillrepair, werkzeug.price);
+    EndIf
+  EndIf
+  Return(heile);
+EndFunction
+
+
+///////////////////////////////////
+// SubtractAlchyReags - Reags/Tools abziehen
+///////////////////////////////////
+
+Function SubtractAlchyReags(who,reagenzien)
+  If (GetObjProperty(who, I_AM_GOD)) // Godmodus
+    Return(1);
+  EndIf
+  Var i;
+  Var temp:={};
+  Var t;
+  Var objarray:=0;
+  Var objname;
+  Var milch:={65425,8073,8076,2477,2544};
+  Var bier:={2463,2542,2543,8085,8086};
+  Var wein:={2503,8077,8080,8091,8092};
+  Var apfelwein:={65426,8061,8064,8087,8088};
+  Var schnaps:={2459,8069,8072,8089,8090};
+  Var items:=dictionary;
+  ForEach reag in reagenzien
+    objarray:=0;
+    temp:={};
+    If (_reag_iter in milch)
+      objarray:=milch;
+      objname:="Milch";
+    ElseIf (_reag_iter in bier)
+      objarray:=bier;
+      objname:="Bier";
+    ElseIf (_reag_iter in wein)
+      objarray:=wein;
+      objname:="Wein";
+    ElseIf (_reag_iter in apfelwein)
+      objarray:=apfelwein;
+      objname:="Apfelwein";
+    ElseIf (_reag_iter in schnaps)
+      objarray:=schnaps;
+      objname:="Schnaps";
+    EndIf
+    If (objarray<>0)
+      For (i:=1;i<=reag[1];i+=1)
+        ForEach item in objarray
+          t:=FindSubstance(who.backpack,item,1,1);
+          If (t)
+            i+=t.size()-1;
+            temp+=t;
+            Break;
+          EndIf
+        EndForEach
+      EndFor
+      If (temp.size()<reag[1])
+        SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr besitzt nicht genug "+objname+"."),lang:="DEU"},
+                                 struct{uc_text:=CAscz("There is not enough "+objname+"."),lang:="ENU"});
+        Return(0);
+      EndIf
+      items[_reag_iter]:=temp;
+    Else
+      items[_reag_iter]:=FindSubstance(who.backpack,_reag_iter,reag[1],1); // mit ReserveItem, damit da nix passieren kann
+      If (!items[_reag_iter])
+        SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr besitzt nicht genug "+reag[2]+"."),lang:="DEU"},
+                                 struct{uc_text:=CAscz("There is not enough "+reag[2]+"."),lang:="ENU"});
+        Return(0);
+      EndIf
+    EndIf
+    SleepMS(2);
+  EndForEach
+  ForEach reag in reagenzien  // Reags Abziehen
+    If (items[_reag_iter][1].amount>=reag[1]) // Genug vorhanden
+      SubtractAmount(items[_reag_iter][1],reag[1]);
+    Else
+      Var tempamount:=0, done:=0;
+      ForEach item in (items[_reag_iter])
+        If (tempamount==reag[1]) // Genug abgezogen
+          done:=1;
+          Break;
+        EndIf
+        If (item.amount>=(reag[1]-tempamount))
+          SubtractAmount(item,reag[1]-tempamount);
+          done:=1;
+          Break;
+        Else
+          tempamount+=item.amount;
+          SubtractAmount(item,item.amount);
+        EndIf
+      EndForEach
+      If (!done)
+        SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr besitzt nicht genug "+reag[2]+"."),lang:="DEU"},
+                                 struct{uc_text:=CAscz("There is not enough "+reag[2]+"."),lang:="ENU"});
+        Return(0);
+      EndIf
+    EndIf
+    ForEach item in (items[_reag_iter])  // alle wieder "befreien"
+      ReleaseItem(item);
+    EndForEach
+  EndForEach
+  Return(1);
+EndFunction
+
+
+///////////////////////////////////
+// AddRecipe - Rezept hinzufügen
+///////////////////////////////////
+
+Function AddRecipe(who, book, byref recipedict)
+  var recipepaper, recipe;
+
+  SendSysMessagePergon(who,struct{uc_text:=CAscz("Welches Rezept wollt ihr einfügen?"),lang:="DEU"},
+                           struct{uc_text:=CAscz("Which recipe do you want to add?"),lang:="ENU"});
+  recipepaper:=Target(who);
+  If (!recipepaper)
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Abbruch"),lang:="DEU"},
+                             struct{uc_text:=CAscz("Abort"),lang:="ENU"});
+    Return(0);
+  EndIf
+  If (!recipepaper.movable)
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr müsst den Gegenstand zuerst losmachen!"),lang:="DEU"},
+                             struct{uc_text:=CAscz("You've to unlock this item first!"),lang:="ENU"});
+    Return(0);
+  EndIf
+  If ((!AccessiblePergon(who, recipepaper)) || (!ReserveItem(recipepaper)))
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr kommt da nicht ran!"),lang:="DEU"},
+                             struct{uc_text:=CAscz("You canot reach that!"),lang:="ENU"});
+    Return(0);
+  EndIf
+  If (recipepaper.objtype<>UOBJ_RECIPE)
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Dies ist kein Rezept!"),lang:="DEU"},
+                             struct{uc_text:=CAscz("This is not a recipe!"),lang:="ENU"});
+    Return(0);
+  EndIf
+
+  recipe:=recipepaper.getprop("recipe");
+  If (!recipe)
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Irgendwas ist schief gelaufen."),lang:="DEU"},
+                             struct{uc_text:=CAscz("Something went wrong."),lang:="ENU"});
+    Return(0);
+  EndIf
+
+  If (recipedict.size()>=40)
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Es passt kein weiteres Rezept mehr in dieses Buch."),lang:="DEU"},
+                             struct{uc_text:=CAscz("There is not enough space in this book."),lang:="ENU"});
+    Return(0);
+  EndIf
+  If (!recipedict)
+    recipedict:=dictionary;
+    recipedict[1]:=recipe;  // Hinzufügen
+  Else
+    recipedict[recipedict.size()+1]:=recipe;  // Hinzufügen
+  EndIf
+  book.setprop(BOOKRECIPES,recipedict);
+  SubtractAmount(recipepaper,1);
+  SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr fügt ein Rezept "+recipe.Name+" in euer Buch ein."),lang:="DEU"},
+                           struct{uc_text:=CAscz("You add the recipe "+recipe.Name+" to your book."),lang:="ENU"});
+EndFunction
+
+
+//////////////////////////////////////////////
+// SortRecipes - Sortieren/Umbennen/Löschen
+//////////////////////////////////////////////
+
+Function SortRecipes(who, book, byref recipedict)
+  Var ret, recipe, i, temp;
+
+  Repeat
+
+    Var layout:={"nodispose",
+                 "page 0",
+                 "resizepic 15 15 9200 800 560",
+                 "gumppic 0 0 30079",
+                 "gumppic 770 490 30081",
+                 "htmlgump 365 25 80 20 0 0 0",
+                 "gumppictiled 405 50 2 490 30000",
+                 "button 373 548 247 248 1 0 "+OK};
+    Var data:={"Loeschen"};
+
+    Var x:=25, y:=50;
+    ForEach recipe in recipedict  // Alle Rezepte durchgehen
+      If (_recipe_iter<>1)
+        layout.append("button "+x+" "+(y-2)+" 2435 2436 1 0 "+(UP+_recipe_iter));
+      EndIf
+      If (_recipe_iter<>recipedict.size())
+        layout.append("button "+x+" "+(y+10)+" 2437 2438 1 0 "+(DOWN+_recipe_iter));
+      EndIf
+      layout.append("textentrylimited "+(x+20)+" "+y+" 350 20 0 "+(RENAME+_recipe_iter)+" "+data.size()+" 44");
+      data.append(recipe.Name);
+      layout.append("button "+(x+355)+" "+(y+4)+" 2103 2104 1 0 "+(DEL+_recipe_iter));
+
+      y+=25;
+      If (_recipe_iter==20)
+        x:=415;
+        y:=50;
+        layout.append("htmlgump 755 25 80 20 0 0 0");
+        SleepMS(2);
+      EndIf
+    EndForEach
+
+    ret:=SendDialogGump(who,layout,data,50,50);
+
+    If ((ret.keys[2]>DEL) && (ret.keys[2]<UP)) // Löschen
+      recipe:=ret.keys[2]-DEL;
+      If (recipe==recipedict.size()) // Letztes gelöscht
+        recipedict.erase(recipe);
+      Else
+        recipedict.erase(recipe);
+        For (i:=recipe;i<=recipedict.size();i+=1)  // Verschieben
+          recipedict[i]:=recipedict[i+1];
+        EndFor
+        recipedict.erase(recipedict.size());
+      EndIf
+      book.setprop(BOOKRECIPES,recipedict);
+
+    ElseIf ((ret.keys[2]>UP) && (ret.keys[2]<DOWN)) // Hochschieben
+      recipe:=ret.keys[2]-UP;
+      If (recipe==1)  // Wie war das mit never trust the client?
+        SendSysMessagePergon(who,struct{uc_text:=CAscz("Hör mal besser auf mit Clientpaketen rumzuspielen."),lang:="DEU"},
+                                 struct{uc_text:=CAscz("Dont play with clientpackets!"),lang:="ENU"});
+        Return(0);
+      EndIf
+      temp:=recipedict[recipe-1];
+      recipedict[recipe-1]:=recipedict[recipe];
+      recipedict[recipe]:=temp;
+      book.setprop(BOOKRECIPES,recipedict);
+
+    ElseIf ((ret.keys[2]>DOWN) && (ret.keys[2]<RENAME)) // Runterschieben
+      recipe:=ret.keys[2]-DOWN;
+      If (recipe==recipedict.size())  // Wie war das mit never trust the client?
+        SendSysMessagePergon(who,struct{uc_text:=CAscz("Hör mal besser auf mit Clientpaketen rumzuspielen."),lang:="DEU"},
+                                 struct{uc_text:=CAscz("Dont play with clientpackets!"),lang:="ENU"});
+        Return(0);
+      EndIf
+      temp:=recipedict[recipe+1];
+      recipedict[recipe+1]:=recipedict[recipe];
+      recipedict[recipe]:=temp;
+      book.setprop(BOOKRECIPES,recipedict);
+
+    ElseIf (ret[OK]) // Umbenennung Speichern
+      For (i:=3;i<=ret.keys.size();i+=1)
+        temp:=ret[ret.keys[i]];
+        temp[1,5]:="";
+        recipedict[i-2].Name:=temp;
+      EndFor
+      book.setprop(BOOKRECIPES,recipedict);
+
+    Else
+      SendSysMessagePergon(who,struct{uc_text:=CAscz("Abbruch"),lang:="DEU"},
+                               struct{uc_text:=CAscz("Abort"),lang:="ENU"});
+      Break;
+    EndIf
+
+  Until (!who.connected);
+EndFunction
+
+
+////////////////////////////////////////////////////////////
+// BuildAndGetRecipe - Gump aufbauen und Rezept auswählen
+////////////////////////////////////////////////////////////
+
+Function BuildAndGetRecipe(who, book, byref recipedict)
+  Var ret, reags:="", x, y, tempname,i;
+  Var recipe, anz;
+  Var layout:={"nodispose",
+               "page 0",
+               "gumppic 50 70 11055",
+               "button 282 285 2460 2461 1 0 "+ADD,
+               "button 337 285 2718 2719 1 0 "+SORT};
+
+  Var data:={"<basefont size=8>Trank brauen</basefont>"};  // Brauen Button
+
+  ForEach recipe in recipedict  // Alle Rezepte durchgehen und Gump aufbauen
+    If (_recipe_iter>1)
+      layout.append("button 371 79 2236 2236 0 "+_recipe_iter+" 0"); // nächste Seite
+      layout.append("page "+_recipe_iter);
+      layout.append("button 99 79 2205 2205 0 "+(_recipe_iter-1)+" 0");
+    Else
+      layout.append("page "+_recipe_iter);
+    EndIf
+    layout.append("htmlgump 110 100 127 60 "+data.size()+" 0 0");  // Rezeptname
+    If (Len(recipe.Name)>17) // Mehr als 17 Zeichen passen nicht rein
+      tempname:="";
+      For (i:=1;i<=44;i+=17)
+        If (!recipe.Name[i])
+          Break;
+        Else
+          tempname+=recipe.Name[i,17]+"<br>";
+        EndIf
+      EndFor
+    Else
+      tempname:=recipe.Name;
+    EndIf
+    data.append(tempname);
+
+    reags:="";
+    ForEach reag in (recipe.Reagsname) // Reags
+      reags+="<br>"+reag;
+    EndForEach
+    layout.append("htmlgump 270 85 127 190 "+data.size()+" 0 0");
+    data.append("<basefont color="+HTML_DARKGRAY+">"+reags+"</basefont>");
+
+    x:=100;y:=165;
+    ForEach tool in (recipe.Tools)  // Tools
+      If (tool)
+        layout.append("tilepic "+x+" "+y+" "+_tool_iter);
+        x+=30;
+      EndIf
+      If (x==190)
+        y+=20;
+        x:=100;
+      EndIf
+    EndForEach
+
+    layout.append("button 110 215 30083 30084 1 0 "+(CREATE+_recipe_iter));  // Brauenbutton
+    layout.append("htmlgump 140 217 127 26 0 0 0");
+    layout.append("gumppic 140 240 2444");
+    layout.append("textentry 150 242 30 15 0 "+(ANZ+_recipe_iter)+" "+data.size());  // Anzahl
+    If (recipe.Anzahl)
+      data.append(CStr(recipe.Anzahl));
+    Else
+      data.append("1");
+    EndIf
+
+    SleepMS(2);
+  EndForEach
+
+  ret:=SendDialogGump(who,layout,data,50,50);
+
+  recipe:=ret.keys[ret.keys.size()]-CREATE;
+  If (ret[ADD])  // Rezept hinzufügen
+    Return(ADD);
+  ElseIf (ret[SORT]) // Sortieren/Umbenennen/Löschen
+    Return(SORT);
+  ElseIf (recipe>0) // Brauen button
+    anz:=ret[recipe+ANZ];
+    anz[1,5]:="";
+    anz:=CInt(anz);
+    If (anz>=1)
+      If (anz>10)
+        anz:=10;
+      EndIf
+    Else
+      Return(0);
+    EndIf
+    recipedict[recipe].Anzahl:=anz; // fürs nächstemal merken
+    book.setprop(BOOKRECIPES,recipedict);
+    Return(recipe);
+  Else
+    Return(0);
+  EndIf
+EndFunction

@@ -1,0 +1,47 @@
+//
+// Fraggulus' Edition
+//
+// Stand: 3. September 2000
+//
+
+Use uo;
+Use os;
+
+Include "include/modifyskill";
+
+// alles, was mit dem Besen wegraeumbar sein soll
+Var Muell := {0x1CE2, 0x1CEC, 0x1CED, 0x1CEE, 0x1CEF, 0x1CF0, 0x1D9F};
+
+program besen(character)
+
+    SendSysMessagePergon( character, "Ziel wählen." );
+    Var subject := Target(character);
+
+    if (!subject)
+        SendSysMessagePergon(character, "Zielen abgebrochen");
+        return;
+    elseif (Distance(character, subject) > 1 )
+        SendSysMessagePergon(character, "Das ist zu weit weg!");
+        return;
+    elseif (!CheckLineOfSight(character,subject))
+	SendSysMessagePergon(character,"Ihr könnt das nicht sehen.");
+	return;
+    elseif (GetMaxStaminaPergon(subject))
+	SendSysMessagePergon(character,"Ihr könnt nur Gegenstände wegräumen.");
+	return;
+/*    elseif ( (subject.objtype != 0x1CE2) && (subject.objtype != 0x1CEC) && (subject.objtype != 0x1CED) && (subject.objtype != 0x1CEE)
+          && (subject.objtype != 0x1CEF) && (subject.objtype != 0x1CF0) && (subject.objtype != 0x1D9F) )
+*/
+    elseif (!(subject.objtype in Muell))
+        SendSysMessagePergon(character, "Das könnt Ihr nicht wegräumen.");
+        return;
+    EndIf
+
+    PrintTextAbovePrivatePergon(character, "Ihr fangt an, aufzuräumen.", "", character);
+    Sleepms(2000);
+
+    SubtractAmount( subject , 1 );
+
+    PrintTextAbovePrivatePergon(character, "Fertig.", "", character);
+
+endprogram

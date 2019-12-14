@@ -1,0 +1,96 @@
+///////////////////////////////////////////////////////////////////////////
+//
+//   Lightning - Effect
+//
+//     based on DayNight Pkg (1999/06/02)
+//       Author: Racalac
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     1999/06/02 Rac: Day/Night transitions for one time zone only
+//     2000/04/23 Raxxla: Played around with a little bit
+//     2000/05/28 Shinigami: Complete ReWrite
+//     2005/06/08 Turley: Auf dem Meer konnte der Blitz nicht erzeugt werden -> Endlosschleife
+//
+///////////////////////////////////////////////////////////////////////////
+
+//////////////
+// Libraries
+//////////////
+
+Use os;
+Use uo;
+Use util;
+
+/////////////
+// Includes
+/////////////
+
+Include "daymoonweather";
+Include "include/client";
+Include "include/itemnpc";
+Include "include/place";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program LightningEffect()
+  Var pweather:=GetGlobalProperty("PresentWeather");
+
+  While (GetGlobalProperty("PresentWeather")==pweather)
+    SetDayMoonWeatherLight(0);
+    SleepMS(10);
+    SetDayMoonWeatherLight();
+
+    Sleep(RandomInt(5));
+
+    ForEach player in EnumerateOnlineCharacters()
+      If ((player.x<5120) And GetObjProperty(player, "Wetter"))
+        PlaySoundEffect(player, SFX_THUNDER);
+
+        If (RandomInt(10)==1)
+          Lightning(player);
+        EndIf
+      EndIf
+    EndForEach
+
+    Sleep(RandomInt(30));
+  EndWhile
+EndProgram
+
+///////////////////////////////////////
+// Lightning - Der Blitz schlaegt ein
+///////////////////////////////////////
+
+Function Lightning(player)
+  Var max_tries:=10;
+  Var item;
+
+  Repeat
+    Var x:=RandomInt(20)-10;
+    If (x<0)
+      x+=player.x-2;
+    Else
+      x+=player.x+2;
+    EndIf
+
+    Var y:=RandomInt(20)-10;
+    If (y<0)
+      y+=player.y-2;
+    Else
+      y+=player.y+2;
+    EndIf
+
+    item:=CreateItemAtLocationPergon(x, y, GetMapInfo(x, y,player.realm).z, 0xff00, 1,player.realm);
+    max_tries-=1;
+  Until (item Or (max_tries<0));
+
+  If (item)
+   // SysLog("Lightning... "+item.name);
+
+    PlayLightningBoltEffect(item);
+    DestroyItem(item);
+  EndIf
+EndFunction

@@ -1,0 +1,32 @@
+use os;
+use uo;
+
+Include "drinkpotion";
+Include "include/poison";
+Include "include/modifyskill";
+
+Program Drink_Orange(character, potion)
+  If (CheckIfCanDrink(character))
+    If (Is_Poison(potion))
+      Do_Poison(character, potion);
+    Else
+		Var potion_strength:=Get_Potion_Strength(potion);
+
+		Empty_Bottle(character, potion);
+
+		PlaySoundEffect(character, SOUND_EFFECT_CURE);
+		PlayObjectCenteredEffect(character, EFFECT_SPARKLE, 10, 10);
+
+		Var poisonlevel:=AddPoisonLevel(character, -potion_strength); // Entgiftung durchfuehren
+		If (poisonlevel>0)
+			SendSysMessagePergon(character, "Eure Vergiftung wurde teilweise neutralisiert!");
+		Else
+			SendSysMessagePergon(character, "Ihr wurdet vom Gift befreit!");
+		EndIf
+
+		detach();
+		sleep(10);
+		candrink(character);
+   EndIf
+  EndIf
+EndProgram

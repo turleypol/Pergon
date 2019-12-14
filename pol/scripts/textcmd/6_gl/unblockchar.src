@@ -1,0 +1,59 @@
+/////////////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD UnBlockChar - Character eines Spielern wieder freischalten (DAU-Falle)
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+/////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/string";
+Include "include/msgs";
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_UnBlockChar(who)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  Var buchstabe:=ChooseAccountBuchstabe(who, FillInAccountBuchstaben()); // Einen Anfangsbuchstaben auswaehlen
+  If (buchstabe<>-1)
+    Var accountname:=ChooseAccountName(who, FillInAccountNames(buchstabe)); // Einen Account auswaehlen
+    If (accountname)
+      Var character:=ChooseCharacter(who, FillInCharacter(accountname)); // Einen Character auswaehlen
+      If (character)
+        If (GetObjProperty(character, "NoCharKenn"))
+          EraseObjProperty(character, "NoCharKenn");
+          character.frozen:=0;
+          IncRevision(character);
+
+          SendSysMessagePergon(who, "Der Character '"+character.name+"' sollte wieder funktionieren.");
+        Else
+          SendSysMessagePergon(who, "Der Character '"+character.name+"' war nicht gesperrt.");
+        EndIf
+
+        If (character.acct.getprop("NoCharKenn"))
+          character.acct.eraseprop("NoCharKenn");
+
+          SendSysMessagePergon(who, "Der Account '"+accountname+"' sollte wieder funktionieren.");
+        Else
+          SendSysMessagePergon(who, "Der Account '"+accountname+"' war nicht gesperrt.");
+        EndIf
+      EndIf
+    EndIf
+  EndIf
+EndProgram

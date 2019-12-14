@@ -1,0 +1,122 @@
+///////////////////////////////////////////////////////////////////////////
+// blocknosoaptowel -- Zutritt zum Badehaus nur, wer Seife und Handtuch hat
+
+include "include/msgs";
+include "common";
+use uo;
+
+Program BlockNoSoapTowel(p)
+    If (p.who.isa(POLCLASS_NPC))
+        // NPCs aus Eingang schubsen
+        StepBack(p);
+        return;
+    EndIf
+
+    If (
+        // ist noch nicht im Badehaus
+        !GetObjProperty(p.who, "badehaus") &&
+        // Player guckt in Richtung Innenraum
+        (p.who.facing in (array{0, 1, 7}))
+    )
+        // Handtuch und Seife suchen
+        var towelsoap := FindTowelSoap(p.who);
+
+        // Hat der Spieler Handtuch und Seife?
+        If (!p.who.dead and !towelsoap.ok)
+            var text_de;
+            If (!towelsoap.towel)
+                text_de := "Ihr habt noch kein Badetuch!";
+            Else
+                text_de := "Ihr habt die Seife vergessen!";
+            EndIf
+            SendSysMessagePergon(p.who, text_de);
+            PrintTextAbovePergon(p.who, p.who, "*kicked*");
+            p.who.facing := 4;
+            MoveObjectToLocation(p.who, 2729, 1107, 5, REALM_BRITANNIA);
+            return;
+        EndIf
+
+        // Spieler darf rein
+        SetObjProperty(p.who, "badehaus", 1);
+        PrintTextAbovePrivatePergon(p.who, "Willkommen.", "", p.who);
+
+        // Items gegen Verlust schuetzen
+        ForEach item in (towelsoap.keys())
+            item.movable := 0;
+            item.newbie  := 1;
+        EndForEach
+
+
+    ElseIf (
+        // Player betritt Objekt von innen
+        GetObjProperty(p.who, "badehaus") &&
+        // guckt nach draussen
+        (p.who.facing in (array{3, 4, 5}))
+    )
+        // Handtuch und Seife suchen
+        var towelsoap := FindTowelSoap(p.who);
+
+        // Hat der Spieler Handtuch und Seife?
+        If (!p.who.dead and !towelsoap.ok)
+            var text_de;
+            If (!towelsoap.towel)
+                text_de := "Ihr habt Euer Badetuch vergessen! "+
+                    "Es liegt sicher noch im Haus rum.";
+            Else
+                text_de := "Ihr habt Eure Seife irgendwo liegen lassen!";
+            EndIf
+            SendSysMessagePergon(p.who, text_de);
+            p.who.facing := 0;
+            MoveObjectToLocation(p.who, 2729, 1103, 7, REALM_BRITANNIA);
+            return;
+        EndIf
+
+        // Spieler darf raus
+        EraseObjProperty(p.who, "badehaus");
+        PrintTextAbovePrivatePergon(p.who, "Auf Bald.", "", p.who);
+
+        // Verlustschutz aufheben
+        ForEach item in (towelsoap.keys())
+            item.movable := 1;
+            item.newbie  := 0;
+        EndForEach
+    EndIf
+
+    // Player kommt weder von aussen noch von innen auf die I-Steine
+    // (z. B. durch rumlaufen im Tuerbereich oder Raustreten aus der
+    // Tuer in falsche Richtung)
+EndProgram
+
+Function FindTowelSoap(who) // {{{
+    var towel := 0;
+    var soap  := 0;
+
+    // Handtuecher
+    ForEach type in (array{0x70c0, 0x70c1, 0x70c2, 0x70c3})
+        var found := FindSubstance(who.backpack, type, 1);
+        If (found)
+            towel := found;
+            break;
+        EndIf
+    EndForEach
+
+    // Seifen
+    ForEach type in (array{0x70c4, 0x70c5, 0x70c6})
+        var found := FindSubstance(who.backpack, type, 1);
+        If (found)
+            soap := found;
+            break;
+        EndIf
+    EndForEach
+
+    var ok := 0;
+    If (towel and soap)
+        ok := 1;
+    EndIf
+
+    return struct{
+        ok    := ok,
+        towel := towel,
+        soap  := soap
+    };
+EndFunction // }}}

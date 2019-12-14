@@ -1,0 +1,147 @@
+//**************************************************************************************************
+//
+//   Herstellung des Inkognitoitems
+//
+//     Setzt den Namen des Inkognitoitems bei der Herstellung
+//     Der Hersteller hat maximal 10 Versuche, einen gueltigen Namen einzugeben. Danach ist die Robe nutzlos.
+//
+//  18.03.2003 Fraggulus: Erstellung
+//  22.05.2003 Fraggulus: Automatische Vernichtung bei fehlendem 'incogname' entfernt. Macht Probleme beim Serverrestart
+//  2003/08/29 Shinigami: ReWrite
+//  20.11.2003 Fraggulus: 'BM ' als unzulaessiger Namensanfang ergaenzt
+//
+//**************************************************************************************************
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+use os;
+use math;
+use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program IncognitoRobe_Control(incogitem)
+  If (GetObjProperty(incogitem, "incogused")) // Sollte eigentlich nich aufgerufen werden
+    DestroyItem(incogitem); // Falls die Robe ihre eigentliche Zerstoerung ueberlebt hat...
+  EndIf
+
+  If (!GetObjProperty(incogitem, "incogname")) // Grade frisch erzeugt
+    Var who:=incogitem; // Den obersten "Container" ermitteln
+    While (who.container)
+      who:=who.container;
+    EndWhile
+
+    If (who.isa(POLCLASS_MOBILE) And (!who.isa(POLCLASS_NPC))) // Befindet sich die Robe im Besitz des Schneiders?
+      Var name_ok:=10; // max. 10 Schleifendurchläufe. Danach ist das Inkognitoitem unbrauchbar
+      Var newname;
+
+      While (name_ok>0)
+        newname:=SendTextEntryGump(who, "Gebt einen Inkognito-Namen ein (max. 20 Zeichen) - "+(11-name_ok)+". Versuch", TE_CANCEL_ENABLE, TE_STYLE_NORMAL, 20);
+        If (newname)
+          If (Len(newname)>20) // Name zu lang
+            SendSysMessagePergon(who, "Der Name ist zu lang.", "The name is too long.");
+          ElseIf (!NameCharCheck(newname)) // unerlaubte Zeichen
+            SendSysMessagePergon(who, "Der Name enthaelt unerlaubte Zeichen.", "The name contains illegal signs.");
+          ElseIf (!NameCheck(newname)) // Name existiert schon und darf nicht verwendet werden.
+            SendSysMessagePergon(who, "Der Name darf nicht verwendet werden.", "The name can't be used.");
+          Else
+            name_ok:=0;
+          EndIf
+        EndIf
+
+        name_ok-=1;
+      EndWhile
+
+      If (name_ok==-1) // Neuer Name wurde angegeben
+        SendSysMessagePergon(who, incogitem.desc+" wurde mit einem Inkognitonamen versehen.", incogitem.desc+" was attached an incognito name.");
+        SetObjProperty(incogitem, "incogname", newname);
+      Else
+        SendSysMessagePergon(who, "Abbruch aufgrund zu vieler Versuche. Der Gegenstand ist nun unbrauchbar.",
+          "Abort due to too many attempts. This item is no longer usable.");
+        SetObjProperty(incogitem, "incogused", 1);
+        DestroyItem(incogitem);
+      EndIf
+    Else
+      SetObjProperty(incogitem, "incogused", 1);
+      DestroyItem(incogitem);
+    EndIf
+  EndIf
+EndProgram
+
+/////////////////////////////////////////////////////////////////////////
+// NameCharCheck - Nur Buchstaben, Bindestrich und Leerzeichen zulassen
+/////////////////////////////////////////////////////////////////////////
+
+Function NameCharCheck(name)
+  Var char;
+
+  // auf unerlaubte Zeichen testen
+  For index:=1 To Len(name)
+    char:=name[index];
+
+    If (!((Lower(char)<>Upper(char)) Or (char in {"-", " "})))
+      Return (0);
+    EndIf
+  EndFor
+
+  // auf Leerzeichen am Beginn und Ende testen
+  If ((name[1] == " ") || (name[len(name)] == " "))
+    Return (0);
+  EndIf
+
+  Return (1);
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// NameCheck - Name darf keine CMDLevelbezeichnungen und keinen vorhandenen Charnamen enthalten
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
+Function NameCheck(name)
+  name:=Lower(name);
+
+  If (name["coun "] Or name["counselor "] Or name["seer "] Or name["seerin "] Or name["gm "] Or name["highgm "] Or
+      name["gm"] Or name["admin"] Or name["gl "] Or name["gameleader "] Or name["highgm "] Or name["bm "])
+    Return (0);
+  EndIf
+
+  Var realname;
+
+  ForEach accountname in ListAccounts()
+    Var account:=FindAccount(accountname);
+    If (account)
+      For charnr:=1 To 5
+        Var char:=account.getcharacter(charnr);
+        If (char)
+          If (Lower(char.name)==name)
+            Return (0);
+          EndIf
+
+          realname:=GetObjProperty(char, "spell_incognito");
+          If (realname)
+            realname:=realname[2];
+          Else
+            realname:=GetObjProperty(char, "realrname");
+          EndIf
+
+          If (realname And (Lower(realname)==name))
+            Return (0);
+          EndIf
+        EndIf
+      EndFor
+    EndIf
+
+    SleepMS(2);
+  EndForEach
+
+  Return (1);
+EndFunction

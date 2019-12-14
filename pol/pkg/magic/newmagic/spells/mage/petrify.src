@@ -1,0 +1,149 @@
+// *************************************************************************
+// Script file petrify.src
+//
+// implements spell 107 <Petrify Weapon> - "Waffe versteinern"
+//
+// provides additional earth damage to (equipped) weapon
+
+Include "../magicpergon";
+Include "include/spellcheck";
+
+Program cast_petrify (params)
+  Var caster;
+  Var caston;
+  Var power;
+
+  If (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      Return;
+    EndIf
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_MAGE_PETRIFY);
+    caston := TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      Return;
+    EndIf
+  EndIf
+
+  // Caster bei Zielauswahl verstorben etc.?
+  If (!caster)
+    Return;
+  EndIf
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  Var item;
+
+  If (caston.isa(POLCLASS_MOBILE) && !caston.isa(POLCLASS_NPC))
+    // spell has been casted on a player
+    PlayObjectCenteredEffect(caston, FX_BLESS_EFFECT, 10, 10);
+    item := caston.weapon;
+    If (!item)
+      SendSysMessagePergon(caster,
+        "Euer Ziel verfügt über keine Waffe",
+        "Your traget does not carry any weapon"
+      );
+      Return;
+    EndIf
+  ElseIf (caston.isa(POLCLASS_WEAPON))
+    item:= caston;
+    While (caston.container) // Wer trägt es
+      caston:=caston.container;
+    EndWhile
+    // spell has been casted on item
+    PlayStationaryEffect(
+      caston.x, caston.y, caston.z, FX_BLESS_EFFECT, 10, 10, 0, caston.realm
+    );
+  Else
+    SendSysMessagePergon(caster, "Das ist keine Waffe", "This is no weapon");
+    Return;
+  EndIf
+
+  // check if weapon already deals elemental damage
+  If (GetObjProperty(item, "spell_damage"))
+    Var dmgtypeger;
+    Var dmgtypeeng;
+    Case (GetObjProperty(item, "spell_damage")[2])
+      "fire":  dmgtypeger := "brennende";
+               dmgtypeeng := "burning";
+      "water": dmgtypeger := "vereiste";
+               dmgtypeeng := "freezing";
+      "air":   dmgtypeger := "blitzende";
+               dmgtypeeng := "lightning";
+      "earth": dmgtypeger := "steinerne";
+               dmgtypeeng := "petrified";
+      default: dmgtypeger := "verzauberte";
+               dmgtypeeng := "enchanted";
+    EndCase
+
+    SendSysMessagePergon(caster,
+      "Euer Ziel hat oder ist bereits eine "+dmgtypeger+" Waffe",
+      "Your target already has or is a "+dmgtypeeng+" weapon"
+    );
+    Return;
+  EndIf
+
+  If (item.getprop("spell_bless"))
+    SendSysMessagePergon(caster,
+      "Die Waffe Eures Ziels ist bereits gesegnet",
+      "Your target's weapon is already blessed"
+    );
+    Return;
+  EndIf
+
+  PlaySoundEffect(caston, SFX_21E);
+
+  // load spelldata
+  Var spells := ReadConfigFile("::spells");
+  Var spell := FindConfigElem(spells, SPELLID_MAGE_PETRIFY);
+
+  // calc spell effects according to casting power
+  Var dmg := CInt(power*spell.primary/100.0);
+  Var dur := CInt(power*spell.duration/100.0);
+
+  If (spell.primarymin and spell.primarymin > dmg)
+    dmg := spell.primarymin;
+  ElseIf (spell.primarymax and spell.primarymax < dmg)
+    dmg := spell.primarymax;
+  EndIf
+  If (spell.durationmin and spell.durationmin > dur)
+    dur := spell.durationmin;
+  ElseIf (spell.durationmax and spell.durationmax < dur)
+    dur := spell.durationmax;
+  EndIf
+
+  // get earth damage from spelltarget
+  Var earthdmg := CInt(GetObjProperty(item, "damage_earth"));
+  // set new earth damage
+  SetObjProperty(item, "damage_earth", earthdmg + dmg);
+
+  Var tag := array{
+    ReadGameClock() + dur,
+    "earth",
+    dmg,
+    ReadMilliSecondClock()
+  };
+
+  // tag spelltarget for spellchecker
+  SetObjProperty(item, "spell_damage", tag);
+  SendSpellWaiter(item, "spell_damage", dur, tag[4], caston);
+  IncRevision(item);
+
+  If (caston.isa(POLCLASS_MOBILE))
+    // spell has been casted on player
+    PrintTextAbovePrivatePergon(caston,
+      "Eure Waffe wird steinern und Angst wogt in Euren Gegnern",
+      "Your weapon becomes petrified and fear flows through your enemies",
+      caston
+    );
+  EndIf
+EndProgram
+
+// vim: sw=2 sts=2

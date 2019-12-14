@@ -1,0 +1,19 @@
+///////////////////////////////////////////////////////////////////////////
+// keyringdestroy - bei Zerstoerung des Rings die Box im Storage entfernen
+
+use storage;
+include "include/storage";
+
+Const DESTROY_OK := 1;
+Program KeyringDestroy(ring)
+    var area := FindStorageArea(STORAGE_KEYRINGS);
+    If (!area)
+        // ohne entsprechende Area gibt es keine Boxen, die weg muessen
+        return DESTROY_OK;
+    EndIf
+
+    // Killversuch
+    DestroyRootItemInStorageArea(area, ST_PREF_KEYRINGS+Hex(ring.serial));
+
+    return DESTROY_OK;
+EndProgram

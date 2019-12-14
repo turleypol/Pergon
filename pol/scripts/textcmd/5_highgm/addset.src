@@ -1,0 +1,161 @@
+///////////////////////////////////////////////////////////////////////////
+// addset - ein neues Set fuer spaetere Erzeugung anlegen
+
+use os;
+use uo;
+use cfgfile;
+include "include/msgs";
+
+Program TextCMD_AddSet(who, params)
+    params := SplitWords(params);
+    var rad := CInt(params[1]);
+    If (!rad or (params.size() < 2))
+        SendSysMessagePergon(who,
+            "Ihr müsst den Radius und einen Namen angeben! "+
+            "Mit 'cfgfile' an letzter Stelle wird das Set in "+
+            "sets.cfg gespeichert."
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Wählt den Startpunkt aus (Radius="+rad+")!"
+    );
+    var loc := TargetCoordinates(who);
+    If (!loc)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (params[3] == "cfgfile")
+        // Hierher nur wenn extra 'cfgfile' eingegeben wurde
+        var setfile := ReadConfigFile("sets");
+        If (!setfile)
+            syslog("AddSet: Kann die Datei 'sets.cfg' nicht oeffnen!");
+            SendSysMessagePergon(who,
+                "Kann die Datei 'sets.cfg' nicht öffnen!"
+            );
+            return;
+        EndIf
+
+        var CustomSet := array{};
+        var tostore   := GetSet(loc, rad);
+        ForEach obj in (tostore.objects)
+            SleepMs(2);
+            var data :=
+                // X- und Y-Koordinate von Zentralpunkt berechnen;
+                // Z relativ zum tiefsten Punkt
+                (obj.x-loc.x)+" "+(obj.y-loc.y)+" "+(obj.z-tostore.low);
+            If (obj.color)
+                data += " "+obj.color;
+            EndIf
+
+            If (obj.isa(POLCLASS_NPC))
+                CustomSet.append({"Mobile", obj.npctemplate+" "+data});
+            Else
+                CustomSet.append({"Item",  Hex(obj.objtype)+" "+data});
+            EndIf
+        EndForEach
+
+        AppendConfigFileElem("sets", "Set", CStr(params[2]), CustomSet);
+
+        SendSysMessagePergon(who,
+            "Es wurde ein neues Set angelegt: "+params[2]
+        );
+
+        UnloadConfigFile("sets");
+        return;
+
+    Else
+        // ab hier die neue Handhabe mit DataFile
+        var SetsDataFile := OpenDataFile("sets");
+        if (!SetsDataFile)
+            SetsDataFile := CreateDataFile("sets");
+        EndIf
+        var ListeAllerSets := SetsDataFile.FindElement("allsets");
+        If (!ListeAllerSets)
+            ListeAllerSets := SetsDataFile.CreateElement("allsets");
+        EndIf
+
+        var Custom_Template := "";
+        If (!ListeAllerSets)
+            syslog("AddSet: 'ListeAllerSets' ist null!");
+            SendSysMessagePergon(who,
+                "Kann die Liste aller Sets nicht finden."
+            );
+            return;
+        EndIf
+
+        var tostore       := GetSet(loc, rad);
+        var CustomSet     := array{};
+        var AnzahlItems   := 0;
+        var AnzahlMobiles := 0;
+        ForEach obj in (tostore.objects)
+            // TODO: Fehlende Dinge
+            // Für Items:
+            //   - angezeigter Text (Beispiel: osternest)
+            //   - der Tooltip-Text
+            // Für Mobiles:
+            //   - Die Blickrichtung, Spezialattribute (frozen etc.)
+            var props := struct;
+            props.+color   := obj.color;
+            props.+graphic := obj.graphic;
+            props.+x       := obj.x-loc.x;
+            props.+y       := obj.y-loc.y;
+            props.+z       := obj.z-tostore.low;
+            If (obj.isa(POLCLASS_NPC))
+                // mobile name
+                props.+kind     := "mobile";
+                props.+name     := obj.name;
+                Custom_Template := obj.GetProp("custom_template");
+                If (Custom_Template)
+                    props.+type := Custom_Template;
+                Else
+                    props.+type := obj.npctemplate;
+                Endif
+                AnzahlMobiles += 1;
+            Else
+                // item name
+                props.+kind    := "item";
+                props.+type    := obj.objtype;
+                props.+name    := obj.desc;
+                var cprops := dictionary;
+                ForEach propname in GetObjPropertyNames(obj)
+                    cprops[propname] := obj.GetProp(propname);
+                EndForEach
+                props.+cprops := cprops;
+                AnzahlItems += 1;
+            EndIf
+            CustomSet.append(props);
+        EndForEach
+
+        // neues Set hinzufügen, bzw. ein altes überschreiben
+        ListeAllerSets.SetProp(params[2], CustomSet);
+        SendSysMessagePergon(who,
+            "Es wurde ein neues Set angelegt: '"+params[2]+
+            "' Items: "+AnzahlItems+" Mobiles: "+AnzahlMobiles
+        );
+    EndIf
+EndProgram
+
+// alle geeigneten Items heraussuchen und tiefste Stelle finden
+Function GetSet(loc, rad)
+    var tostore := struct;
+    tostore.low := 127;
+
+    var found := array{};
+    ForEach obj in (ListObjectsInBox(
+        loc.x-rad, loc.y-rad, -128, loc.x+rad, loc.y+rad, 127, loc.realm
+    ))
+        SleepMs(2);
+        If (obj.isa(POLCLASS_ITEM) or obj.isa(POLCLASS_NPC))
+            found.append(obj);
+            If (obj.z < tostore.low)
+                tostore.low := obj.z;
+            EndIf
+        EndIf
+    EndForEach
+    tostore.+objects := found;
+
+    return tostore;
+EndFunction

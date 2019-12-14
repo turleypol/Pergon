@@ -1,0 +1,27 @@
+2001/07/03 Folgende Items wollte Pauker löschen:
+  0xf0e EmptyBottle
+  0x101e SpinningWheel crafting
+  0x1068 curedleather tailoring
+  0x1078 hides tailoring
+  0x1079 hides2 tailoring
+  0x13ec RingmailTunic combat
+  0x13ed RingmailTunic2 combat
+  0x13ee RingmailSleeves combat
+  0x13ef RingmailSleeves2 combat
+  0x13f0 RingmailLeggings combat
+  0x13f1 RingmailLeggings2 combat
+  0x13f2 RingmailGloves combat
+  0x1422 Beeswax
+  0x183a flask7
+  0x183d flask8
+  0x1dae Head
+  0x7020 Wolfhides tailoring
+  0x7021 dragonhides tailoring
+  0x7022 alligatorhides tailoring
+  0x7023 azurhides tailoring
+  0x7024 gremlinhides tailoring
+  0x7025 trollhides tailoring
+  0x7026 olddragonhides tailoring
+  0x7027 ostardhides tailoring
+  0x7028 frenziedostardhides tailoring
+  0x7030 curedleather2 tailoring

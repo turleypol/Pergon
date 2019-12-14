@@ -1,0 +1,35 @@
+use uo;
+include "include/msgs";
+include "include/server";
+
+Program ResetFailedLogins(who)
+    SendSysMessagePergon(who,
+        "Wählt einen Spieler, an dessen Account die Fehllogins "+
+        "zurückgesetzt werden sollen.",
+        "Select a player to reset the 'failed logins' count of "+
+        "his/her account."
+    );
+
+    var char := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!char)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (!char.isa(POLCLASS_MOBILE) or char.isa(POLCLASS_NPC))
+        SendSysMessagePergon(who,
+            "Das ist kein Spieler.", "That's not a player"
+        );
+        return;
+    EndIf
+
+    char.acct.eraseprop(LOG_LOGINFAIL);
+    SendSysMessagePergon(who,
+        "Fehlerzähler zurückgesetzt.", "Error counter reset."
+    );
+    If (who.cmdlevel <= CMDLEVEL_SEER)
+       SysLog(
+         "GMCMD: "+CharInfoStr(who)+" loescht die fehlerhaften Passworteingaben bei "+CharInfoStr(char)
+       );
+    EndIf
+EndProgram

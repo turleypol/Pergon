@@ -1,0 +1,208 @@
+///////////////////////////////////////
+//
+//   gerben.src
+//
+//   Author: Pauker
+//
+//   Modifications:
+//     2001/07/xx Pauker: First Write
+//     26.05.2003 Shinigami: Pruefung der Farbzuweisungen der Felle beim Haeuten
+//     27.05.2003 Fraggulus: Werkzeug-Variablen wurden bei Npc-Werkzeugen mit {error} belegt, was fehlerhafte If-Abfragen nach sich zog
+//     09.02.2005 Turley:    Mehrfachnutzung verhindert
+//     08.01.2006 Fraggulus: einen Teil der Ressourcendefinitionen nach resources.inc ausgelagert
+//
+///////////////////////////////////////
+
+use attributes;
+use util;
+use os;
+use uo;
+use cfgfile;
+
+include "include/client";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/objtype";
+include "include/resources";
+
+
+var UOBJ_FELLE_Spezial := {0x801a, 0x801b, 0x801c, 0x801d, 0x8020, 0x8021, 0x8022, 0x8023, 0x8024, 0x8300, 0x8301, 0x8302, 0x8303};
+const SOUND_EFFECT_BELLOWS := SFX_2C;
+const SOUND_EFFECT_BUBBLE := SFX_22;
+
+
+Program felle_gerben (character , Hides)
+
+    If (hides.objtype in GetUobjFelle())
+        var Mat_Cfg := ReadConfigFile(":crafting:materials");
+        var mat_special := FindConfigElem(Mat_Cfg, hides.objtype);
+        If (!mat_special)
+            SendSysMessagePergon(character, "Das Fell " + hides.objtype + " ist noch nicht in die Configs eingetragen!");
+            SendSysMessagePergon(character, "Benachrichtigt den zuständigen GM.");
+            return;
+        EndIf
+
+        var difficulty := mat_special.diffgerben;
+        var target_obj := mat_special.product;
+        GerbFell(character, hides, target_obj, difficulty);
+
+    Else
+        SendSysMessagePergon(character, "Das könnt Ihr nicht gerben!");
+    EndIf
+
+EndProgram
+
+
+Function GerbFell(character, fell, leder, difficulty)
+
+    var i;
+
+    If (!ReserveItem(fell))
+      SendSysMessagePergon(character, "Dieser Gegenstand ist bereits in Gebrauch.");
+      return;
+    EndIf
+
+    If ((!AccessiblePergon(character, fell)) || (!fell.movable))
+        SendSysMessagePergon(character, "Ihr kommt da nicht ran.");
+        return;
+    EndIf
+    If (fell.amount < 10)
+        SendSysMessagePergon (character, "Es sieht nicht so aus, als ob Ihr genug Fell benutzt hättet!");
+        return;
+    EndIf
+
+    SendSysMessagePergon (character, "Wählt das Rührpaddel, mit dem Ihr arbeiten wollt.");
+    var tool := target(character);
+    If (not (tool.objtype==0x6697))
+        SendSysMessagePergon (character, "Das ist kein Rührpaddel !");
+        return;
+    EndIf
+    // Abfrage Feuerstelle mit Kochkessel (Haus-Ad-On) bei höheren Lederarten
+    var ok_kochkessel := 0;
+    var kessel_x;
+    var kessel_y;
+    var kessel_z;
+
+    ForEach item in ListItemsNearLocation(character.x, character.y, character.z,1,character.realm)
+        If ((item.objtype==0x0974) or (item.objtype==0x0975))
+            ok_kochkessel := 1;
+            kessel_x := item.x; kessel_y:=item.y; kessel_z:=item.z;
+            Break;
+        EndIf
+    EndForEach
+    If ((ok_kochkessel==0) and (fell.objtype in UOBJ_FELLE_Spezial))
+        SendSysMessagePergon(character, "Ihr müsst neben einer Feuerstelle mit Kochkessel stehen!");
+        return;
+    EndIf
+
+    // Abfrage Gerbebottich
+    var gerbebottich;
+    If (!(ok_kochkessel==1))
+        gerbebottich:=FindSubstance(character.backpack,0x0fab,1,1);
+        If (!gerbebottich)
+          SendSysMessagePergon(character, "Ihr braucht einen Gerbebottich in Eurem Backpack!");
+          Return;
+        EndIf
+        gerbebottich:=gerbebottich[1];
+    EndIf
+
+    ReserveItem(tool);
+
+    var x := character.x; var y:=character.y; var z:=character.z; // Char Position wird festgestellt fuer Abbruch
+
+    // Werkzeug-Eigenschaften auslesen
+    var tool_skill := 0;
+    var tool_hp := 0;
+    var tool_maxhp := 0;
+    var werkzeug := GetPropertyItem(tool);
+    If (werkzeug)
+        tool_skill := werkzeug.quality;
+        tool_hp := werkzeug.hp;
+        tool_maxhp := werkzeug.maxhporig;
+    EndIf
+
+    var skill := CInt(Max(1, difficulty - tool_skill));
+    var points := (difficulty + tool_skill) * 6;
+
+    If (((tool_skill + GetSkillPergon(character, SKILLID_GERBEN_FAERBEN)) < difficulty) and !(fell.objtype == UOBJ_HASENFELL))
+        SendSysMessagePergon(character, "Ihr habt noch nicht die Fähigkeiten das Leder zu gerben.");
+        return;
+    EndIf
+
+    var fire;
+    If (ok_kochkessel==1)
+        fire := CreateItemAtLocationPergon(kessel_x,kessel_y,kessel_z, UOBJ_CAMPFIRE, 1,character.realm);
+    EndIf
+
+    While (fell.amount >= 10)
+/*
+       If (character.cmdlevel >= CMDLEVEL_SEER)
+           print("Tool Quality: "+tool_skill);
+           print("skill Gerben: "+GetSkillPergon(character, SKILLID_GERBEN_FAERBEN));
+           print("tool_skill: "+tool_skill);
+           print("tool_hp:"+tool_hp);
+           print("tool_maxhp:"+tool_maxhp);
+           print("x-Pos:"+x);
+           print("x-char:"+character.x);
+           print("y-Pos:"+y);
+           print("y-char:"+character.y);
+           print("z-Pos:"+z);
+           print("z-char:"+character.z);
+           print("Skill: "+cint(skill));
+           print("rohpoints: "+cint(points));
+       EndIf
+*/
+       For(i := 1; i <= 5; i += 1)
+
+           If (!((character.x==x) and (character.y==y) and (character.z==z)))   // fall's sich der char bewegt, Abbruch der Schleife
+                 SendSysMessagePergon(character, "Ihr beendet das Gerben von Fell.");
+                 If (fire)
+                     destroyitem(fire);
+                 EndIf
+                 return;
+           EndIf
+
+           PlaySoundEffect(character, SOUND_EFFECT_BELLOWS);
+       Sleep(1);
+
+       EndFor
+
+       PlaySoundEffect(character, SOUND_EFFECT_BUBBLE);
+       Sleep(2);
+
+       If ((RandomInt(100)==50) and !(ok_kochkessel==1)) // ein zufallsereignis bei 1%
+            SendSysMessagePergon(character, "Nach so langer Zeit ist Euer Gerbebottich undicht und nicht mehr zu gebrauchen.");
+            DestroyItem(gerbebottich);
+            If (fire)
+                destroyitem(fire);
+            EndIf
+            return;
+       EndIf
+
+       If (CheckSkillPergon(character, SKILLID_GERBEN_FAERBEN, cint(skill), cint(points)))
+            CreateItemInBackpackPergon(character, UOBJ_BLANK_SCROLL, (randomint(10)+1)); // als Zugabe leere Rollen aus Tier-Haut
+            var leders := CreateItemInBackpackPergon(character, leder, 10, fell.color);
+
+    	      If (leders.color<>fell.color) // Shinigami: Evtl. nur 'n ItemDesc-Fehler, evtl. aber auch 'n Problem...
+        	    SysLog("WARNUNG: Die Farbe "+leders.color+" des Leders "+Lower(Hex(leders.objtype))+" weicht von der Farbe "+
+	              fell.color+" des Fells '"+Lower(Hex(fell.objtype))+"' ab. Stacking ist deshalb nicht moeglich.");
+        	  EndIf
+
+           // leders.color := fell.color;
+            SubtractAmount(fell, 10);
+            SendSysMessagePergon(character, "Ihr fertigt 10 Leder und legt sie in Euren Rucksack.");
+       Else
+            SubtractAmount(fell, randomint(5) + 5);
+            SendSysMessagePergon(character, "Ihr zerstört etwas Fell.");
+            If (SetWerkzeugSchaden(character, tool, "Euer Rührpaddel hat gelitten!", "Euer Rührpaddel ist stark beschädigt!", "Euer Rührpaddel ist zerbrochen!"))
+                return;
+            EndIf
+
+       EndIf
+
+    EndWhile
+
+    If (fire)
+        destroyitem(fire);
+    EndIf
+EndFunction

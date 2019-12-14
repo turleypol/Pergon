@@ -1,0 +1,23 @@
+//////////////////////////////////////////
+//
+//  curseditems.src - Cursed Items Skill
+//
+//  20.01.2002 - Bihinos - Neuerstellung
+//
+//////////////////////////////////////////
+
+use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include ":newmagic:spellbook";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Do_CursedItems(who)
+  CheckAndUseItemsAndInscribe(who, UOBJ_SPELLBOOK_NECRO, "kein paq mu'qaDmey");
+EndProgram

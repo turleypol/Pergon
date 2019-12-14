@@ -1,0 +1,69 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  energycontrol.src - Control Script for EnergyFields
+//
+//  Modifications:
+//
+//  21.01.2002 - Bihinos - Rewrite for new Magic
+//  09.02.2004 - Bihinos - removed creator as scriptcontroller (misused by players)
+//                         minor changes
+//  11.02.2005 - Bihinos - replaced MOVEOBJECT_FORCELOCATION with MOVEOBJECT_NORMAL
+//  16.03.2005 - Seppel  - creator als scriptcontroller wieder angeschaltet (wurde ausgenutzt von Playern)
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use cfgfile;
+use file;
+use math;
+use os;
+use uo;
+use vitals;
+include ":newspells:resistance";
+include "include/clock";
+include "include/packets";
+
+Program EnergyControl (item)
+
+  Var fields:= ReadConfigFile("magicfields");					// read Config-File for magic fields
+
+  if (fields)
+
+    SleepMS(50);															// wait 50 ms to get CProps set on item
+
+    Var boss:= SystemFindObjectBySerial(CInt(GetObjProperty(item, "creator"))); // get creator of field
+    if (boss) // make creator attacker
+      SetScriptController(boss);
+    endif
+
+    Var fielddata:= FindConfigElem(fields, "energy");							// get field data from Config
+    Var dmg:= CInt(GetObjProperty(item, "f") * fielddata.dmg / 100);		// read and calc fields base damage
+    item.setprop("dmg",dmg); // Speichern für nächstesmal
+    Var pos:=struct{x,y};
+    Var hit;
+
+    Set_Priority(10);
+
+    foreach mobile in ListMobilesNearLocation(item.x, item.y, item.z, 0,item.realm)			// get possible victims
+      If (mobile.getprop("ignorefields"))  // DynDungeon Vieh ignoriert alle Felder
+        continue;
+      EndIf
+      If (mobile.cmdlevel>=CMDLEVEL_SEER)
+        continue;
+      EndIf
+      if ((!mobile.dead) && (mobile))																			// no damage do ghosts
+        hit:= CInt(dmg * (1 - CDbl(GetResistance(mobile, "air")))); // alter damage (air resistance)
+        ApplyRawDamagePergon(mobile, hit);                   								// apply damage to mobile
+        If (!mobile) //tod
+          continue;
+        EndIf
+        pos.x:=CInt(Sin(((mobile.facing+4)%8)*0.78)*1.5);  // get new position for mobile - repelling force field effect
+        pos.y:=CInt(Cos(((mobile.facing+4)%8)*0.78)*-1.5); // 180° rotated (facing+4)
+        MoveObjectToLocation(mobile, mobile.x+pos.x, mobile.y+pos.y, mobile.z, mobile.realm, MOVEOBJECT_NORMAL);		// move mobile
+      endif
+    endforeach
+
+  else
+    SysLog("FEHLER: MagicFields-ConfigFile nicht gefunden!");
+  endif
+
+EndProgram

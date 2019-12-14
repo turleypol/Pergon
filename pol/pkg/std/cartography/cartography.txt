@@ -1,0 +1,18 @@
+Mapmaker version .1  by Zulu
+based on previous code by Racalac
+
+** To install **
+Disable the standard cartography package in the \pol\pkg\std\cartography   directory.
+
+Install this package in \pol\pkg\opt\cartography
+
+add the items in mrcspawn.txt to the \pol\config\mrcspawn.cfg
+add the items in npcdesc.txt to the \pol\config\npcdesc.cfg
+
+** To create **
+To spawn the new npc, type .createnpc mapmaker
+
+If you use Madman Across the Water's moon package, don't forget to add a price to the spyglass.  He is the code we use.
+
+    VendorSellsFor  28
+    VendorBuysFor   14

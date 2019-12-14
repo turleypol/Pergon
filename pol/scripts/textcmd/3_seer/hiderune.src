@@ -1,0 +1,48 @@
+// 06.03.2008 Turley: Spawnrunen sind unsichtbar, damit Player sie nicht
+// über 3rd Party Proggis entdecken können
+
+use uo;
+include "include/msgs";
+include "include/objtype";
+include "include/permissions";
+
+Program TextCMD_HideRune(who, params)
+  If (!params)
+    params := 5;
+  EndIf
+
+  params := cint(params);
+  If (!params)
+    SendSysMessagePergon(who, "Parameter muss eine Nummer sein.");
+    return;
+  EndIf
+  var counter := 0;
+
+  ForEach rune in (ListItemsNearLocationOfType(
+      who.x, who.y, who.z, params, UOBJ_SPAWNRUNE , who.realm
+  ))
+    rune.graphic := 0x1;
+    If (!rune.invisible)
+      rune.invisible := 1;
+    EndIf
+    counter += 1;
+    SleepMS(2);
+  EndForEach
+
+  ForEach cont in (ListItemsNearLocationWithFlag(
+      who.x, who.y, who.z, params, TILEDATA_FLAG_CONTAINER, who.realm
+  ))
+    ForEach rune in (FindSubstance(
+        cont, UOBJ_SPAWNRUNE, 1, 0, FINDSUBSTANCE_FIND_ALL
+    ))
+      rune.graphic := 0x1;
+      If (!rune.invisible)
+        rune.invisible := 1;
+      EndIf
+      counter += 1;
+    EndForEach
+    SleepMS(2);
+  EndForEach
+
+  SendSysMessagePergon(who, "Insg. "+counter+" Runen versteckt.");
+EndProgram

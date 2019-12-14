@@ -1,0 +1,7 @@
+Use os;
+
+Include "include/pergonutil";
+
+Program Timer_Start()
+  Start_ScriptPergon("timers");
+EndProgram

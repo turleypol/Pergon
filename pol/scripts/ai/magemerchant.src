@@ -1,0 +1,113 @@
+/////////////////////////////////////////////////////////////////////
+// MageMerchant Script - Control Script for NPC MageMerchants
+//
+// Author: Shinigami
+
+use npc;
+use os;
+use storage;
+include ":newmagic:magicmerchant";
+include ":newmagic:moonstonemerchant";
+include "include/merchant";
+
+Function SetMerchantType(meprototype)
+  meprototype.speech_default:=1;
+
+  Return (meprototype);
+EndFunction
+
+Function Hook_Move_Action(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Merchant_Sold(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Entered_Area(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Left_Area(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Item_Given_Sleeping(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Item_Given(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Speech_Open(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Speech_Sleeping(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Speech_Name(me, medata, ev)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+EndFunction
+
+Function Hook_Speech_Default(me, medata, ev, sayed)
+  Var proceeded:=0;
+
+  If (sayed["zauberbuch"])
+    proceeded:=Speech_Zauberbuch(me, medata, ev, SKILLID_MAGIE);
+  ElseIf (sayed["karma"])
+    proceeded:=Speech_Karma(me, ev, SKILLID_MAGIE);
+  ElseIf (sayed["konvertieren"])
+    proceeded:=Speech_Konvertieren(me, ev, SKILLID_MAGIE);
+  ElseIf (sayed["mondstein"])
+    proceeded:=Speech_Mondstein(me, medata, ev);
+  ElseIf (sayed["artefaktbuch"])
+    proceeded:=Speech_Artefaktbuch(me, ev, SKILLID_MAGISCHEGEGENST);
+  EndIf
+
+  Return (proceeded);
+EndFunction
+
+Function Hook_Ghost_Speech_Default(me, medata, ev, sayed)
+  return;
+  me     := 1;
+  medata := 1;
+  ev     := 1;
+  sayed  := 1;
+EndFunction
+
+Function Hook_Buy(me, medata, who)
+  return;
+  me     := 1;
+  medata := 1;
+  who    := 1;
+EndFunction

@@ -1,0 +1,93 @@
+///////////////////////////////////////////////////////////////////////////
+// findstat - Statistik fuer Findequestitems
+
+use os;
+use uo;
+include ":mail:common";
+include ":questtools:common";
+include "include/msgs";
+include "include/varutil";
+
+Program FindStat(who, param);
+    var opts := GetOptions(param);
+
+    // get objtype for statistics
+    var type; // {{{
+    If (opts["type"])
+        type := CInt(opts["type"]);
+    Else
+        SendSysMessagePergon(who, "Suchitem wählen!", "Select search item!");
+        var tgt := Target(who);
+        If (!tgt)
+            SendSysMessagePergon(who, "Abbruch", "Cancelled");
+            return;
+        EndIf
+        type := tgt.objtype;
+    EndIf
+
+    If (!type)
+        SendSysMessagePergon(who,
+            "Kein (gültiger) Suchitemtyp!", "No (valid) seach item type"
+        );
+        return;
+    EndIf
+    // }}}
+
+    // display and send statistics
+    If (opts["stat"] <> 0) // {{{
+        var list := GetGlobalProperty(GPROP_FINDITEM_LIST);
+        var stat := FindGenStat(list[type]);
+        var message := array{};
+        ForEach entry in (stat)
+            SleepMs(2);
+            var noob := "Festlaender";
+            If (entry.player.getprop(TYPNEWBIE))
+                noob := "Newbie";
+            EndIf
+            var german := entry.name+" ("+entry.amount+" Stueck; "+noob+")";
+            message.append(german);
+            SendSysMessagePergon(who,
+                german,
+                entry.name+" ("+entry.amount+" items; "+noob+")"
+            );
+        EndForEach
+
+        // send mail if at least one entry was found {{{
+        If (message.size())
+            var result := SendMail(
+                "Suchstatistik <"+MADDR_SERVER+">",
+                who,
+                "Statistik ueber "+LHex(type),
+                message
+            );
+            If (!result)
+                SendSysMessagePergon(who,
+                    "Statistik nicht per Mail verschickt: "+result.errortext,
+                    "Cannot send statistics via mail: "+result.errortext
+                );
+            EndIf
+        EndIf
+        // }}}
+    EndIf
+    // }}}
+
+    // remove type from found list
+    If (opts["reset"]) // {{{
+        If (FindResetType(type, FIND_RESET_DELETE))
+            SendSysMessagePergon(who,
+                "Objtype "+LHex(type)+" aus Gefunden-Liste entfernt.",
+                "Removed objtype "+LHex(type)+" from found list."
+            );
+            syslog(
+                CharInfoStr(who)+" hat Gefunden-Liste fuer Typ "+LHex(type)+
+                " zurueckgesetzt."
+            );
+        Else
+            SendSysMessagePergon(who,
+                "Objtype "+LHex(type)+" gibt es nicht in Gefunden-Liste.",
+                "Objtype "+LHex(type)+" not in found list."
+            );
+        EndIf
+    EndIf
+    // }}}
+EndProgram

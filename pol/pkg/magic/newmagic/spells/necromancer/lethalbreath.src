@@ -1,0 +1,157 @@
+//**************************************************************************************************
+// Script file lethalbreath.src
+//
+//    implements spell 327 <Lethal Breath> - "Hauch des Todes"
+//
+//	difference between casters and spelltargets intelligence is calculated and
+//	acts as probability for instant death of the inferior
+//		 [ Resisted (Magic) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use util;
+
+Include "../magicpergon";
+Include "../resistance";
+Include "../spellattack";
+include "include/spellcheck";
+
+program cast_lethalbreath (params)
+
+   Var caster;
+   Var caston;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_NECRO_LETHALBREATH);
+   Var difficulty:= spell.skill;
+   Var resist:= spell.resist;
+   Var dmg;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+      send_attack(caston, caster, 327);
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_NECRO_LETHALBREATH);
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+
+   Var casterint:= GetIntPergon(caster); // get casters intelligence
+   Var castonint:= GetIntPergon(caston); // get spelltargets intelligence
+   Var chance:= RandomInt(100); // calc chance for instant death
+
+   PrintTextAbovePrivatePergon(caster, "Der Hauch des Todes streift Euch",
+                                       "The breath of death is touching you", caster);
+   PrintTextAbovePrivatePergon(caston, "Der Hauch des Todes streift Euch",
+                                       "The breath of death is touching you", caston);
+
+   if (casterint > castonint)			// check if casters intelligence is greater than spelltargets
+      if (resist)							// calc spell damage according to spelltargets magic resistance
+         dmg:= CInt(MagicResistance(caston, difficulty, resist, Abs(casterint - castonint), 0));
+      else
+         dmg:= CInt(Abs(casterint - castonint));
+      endif
+
+      PlaySoundEffect(caston, SFX_SPELL_MIND_BLAST);
+      PlayObjectCenteredEffect(caston, FX_GLOW_SPIKE, 5, 15);
+
+      PrintTextAbovePrivatePergon(caster, "Ihr widersteht ihm", "You are resisting it", caster);
+
+      if (chance < dmg)					// check if spelltarget dies
+         reset_spells(caston);
+         PrintTextAbovePrivatePergon(caston, "Ihr erliegt ihm", "You are succumbing to it", caston);
+         KillMobile(caston, "necro-lethalbreath-int");			// kill spelltarget
+      else
+         PrintTextAbovePrivatePergon(caston, "Ihr widersteht ihm", "You are resisting it", caston);
+      endif
+   elseif (casterint < castonint)	// check if spelltargets intelligence is greater than casters
+      if (resist)							// calc spell damage according to casters magic resistance
+         dmg:= CInt(MagicResistance(caster, difficulty, resist, Abs(casterint - castonint), 0));
+      else
+         dmg:= CInt(Abs(casterint - castonint));
+      endif
+
+      PlaySoundEffect(caster, SFX_SPELL_MIND_BLAST);
+      PlayObjectCenteredEffect(caster, FX_GLOW_SPIKE, 5, 15);
+
+      PrintTextAbovePrivatePergon(caston, "Ihr widersteht ihm", "You are resisting it", caston);
+
+      if (chance < dmg)					// check if caster dies
+         reset_spells(caster);
+         PrintTextAbovePrivatePergon(caster, "Ihr erliegt ihm", "You are succumbing to it", caster);
+         KillMobile(caster, "necro-lethalbreath");			// kill caster
+      else
+         PrintTextAbovePrivatePergon(caster, "Ihr widersteht ihm", "You are resisting it", caster);
+      endif
+   else										// even intelligences -> 'puff'
+      PlaySoundEffect(caster, SFX_2C);
+      PrintTextAbovePrivatePergon(caster, "Ihr bleibt vom Todeshauch verschont",
+                                          "The breath of death is sparing you", caster);
+      PrintTextAbovePrivatePergon(caston, "Ihr bleibt vom Todeshauch verschont",
+                                          "The breath of death is sparing you", caston);
+   endif
+
+endprogram
+
+Function reset_spells(victim)
+  // check auf invul (statue oder totesritter) (wegen klamotten und co
+  // vorher rückgängig machen
+  If (victim.getprop("spell_statue"))
+    var tag:= GetObjProperty(victim, "spell_statue");
+    // update spelltag for spellchecker
+    tag[1]:= ReadGameClock();
+    tag[5]+=1;
+    SetObjProperty(victim, "spell_statue", tag);
+    SendSpellWaiter(victim, "spell_statue", 1, tag[5], victim);
+    ForEach equip in (ListEquippedItems(victim))
+      SleepMS(2);
+      tag:=GetObjProperty(equip, "spell_statue");
+      If (tag)
+        tag[1]:= ReadGameClock();
+        tag[5]+=1;
+        SetObjProperty(equip, "spell_statue", tag);
+        SendSpellWaiter(equip, "spell_statue", 1, tag[5], victim);
+        if (equip.isa(POLCLASS_WEAPON) or equip.isa(POLCLASS_ARMOR))
+          equip.movable:= 1;
+        endif
+      EndIf
+    EndForEach
+    // falls Spellchecker nicht schnell genug ist
+    victim.disable("invul");
+
+  ElseIf (victim.getprop("spell_curse"))
+    var tag := victim.getprop("spell_curse");
+    If (tag[3]=="dead knight")
+      // er ist totesritter
+      // make spelltarget vulnerable again
+      victim.disable("invul");
+      IncRevision(victim);
+      RevokePrivilege(victim, "invul");
+      victim.color:= tag[4];
+      // remove spelltag
+      // restore original color
+      EraseObjProperty(victim, "spell_curse");
+    EndIf
+  EndIf
+EndFunction

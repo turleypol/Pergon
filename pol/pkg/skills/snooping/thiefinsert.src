@@ -1,0 +1,44 @@
+////////////////////////////////////////////////////////////////////
+// OnThiefInsert - Ein Player bewegt etwas in das Opfer-Backpack
+//
+// Author: Shinigami
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use uo;
+include "include/msgs";
+
+Const ALLOW := 1;
+Const DENY  := 0;
+
+// CanInsertScript(who, cont, movetype, inserttype, adding_item)
+// CanRemoveScript(who, cont, item, movetype)
+Program ThiefCanMove(who, tmp1, moveitem, tmp2, additem)
+  If (!who)
+    // Serverseitige Aktionen nicht behindern
+    return ALLOW;
+  EndIf
+
+  // je nach Aufruftyp Parameter umsortieren
+  If (TypeOfInt(moveitem) == OT_LONG)
+    moveitem := additem;
+  EndIf
+
+  If (moveitem.getprop("realitem"))
+    // spezielle Itemkopie, die zum Klauen erzeugt wird
+    return ALLOW;
+  EndIf
+
+  // sonstige Items
+  SendSysMessagePergon(who,
+    "Ihr könnt so nicht stehlen oder Eurem Opfer etwas unterschieben!",
+    "You cannot steal in this way or put something in your victim's backpack!"
+  );
+  return DENY;
+
+  // Compiler beruhigen
+  tmp1 := tmp2;
+EndProgram
+
+// vim: sw=2 sts=2

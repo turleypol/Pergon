@@ -1,0 +1,459 @@
+////////////////////////////////////////////////////////////////////////
+// 2004-07-11 Mai
+// - Knochenruestungen und verzierte Lederruestungen
+//
+// 2004-11-29 Taranis
+// - Drachenschädel und Zentaurenschädel Zuordnung geadded
+// - Skillcheck gefixt, Grunditemschwere aus Configfile eingearbeitet
+// - Check für genug Material auf das gerade herzustellende Item beschränkt
+//   (Da beim Fehlschlag nicht alle Rohstoffe verbraucht werden, kanns vorkommen,
+//   daß nicht genug Material für 10 klappende Versuche da ist, aber wohl für
+//   x < 10 klappende und 10-x fehlschlagende versuche)
+// - Skillcheck auch fürs Gerben eingeführt mit Difficulty von Knochen und
+//   Schuppen (10, 30, 60 scheinen ok als Diffiunterschiede, daher materials.cfg diffi/10 genommen)
+//
+// 2005-02-05 Turley
+// - Fehler mit Schuppen beim Propertysetzen behoben
+
+use attributes;
+use cfgfile;
+use os;
+use uo;
+use util;
+
+Include "include/client";
+Include "include/itemnpc";
+Include "include/manufacturegump";
+Include "include/modifyskill";
+Include "include/objtype";
+Include "include/resources";
+
+Const SOUND_BONE      := 0x242; //eigentlich lockpick-sound
+Const SOUND_HAMMER    := 0x43;
+Const SOUND_SCISSOR   := SFX_249;
+
+Const TOOL_BONESHAVER := 0x6111;
+Const TOOL_PLATETOOL  := 0x70e1;
+
+Program MagierRuestung(character, tool)
+  If (AccessiblePergon(character,tool) && (Distance(character, tool) <= 1))
+    ReserveItem(tool);
+    If (tool.objtype == TOOL_BONESHAVER)
+      MakeKnochenRuestung(character,tool);
+    ElseIf (tool.objtype == TOOL_PLATETOOL)
+      MakeMagierRuestung(character,tool);
+    EndIf
+  Else
+    //komm nicht an mein tool
+  EndIf
+EndProgram
+
+Function MakeMagierRuestung(character, tool)
+  var materialleder;
+  var materialschuppen;
+  var leder;
+  var schuppen;
+  var product;
+  var i := 0;
+  var xold := character.x;
+  var yold := character.y;
+
+  SendSysMessagePergon(character, "Wählt das geschnittene Leder mit dem ihr arbeiten wollt.");
+  leder := Target(character);
+  var cfg       := ReadConfigFile("klamotten");
+  var matcfg    := ReadConfigFile(":crafting:materials");
+  materialleder := matcfg[leder.objtype];
+
+  If (materialleder && leder.objtype in GetUobjLederGeschnitten())
+    var selection := SelectProductVerziert(character, materialleder, tool);
+    If (selection)
+      product := cfg[selection.key];
+      If (product.materialschuppen)
+        SendSysMessagePergon(character, "Wählt die Schuppen mit denen Ihr arbeiten wollt.");
+        schuppen := Target(character);
+        materialschuppen := matcfg[schuppen.objtype];
+        If (materialschuppen && schuppen.objtype in GetUobjSchuppen())
+          i := 0;
+          While (i < selection.amount)
+            leder := FindEnoughLeather(character, leder, product.materialleder);
+            If (leder)
+              ReserveItem(leder);
+              If (GetAmount(schuppen) >= product.materialschuppen)
+                ReserveItem(schuppen);
+                If((xold == character.x) &&(yold == character.y))
+                  CreateProductVerziert(character, tool, product, materialleder, materialschuppen, leder, schuppen);
+                  SleepMs(1000);
+                EndIf
+              Else
+                SendSysMessagePergon(character, "Ihr habt nicht genügend Schuppen!");
+                i := 12;
+              EndIf
+            Else
+              SendSysMessagePergon(character, "Ihr habt nicht genügend geschnittenes Leder!");
+              i := 12;
+            EndIf
+            i+=1;
+          EndWhile
+        Else
+          SendSysMessagePergon(character, "Damit könnt Ihr nichts anfangen.");
+        EndIf
+      Else
+        //kommt nicht vor, schliesslich sinds lederruestungen mit schuppen
+      EndIf
+    Else
+      SendSysMessagePergon(character, "Da müsst Ihr wohl erst noch etwas üben...");
+    EndIf
+  Else
+    SendSysMessagePergon(character, "Es ist Euch nicht möglich, mit diesem Material etwas zu fertigen!");
+  EndIf
+EndFunction
+
+
+Function MakeKnochenRuestung(character, tool)
+  var materialleder;
+  var materialknochen;
+  var materialschaedel;
+  var leder;
+  var knochen;
+  var schaedel := {};
+  var product;
+  var i := 0;
+  var ok := 0;
+  var xold := character.x;
+  var yold := character.y;
+
+  SendSysMessagePergon(character, "Wählt das geschnittene Leder mit dem Ihr arbeiten wollt.");
+  leder := Target(character);
+  var cfg       := ReadConfigFile("klamotten");
+  var matcfg    := ReadConfigFile(":crafting:materials");
+  materialleder := matcfg[leder.objtype];
+
+  If (materialleder && leder.objtype in GetUobjLederGeschnitten())
+    var selection := SelectProductKnochen(character, materialleder, tool);
+    If (selection)
+      product := cfg[selection.key];
+      If (product.materialknochen)
+        SendSysMessagePergon(character, "Wählt die Knochen mit denen Ihr arbeiten wollt.");
+        knochen := Target(character);
+        materialknochen := matcfg[knochen.objtype];
+        If (materialknochen && knochen.objtype in GetUobjKnochen())
+          i := 0;
+          While (i < selection.amount)
+            leder := FindEnoughLeather(character, leder, product.materialleder);
+            If (leder)
+              ReserveItem(leder);
+              If (GetAmount(knochen) >= product.materialknochen)
+                ReserveItem(knochen);
+                var UOBJ_knochen  := GetUobjKnochen();
+                var UOBJ_schaedel := GetUobjSchaedel();
+                If (product.materialschaedel)
+                  If (knochen.objtype == UOBJ_knochen[1])
+                    schaedel := FindSchaedel(character, UOBJ_schaedel[1], product.materialschaedel);
+                  ElseIf (knochen.objtype == UOBJ_knochen[2])
+                    schaedel := FindSchaedel(character, UOBJ_schaedel[2], product.materialschaedel);
+                  ElseIf (knochen.objtype == UOBJ_knochen[3])
+                    schaedel := FindSchaedel(character, UOBJ_schaedel[3], product.materialschaedel);
+                  ElseIf (knochen.objtype == UOBJ_knochen[4])
+                    schaedel := FindSchaedel(character, UOBJ_schaedel[4], product.materialschaedel);
+                  ElseIf (knochen.objtype == UOBJ_knochen[5])
+                    schaedel := FindSchaedel(character, UOBJ_schaedel[5], product.materialschaedel);
+                  EndIf
+                  materialschaedel := matcfg[schaedel[1].objtype];
+                  If (materialschaedel && schaedel[1].objtype in UOBJ_schaedel && schaedel)
+                    ok := 1;
+                  Else
+                    ok := 0;
+                  EndIf
+                Else
+                  ok := 1;
+                EndIf
+                If (ok)
+                  If (xold == character.x && yold == character.y)
+                    CreateProductKnochen(character, tool, product, materialleder, materialknochen, materialschaedel, leder, knochen, schaedel);
+                    SleepMs(1000);
+                  EndIf
+                Else
+                  SendSysMessagePergon(character, "Ihr habt nicht genügend Schädel.");
+                  i := 12;
+                EndIf
+              Else
+                SendSysMessagePergon(character, "Ihr habt nicht genügend Knochen!");
+                i := 12;
+              EndIf
+            Else
+              SendSysMessagePergon(character, "Ihr habt nicht genügend geschnittenes Leder!");
+              i := 12;
+            EndIf
+            i += 1;
+          EndWhile
+        Else
+          SendSysMessagePergon(character, "Das sind doch gar keine Knochen!");
+        EndIf
+      Else
+        //kommt nicht vor, schliesslich sinds knochenruestungen
+      EndIf
+    Else
+      SendSysMessagePergon(character, "Da müsst ihr wohl erstmal noch etwas üben.");
+    EndIf
+  Else
+    SendSysMessagePergon(character, "Es ist Euch nicht möglich, mit diesem Material etwas zu fertigen!");
+  EndIf
+EndFunction
+
+Function CreateProductKnochen(character, tool, product, materialleder, materialknochen, materialschaedel, leder, knochen, schaedel)
+  // Compilerwarnung vermeiden
+  materialschaedel := materialschaedel;
+  var werkzeug:=GetPropertyItem(tool);
+  var materialskill1 :=(materialleder.difficulty / 100.0) - 1;
+  var materialskill2 := materialknochen.difficulty / 10.0;
+  var ledernskill := product.skill1 + materialskill1 - tool.quality;
+  var gerbenskill := product.skill2 + materialskill2 - tool.quality;
+  var SkillID_1 := GetAttributeName_(product.attribute1);
+  var SkillID_2 := GetAttributeName_(product.attribute2);
+
+  If (ledernskill < 1)
+    ledernskill := 1;
+  EndIf
+  If (gerbenskill < 1)
+    gerbenskill := 1;
+  EndIf
+
+  PerformAction(character, UACTION_PICK);
+  PlaySoundEffect(character, SOUND_BONE);
+  Sleep(3);
+  PerformAction(character, UACTION_PICK);
+  PlaySoundEffect(character, SOUND_HAMMER);
+  Sleep(3);
+  PerformAction(character, UACTION_PICK);
+  PlaySoundEffect(character, SOUND_BONE);
+  Sleep(2);
+
+  If (CheckSkillPergon(character, SKILLID_1, ledernskill, CInt((ledernskill + werkzeug.quality) * 6)))
+    If (CheckSkillPergon(character, SKILLID_2, gerbenskill, CInt((gerbenskill + werkzeug.quality) * 6)))
+      var theitem := CreateItemInBackpackPergon(character, product.objtype, 1);
+      If (!theitem)
+        SendSysMessagePergon(character, "In Eurem Rucksack ist zu wenig Platz.");
+        theitem := CreateItemAtLocationPergon(character.x, character.y, character.z, product.objtype, 1, character.realm); // Dann halt aufm Boden versuchen
+      EndIf
+      theitem.movable := 1;
+      SetQuality(character, tool, product, theitem, materialleder, materialknochen, leder, knochen);
+      //material kaputtmachen
+      SubtractAmount(leder, CInt(product.materialleder));
+      SubtractAmount(knochen, CInt(product.materialknochen));
+      SubtractAmount(schaedel, CInt(product.materialschaedel));
+    Else
+      //knochen kaputtmachen
+      SendSysMessagePergon(character, "Ihr waret etwas zu grob, und es brechen einige der Knochen.");
+      SubtractAmount(knochen, CInt(product.materialknochen / 3));
+      //SubtractAmount(schaedel, CInt(product.materialschaedel / 2));
+    EndIf
+  Else
+    //leder kaputtmachen
+    SendSysMessagePergon(character, "Ihr bemüht euch vergeblich und vernichtet dabei einen Teil der Felle ");
+    SubtractAmount(leder, CInt(product.materialleder/3));
+  EndIf
+  SetWerkzeugSchaden(character, tool, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!");
+EndFunction
+
+Function CreateProductVerziert(character,tool,product,materialleder,materialschuppen,leder,schuppen)
+  var werkzeug:=GetPropertyItem(tool);
+  var materialskill1 := (materialleder.difficulty / 100.0) - 1;
+  var materialskill2 := materialschuppen.difficulty / 10.0;
+  var ledernskill := product.skill1 + materialskill1 - tool.quality;
+  var gerbenskill := product.skill2 + materialskill2 - tool.quality;
+  var SkillID_1:=GetAttributeName_(product.attribute1);
+  var SkillID_2:=GetAttributeName_(product.attribute2);
+
+  If(ledernskill < 1)
+    ledernskill := 1;
+  EndIf
+  If(gerbenskill < 1)
+    gerbenskill := 1;
+  EndIf
+
+  PerformAction(character, UACTION_PICK);
+  PlaySoundEffect(character, SOUND_SCISSOR);
+  sleep(3);
+  PerformAction(character, UACTION_PICK);
+  PlaySoundEffect(character, SOUND_SCISSOR);
+  sleep(3);
+  PerformAction(character, UACTION_PICK); // Wenn man nicht abrutscht, dauerts etwas laenger
+  PlaySoundEffect(character, SOUND_SCISSOR);
+  sleep(2);
+
+  If(CheckSkillPergon(character, SKILLID_1, ledernskill, CInt((ledernskill + werkzeug.quality)*6)))
+    If(CheckSkillPergon(character, SKILLID_2, gerbenskill, CInt((gerbenskill + werkzeug.quality)*6)))
+      var theitem := CreateItemInBackpackPergon(character, product.objtype, 1);
+      If(!theitem)
+        SendSysMessagePergon(character, "In Eurem Rucksack ist zu wenig Platz.");
+        theitem := CreateItemAtLocationPergon(character.x, character.y, character.z, product.objtype, 1,character.realm); // Dann halt aufm Boden versuchen
+      EndIf
+      theitem.movable := 1;
+      SetQuality(character, tool, product, theitem, materialleder, materialschuppen, leder, schuppen);
+      //material kaputtmachen
+      SubtractAmount(schuppen, CInt(product.materialschuppen));
+      SubtractAmount(leder, CInt(product.materialleder));
+    Else
+      //Schuppen kaputtmachen
+      SendSysMessagePergon(character, "Ihr rutscht mit der dicken Nadel ab und vernichtet dabei einen Teil der Schuppen.");
+      SubtractAmount(schuppen, CInt(product.materialschuppen/3));
+    EndIf
+  Else
+    //Leder kaputtmachen
+    SendSysMessagePergon(character, "Ihr bemüht euch vergeblich und vernichtet dabei einen Teil der Felle.");
+    SubtractAmount(leder, CInt(product.materialleder/3));
+  EndIf
+  SetWerkzeugSchaden(character, tool, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!");
+EndFunction
+
+
+Function SetQuality(character, tool, product, item, materialleder, materialknochen, leder, knochen)
+  var werkzeug := GetPropertyItem(tool);
+  var materialskill := ((materialleder.difficulty/100.0)-1);
+  var ledernskill := product.skill1 + materialskill - tool.quality;
+  var itemprice := 0;
+  var itemmaxhp := 0;
+  var itemhp := 0;
+  var quality := 0;
+  Var toolinfocprop := struct{material:=""};
+
+  If (ledernskill < 1)
+    ledernskill := 1;
+  EndIf
+  If (CheckSkillPergon(character, SKILLID_LEDEREI_SCHUSTERN, 60,120) && randomint(100) < 2 + werkzeug.quality)
+    If (CheckSkillPergon(character, SKILLID_LEDEREI_SCHUSTERN, ledernskill + 15, product.skill1 * 2))  // by F.
+      //they make an exceptional item
+      quality := 2.0;
+      var itemname := GetElemProperty(product, "desc");
+      toolinfocprop.material := materialleder.shortdesc + " und " + materialknochen.shortdesc;
+      toolinfocprop.+manufacturer := character.name;
+      item.setprop(TOOLINFO, toolinfocprop);
+      SetName(item, "Exceptional " + itemname);// + " ["+character.name+"]" + " aus " + materialleder.shortdesc + " und " + materialknochen.shortdesc);
+      SendSysMessagePergon(character, "Ihr fertigt ein außergewöhnliches Stück und legt es in Euren Rucksack.");
+      itemprice := 1.5;
+    Else
+      //macht ein Meisterstueck
+      quality := 1.5;
+      var itemname := GetElemProperty(product, "desc");
+      toolinfocprop.material := materialleder.shortdesc + " und " + materialknochen.shortdesc;
+      toolinfocprop.+manufacturer := character.name;
+      item.setprop(TOOLINFO,toolinfocprop);
+      SetName(item, "Meisterstueck " + itemname);// + " ["+character.name+"]" + " aus " + materialleder.shortdesc + " und " + materialknochen.shortdesc); //
+      SendSysMessagePergon(character, "Ihr fertigt ein Meisterstück und legt es in Euren Rucksack.");
+      itemprice := 1.2;
+    EndIf
+  Else
+    //regular-quality
+    quality := (80 +(RandomInt(GetSkillPergon(character, SKILLID_LEDEREI_SCHUSTERN)) / 6)) / 100.0;
+    var itemname := GetElemProperty(product, "desc");
+    toolinfocprop.material := materialleder.shortdesc + " und " + materialknochen.shortdesc;
+    item.setprop(TOOLINFO,toolinfocprop);
+    SetName(item, itemname);// + " aus " + materialleder.shortdesc + " und " + materialknochen.shortdesc);
+    SendSysMessagePergon(character, "Ihr stellt den Gegenstand her und legt ihn in Euren Rucksack.");
+    itemprice := 1;
+  EndIf
+  var itemdesc := ReadConfigFile("::itemdesc");
+  //maxhp und price
+  itemhp := quality + ((materialleder.quality + materialknochen.quality - 2) / 2.0);
+  itemmaxhp := CInt((itemdesc[product.objtype].maxhp) * itemhp);
+  If (!product.materialknochen) // Ohne alles umzustricken wohl der einfachste weg
+    itemprice := CInt(itemprice *((product.materialschuppen*GetPropertyPrice(knochen)) + (product.materialleder*GetPropertyPrice(leder))));
+  Else
+    itemprice := CInt(itemprice *((product.materialknochen*GetPropertyPrice(knochen)) + (product.materialleder*GetPropertyPrice(leder))));
+  EndIf
+  item.color := materialknochen.color; //farbe wie die knochen/schuppen
+  item.weight := item.weight * materialleder.weight;
+  SetPropertyItem(item, itemhp, itemmaxhp, itemmaxhp, itemhp, itemmaxhp, itemdesc[product.objtype].type, SKILLID_LEDEREI_SCHUSTERN,(product.skill1 + materialskill), itemprice);
+EndFunction
+
+Function SelectProductKnochen(character,materialleder,tool)
+  var werkzeug := GetPropertyItem(tool);
+  var auswahl;
+
+  var skillmod := (materialleder.difficulty / 100.0) - werkzeug.quality - 10;
+  var menu := MGCreateMenuFromCFG(character, "klamotten", "knochen", tool, SKILLID_LEDEREI_SCHUSTERN, skillmod);
+  If (menu)
+    auswahl := MGSelect(character, menu);
+    If (auswahl)
+      If (auswahl.amount && auswahl.amount > 0)
+        If (auswahl.amount > 10)
+          auswahl.amount := 10;
+        EndIf
+        MGSetDefault(tool, "knochen", auswahl); // --- Defaults im Tool speichern ---
+      Else
+        auswahl := 0;
+      EndIf
+    Else
+      auswahl := 0;
+    EndIf
+  Else
+    SendSysMessagePergon(character, "Ihr könnt mit dem Material nichts anfangen.");
+    auswahl := 0;
+  EndIf
+
+  Return(auswahl);
+
+EndFunction
+
+
+Function SelectProductVerziert(character, materialleder, tool)
+  var werkzeug := GetPropertyItem(tool);
+  var auswahl;
+
+  var skillmod := (materialleder.difficulty/100.0) - werkzeug.quality - 10;
+  var menu := MGCreateMenuFromCFG(character, "klamotten", "verziert", tool, SKILLID_LEDEREI_SCHUSTERN, skillmod);
+  If (menu)
+    auswahl := MGSelect(character, menu);
+    If (auswahl)
+      If (auswahl.amount && auswahl.amount > 0)
+        If (auswahl.amount > 10)
+          auswahl.amount := 10;
+        EndIf
+        MGSetDefault(tool, "verziert", auswahl); // --- Defaults im Tool speichern ---
+      Else
+        auswahl := 0;
+      EndIf
+    Else
+      auswahl := 0;
+    EndIf
+  Else
+    SendSysMessagePergon(character, "Ihr könnt mit dem Material nichts anfangen.");
+    auswahl := 0;
+  EndIf
+
+  Return(auswahl);
+
+EndFunction
+
+
+Function FindEnoughLeather(character, leder, amount)
+
+  ForEach item in EnumerateItemsInContainer(character.backpack)
+    If(item.objtype == leder.objtype and GetAmount(item) >= amount)
+      ReserveItem(item);
+      Return(item);
+    EndIf
+    SleepMS(2);
+  EndForEach
+  Return(0);
+EndFunction
+
+
+Function FindSchaedel(character, schaedelobj, amount)
+
+  ForEach item in EnumerateItemsInContainer(character.backpack)
+    If(item.objtype == schaedelobj and GetAmount(item) >= amount)
+      ReserveItem(item);
+			Return(item);
+    EndIf
+    SleepMS(2);
+  EndForEach
+  Return(0);
+
+EndFunction
+
+Function GetAttributeName_(attribute)
+  If(attribute)
+    Return(GetSkillName(attribute));
+  EndIf
+EndFunction

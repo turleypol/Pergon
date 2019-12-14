@@ -1,0 +1,183 @@
+///////////////////////////////////////////////////////////////////////////
+// punishmining.src
+//
+// Skript zur Spitzhacke der Schande, dient zum umsetzen von
+// Gefaengnisstrafen bei denen man aktiv sein soll. Konstante Ausbeute
+// unabhaengig vom Skill. Angelehnt an stonemining.src
+//
+// Author Fox 28/06/04
+
+use os;
+use uo;
+use util;
+include "include/client";
+include "include/itemnpc";
+include "include/msgs";
+include "include/objtype";
+include "include/resources";
+include "include/utility";
+
+Const UOBJ_STONE_BLOCK_PIT := 0x8216;
+Const STONES_PER_PICK      := 1;
+
+Program UsePicktool(who, tool)
+    If (!IsEquipped (who, tool))
+        SendSysMessagePergon(who,
+            "Zum Hacken müsst Ihr das in die Hand nehmen!"
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who, "Wählt einen Platz zum Hacken aus.");
+
+    var use_on := TargetCoordinates(who);
+        If (!use_on)
+            return;
+        EndIf
+
+    If (CoordinateDistance(who.x, who.y, use_on.x, use_on.y) > 2)
+        SendSysMessagePergon(who, "Das ist zu weit weg.");
+        return;
+    EndIf
+
+    If (!(use_on.objtype in (GetUobjLandschaftssteine())))
+        SendSysMessagePergon(who, "Hier könnt Ihr keine Steine abbauen.");
+        print("use_on.objtype:"+use_on.objtype);
+        return;
+    EndIf
+
+    var num :=
+        HarvestResource("stone", use_on.x, use_on.y, 1, 1, use_on.realm);
+    If (num == 0)
+        SendSysMessagePergon(who, "Die Ressourcen hier sind erschöpft.");
+        return;
+    EndIf
+
+    ReserveItem(tool);
+
+    // Werkzeug-Eigenschaften auslesen
+    var num_chops := 10; // speziell für das konstante Hacken
+    SendSysMessagePergon (who, "Ihr beginnt Steine zu hauen.");
+
+    var lehre := RandomInt(5);
+    If (lehre == 0) //etwa alle 5 mal gibts ne Lehre
+        var text;
+        Case (RandomInt(7))
+        0:
+            text := "Jeder Stein soll euch ein Lehre sein.";
+        1:
+            text := "Lernt aus euren Fehlern.";
+        2:
+            text := "Stein ist geduldig.";
+        3:
+            text := "Bei jedem Stein fein dran gedacht, "+
+                "Ihr habt wohl etwas falsch gemacht.";
+        4:
+            text := "Die Steine singen leise Lieder, der Text ist: "
+                +"Komme niemals wieder.";
+        5:
+            If (who.gender)
+                text := "Wer klopft im Steinbruch Tag und Nacht, "+
+                    "es ist die "+who.name+", sie hat einen Fehler gemacht.";
+            Else
+                text := "Wer klopft im Steinbruch Tag und Nacht, "+
+                    "es ist der "+who.name+", er hat einen Fehler gemacht.";
+            EndIf
+        6:
+            text := "Und wieder ein Stein mehr in Richtung Freiheit.";
+        EndCase
+        SendSysMessagePergon (who, text, "", _DEFAULT_TEXT_FONT, 32);
+    EndIf
+
+    Repeat
+        var i;
+        For (i := 1; i <= num_chops; i += 1)
+            performaction(who, UACTION_PICK);
+            PlaySoundEffect(who, SFX_PICK);
+            Sleep(1);
+            If (CoordinateDistance(who.x, who.y, use_on.x, use_on.y) > 2)
+                SendSysMessagePergon(who, "Das ist zu weit weg.");
+                return;
+            EndIf
+        EndFor
+
+        num :=
+            HarvestResource("stone", use_on.x, use_on.y, 1, 3, use_on.realm);
+
+        var stone := CreateItemInBackpackPergon(
+            who, UOBJ_STONE_BLOCK_PIT, STONES_PER_PICK
+        );
+        If (stone)
+            SendSysMessagePergon(who,
+                "Ihr legt einen Schandsteinblock in Euren Rucksack."
+            );
+            DecreasePunishment(who);
+        Else
+            SendSysMessagePergon(who, "Problem: "+stone.errortext);
+            syslog(
+                "FEHLER: "+CharInfoStr(who)+" kann Stein nicht schlagen: "+
+                stone.errortext
+            );
+        EndIf
+        PerformAction(who, UACTION_PICK);
+        PlaySoundEffect(who, SFX_HAMMER);
+        Sleep(1);
+    Until (num == 0);
+
+    SendSysMessagePergon(who, "Hier gibt es keine Steine mehr.");
+
+    CheckForgive(who);
+EndProgram
+
+// Steinzaehler verringern
+Function DecreasePunishment(who) // {{{
+    var crit := Is_Critical();
+    Set_Critical(1);
+    var topick := who.getprop(PROP_PUNISH_STONES);
+    If (topick == error or CInt(topick) <> topick)
+        syslog(
+            "FEHLER: "+CharInfoStr(who, COORDS_REALM)+
+            " hat kaputten Steinbruchzaehler: "+
+            CommonInfoStr(topick)+" (Wert: "+topick+")"
+        );
+        // Standardwert annehmen
+        topick := 1000;
+    EndIf
+
+    If (topick > 0)
+        topick -= STONES_PER_PICK;
+    EndIf
+
+    who.setprop(PROP_PUNISH_STONES, CInt(topick));
+    Set_Critical(crit);
+EndFunction // }}}
+
+Function CheckForgive(who) // {{{
+    var topick := who.getprop(PROP_PUNISH_STONES);
+    If (topick == error or CInt(topick) <> topick)
+        syslog(
+            "FEHLER: "+CharInfoStr(who, COORDS_REALM)+
+            " hat kaputten Steinbruchzaehler: "+
+            CommonInfoStr(topick)+" (Wert: "+topick+")"
+        );
+    EndIf
+
+    If (topick > 0)
+        // Strafe noch nicht abgearbeitet
+        return;
+    EndIf
+
+    AutoForgive(who);
+EndFunction // }}}
+
+Function IsEquipped(who, pickaxe) // {{{
+    If ((!AccessiblePergon(who, pickaxe)) or (Distance(who, pickaxe) > 1))
+        return 0;
+    EndIf
+    ForEach item in ListEquippedItems(who)
+        If (pickaxe.serial == item.serial)
+            return 1;
+        EndIf
+    EndForEach
+    return EquipItem(who, pickaxe);
+EndFunction // }}}

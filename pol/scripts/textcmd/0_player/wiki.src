@@ -1,0 +1,14 @@
+///////////////////////////////////////////////////////////////////////////
+// Wiki-TextCMD - Oeffnet das Wiki (wer haette das bloss geahnt?)
+
+Use uo;
+Include "include/msgs";
+Include "include/urls";
+
+Program TextCMD_Wiki(who)
+    SendSysMessagePergon(who,
+        "Der Quell der Weisheit wird angezapft ...",
+        "The book of wisdom will be opened soon ..."
+    );
+    OpenURL(who, URL_WIKI_PERGON);
+EndProgram

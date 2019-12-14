@@ -1,0 +1,359 @@
+use os;
+use uo;
+include "common";
+
+// Die Statusverbesserungen werden erst rückgängig gemacht, wenn
+// sich der Character zu weit vom Barden entfernt hat, oder der
+// Barde aufgehört hat zu spielen
+Program Unbard(parm)
+  // Offline-Mobilerefs holen (nach Ausloggen noch benutzbar)
+  Set_Script_Option(SCRIPTOPT_CAN_ACCESS_OFFLINE_MOBILES, 1);
+  var who := SystemFindObjectBySerial(
+    parm.charserial, SYSFIND_SEARCH_OFFLINE_MOBILES
+  );
+  var bard := SystemFindObjectBySerial(
+    parm.bardserial, SYSFIND_SEARCH_OFFLINE_MOBILES
+  );
+
+  While (
+    // solange der Barde noch dasselbe spielt und ...
+    (GetObjProperty(bard, PROP_MUSIC_BARDING)[1] == parm.song) and
+    // ... das selbe Instrument spielt und ...
+    (GetObjProperty(bard, PROP_MUSIC_BARDING)[2] == parm.inst.serial) and
+    // ... nah genug ist
+    (Distance(bard, who) <= CInt(parm.skill/DISTDIV)) and
+    (who.connected and bard.connected)
+  )
+    // abwarten
+    Sleep(STATDELAY);
+    Case (parm.effects.special)
+    EFFECT_STEALTH:
+      If (!CheckLightNear(who) || !CheckLightInHand(who, 0))
+        UnmakeSpecialEffectStealth(who);
+      EndIf
+    EndCase
+  EndWhile
+
+  If (!who.isa(POLCLASS_NPC))
+    // Player bekommen einen kurzen Zeitbonus, damit der Barde eine
+    // Chance hat, nochmal das Lied zu spielen, ohne dass die Wirkung
+    // zwischendurch abbricht
+    Sleep(STATDELAY);
+  EndIf
+  // danach die Statusveraenderungen wieder aufheben
+  RemoveStatsTemp(who, parm.bardserial, parm.effects, parm.values);
+
+  var bardprop := GetObjProperty(who, PROP_MUSIC_LISTEN);
+  If (bardprop.size() <= 1)
+    EraseObjProperty(who, PROP_MUSIC_LISTEN);
+  Else
+    bardprop.erase(parm.bardserial);
+    SetObjProperty(who, PROP_MUSIC_LISTEN, bardprop);
+  EndIf
+EndProgram // }}}
+
+// Resis übernimmt Logonscript (wegen älterer Bugs)
+Function RemoveStatsTemp(who, bardserial, effects, effvalues)
+  var bardprop := GetObjProperty(who, PROP_MUSIC_LISTEN);
+  
+  If (effects.str)
+    If (bardprop.size() <= 1)
+      AlterStrModPergon(who, -effvalues.str);
+    Else
+      var temp := 0;
+      ForEach serial in (bardprop.keys())
+        If (serial == bardserial)
+          continue;
+        EndIf
+        
+        If (bardprop[serial].str > temp)
+          temp := bardprop[serial].str;
+        EndIf
+      EndForEach
+      If (effvalues.str > temp)
+        AlterStrModPergon(who, temp - effvalues.str);
+      EndIf
+    EndIf
+  EndIf
+  If (effects.dex)
+    If (bardprop.size() <= 1)
+      AlterDexModPergon(who, -effvalues.dex);
+    Else
+      var temp := 0;
+      ForEach serial in (bardprop.keys())
+        If (serial == bardserial)
+          continue;
+        EndIf
+        
+        If (bardprop[serial].dex > temp)
+          temp := bardprop[serial].dex;
+        EndIf
+      EndForEach
+      If (effvalues.dex > temp)
+        AlterDexModPergon(who, temp - effvalues.dex);
+      EndIf
+    EndIf
+  EndIf
+  If (effects.int)
+    If (bardprop.size() <= 1)
+      AlterIntModPergon(who, -effvalues.int);
+      ClearCastPowerProperty(who, "Musik", "", "", 0);
+      RefreshSpellPowerGump(who);
+    Else
+      var temp := 0;
+      ForEach serial in (bardprop.keys())
+        If (serial == bardserial)
+          continue;
+        EndIf
+        
+        If (bardprop[serial].int > temp)
+          temp := bardprop[serial].int;
+        EndIf
+      EndForEach
+      If (effvalues.int > temp)
+        AlterIntModPergon(who, temp - effvalues.int);
+        If (!temp)
+          ClearCastPowerProperty(who, "Musik", "", "", 0);
+        EndIf
+        RefreshSpellPowerGump(who);
+      EndIf
+    EndIf
+  EndIf
+  If (effects.armor)
+    If (bardprop.size() <= 1)
+      who.ar_mod := who.ar_mod - effvalues.armor;
+    Else
+      var temp := 0;
+      ForEach serial in (bardprop.keys())
+        If (serial == bardserial)
+          continue;
+        EndIf
+        
+        If (bardprop[serial].armor > temp)
+          temp := bardprop[serial].armor;
+        EndIf
+      EndForEach
+      If (effvalues.armor > temp)
+        who.ar_mod := who.ar_mod + temp - effvalues.armor;
+      EndIf
+    EndIf
+  EndIf
+  If (effects.special)
+    Case (effects.special)
+    EFFECT_STEALTH:
+      If (bardprop.size() <= 1)
+        UnmakeSpecialEffectStealth(who);
+      Else
+        var temp := 0;
+        ForEach serial in (bardprop.keys())
+          If (serial == bardserial)
+            continue;
+          EndIf
+          
+          If (bardprop[serial].special == EFFECT_STEALTH)
+            temp := 1;
+            break;
+          EndIf
+        EndForEach
+        If (!temp)
+          UnmakeSpecialEffectStealth(who);
+        EndIf
+      EndIf
+    EndCase
+  EndIf
+
+  // hat Logonscript schon alles zurückgesetzt?
+  If (!bardprop)
+    return;
+  EndIf
+
+  var de_text := "Ihr seid wieder empfindlicher gegenüber ";
+  If (effects.fire)
+    If (bardprop.size() <= 1)
+      ModifyResistance(who, RES_FIRE, - effvalues.fire);
+      EraseObjProperty(who, "music_fire");
+      ClearCastPowerProperty(who, "Musik", "", "Fire", 0);
+      RefreshSpellPowerGump(who);
+      SendSysMessagePergon(who,
+        de_text+"den Kräften des Feuers.", "",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+      );
+    Else
+      var temp := 0;
+      ForEach serial in (bardprop.keys())
+        If (serial == bardserial)
+          continue;
+        EndIf
+        
+        If (bardprop[serial].fire > temp)
+          temp := bardprop[serial].fire;
+        EndIf
+      EndForEach
+      If (effvalues.fire > temp)
+        ModifyResistance(who, RES_FIRE, temp - effvalues.fire);
+        If (!temp)
+          EraseObjProperty(who, "music_fire");
+          ClearCastPowerProperty(who, "Musik", "", "Fire", 0);
+          SendSysMessagePergon(who,
+            de_text+"den Kräften des Feuers.", "",
+            _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+          );
+        EndIf
+        RefreshSpellPowerGump(who);
+      EndIf
+    EndIf
+  EndIf
+  If (effects.water)
+    If (bardprop.size() <= 1)
+      ModifyResistance(who, RES_WATER, - effvalues.water);
+      EraseObjProperty(who, "music_water");
+      ClearCastPowerProperty(who, "Musik", "", "Water", 0);
+      RefreshSpellPowerGump(who);
+      SendSysMessagePergon(who,
+        de_text+"den Kräften des Wassers.", "",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+      );
+    Else
+      var temp := 0;
+      ForEach serial in (bardprop.keys())
+        If (serial == bardserial)
+          continue;
+        EndIf
+        
+        If (bardprop[serial].water > temp)
+          temp := bardprop[serial].water;
+        EndIf
+      EndForEach
+      If (effvalues.water > temp)
+        ModifyResistance(who, RES_WATER, temp - effvalues.water);
+        If (!temp)
+          EraseObjProperty(who, "music_water");
+          ClearCastPowerProperty(who, "Musik", "", "Water", 0);          
+          SendSysMessagePergon(who,
+            de_text+"den Kräften des Wassers.", "",
+            _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+          );
+        EndIf
+        RefreshSpellPowerGump(who);
+      EndIf
+    EndIf
+  EndIf
+  If (effects.earth)
+    If (bardprop.size() <= 1)
+      ModifyResistance(who, RES_EARTH, - effvalues.earth);
+      EraseObjProperty(who, "music_earth");
+      ClearCastPowerProperty(who, "Musik", "", "Earth", 0);
+      RefreshSpellPowerGump(who);
+      SendSysMessagePergon(who,
+        de_text+"den Kräften der Erde.", "",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+      );
+    Else
+      var temp := 0;
+      ForEach serial in (bardprop.keys())
+        If (serial == bardserial)
+          continue;
+        EndIf
+        
+        If (bardprop[serial].earth > temp)
+          temp := bardprop[serial].earth;
+        EndIf
+      EndForEach
+      If (effvalues.earth > temp)
+        ModifyResistance(who, RES_EARTH, temp - effvalues.earth);
+        If (!temp)
+          EraseObjProperty(who, "music_earth");
+          ClearCastPowerProperty(who, "Musik", "", "Earth", 0);          
+          SendSysMessagePergon(who,
+            de_text+"den Kräften der Erde.", "",
+            _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+          );
+        EndIf
+        RefreshSpellPowerGump(who);
+      EndIf
+    EndIf
+  EndIf
+  If (effects.air)
+    If (bardprop.size() <= 1)
+      ModifyResistance(who, RES_AIR, - effvalues.air);
+      EraseObjProperty(who, "music_air");
+      ClearCastPowerProperty(who, "Musik", "", "Air", 0);
+      RefreshSpellPowerGump(who);
+      SendSysMessagePergon(who,
+        de_text+"den Kräften der Luft.", "",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+      );
+    Else
+      var temp := 0;
+      ForEach serial in (bardprop.keys())
+        If (serial == bardserial)
+          continue;
+        EndIf
+        
+        If (bardprop[serial].air > temp)
+          temp := bardprop[serial].air;
+        EndIf
+      EndForEach
+      If (effvalues.air > temp)
+        ModifyResistance(who, RES_AIR, temp - effvalues.air);
+        If (!temp)
+          EraseObjProperty(who, "music_air");
+          ClearCastPowerProperty(who, "Musik", "", "Air", 0);          
+          SendSysMessagePergon(who,
+            de_text+"den Kräften der Luft.", "",
+            _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+          );
+        EndIf
+        RefreshSpellPowerGump(who);
+      EndIf
+    EndIf
+  EndIf
+  If (effects.poison)
+    If (bardprop.size() <= 1)
+      ModifyResistance(who, RES_POISON, - effvalues.poison);
+      EraseObjProperty(who, "music_poison");
+      ClearCastPowerProperty(who, "Musik", "", "Poison", 0);
+      RefreshSpellPowerGump(who);
+      SendSysMessagePergon(who, de_text+" Gift.", "",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+      );
+    Else
+      var temp := 0;
+      ForEach serial in (bardprop.keys())
+        If (serial == bardserial)
+          continue;
+        EndIf
+        
+        If (bardprop[serial].poison > temp)
+          temp := bardprop[serial].poison;
+        EndIf
+      EndForEach
+      If (effvalues.poison > temp)
+        ModifyResistance(who, RES_POISON, temp - effvalues.poison);
+        If (!temp)
+          EraseObjProperty(who, "music_poison");
+          ClearCastPowerProperty(who, "Musik", "", "Poison", 0);
+          SendSysMessagePergon(who, de_text+" Gift.", "",
+            _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+          );
+        EndIf
+        RefreshSpellPowerGump(who);
+      EndIf
+    EndIf
+  EndIf
+EndFunction
+
+// Sondereffekte aufheben
+Function UnmakeSpecialEffectStealth(who)
+  If (GetObjProperty(who, PROP_MUSIC_STEALTH))
+    If (who.hidden) // Um unnoetige Events zu sparen...
+      who.hidden := 0;
+    EndIf
+    who.stealthsteps := 0;
+    SendSysMessagePergon(who,
+      "Die Geschmeidigkeit des Panthers ist vergangen.", "",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_NOTE
+    );
+  EndIf
+  EraseObjProperty(who, PROP_MUSIC_STEALTH);
+EndFunction

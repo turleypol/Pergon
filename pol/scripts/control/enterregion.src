@@ -1,0 +1,46 @@
+/////////////////////////////////////////////////////////////
+// enterregion
+//
+// Script wird aufgerufen, wenn eine damit ausgestattete Region betreten
+// wird
+//
+// Author: Turley
+
+include "include/msgs";
+include "include/pergonutil";
+include "include/server";
+include ":sqlmanager:sqlmanager";
+use uo;
+
+Program EnterRegionZone(who, region_name)
+  SendSQLManager(who, SQLStatus_UpdateRegion);
+  // Spezielle Regionen
+  If (region_name["Britannia_Jhelom"])
+    If ((!GetObjProperty(who, TYPNEWBIE)) && (who.cmdlevel < CMDLEVEL_SEER))
+      // Waffen und [schwere] Ruestungen des Player ablegen
+      If (!CheckEquipmentForNewbieArea(who))
+        SendSysMessagePergon(who,
+          "Euch fallen ein paar Gegenstände zu Boden."
+        );
+      EndIf
+      EnterNewbieArea(who, "EnterRegionScript");
+    EndIf
+
+  ElseIf (
+    region_name["Britannia_Goetter"] or
+    region_name["Britannia_Zoo"]
+  )
+    If (who.cmdlevel < CMDLEVEL_SEER)
+      // Cprop fuers Equiptest-Script setzen, damit Ruestungen und
+      // Waffen nicht angelegt werden duerfen
+      SetObjProperty(who, PLACE_ATGODPALACE, 1);
+    EndIf
+  Else // zur Sicherheit damit falsche cprops gelöscht werden
+    EraseObjProperty(who, PLACE_ATGODPALACE);
+    EraseObjProperty(who, PLACE_INNEWBIEAREA);
+  EndIf
+
+  return 1;
+EndProgram
+
+// vim: sw=2 sts=2

@@ -1,0 +1,46 @@
+///////////////////////////////////////////////////////////////////////////
+//
+//  TextCMD mBolt - multipler Blitzschlag
+//                - wirkt nur auf Spieler oder Npcs
+//
+//  13.05.2003 - Fraggulus
+//
+//  Modification:
+//
+///////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/client";
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_mBolt(who)
+    SendSysMessagePergon(who,
+        "Wählt Spieler oder Npcs für die Blitzschläge..."
+    );
+
+    Var tgt := TargetCoordinates(who);
+
+    While (tgt)
+        ForEach victim in (ListMobilesNearLocation(
+            tgt.x, tgt.y, tgt.z, 0,tgt.realm
+        ))
+            PlaySoundEffect(victim, SFX_THUNDER);
+            PlayLightningBoltEffect(victim);
+        EndForEach
+
+        tgt := TargetCoordinates(who);
+    EndWhile
+EndProgram

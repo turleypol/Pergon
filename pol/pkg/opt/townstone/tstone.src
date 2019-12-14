@@ -1,0 +1,721 @@
+use math;
+use os;
+use uo;
+use util;
+include "include/itemnpc";
+include "include/logutil";
+include "include/math";
+include "include/msgs";
+
+Const ZEIT_WAHL      := 7*24*3600; // 12*3600; // 1   Woche
+Const ZEIT_STICHWAHL := 7*12*3600; // 6*3600;  // 1/2 Woche
+
+///////////////
+// Gump-Daten
+///////////////
+
+var layout := {
+    "page 0",
+    "resizepic 160 50 5100 300 390",
+    "text 220 55 0 0",
+    "text 165 90 0 1",
+    "text 300 90 500 2",
+    "text 165 110 0 3",
+    "text 300 110 500 4"
+};
+
+var data := {
+    "Stadtstein von ",
+    "Buergermeister ",
+    "",
+    "Einwohner",
+    ""
+};
+
+var layouteintragen := {
+    "text 165 140 90 5",
+    "text 185 160 0 6",
+    "text 185 185 0 7",
+    "button 225 160 2474 2473 1 0 1000",
+    "button 225 185 2152 2151 1 0 0"
+};
+
+var dataeintragen := {
+    "Einwohner werden von ",
+    "Ja",
+    "Nein"
+};
+
+var layoutexterner := {
+    "button 325 265 243 242 1 0 0",
+    "button 235 265 248 247 1 0 0"
+};
+
+var layoutmayor := {
+    "text 165 140 0 5",
+    "text 165 170 0 6",
+    "button 330 135 2474 2473 1 0 2001",
+    "button 330 165 2152 2151 1 0 2002",
+    "text 165 195 0 7",
+    "text 165 213 0 8",
+    "text 320 195 80 9",
+    "text 320 213 80 10"
+};
+
+var datamayor := {
+    "Neue Abstimmung",
+    "Zur Wahl rufen",
+    "",
+    "",
+    "",
+    ""
+};
+
+var layouteinwohner := {
+    "text 165 135 90 5",
+    "text 165 160 0 6",
+    "text 165 185 0 7",
+    "button 205 155 2474 2473 1 0 3000",
+    "button 205 180 2152 2151 1 0 0",
+    "text 165 210 0 8",
+    "text 165 230 0 9"
+};
+
+var dataeinwohner := {
+    "Moechtet Ihr Eure Einwohnerschaft aufgeben?",
+    "Ja",
+    "Nein",
+    "",
+    ""
+};
+
+// ok Array(GProp(townlist))         - Liste der Stadtnamen
+// ok CInt(who.CProp(town))          - Mitglied welcher Stadt?
+// ok CInt(stone.CProp(town))        - Zu welcher Stadt gehoert dieser Stadtstein?
+// ok CInt(stone.CProp(mayorserial)) - Seriennummer des Buergermeisters
+// -  CInt(stone.CProp(mayor))       - Name des Buergermeisters
+// ok CInt(stone.CProp(populacao))   - Anzahl der Einwohner
+
+Program TownStone(who, stone) // {{{
+    If (!ReserveItem(stone))
+        SendSysMessagePergon(who,
+            "Dieser Stein wird schon benutzt. Probiert es später erneut."
+        );
+        return;
+    EndIf
+
+    If (
+        GetObjProperty(who, "spell_incognito") ||
+        GetObjProperty(who, "realrname")
+    )
+        SendSysMessagePergon(who,
+            "Ihr steht unter Einfluss eines Inkognitos. "+
+            "Versucht es später noch einmal."
+        );
+        return;
+    EndIf
+
+    // Zu welcher Stadt gehoert der Stadtstein?
+    // (Es können somit mehrere pro Stadt existieren ...)
+    var stonetown := CInt(GetObjProperty(stone, "town"));
+    If (!stonetown)
+        var newtown := GetObjProperty(stone, "newtown");
+        If (newtown)
+            EraseObjProperty(stone, "newtown");
+            var townlist := GetGlobalProperty("townlist");
+            townlist.append(newtown);
+            stonetown := townlist.size();
+            SetObjProperty(stone, "town", stonetown);
+            SetGlobalProperty("townlist", townlist);
+        Else
+            If (who.cmdlevel)
+                SendSysMessagePergon(who,
+                    "Dieser Stadtstein ist keiner Stadt zugeordnet. "+
+                    "Die CProp 'town' ist nicht gesetzt!"
+                );
+            Else
+                SendSysMessagePergon(who,
+                    "Dieser Stadtstein ist keiner Stadt zugeordnet. "+
+                    "Wendet Euch an einen GM!"
+                );
+            EndIf
+            syslog(
+                "FEHLER: "+ItemInfoStr(stone, COORDS_REALM)+
+                " fehlt CProp 'town'"
+            );
+            return;
+        EndIf
+    EndIf
+
+    // Zu welcher Stadt gehoert der Spieler?
+    var usertown := CInt(GetObjProperty(who, "town"));
+    If (usertown)
+        If (usertown <> stonetown)
+            // Mitglied einer anderen Stadt
+            usertown := -1;
+        EndIf
+    Else
+        // Kein Mitglied einer Stadt
+        usertown := 0;
+    EndIf
+
+    // Wie heisst diese Stadt?
+    var townname := GetTownName(stonetown);
+
+    // Den Buergermeister und dessen Namen ermitteln
+    var mayorname   := "Kein Buergermeister";
+    var mayorserial := CInt(GetObjProperty(stone, "mayorserial"));
+    If (!mayorserial)
+        // Die CProp initialisieren, falls noch nicht geschehen
+        mayorserial := 0;
+        SetObjProperty(stone, "mayorserial", mayorserial);
+        syslog("HINWEIS: "+townname+" hat keinen Buergermeister");
+    Else
+        var mayor := SystemFindObjectBySerial(
+            mayorserial, SYSFIND_SEARCH_OFFLINE_MOBILES
+        );
+        If (mayor)
+            mayorname := mayor.name;
+        EndIf
+    EndIf
+
+    // Zahl der Einwohner dieser Stadt ermitteln
+    var einwohner := CInt(GetObjProperty(stone, "populacao"));
+    If (!einwohner)
+        // Die CProp initialisieren, falls noch nicht geschehen
+        einwohner := 0;
+        SetObjProperty(stone, "populacao", einwohner);
+    EndIf
+
+    var candidatos := GetObjProperty(stone, "candidatos");
+    If (!candidatos)
+        candidatos := {};
+    EndIf
+
+    var votepercent := CInt(GetObjProperty(stone, "votepercent"));
+    If (!votepercent)
+        votepercent := 0;
+    EndIf
+
+    var votos := CInt(GetObjProperty(stone, "votos"));
+    If (!votos)
+        votos := 0;
+    EndIf
+
+    var umfrage_result := GetObjProperty(stone, "Pleibicito_Result");
+
+    var citizen := GetObjProperty(stone, "citizen");
+    If (!citizen)
+        citizen := {};
+    EndIf
+
+    var timer := CInt(GetObjProperty(stone, "timer"));
+    If (!timer)
+        timer := 0;
+    EndIf
+
+    var umfrage := GetObjProperty(stone, "pleibicito");
+    If (!umfrage or Len(umfrage) < 2)
+        umfrage := 0;
+    EndIf
+
+    data[1] := data[1]+townname;
+    data[3] := mayorname;
+    data[5] := CStr(einwohner);
+
+    If (!usertown)
+        layout += layouteintragen;
+        data   += dataeintragen;
+
+        data[6] := data[6]+townname+"?";
+    ElseIf (usertown == -1)
+        layout += layoutexterner;
+    ElseIf (mayorserial == who.serial)
+        SendSysMessagePergon(who, "Willkommen, Bürgermeister von "+townname);
+
+        // Shinigami (nur temporaer)
+        SetObjProperty(who, "MajorOf", townname);
+
+        layout += layoutmayor;
+        data   += datamayor;
+
+        If (CInt(GetObjProperty(stone, "eleicao")))
+            data[8] := "Laufende Wahl";
+            data[10] := votepercent+"% abgestimmt";
+        Else
+            data[8] := "Keine Wahl angesetzt.";
+        EndIf
+
+        If (umfrage)
+            data[9] := "Laufende Umfrage";
+            data[11] := votepercent+"% abgestimmt";
+        Else
+            data[9] := "Keine Umfrage angesetzt.";
+        EndIf
+    Else
+        SendSysMessagePergon(who, "Willkommen, Einwohner von "+townname);
+        layout += layouteinwohner;
+        data   += dataeinwohner;
+
+        If (CInt(GetObjProperty(stone, "eleicao")))
+            WahlMenu(candidatos, votepercent);
+        ElseIf (umfrage)
+            UmfrageMenu(umfrage, candidatos, votepercent);
+        ElseIf (umfrage_result)
+            data[9] := "Letzte Umfrage: "+umfrage_result[1];
+            data[10] := umfrage_result[2];
+        Else
+            data[9] := "Keine Wahl angesetzt.";
+            data[10] := "Keine Umfrage angesetzt.";
+        EndIf
+    EndIf
+
+    var res := SendDialogGump(who, layout, data);
+    Case (res[0])
+    1000:
+        Citizenship(
+            who, stone, citizen, einwohner, umfrage, votos,
+            stonetown, townname
+        );
+
+    2001:
+        VolksentscheidBeginnen(who, stone, umfrage, townname);
+
+    2002:
+        WahlBeginnen(who, stone, umfrage, townname);
+
+    3000:
+        CancelCitizenship(
+            who, stone, umfrage, candidatos, votos, citizen, einwohner,
+            townname
+        );
+
+    4000:
+        Kandidieren(who, stone, candidatos, mayorserial);
+
+    default:
+        If (res[0] > 0 and res[0] <= candidatos.size()/2)
+            VoteTo(
+                who, stone, res[0], umfrage, candidatos, votos, einwohner,
+                timer, townname
+            );
+        Else
+            SendSysMessagePergon(who, "Auf Bald.");
+        EndIf
+    EndCase
+EndProgram // }}}
+
+Function CancelCitizenship(who, stone, byref umfrage, byref candidatos, byref votos, byref citizen, byref einwohner, townname)
+    If (CInt(GetObjProperty(stone, "eleicao")) or umfrage)
+        ForEach serial in candidatos
+            If (serial == who.serial)
+                SendSysMessagePergon(who,
+                    "Ihr könnt Eure Einwohnerschaft nicht aufgeben, "+
+                    "solange Ihr zur Wahl aufgestellt seid."
+                );
+                return;
+            EndIf
+        EndForEach
+
+        ForEach runa in EnumerateItemsInContainer(stone)
+            If (runa.objtype == 0xa321)
+                If (GetObjProperty(runa, "serial") == who.serial)
+                    DestroyItem(runa);
+                    votos := votos - 1;
+                    SetObjProperty(stone, "votos", votos);
+                    SetVotePercentage(stone, votos, einwohner);
+                    break;
+                EndIf
+            EndIf
+        EndForEach
+    EndIf
+
+    var result := Find(who.name, "aus "+townname, 1) - 2;
+    var name := who.name;
+    name     := name[1, result];
+    who.name := name;
+
+    var i;
+    For (i := 1; i <= citizen.size(); i += 1)
+        If (citizen[i] == who.serial)
+            citizen.erase(i);
+            break;
+        EndIf
+    EndFor
+
+    einwohner -= 1;
+    SetObjProperty(stone, "populacao", einwohner);
+    SetObjProperty(stone, "citizen", citizen);
+    EraseObjProperty(who, "town");
+
+    SendSysMessagePergon(who,
+        "Ihr seid nicht länger Einwohner von "+townname
+    );
+EndFunction
+
+Function Citizenship(who, stone, byref citizen, byref einwohner, byref umfrage, byref votos, stonetown, townname)
+    ForEach dude in citizen
+        If (dude == who.serial)
+            SendSysMessagePergon(who,
+                "Ihr könnt nicht in mehr als einer Stadt aufgenommen werden."
+            );
+            return;
+        EndIf
+    EndForEach
+
+    citizen.append(who.serial);
+    SetObjProperty(stone, "citizen", citizen);
+    SetObjProperty(who, "town", stonetown);
+
+    einwohner += 1;
+    SetObjProperty(stone, "populacao", einwohner);
+
+    who.name := who.name+" aus "+townname;
+
+    If (CInt(GetObjProperty(stone, "eleicao")) or umfrage)
+        SetVotePercentage(stone, votos, einwohner);
+    EndIf
+
+    SendSysMessagePergon(who, "Ihr seid nun Einwohner von "+townname);
+EndFunction
+
+Function CountVotes(stone)
+    var result := {};
+
+    ForEach runa in EnumerateItemsInContainer(stone)
+        If (runa.objtype == 0xa321)
+            var voto := CInt(GetObjProperty(runa, "opcao"));
+            If (!result[voto])
+                result[voto] := 1;
+            Else
+                result[voto] += 1;
+            EndIf
+        EndIf
+    EndForEach
+
+    var nvotos := 0;
+    var empate := 0;
+    var vencedor;
+
+    var i;
+    For (i := 1; i <= result.size(); i += 1)
+        If (nvotos < result[i])
+            nvotos := CInt(result[i]);
+            vencedor := i;
+            empate := 0;
+        ElseIf (nvotos == CInt(result[i]))
+            empate := 1;
+        EndIf
+    EndFor
+
+    If (!empate)
+        return vencedor;
+    EndIf
+
+    return 0;
+EndFunction
+
+Function SetVotePercentage(stone, byref votos, byref einwohner)
+    SetObjProperty(stone, "votepercent",
+        CInt(CDbl(votos)/CDbl(einwohner)*100)
+    );
+    return 1;
+EndFunction
+
+Function High(divided, divisor)
+    var retval := divided/divisor;
+
+    If (Modulus(divided, divisor))
+        retval += 1;
+    EndIf
+
+    return retval;
+EndFunction
+
+// build vote menu
+Function VoteMenu(type, byref candidatos)
+    var curpage := 2;
+    var texty;
+    var posicao := 1;
+    // var lastpage  := 1 + High(size, 6);
+    var lastpage  := 7;
+    var firstdata := data.size();
+
+    // loop
+    var i;
+    For (i := 1; i <= candidatos.size()/2; i += 1)
+        // setting the header and the scrollers
+        If (posicao == 1)
+            layout.append("page "+curpage);
+            If (curpage <> 2)
+                layout.append("button 435 220 250 251 0 "+(curpage-1)+" 0");
+            EndIf
+
+            If (curpage <> lastpage)
+                layout.append("button 435 410 252 253 0 "+(curpage+1)+" 0");
+            EndIf
+            curpage += 1;
+        EndIf
+
+        // text
+        texty := (275 + (CInt(posicao) * 20)) - (type * 20);
+        layout.append("text 165 "+texty+" 0 "+(firstdata-1+i));
+
+        // button
+        layout.append("button 330 "+texty+" 5230 5231 1 0 "+i);
+
+        // endloop increases
+        If (posicao < 6)
+            posicao += 1;
+        Else
+            posicao := 1;
+        EndIf
+
+        // data
+        data[firstdata+i] := CStr(candidatos[2*i]);
+    EndFor
+EndFunction
+
+Function Kandidieren(who, stone, byref candidatos, mayorserial)
+    If (who.serial == mayorserial)
+        SendSysMessagePergon(who, "Ihr könnt nicht nochmal kandidieren.");
+        return 0;
+    EndIf
+
+    var i;
+    For (i := 1; i <= candidatos.size(); i += 2)
+        If (candidatos[i] == who.serial)
+            SendSysMessagePergon(who, "Ihr seid bereits ein Kandidat.");
+            return 0;
+        EndIf
+    EndFor
+
+    candidatos.append(who.serial);
+    candidatos.append(who.name);
+
+    SendSysMessagePergon(who,
+        "Ihr seid nun Kandidat. Es gibt "+(candidatos.size()/2)+" weitere."
+    );
+    SetObjProperty(stone, "candidatos", candidatos);
+EndFunction
+
+Function VoteTo(who, stone, choose, byref umfrage, byref candidatos, byref votos, byref einwohner, byref timer, byref townname)
+    ForEach runa in EnumerateItemsInContainer(stone)
+        If (runa.objtype == 0xa321)
+            If (GetObjProperty(runa, "serial") == who.serial)
+                SendSysMessagePergon(who, "Ihr habt bereits gewählt.");
+                return 0;
+            EndIf
+        EndIf
+    EndForEach
+
+    var voto := CreateItemInContainerPergon(stone, 0xa321, 1);
+    SetObjProperty(voto, "serial", who.serial);
+    SetObjProperty(voto, "opcao", choose);
+
+    votos := votos+1;
+    SetObjProperty(stone, "votos", votos);
+
+    SendSysMessagePergon(who,
+        "Ihr habt gerade für "+candidatos[2*choose]+" gestimmt."
+    );
+    SetVotePercentage(stone, votos, einwohner);
+
+    If (
+        (einwohner > 9) and (votos > 6) and (votos >= (einwohner*2.0/3.0)) and
+        (timer < ReadGameClock())
+    )
+        Volksentscheid(stone, umfrage, candidatos, timer, townname);
+    EndIf
+EndFunction
+
+Function WahlMenu(byref candidatos, byref votepercent)
+    layout += array{
+        "text 165 210 0 10",
+        "text 165 230 0 11",
+        "text 320 210 80 12",
+        "text 320 230 80 13",
+
+        "text 165 250 0 14",
+        "text 165 273 0 15",
+
+        "button 255 245 2474 2473 0 2 0",
+        "button 255 270 2152 2151 1 0 4000",
+        "page 1"
+    };
+
+    data   += array{
+        "Anzahl Kandidaten",
+        "Abgegebene Stimmen",
+        "",
+        "",
+        "Wahl",
+        "Kandidatur",
+        "Waehlt Euren Kandidaten"
+    };
+
+
+    data[13] := candidatos.size()/2;
+    data[14] := votepercent+"%";
+
+    VoteMenu(0, candidatos);
+EndFunction
+
+Function UmfrageMenu(byref umfrage, byref candidatos, byref votepercent)
+    layout += array{
+        "text 165 230 0 10",
+        "text 165 250 0 11",
+        "button 210 245 2152 2151 0 2 0",
+        "text 165 210 0 12",
+        "text 320 210 80 13",
+        "page 1"
+    };
+
+    data   += array{
+        "Umfrage",
+        "Wahl",
+        "Anzahl Stimmen",
+        ""
+    };
+
+    data[11] := umfrage;
+    data[14] := votepercent+"%";
+
+    VoteMenu(1, candidatos);
+EndFunction
+
+Function Volksentscheid(stone, byref umfrage, byref candidatos, byref timer, townname)
+    var choose := CountVotes(stone);
+
+    var type;
+    If (CInt(GetObjProperty(stone, "eleicao")))
+        type := 1;
+    ElseIf (umfrage)
+        type := 2;
+    Else
+        type := 0;
+    EndIf
+
+    Case (type)
+    1:
+        If (choose)
+            BroadcastPergon(
+                townname+" hat einen neuen Bürgermeister: "+
+                candidatos[choose*2]
+            );
+            // SetObjProperty(stone, "mayor",  candidatos[choose*2]);
+            SetMajor(stone, candidatos[choose*2-1], townname);
+            SetObjProperty(stone, "eleicao", 0);
+        Else
+            BroadcastPergon(
+                "Wahl in "+townname+
+                " ist unentschieden, neue Abstimmung verschoben."
+            );
+            timer := ReadGameclock() + ZEIT_STICHWAHL;
+            SetObjProperty(stone, "timer", timer);
+        EndIf
+
+    2:
+        If (choose)
+            SetObjProperty(
+                stone, "Pleibicito_Result", {umfrage, candidatos[choose*2]}
+            );
+            SetObjProperty(stone, "pleibicito", 0);
+        Else
+            timer := ReadGameclock() + ZEIT_STICHWAHL;
+            SetObjProperty(stone, "timer", timer);
+        EndIf
+    EndCase
+EndFunction
+
+Function WahlBeginnen(who, stone, byref umfrage, townname)
+    If (CInt(GetObjProperty(stone, "eleicao")) or umfrage)
+        SendSysMessagePergon(who, "Wahl läuft gerade.");
+        return;
+    EndIf
+
+    ForEach runa in EnumerateItemsInContainer(stone)
+        DestroyItem(runa);
+    EndForEach
+
+    SetObjProperty(stone, "candidatos", {});
+    SetObjProperty(stone, "eleicao", 1);
+    SetObjProperty(stone, "votos", 0);
+    SetObjProperty(stone, "timer", ReadGameClock() + ZEIT_WAHL);
+    SetObjProperty(stone, "votepercent", 0);
+
+    BroadcastPergon("Neue Wahlen in "+townname+"!");
+EndFunction
+
+Function VolksentscheidBeginnen(who, stone, byref umfrage, townname)
+    If (CInt(GetObjProperty(stone, "eleicao")) or umfrage)
+        SendSysMessagePergon(who, "Wahl läuft gerade.");
+        return;
+    EndIf
+
+    ForEach runa in EnumerateItemsInContainer(stone)
+        DestroyItem(runa);
+    EndForEach
+
+    var pergunta := SendTextEntryGump(who, "Was ist das Problem?", 50);
+    If (!pergunta)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    SendSysMessagePergon(who, "Gib nun die Optionen ein und drücke ENTER.");
+
+    var opcoes := {};
+    var temp;
+
+    Repeat
+        temp := SendTextEntryGump(
+            who, "Auswahl Nr. "+(opcoes.size()/2+1), 50
+        );
+        If (temp)
+            opcoes.append(0);
+            opcoes.append(temp);
+        EndIf
+    Until (!temp);
+
+    SetObjProperty(stone, "candidatos", opcoes);
+    SetObjProperty(stone, "pleibicito", pergunta);
+    SetObjProperty(stone, "votos", 0);
+    SetObjProperty(stone, "timer", ReadGameClock() + ZEIT_WAHL);
+    SetObjProperty(stone, "votepercent", 0);
+    SetObjProperty(stone, "Pleibicito_Result", {});
+
+    BroadcastPergon("Neuer Volksentscheid in "+townname);
+EndFunction
+
+// alten Buergermeister ggf. das Buergermeisterflag wegnehmen
+Function SetMajor(stone, newmajor, townname)
+    var oldmajor := GetObjProperty(stone, "mayorserial");
+    If (oldmajor)
+        var major := SystemFindObjectBySerial(
+            oldmajor, SYSFIND_SEARCH_OFFLINE_MOBILES
+        );
+        If (major)
+            EraseObjProperty(major, "MajorOf");
+        EndIf
+    EndIf
+
+    var major := SystemFindObjectBySerial(
+        newmajor, SYSFIND_SEARCH_OFFLINE_MOBILES
+    );
+    If (!major)
+        syslog(
+            "FEHLER: gewaehlter Buergermeister von "+townname+
+            " ist verschollen"
+        );
+        return;
+    EndIf
+
+    SetObjProperty(stone, "mayorserial", newmajor);
+    SetObjProperty(major, "MajorOf", townname);
+EndFunction
+
+Function GetTownName(town)
+    var namelist := GetGlobalProperty("townlist");
+    return namelist[town];
+EndFunction

@@ -1,0 +1,61 @@
+////////////////////////////////////////////////////////////////////////////////
+// TextCMD ResetSpellpanel - Setzt das Spellpanel an den Standardort zurueck
+//
+// Author: Shinigami
+
+use uo;
+include ":newmagic:spellbook";
+
+Program TextCMD_ResetSpellpanel(who)
+  SendSysMessagePergon(who, "Wählt das fehlerhafte Spellbook aus!");
+  var book := Target(who);
+  If (!book)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (!(book.objtype in (array{0x6820, 0x6821, 0x6822})))
+    SendSysMessagePergon(who, "Das ist kein Zauberbuch.");
+    return;
+  EndIf
+
+  var owner := book.getprop("Besitzer");
+  If (!owner or owner <> who.serial)
+    SendSysMessagePergon(who, "Das ist nicht Euer Zauberbuch.");
+    return;
+  EndIf
+
+  var success := 0;
+  ForEach panel in (FindSubstance(
+      book, UOBJ_SPELLPANEL, 1, 0, FINDSUBSTANCE_FIND_ALL
+  ))
+    SleepMs(2);
+    var data := panel.getprop("Data");
+    If (data)
+      If (data.size() == 4)
+        // Alter Stil ohne Name und Transparenz?
+        // Struktur von data auf das neue System umgestellen
+        // (Taya 17. Sep. 2007)
+        data := array{"Spellpanel", "X", "Y", data[3], 1, data[4]};
+      EndIf
+      data[2] := DEFAULT_PANEL_X;
+      data[3] := DEFAULT_PANEL_Y;
+      panel.setprop("Data", data);
+      success := 1;
+    EndIf
+  EndForEach
+
+  If (success)
+    SendSysMessagePergon(who,
+      "Das Spellpanel sollte wieder an einem erreichbaren Fleck sitzen."
+    );
+    SendSysMessagePergon(who,
+      "Ihr müsst eventuell das Zauberbuch erneut öffnen oder "+
+      "Euch kurz ausloggen."
+    );
+  Else
+    SendSysMessagePergon(who,
+      "Spellpanel konnte nicht gefunden werden."
+    );
+  EndIf
+EndProgram

@@ -1,0 +1,68 @@
+///////////////////////////////////////////////////////////////////////////////////////
+//
+//   Hungry - System
+//
+//     based on Hungry Pkg
+//       Author: Charles Haustron
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2000/06/10 Shinigami: Complete ReWrite
+//     2000/09/05 Pider:     Ueberfressen bis zum Tode Ihr, Euch, Euer angepasst
+//     2001/03/30 Shinigami: Umwandlung in Include zur Nutzung innerhalb des SkillWin
+//     2001/10/10 Shinigami: 'n bisschen ausgebremst
+//
+///////////////////////////////////////////////////////////////////////////////////////
+
+//////////////
+// Libraries
+//////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/client";
+Include "include/modifyskill";
+Include "hungrysystem";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program HungrySystem()
+  BroadcastPergon("Hunger-System wird aktiviert...", "Hunger system activated...");
+  SysLog("Hunger-System wird aktiviert...");
+
+  //Set_Critical/(1);
+
+  Sleep(225);
+
+  While (1)
+    ForEach chr in EnumerateOnlineCharacters()
+      If ((chr.cmdlevel < CMDLEVEL_SEER) And (!chr.dead))
+        Var hungrylevel:=CDbl(GetObjProperty(chr, "hungrylevel"));
+        If (hungrylevel)
+          hungrylevel-=1.0;
+          If (hungrylevel<1.0)
+            hungrylevel:=1.0;
+          EndIf
+          SetObjProperty(chr, "hungrylevel", hungrylevel);
+
+          hungrylevel:=CInt(hungrylevel);
+          Var hungrymsg:=GetHungryMsg(hungrylevel);
+          SendSysMessagePergon(chr, hungrymsg[1], hungrymsg[2], _DEFAULT_TEXT_FONT, CheckHungryLevel(chr, hungrylevel));
+        Else
+          SetObjProperty(chr, "hungrylevel", 10.0);
+        EndIf
+      EndIf
+      SleepMS(2);
+    EndForEach
+
+    Sleep(6000);
+  EndWhile
+EndProgram

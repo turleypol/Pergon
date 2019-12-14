@@ -1,0 +1,80 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  NecroDungeonControl.src - Control Script for Necro Dungeon (fka Wrong)
+//
+//  Modifications:
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use util;
+use uo;
+use os;
+
+Include "include/itemnpc";
+
+// locations for random traps
+// number traps of type walkover are created in rectangle base_x, base_y, base_x+offset_x, base_+offset_y
+// format: base_x, base_y, offset_x, offset_y, z, number, walkover
+
+Var locations:= { {5796, 587, 2, 3, 21, 3, 1},  {5800, 581, 1, 5, 21, 3, 1}, {5786, 585, 13, 1, 21, 6, 1},
+						{5786, 572, 1, 12, 21, 5, 1}, {5791, 564, 3, 0, 32, 1, 1}, {5791, 551, 2, 2, 32, 3, 1},
+						{5690, 579, 2, 3, 0, 4, 2},   {5690, 571, 1, 2, 25, 2, 2}, {5688, 565, 4, 1, 25, 3, 2},
+						{5650, 569, 18, 1, 20, 9, 2}, {5713, 568, 1, 3, 20, 2, 2}, {5713, 572, 9, 2, 20, 8, 2},
+						{5723, 573, 4, 1, 20, 3, 2},  {5728, 572, 8, 2, 20, 9, 2}, {5689, 541, 2, 2, 0, 3, 2},
+						{5684, 527, 2, 2, 0, 3, 2} };
+
+var tiles:= {0x68b2, 0x68b3, 0x68b4, 0x68b5};
+
+program necrodungeonmastermind()
+
+	syslog("Necrodungeon control script wird aktiviert...");
+
+	var virtuallocs;
+	var temparray;
+	var item;
+	var i, j;
+	var x, y;
+
+	while (1)
+
+		syslog("Necro's MasterMind: Trap Locations in Necromancer Dungeon become changed...");
+		foreach location in locations
+			virtuallocs:= {};
+			temparray:= {};
+			for (i:= 0; i <= location[3]; i+= 1)
+				for (j:= 0; j <= location[4]; j+= 1)
+					foreach item in ListItemsAtLocation(location[1] + i, location[2] + j, location[5],REALM_BRITANNIA)
+						if (item.objtype in tiles)
+							DestroyItem(item);
+						endif
+					endforeach
+					temparray[j + 1]:= 0;
+					SleepMS(5);
+				endfor
+				virtuallocs[i + 1]:= temparray;
+			endfor
+
+			for (i:= 0; i < location[6]; i+= 1)
+				repeat
+					x:= randomint(location[3] + 1);
+					y:= randomint(location[4] + 1);
+					SleepMS(5);
+				until (!virtuallocs[x + 1][y + 1]);
+				virtuallocs[x + 1][y + 1]:= 1;
+				item:= CreateItemAtLocationPergon(x + location[1], y + location[2], location[5], tiles[randomint(3) + 1], 1,REALM_BRITANNIA);
+				case (location[7])
+					1:	SetObjProperty(item, "WalkOver", 1);
+					2:	SetObjProperty(item, "WalkOver", 2);
+				endcase
+				SleepMS(5);
+			endfor
+
+			sleepMS(50);
+		endforeach
+		syslog("Necro's MasterMind: done...");
+
+		sleep(600);
+
+	endwhile
+
+endprogram

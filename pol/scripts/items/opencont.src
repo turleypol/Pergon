@@ -1,0 +1,162 @@
+/////////////////////////////////////////////////////////////
+// Open Container - Logging beim Oeffnen eines Containers
+//
+// Author: Shinigami
+
+use os;
+use polsys;
+use storage;
+use uo;
+use util;
+include ":doorsnew:common";
+include "include/logutil";
+include "include/msgs";
+include "include/objtype";
+include "include/server";
+
+Const OPENMIN        := 10;
+Const OPENMAX        := 15;
+Const PROP_MY_DRAWER := "#OpenDrawer";
+Const UOBJ_DRAWER    := 0xb033;
+
+Program UseSecureCont(who, container)
+  // Prüft, ob der Container verschlossen ist und ob die Person einen
+  // passenden Schlüssel hat oder nicht.
+  If (container.locked)
+    If (!CanUnlock(who, container))
+      PrintTextAbovePrivatePergon(container,
+        "Das ist verschlossen.", "That's locked.", who
+      );
+      return; // Der Container kann nicht geöffnet werden.
+    EndIf
+  EndIf
+
+  If ((!container.container) And (container.serial<>who.backpack.serial))
+    syslog(
+      "HINWEIS: "+CharInfoStr(who)+" oeffnet den Container "+
+      ItemInfoStr(container, COORDS_REALM)
+    );
+  EndIf
+
+  SendViewContainer(who, container); // Container oeffnen
+
+  If (who.cmdlevel >= CMDLEVEL_SEER and who.concealed)
+    return;
+  EndIf
+  LookOpen(container);
+EndProgram
+
+/////////////////////////////////////////////////////////////
+// CanUnlock - Kann die Person den Container aufschliessen?
+/////////////////////////////////////////////////////////////
+Function CanUnlock(me, container)
+  If (me.cmdlevel >= CMDLEVEL_SEER)
+    PrintTextAbovePrivatePergon(container,
+      "Container wird ausnahmsweise fuer CMDLevel geoeffnet ...", "", me
+    );
+    return 1;
+  EndIf
+
+  If (GetObjProperty(container, "gmlocked") == 1)
+    PrintTextAbovePrivatePergon(container,
+      "Die Götter verbieten das Öffnen.", "", me
+    );
+    return 0;
+  EndIf
+
+  var haskey := HasKeyFor(me, container);
+  If (GetObjProperty(container, "#LockPicked"))
+    // Container wurde aufgebrochen
+    If (haskey)
+      // wird durch Aufschließen durch Besitzer aufgehoben
+      EraseObjProperty(container, "#LockPicked");
+    EndIf
+
+    return 1;
+  Else
+    // Container wird kurz aufgeschlossen, sofern Schluessel vorhanden
+    return haskey;
+  EndIf
+EndFunction
+
+Function LookOpen(cont)
+  var toggle := dictionary{
+    0x0a2c -> struct{graphic := 0x0a2f, x := 1, y := 1, z := 11},
+    0x0a30 -> struct{graphic := 0x0a33, x := 1, y := 1, z := 11},
+    0x0a34 -> struct{graphic := 0x0a37, x := 1, y := 1, z := 11},
+    0x0a38 -> struct{graphic := 0x0a3b, x := 1, y := 1, z := 11},
+    0x0a4d -> struct{graphic := 0x0a4c},
+    0x0a4f -> struct{graphic := 0x0a4e},
+    0x0a51 -> struct{graphic := 0x0a50},
+    0x0a53 -> struct{graphic := 0x0a52}
+  };
+
+  If (!(cont.objtype in toggle.keys()))
+    return;
+  EndIf
+
+  Detach();
+
+  If (
+    // Schubladen-Item erzeugen
+    toggle[cont.objtype].exists("z") and
+    // aber nur, wenn der Schrank aufgebaut ist
+    !cont.container
+  )
+    // nicht mehrere Schubladen erzeugen
+    If (HasDrawer(cont))
+      return;
+    EndIf
+
+    // Schublade erzeugen
+    var drawer := GetItemDescriptor(UOBJ_DRAWER);
+    drawer["Color"]   := cont.color;
+    drawer["Graphic"] := toggle[cont.objtype].graphic;
+    var draweritem := CreateItemAtLocation(
+      cont.x + toggle[cont.objtype].x, cont.y + toggle[cont.objtype].y,
+      cont.z + toggle[cont.objtype].z, drawer, 1, cont.realm
+    );
+    cont.setprop(PROP_MY_DRAWER, draweritem.serial);
+
+    // nach einer Weile entfernen
+    Sleep(RandomIntMinMax(OPENMIN, OPENMAX));
+
+    // (nur, falls es nicht schon weg ist)
+    If (draweritem)
+      DestroyItem(draweritem);
+    EndIf
+    EraseObjProperty(cont, PROP_MY_DRAWER);
+    return;
+  EndIf
+
+  // nur Graphik aendern
+  cont.graphic := toggle[cont.objtype].graphic;
+
+  // nach einer Weile zurückändern
+  Sleep(RandomIntMinMax(OPENMIN, OPENMAX));
+  cont.graphic := cont.objtype;
+EndFunction
+
+Function HasDrawer(cont) // {{{
+  var serial := cont.getprop(PROP_MY_DRAWER);
+  // war noch nicht offen
+  If (!serial)
+    return 0;
+  EndIf
+
+  // war mal offen, aber Schublade existiert nicht mehr
+  var drawer := SystemFindObjectBySerial(serial);
+  If (!drawer)
+    return 0;
+  EndIf
+
+  // ist offen
+  If (drawer.objtype == UOBJ_DRAWER)
+    return 1;
+  EndIf
+
+  // unter der Serial gibt es inzwischen was anderes
+  return 0;
+EndFunction // }}}
+
+// vim: sw=2 sts=2

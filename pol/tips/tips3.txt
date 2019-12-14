@@ -1,0 +1,3 @@
+Um eine Liste aller gerade eingeloggten Spieler mit ihren Aufenthaltsorten anzuzeigen, verwende den Befehl ".onlinefull".
+
+Fuer eine einfache Liste der Spieler ohne weitere Informationen kannst du ".online" eingeben.

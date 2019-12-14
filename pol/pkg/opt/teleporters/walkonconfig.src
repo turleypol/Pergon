@@ -1,0 +1,97 @@
+///////////////////////////////////////////////////////////////////////////
+// walkonconfig -- Basiskonfiguration der I-Steine
+
+///////////////////////////////////////////////////////////////////////////
+// $Log: not supported by cvs2svn $
+// Revision 1.3  2008/08/25 14:48:34  mehdorn
+// - Konfiguration benutzt nun teleport.cfg
+// - Basiskonfiguration per Include, damit auch externe Scripte
+//   I-Steine bauen können
+// - Typo
+//
+// Revision 1.2  2008/08/23 21:14:55  mehdorn
+// + (unkonfigurierter) I-Stein ist nun auffaellig rot
+// - Template fuer Walk-On-Scripte namens template.src_
+// - einige Walk-On-Scripte erstellt
+//   - bis auf Frostkram sogar getestet
+// - Setupscript fuer Arenateleporter
+// - neue Konstanten eingefuehrt
+// - Goetterspendescript erzeugt nun bereits neuen I-Stein
+// + Bugfixes, Tippfehler, teilweise englische Texte eingebaut
+//
+// Revision 1.1  2008/08/18 11:39:19  mehdorn
+// - Istein zwecks Umbau verpackt
+//
+// 21.10.2000 - Fraggulus - Trennung in Istein.src und Uni_Script.src
+// 13.09.2000 - Fraggulus - Initialisierung
+
+include "common";
+
+Const TEXT_UNSET := "nicht gesetzt";
+
+Program IStein_Script(who, item)
+  If (who.cmdlevel < CMDLEVEL_HIGHGM)
+    SendSysMessagePergon(who, "Du bist nicht berechtigt, den I-Stein zu konfigurieren.");
+    return;
+  EndIf
+  
+  var cfgfile := ReadConfigFile(CFGFILE_TELE);
+  var keys    := GetConfigStringKeys(cfgfile);
+
+  var layout := {
+    "Page 0",
+    "NoDispose",
+    "ResizePic 0 0 9270 450 "+(85+20*keys.size()),
+    "CheckerTrans 10 10 430 "+(65+20*keys.size()),
+    "Text 15 15 "+FONTCOLOR_WHITE+" 0",  // alte Auswahl
+    "Text 15 45 "+FONTCOLOR_WHITE+" 1"   // Moeglichkeiten
+  };
+
+  var data := {
+    "Bisher wurde keine Auswahl getroffen",
+    "Eure Moeglichkeiten:"
+  };
+
+  var oldscript := GetObjProperty(item, PROP_WALKSCRIPT);
+  ForEach key in (keys)
+    var count := _key_iter;
+    
+    layout.append("Button 20 "+(50+count*20)+" 2708 2709 1 0 "+count);
+    layout.append("Text 45 "+(50+count*20)+" "+FONTCOLOR_WHITE+" "+data.size());
+    
+    var current := cfgfile[key];
+    var desc    := current.Desc;
+    If (current.AffectCmdLevel)
+      desc += " (CMD)";
+    EndIf
+    data.append(desc);
+    
+    If (oldscript && current.WalkOnScript == oldscript)
+      data[1] := "Alte Auswahl des Items: "+desc;
+    EndIf
+    
+    SleepMS(2);
+  EndForEach
+
+  var choice := CInt(SendDialogGump(who, layout, data, 50, 50)[0]);
+
+  If (choice)
+    // Item anpassen
+    var walkscript := BasicSetup(item, keys[choice]);
+    item.color := COLOR_GREEN;
+    SendSysMessagePergon(who, "Neue Auswahl gesetzt ("+walkscript+")");
+
+    If (item.usescript)
+      Detach();
+      SleepMs(500);
+      UseItem(item, who);
+    EndIf
+    return;
+  EndIf
+
+  If (oldscript)
+    SendSysMessagePergon(who, "Alte Auswahl beibehalten ("+oldscript+")");
+  Else
+    SendSysMessagePergon(who, "ACHTUNG! Keine Auswahl gesetzt!");
+  EndIf
+EndProgram

@@ -1,0 +1,10 @@
+use uo;
+
+program remove_chars()
+	print ("System Message: Remove all online characters");
+	
+	foreach onlinechr in EnumerateOnlineCharacters()
+		DisconnectClient(onlinechr);
+	endforeach
+
+endprogram

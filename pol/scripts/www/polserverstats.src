@@ -1,0 +1,28 @@
+/////////////////////////////////////////////////////////
+//
+//   polserverstats - Statuspage für www.polserver.com
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     14.08.08 Turley: Init
+//     15.08.08 Shinigami: Correct Values
+//
+/////////////////////////////////////////////////////////
+
+Use http;
+
+Include "include/onlinesearch";
+Include "include/pergoninfos";
+
+Program polserverstats()
+  WriteHtml("<CONTENT>");
+  WriteHtml("  <POL>");
+  WriteHtml("    <ACCOUNTS>"+CountActiveCharacters()[4]+"</ACCOUNTS>");
+  WriteHtml("    <PLAYERAMT>"+EnumerateVisibleOnlineCharacters(admintemplate, LIST_ME).size()+"</PLAYERAMT>");
+  WriteHtml("    <VERSION>"+POLCore().verstr+"</VERSION>");
+  WriteHtml("  </POL>");
+  WriteHtml("</CONTENT>");
+EndProgram

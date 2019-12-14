@@ -1,0 +1,68 @@
+//////////////////////////////////////////////////////////////////////////////////////
+//
+//  ringofinvis.src   -   Ring der bei Benutzung Unsichtbar macht
+//                          Höherer Ring ermöglich zusätzlich noch Schleichen
+//
+//    v0.9  -   10.04.05  -   Seppel
+//    v1.0  -   13.04.05  -   Seppel  -   leichte Änderungen und Abschluss für v1.0
+//
+//////////////////////////////////////////////////////////////////////////////////////
+use os;
+use uo;
+use cfgfile;
+
+Include "include/modifyskill";
+
+program ring_of_invisibiliy(character, item)
+
+  Var rares := ReadConfigFile("rares");                             //config laden
+  Var rare  := FindConfigElem(rares, item.objtype);
+  Var tbu   := rare.timebetweenuses;
+  Var dur   := rare.duration;
+
+  if (item.movable == 0)                                            //ist der Ring lose?
+    SendSysMessagePergon(character, "Der Ring bewegt sich nicht!");
+    return;
+  endif
+
+  if (GetObjProperty(item, "lastuse") + tbu > ReadGameClock())      //ist letzte Benutzung lange genug her?
+    SendSysMessagePergon(character, "Ihr könnt den Ring nicht schonwieder benutzen");
+    return;
+  endif
+  
+  Var equipped:= 0;
+  Var ring:= GetEquipmentByLayer(character, LAYER_RING);            //ist der Ring schon am Finger?
+  if (ring.serial == item.serial)
+    equipped:= 1;   
+  endif
+  
+  if (!EquipItem(character, item) && (equipped == 0))               //wenn Ring nicht angezogen werden kann und noch nciht am Finger ist
+    SendSysMessagePergon(character, "Ihr müsst schon einen Finger frei haben");  
+    return;
+  endif
+      
+  SetObjProperty(item, "lastuse", ReadGameClock ());                //Benutzung speichern
+  
+  PlaySoundEffect(character, SFX_SPELL_INVISIBILITY);
+  character.hidden := 1;                                            //Benuter unsichtbar machen
+  SendSysMessagePergon(character, "Nun seid ihr unsichtbar");
+  item.movable:=0;                                                  //Ring am Finger festmachen
+  
+  Detach();
+
+  if (!dur)                                   //einfacher Unsichtbarkeitsring steigt hier aus
+    item.movable:=1;                          //Ring wieder losmachen
+    return;   
+  endif
+    
+  while (dur > 0)                             //Höherer Unsichtbarkeitsring ermöglicht schleichen und macht immer wieder Unsichtbar
+    character.hidden :=1;
+    character.stealthsteps:= 2;
+    SleepMS(1000);
+    dur-= 1;  
+  endwhile   
+  
+  item.movable:=1;                            //Ring wieder losmachen
+  SendSysMessagePergon(character, "Der Ring hat seine Energie verbraucht"); 
+  
+endprogram

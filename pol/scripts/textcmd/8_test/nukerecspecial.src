@@ -1,0 +1,125 @@
+//////////////////////////////////////
+//
+//   NukeRec - Destroy Items in Rec
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2003/01/30 Shinigami: ReWrite
+//
+//////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use cfgfile;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/errormsg";
+Include "include/msgs";
+
+///////////////
+// Konstanten
+///////////////
+
+Const ERRORMSGS_GERMAN:=
+  "{}X1 muss kleiner-gleich X2 bzw. Y1 muss kleiner-gleich Y2 sein!"+
+  "{}%% darf nur 0 bis 4095 sein!"+
+  "{}%% darf nur 0 bis 6143 sein!"+
+  "{}Sie muessen 4 Paramter angeben: X1 Y1 X2 Y2"+
+  "{}Die Items wurden entfernt.";
+Const ERRORMSGS_ENGLISH:=
+  "{}X1 must be lower/equal X2 and Y1 must be lower/equal Y2!"+
+  "{}%% must be between 0 and 4095!"+
+  "{}%% must be between 0 and 6143!"+
+  "{}U've to enter 4 Paramters: X1 Y1 X2 Y2"+
+  "{}Items have been removed.";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_NukeRec(who, params)
+  Var count:=0;
+
+  SendSysMessagePergon(who, "NukeRecSpecial-Start");
+  SysLog("NukeRecSpecial-Start");
+
+  If (!params) // Bin zu faul zum Tippern ;)
+    params:="0 0 6143 4095";
+  EndIf
+
+  params:=SplitWords(params);
+  If (params.size()==4)
+    If ((0<=CInt(params[1])) And (CInt(params[1])<6144))
+      If ((0<=CInt(params[2])) And (CInt(params[2])<4096))
+        If ((0<=CInt(params[3])) And (CInt(params[3])<6144))
+          If ((0<=CInt(params[4])) And (CInt(params[4])<4096))
+            If ((CInt(params[1])<=CInt(params[3])) And (CInt(params[2])<=CInt(params[4])))
+              ForEach item in ListObjectsInBox(CInt(params[1]), CInt(params[2]), -128, CInt(params[3]), CInt(params[4]), 127)
+                If (item.isa(POLCLASS_ITEM))
+                  If (ItemLoeschen(item))
+                    DestroyItem(item);
+                    count:=count+1;
+                  EndIf
+                EndIf
+              EndForEach
+
+              PrintErrorMessage(5, { }, who);
+            Else
+              PrintErrorMessage(1, { }, who);
+            EndIf
+          Else
+            PrintErrorMessage(2, {"Y2"}, who);
+          EndIf
+        Else
+          PrintErrorMessage(3, {"X2"}, who);
+        EndIf
+      Else
+        PrintErrorMessage(2, {"Y1"}, who);
+      EndIf
+    Else
+      PrintErrorMessage(3, {"X1"}, who);
+    EndIf
+  Else
+    PrintErrorMessage(4, { }, who);
+  EndIf
+
+  SysLog("NukeRecSpecial-Ende ("+count+" Items geloescht)");
+  SendSysMessagePergon(who, "NukeRecSpecial-Ende ("+count+" Items gelöscht)");
+EndProgram
+
+///////////////////////////////////////////////
+// ItemLoeschen - Item tatsaechlich loeschen?
+///////////////////////////////////////////////
+
+Function ItemLoeschen(item)
+  Var loeschen:=1;
+
+  If ((581<=item.x) And (945<=item.y) And (item.x<=605) And (item.y<=969))// And (item.multi))     // Yew
+    loeschen:=0;
+  EndIf
+  If ((526<=item.x) And (886<=item.y) And (item.x<=548) And (item.y<=907))// And (item.multi))     // Yew
+    loeschen:=0;
+  EndIf
+  If ((526<=item.x) And (923<=item.y) And (item.x<=548) And (item.y<=947))// And (item.multi))     // Yew
+    loeschen:=0;
+  EndIf
+  If ((2243<=item.x) And (1085<=item.y) And (item.x<=2287) And (item.y<=1147))// And (item.multi)) // Cove
+    loeschen:=0;
+  EndIf
+  If ((2314<=item.x) And (1085<=item.y) And (item.x<=2380) And (item.y<=1228))// And (item.multi)) // Cove
+    loeschen:=0;
+  EndIf
+  If ((2922<=item.x) And (834<=item.y) And (item.x<=2979) And (item.y<=874))                       // Vesper
+    loeschen:=0;
+  EndIf
+
+  Return (loeschen);
+EndFunction

@@ -1,0 +1,30 @@
+///////////////////////////////////////////////////////////////////////////
+// Spawnrunen ControlScript (Meldet Rune im System an)
+//
+// Author: Turley
+
+use cfgfile;
+use os;
+use polsys;
+use uo;
+use util;
+include ":spawnnet_new:spawnnet";
+include "include/objtype";
+
+Program spawnrunecontrol(rune)
+  If (polcore().uptime < 300)
+    // Frischer Restart, Lastverteilung
+    SleepMS((RandomInt(4000)+500)*10);
+
+    // nachtraeglich verstecken, falls es vergessen wurde
+    If (!rune.invisible)
+      rune.invisible := 1;
+    EndIf
+    If (rune.graphic != 0x1)
+      rune.graphic := 0x1;
+    EndIf
+  EndIf
+
+  // Im System anmelden
+  SendSpawnNet(rune, rune.serial, EVID_SPAWNPOINT_ADD);
+EndProgram

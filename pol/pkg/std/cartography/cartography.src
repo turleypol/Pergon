@@ -1,0 +1,405 @@
+///////////////////////////////////////////////////////////////////////////
+// Carthograpy Skill -- Karten in verschiedenen Groessen herstellen
+//
+// based on Carthograpy Skill (1999/02/17)
+// Author: Racalac
+//
+// Author: Shinigami
+
+// TODO:
+//    - Zwar passen die Bücher nicht ganz in Kartographie, aber aufgrund der
+//    Materialien (Tinte&Feder + Papier) ist das einigermassen naheliegend und
+//    nicht ganz so unlogisch wie andere Ansätze. Sollte aber mal woandershin
+//    verschoben werden.
+//    - Schatzkarten lesen
+
+//////////////
+// Libraries&Includes
+//////////////
+use attributes;
+use cfgfile;
+use os;
+use uo;
+use util;
+include "include/client";
+include "include/manufacturegump";
+include "include/modifyskill";
+include "include/npc";
+include "include/objtype";
+
+///////////////
+// Konstanten
+///////////////
+
+Const UOBJ_BLANKMAP := 0x6001;
+
+////////////////
+// Mainprogram
+////////////////
+
+Program UseCartography(who, penink)
+  If (GetObjProperty(who, "#kartographie")) // Mehrfachnutzung verhindern
+    SendSysMessagePergon(who, "Ihr arbeitet bereits an einer Karte.");
+    return;
+  EndIf
+
+  // Tinte gruendlich suchen
+  If (!penink)
+    penink := FindObjtypeInContainer(who.backpack, UOBJ_PENINK);
+  EndIf
+  If (!penink)
+    SendSysMessagePergon(who,
+      "Ihr braucht Tinte und Feder in Eurem Rucksack, um zeichnen zu können!"
+    );
+    return;
+  EndIf
+  If (!ReserveItem(penink))
+    SendSysMessagePergon(who, "Die Feder wird schon benutzt!");
+    return;
+  EndIf
+
+  // nun nochmal mit Papier/Karten
+  var blank := FindObjtypeInContainer(who.backpack, UOBJ_BLANKMAP);
+  If (!blank)
+    blank := FindObjtypeInContainer(who.backpack, UOBJ_RAWPAPER);
+  EndIf
+
+  If (!blank)
+    SendSysMessagePergon(who,
+      "Ihr braucht eine leere Karte oder Papier, um darauf zu schreiben!"
+    );
+    return;
+  EndIf
+  If (!ReserveItem(blank))
+    SendSysMessagePergon(who, "Der Rohstoff wird schon benutzt!");
+    return;
+  EndIf
+
+  SetObjProperty(who, "#kartographie", 1);
+
+  // ---Auswahlmenue ---
+
+  var CartographyCfg := ReadConfigFile("cartography");
+
+  var skillMod := -5;
+  var menu := MGCreateMenuFromCFG(
+    who, "cartography", "cartography", penink, SKILLID_KARTOGRAPHIE, skillMod
+  );
+  If (!menu)
+    SendSysMessagePergon(who, "Ihr könnt mit dem Material nichts anfangen.");
+    EraseObjProperty(who, "#kartographie");
+    ReleaseItem(blank);
+    ReleaseItem(penink);
+    return;
+  EndIf
+
+  var Auswahl_item := MGSelect(who, menu);
+  If (!Auswahl_item)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    EraseObjProperty(who, "#kartographie");
+    ReleaseItem(blank);
+    ReleaseItem(penink);
+    return;
+  EndIf
+
+  If (!Auswahl_item.amount || Auswahl_item.amount < 1)
+    Auswahl_item.amount := 1;
+  EndIf
+  If (Auswahl_item.amount > 10)
+    Auswahl_item.amount := 10;
+  EndIf
+  // Defaults im Tool speichern
+  MGSetDefault(penink, "cartography", Auswahl_item);
+  // ---Auswahlmenue Ende ---
+
+  // Akt. Koordinaten sichern
+  var akt_x := who.x;
+  var akt_y := who.y;
+
+  var ObjectConfig := CartographyCfg[Auswahl_item.key];
+  If (!ObjectConfig)
+    syslog(
+      "FEHLER: Daten fuer Karte/Buch "+Auswahl_item.key+" nicht definiert!"
+    );
+    EraseObjProperty(who, "#kartographie");
+    ReleaseItem(blank);
+    ReleaseItem(penink);
+    return;
+  EndIf
+
+  var SkillID := GetAttributeName_(ObjectConfig.Attribute1);
+  var desc := ObjectConfig.desc;
+  var material := ObjectConfig.material;
+  var material2 := ObjectConfig.material2;
+  var material2obj := ObjectConfig.material2obj;
+  var item2;
+  var skill := ObjectConfig.Skill;
+  var points;
+  var MapDef;
+  var success := 0;
+
+  If (ObjectConfig.MapType)
+    MapDef := GetMapDef(who, Auswahl_item.key);
+    If (blank.objtype == UOBJ_BLANKMAP)
+      // auf leere Karten passt mehr als auf Papier (braucht immer nur 1)
+      material := 1;
+    EndIf
+
+    points := CInt(skill * 6.25);
+  Else
+    If (SkillID == SKILLID_BASTELN)
+      points := 0;
+    Else
+      // erstmal keinen Skillgain, da Bücher sonst zum Pushen benutzt werden.
+      // ausserdem lernt man nix, wenn man Papier zusammenfaltet ;-)
+      points := 0; // skill*2;
+    EndIf
+
+    If (!material2)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      ReleaseItem(blank);
+      ReleaseItem(penink);
+      EraseObjProperty(who, "#kartographie");
+      return;
+    EndIf
+
+    If (material2obj == 0x671B)
+      syslog(
+        "FEHLER: Das Cartography-Script ist nicht fuer Material des Typs "+
+        material2obj+" gedacht."
+      );
+      EraseObjProperty(who, "#kartographie");
+      ReleaseItem(blank);
+      ReleaseItem(penink);
+      return;
+    EndIf
+
+    SendSysMessagePergon(who, "Welche Merken-Spruchrollen wollt Ihr benutzen?");
+    item2 := target(who);
+    If (!item2)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      ReleaseItem(blank);
+      ReleaseItem(penink);
+      EraseObjProperty(who, "#kartographie");
+      return;
+    EndIf
+
+    If (
+      (
+        item2.objtype != 0x671B && item2.objtype != 0x677B &&
+        item2.objtype != 0x67DB
+      ) && (
+        !(
+          (
+            item2.objtype in {0x691B, 0x697B, 0x69DB}
+          ) && (
+            item2.getprop("castable")
+          )
+        )
+      )
+    )
+      // Aktiverte Rollen
+      SendSysMessagePergon(who, "Das könnt Ihr nicht benutzen.");
+      EraseObjProperty(who, "#kartographie");
+      ReleaseItem(blank);
+      ReleaseItem(penink);
+      return;
+    EndIf
+  EndIf
+
+  var number := Auswahl_item.amount;
+  While ((1 <= number) && (number <= Auswahl_item.amount))
+    If (!who or who.dead)
+      EraseObjProperty(who, "#kartographie");
+      return;
+    EndIf
+
+    // Noch was schreiben?
+    If (!blank or blank.amount < material)
+      SendSysMessagePergon(who, "Ihr habt nicht genügend Papier.");
+      break;
+    EndIf
+
+    If (material2)
+      If (item2.amount < material2)
+        SendSysMessagePergon(
+          who, "Ihr habt nicht genügend weiteres Material."
+        );
+        break;
+      EndIf
+    EndIf
+
+    // Hab ich mich wegbewegt?
+    If ((akt_x != who.x) && (akt_y != who.y))
+      SendSysMessagePergon(who, "Ihr verliert Eure Konzentration!");
+      break;
+    EndIf
+
+    // Papier aufbrauchen
+    DestroyBlank(blank, material);
+    If (material2)
+      SubtractAmount(item2, material2);
+    EndIf
+    // Einen Versuch "verbraucht"
+    number := number - 1;
+
+    If (MapDef)
+      If (CheckSkillPergon(who, SKILLID_KARTOGRAPHIE, skill, points))
+        MakeMap(who, MapDef);
+        success += 1;
+        continue;
+      EndIf
+
+      // Misserfolg
+      If (RandomInt(1)<1)
+        SendSysMessagePergon(
+          who, "Beim Untersuchen der Umgebung geht Euch die Karte kaputt."
+        );
+      Else
+        // SOUND_EFFECT_INSCRIPTION;
+        PlaySoundEffect(who, SFX_24A);
+        SendSysMessagePergon(
+          who, "Ihr verzeichnet Euch und werft die Karte weg."
+        );
+      EndIf
+      Sleep(4); // Etwas warten
+      continue;
+    EndIf
+
+    For i := 1 To 2
+      PlaySoundEffect(who, SFX_24A); // SOUND_EFFECT_INSCRIPTION;
+      Sleep(3);
+    EndFor
+
+    If (CheckSkillPergon(who, SkillID, skill, points))
+      SendSysMessagePergon(who, "Ihr zerstört etwas Material.");
+      continue;
+    EndIf
+
+    var book := CreateItemInBackpackPergon(who, Auswahl_item.objtype);
+    If (!book)
+      SendSysMessagePergon(who, "Euer Rucksack ist voll.");
+      break;
+    EndIf
+
+    SetName(book, desc);
+    SendSysMessagePergon(
+      who, "Ihr stellt den Gegenstand her und legt ihn in Euren Rucksack."
+    );
+    success += 1;
+  EndWhile
+
+  ReleaseItem(penink);
+  // vielleicht ist das Papier verbraucht worden
+  If (blank)
+    ReleaseItem(blank);
+  EndIf
+  EraseObjProperty(who, "#kartographie");
+
+  If (!success)
+    return;
+  EndIf
+
+  var text_base := "Euch gelangen "+success+" von "+Auswahl_item.amount+" ";
+  If (ObjectConfig.MapType)
+    SendSysMessagePergon(who, text_base + "Karten.");
+  Else
+    SendSysMessagePergon(who, text_base + "Gegenstände.");
+  EndIf
+EndProgram
+
+//////////////////////////////
+// MakeMap - Creates the Map
+//////////////////////////////
+
+Function MakeMap(who, mapdef)
+  SendSysMessagePergon(who, "Ihr beginnt die Karte zu zeichnen.");
+
+  For i := 1 To 2 // Nur 2x... Angleichung an Inscription
+    PlaySoundEffect(who, SFX_24A); // SOUND_EFFECT_INSCRIPTION);
+    Sleep(3);
+  EndFor
+
+  // Grenzen ueberpruefen
+  If (mapdef[2]<0)
+    mapdef[4] := mapdef[4]-mapdef[2]; // Ausschnitt verschieben
+    mapdef[2] := 0;
+  EndIf
+  If (mapdef[3]<0)
+    mapdef[5] := mapdef[5]-mapdef[3]; // Ausschnitt verschieben
+    mapdef[3] := 0;
+  EndIf
+  If (mapdef[4]>5119)
+    mapdef[2] := mapdef[2]-(mapdef[4]-5119); // Ausschnitt verschieben
+    mapdef[4] := 5119;
+  EndIf
+  If (mapdef[5]>4095)
+    mapdef[3] := mapdef[3]-(mapdef[5]-4095); // Ausschnitt verschieben
+    mapdef[5] := 4095;
+  EndIf
+
+  // Karte erstellen
+  var map := CreateItemInBackpackPergon(who, mapdef[8]);
+  If (map)
+    SetName(map, mapdef[1]);
+    map.xwest := mapdef[2];
+    map.ynorth := mapdef[3];
+    map.xeast := mapdef[4];
+    map.ysouth := mapdef[5];
+    map.gumpwidth := mapdef[6];
+    map.gumpheight := mapdef[7];
+
+    SendSysMessagePergon(
+      who, "Ihr fertigt sorgfältig eine "+mapdef[1]+
+      " und legt sie in Euren Rucksack."
+    );
+  Else
+    SendSysMessagePergon(who, "Euer Rucksack ist voll!");
+  EndIf
+EndFunction
+
+//////////////////////////////////////////////////////
+// GetMapDef - Liefert eine MapDef passen für MakeMap
+//////////////////////////////////////////////////////
+
+Function GetMapDef(who, type)
+  Case (type)
+    1: return {"Landkarte der Welt", 0, 0, 5119, 4095, 500, 400, 0x63f7};
+    2: return {"sehr grosse regionale Landkarte um " +PlaceName(who), who.x-600, who.y-600, who.x+600, who.y+600, 400, 400, 0x63f6};
+    3: return {"grosse regionale Landkarte um "      +PlaceName(who), who.x-300, who.y-300, who.x+300, who.y+300, 350, 350, 0x63f5};
+    4: return {"mittlere regionale Landkarte um "    +PlaceName(who), who.x-200, who.y-200, who.x+200, who.y+200, 300, 300, 0x63f4};
+    5: return {"kleine regionale Landkarte um "      +PlaceName(who), who.x-150, who.y-150, who.x+150, who.y+150, 250, 250, 0x63f3};
+    6: return {"grosse lokale Landkarte von "        +PlaceName(who), who.x-100, who.y-100, who.x+100, who.y+100, 200, 200, 0x63f2};
+    7: return {"mittlere lokale Landkarte von "      +PlaceName(who), who.x-50, who.y-50, who.x+50, who.y+50, 150, 150, 0x63f1};
+    8: return {"kleine lokale Landkarte von "        +PlaceName(who), who.x-25, who.y-25, who.x+25, who.y+25, 100, 100, 0x63f0};
+  EndCase
+EndFunction
+
+////////////////////////////////////////////
+// DestroyEmpty - Zerstoert das leere Objekt
+////////////////////////////////////////////
+
+Function DestroyBlank(blank, material)
+  Case (blank.objtype)
+    UOBJ_BLANKMAP: SubtractAmount(blank,1);
+    UOBJ_RAWPAPER: SubtractAmount(blank, material);
+  EndCase
+EndFunction
+
+////////////////////////////////////////////////////////////
+// Search_Object - Searches For an Object in your Backpack
+////////////////////////////////////////////////////////////
+
+Function Search_Object(who, objtype)
+  return(FindObjtypeInContainer(who.backpack, objtype));
+EndFunction
+
+////////////////////////////////////////////////////////////////
+// GetAttributeName - Ermittelt und Prueft den Attribute-Namen
+////////////////////////////////////////////////////////////////
+
+Function GetAttributeName_(attribute)
+  If (attribute)
+    return (GetSkillName(attribute));
+  EndIf
+EndFunction

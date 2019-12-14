@@ -1,0 +1,4 @@
+<h3 id="grab">grab</h3>
+
+<p>TODO: Lose Gegenstände in der Nähe und aus Leichen in den
+Rucksack verschieben.</p>

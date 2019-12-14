@@ -1,0 +1,78 @@
+Der Entwurf der MainAI zielt darauf ab möglichst viele Ausprägungen von NPCs KI in einer zu vereinen. Die Grundidee dahinter ist das Verbesserungen und Bugfixes allgemeingültiger sind und der ähnliche Aufbau das Verständnis und die Neuentwicklung von KIs unterstützt. Dies bläht die MainAI jedoch ziemlich auf so das einfache Spar KI's weiterhin ihre Berechtigung habe. Auserdem liegt der Schwerpunkt der MainAI auf Kampf, Zuchttiere z.B. haben ganz andere Schwerpunkte und sollten deshalb besser ausen vor bleiben.
+
+1. Grundlegende Prinzipien:
+1.1 Daten Verwaltung:
+  1. Permanente Informationen in der globalen Variable "params"
+  2. Informationen die nur über eine gewisse Zeit bestehen werden als CProp gespeichert (definiert 		 in main_ai.inc)
+1.2 Initialisierung erfolgt bei KI Start:
+	- Allgemein: bestücken der params aus der NPCDesc und Initialinfos
+	- neu mit Ausrüstung bestücken
+	- KI CProps löschen
+1.3 Mainschleife:
+Die Mainschleife ist prinzipiell Event basiert, leidet aber derzeit noch an einem Konzeptbruch, der Idlefunktionalität. Diese Altlast konnte bisher nicht aufgelöst werden, weshalb die Mainschleife permanent durchlaufen werden muss um diese zu bedienen.
+1.3.1. Idlefunktionalität: 
+	- Wandern, NPCs bewegen sich planlos im Umkreis ihres Ankers
+	- Gruppenfunktionalität: 
+		- bilden und auflösen von Gruppen
+		- wandern in Gruppen
+1.3.2. Zyklusgeschwindigkeit der Mainschleife		
+	- Das durchlaufen der Mainschleife produziert nicht unerhebliche CPU Last (vor allem in der Idle), die Zyklen sind also so Minimal wie möglich zu halten. Idealerweise wird sie nur durchlaufen wenn ein Event ansteht, Problem Idle.
+	- Derzeit trennt sich deshalb das Verhalten in 3 Phasen:
+		1. Kampf (1s) - identifiziert durch "warmode"
+		2. Wandern (RandomInt(100)/params.idlespeed in s) - wandersteps > 0, diese müssen bei aktivität hochgesetzt werden damit der NPC danach noch eine Weile mobil und für Player interessant bleibt
+		3. Schlaf (100s)
+1.3.3 Events
+- Systemevents (können aktiviert bzw deaktiviert werden)
+	- SYSEVENT_DOUBLECLICKED
+	- SYSEVENT_ITEM_GIVEN
+	- SYSEVENT_SPEECH
+	- SYSEVENT_ENGAGED
+	- SYSEVENT_DISENGAGED
+	- SYSEVENT_DAMAGED
+	- SYSEVENT_ENTEREDAREA
+- Eigene Events	
+	- EVID_STILLRUN
+	- EVID_LOOKAROUND
+	- EVID_FOLLOW
+	- EVID_ASKJOIN
+	- EVID_GRANTJOIN
+	- EVID_REFUSEJOIN
+	- EVID_WALK
+	- EVID_PEACEMADE
+	- EVID_GUARDS_HELP
+	
+2. KI Guide	
+Harte Regeln lassen sich in Pol nicht umsetzen und so kann man nur empfehlen sich an folgende Punkte zu halten um in der KI eine Übersicht zu wahren.		
+2.1 Allgemeine Funktionen sind in der main_ai.inc oder der main_ai.src implementiert
+2.2 KI Trennung in allgemeinen Funktionen erfolgt über case Anweisungen und die "nature"
+2.3 Wenn eine KI nicht den vollen Parametersatz benötigt sollte das in der Init() berücksichtigt werden.
+2.4 Spezielle KI Funktionalität kommt in eine eigene Include (z.B. guard.inc)
+2.5 Funktionen zur Eventbearbeitung unterliegen folgenden Regeln:
+  - Keine eigene Event Behandlung, diese erfolgt immer über die Mainschleife. (In einigen Fällen ist dies nicht ganz möglich, z.B. SYSEVENT_OPPONENT_MOVED in Fight)
+	- Event durchlässig, d.h. wenn angemeldete Events eintreten kann zur Bearbeitung die Funktion verlassen werden und eine Fortsetzung ist möglich. (z.B. Fight und Follow) Dies geschieht duch Speicherung der benötigten Variablen in CProps und einem Fortsetzungsevent.
+	- Events die nicht berücksichtigt werden sollen, werden deaktiviert. (z.B. SYSEVENT_ENTEREDAREA während Fight)
+	- Je Aufwendiger eine Funktion ist desto länger muss sie am Stück arbeiten.
+	- Für zeitverschobene Events gibt es den EventTimer. 
+	
+3. Zielgerichtetes Bewegen
+In der main_ai.inc exisitiert eine umfangreiche Sammlung von Bewegungsfunktione zum:
+- bewegen zu einem Mob
+- bewegen zu einem Punkt
+- Flucht weg von einem Mob
+- einen Mob umkreisen (Distanz halten aber LOS herstellen)
+- einem Mob folgen
+Bei der Verwendung der BewegungsKI werden diverse CProps gesetzt, es ist zwingend darauf zu achten das diese korrekt aufgeräumt werden wenn eine Lauf beendet wird.
+
+3.1 Die BewegungsKI
+ist in diverse Level eingeteilt, so das die Komplexität und somit Systemlast für einen NPC festlegbar ist:
+Level 1: Core, kann nur Einteilige Hindernisse umgehen
+Level 2: Ist in der Lage durch gerichtete Zufallsbewegung einfache Hindernisse zu umgehen (Zäune, Mauern, eca.)
+Level 3,4: Benutzt das Core PathFinding (blind gegen Mobiles und E-Zäune) wenn einfache Schritte versagen. Für Hindernisse die das PathFinding ignoriert gibt es noch Modul das durch abtasten und dem immer an der Wand lang Modus auch komplexere Hindernisse schafft.
+
+Bei Level 3,4 kommt das System der KI Module zum tragen. Ein Modul gibt die Aufgabe an höherwertige Module ab wenn es nicht in der Lage ist diese zu erfüllen. Der Aufwand dieser Module ist nicht unerheblich und sollte deshalb nur speziellen NPCs vorbehalten bleiben. Dafür sind sie in der Lage so ziemlich jedes Hinderniss zu umgehen das ihnen in den Weg gestellt wird. Wobei E-Zäune nur indirekt und Freez Zäune gar nicht erkannt werden.
+
+4. Testen
+Mit .settalk können Testausgaben freigeschaltet werden. Diese können mit:
+TestEvents(me, ort, stufe, ev)
+TestMessage(text, stufe)
+eingebaut werden. Dies sollte so geschehen das beginnden mit 1 das Detaillevel der Ausgaben immer feiner wird. Zu berücksichtigen ist allerdings das diese auch deaktiviert einen kleinen Lastanteil haben und deshalb mit Bedacht gesetzt sein sollten.

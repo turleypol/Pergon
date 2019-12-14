@@ -1,0 +1,46 @@
+/////////////////////////////////////////////////////////
+//
+//   destroy - Platform wird gerade Zerstört, also mal
+//             fix die NPC's killen
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     04.07.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+
+Include "include/modifyskill";
+
+Program DestroyChampion(idol)
+  If (idol.getprop("#active"))  // läuft da noch was?
+    GetProcess(idol.getprop("#active")).kill();
+  EndIf
+  var npc;
+  If (idol.getprop("spawns"))
+    ForEach serial in (idol.getprop("spawns"))
+      npc:=SystemFindObjectBySerial(serial);
+      If (npc)
+        npc.setprop("guardkill",1);
+        npc.eraseprop("#championaltar");
+        npc.kill(); // death.log Eintrag interessiert wirklich nicht
+      EndIf
+      SleepMS(2);
+    EndForEach
+  Endif
+  If (idol.getprop("champion"))
+    npc:=SystemFindObjectBySerial(idol.getprop("champion"));
+    If (npc)
+      RevokePrivilege(npc, "invul");
+      npc.setprop("guardkill",1);
+      npc.eraseprop("#championaltar");
+      npc.kill(); // death.log Eintrag interessiert wirklich nicht
+    EndIf
+  Endif
+  Return(1);
+EndProgram

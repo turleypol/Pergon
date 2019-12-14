@@ -1,0 +1,142 @@
+//**************************************************************************************************
+// Script file bloodrush.src
+//
+//    implements spell 324 <Blood Rush> - "Blutrausch"
+//
+//	raises damage and AR of casters creatures in spell range
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+Include "include/spellcheck";
+Include "../magicpergon";
+
+program cast_bloodrush (params)
+
+   Var caster;
+   Var where;
+   Var beneficiaries;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_NECRO_BLOODRUSH);
+   Var dmg:=      spell.primary;
+   Var mindmg:=   spell.primarymin;
+   Var maxdmg:=   spell.primarymax;
+   Var amnt:=     spell.secondary;
+   Var minamnt:=  spell.secondarymin;
+   Var maxamnt:=  spell.secondarymax;
+   Var dur:=      spell.duration;
+   Var mindur:=   spell.durationmin;
+   Var maxdur:=   spell.durationmax;
+   Var range:=    spell.range;
+   Var minrange:= spell.rangemin;
+   Var maxrange:= spell.rangemax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      where:=struct{x,y,z,realm};
+      where.x:=params[4].x;
+      where.y:=params[4].y;
+      where.z:=params[4].z;
+      where.realm:=params[4].realm;
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      where:=  TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_NECRO_BLOODRUSH);
+      where:= TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, where);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   range:= CInt(power*range/100.0);							// calc spell range according to casting power
+   if (minrange and minrange > range)
+      range:= minrange;
+   elseif (maxrange and maxrange < range)
+      range:= maxrange;
+   endif
+
+   beneficiaries:= ListMobilesNearLocation(where.x, where.y, where.z, range,where.realm);		// get spelltargets
+
+   if (!beneficiaries)
+      return;
+   endif
+
+   Var weapon;
+   Var tag:= array;
+   Var armod;
+   Var i:= 0;
+
+   dmg:=  CInt(power*dmg/100.0);		// calc spell duration and spell effects according to casting power
+   amnt:= CInt(power*amnt/100.0);
+   dur:=  CInt(power*dur/100.0);
+
+   if (mindmg and mindmg > dmg)
+      dmg:= mindmg;
+   elseif (maxdmg and maxdmg < dmg)
+      dmg:= maxdmg;
+   endif
+   if (minamnt and minamnt > amnt)
+      amnt:= minamnt;
+   elseif (maxamnt and maxamnt < amnt)
+      amnt:= maxamnt;
+   endif
+   if (mindur and mindur > dur)
+      dur:= mindur;
+   elseif (maxdur and maxdur < dur)
+      dur:= maxdur;
+   endif
+
+   foreach beneficiary in beneficiaries								// for each spelltarget
+        					// check if spelltarget already has a bloodrush and if caster is spelltargets master
+      if (!GetObjProperty(beneficiary, "spell_rush") and GetObjProperty(beneficiary, "master") == caster.serial)
+
+         i+= 1;
+
+         PlaySoundEffect(beneficiary, SFX_SPELL_BLESS);
+         PlayObjectCenteredEffect(beneficiary, FX_CURSE_EFFECT, 5, 20);
+
+         armod:= CInt(beneficiary.ar * amnt / 100.0);   			// calc AR modification of spelltarget
+
+         beneficiary.ar_mod:= beneficiary.ar_mod+armod;		// do AR modification
+         weapon:= beneficiary.weapon;									// get weapon of spelltarget
+         weapon.dmg_mod:= weapon.dmg_mod+dmg;						// do damage modification
+
+         tag[1]:= ReadGameClock() + dur;
+         tag[2]:= armod;
+         tag[3]:= dmg;
+         tag[4]:= ReadMilliSecondClock();
+
+         SetObjProperty(beneficiary, "spell_rush", tag);			// tag spelltarget for spellchecker
+         SendSpellWaiter(beneficiary, "spell_rush", dur, tag[4], beneficiary);
+         SendSpellWaiter(weapon, "spell_rush", dur, tag[4], beneficiary);
+
+
+      endif
+   endforeach
+
+   if (!i)
+      SendSysMessagePergon(caster, "Ihr erreicht keine Euch hörigen Kreaturen",
+      				   				  "You reach none of your enslaved creatures");
+   else
+      SendSysMessagePergon(caster, "Eure Kreaturen verfallen in einen Blutrausch",
+      				   				  "Your creatures fall into a blood rush");
+   endif
+
+endprogram

@@ -1,0 +1,114 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file holymirror.src
+//
+// implements spell 228 <Holy Mirror> - "Heiliger Spiegel"
+//
+// reflects all spells and absorbs physical damage
+// breaks down If caster moves
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// 02.10.2003 Sebastian 'Bihinos' Giese
+// ueberarbeitet
+//
+// 19.11.2001 Sebastian 'Bihinos' Giese
+// erstellt
+
+use os;
+use uo;
+include "../magicpergon";
+include "include/spellcheck";
+include "include/packets";
+include "include/modifyskill";
+
+Program Cast_HolyMirror(params)
+  var caster;
+  var power;
+
+  If (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_CLERIC_HOLYMIRROR);
+  EndIf
+
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  // check if caster already has magic reflection
+  If (GetObjProperty(caster, "spell_reflect"))
+    SendSysMessagePergon(caster,
+      "Ihr seid bereits geschützt oder verkraftet derzeit keinen Spiegel",
+      "You are already protected or cannot bear a mirror"
+    );
+    return;
+  EndIf
+
+  PlaySoundEffect(caster, SFX_SPELL_MAGIC_REFLECTION);
+  PlayObjectCenteredEffect(caster, FX_BLESS_EFFECT, 10, 20);
+  If (caster and !caster.isa(POLCLASS_NPC))
+    PrintTextAbovePrivatePergon(
+      caster, "Ein Heiliger Spiegel umgibt Euch und wehrt Attacken ab",
+      "A Holy Mirror covers you and wards off attacks", caster
+    );
+  EndIf
+
+  // load spelldata
+  var spells := ReadConfigFile("::spells");
+  var spell  := FindConfigElem(spells, SPELLID_CLERIC_HOLYMIRROR);
+
+  // calc spell duration according to casting power
+  var dur := CInt(power*spell.duration/100.0);
+  If (spell.durationmin and spell.durationmin > dur)
+    dur := spell.durationmin;
+  ElseIf (spell.durationmax and spell.durationmax < dur)
+    dur := spell.durationmax;
+  EndIf
+
+  var tag := array{
+    ReadGameClock()+CInt(dur * 1.5),
+    "mirror",
+    ReadMilliSecondClock()
+  };
+
+  // tag caster for spellchecker
+  // (in case caster logs off before spell ends)
+  SetObjProperty(caster, "spell_reflect", tag);
+  SendSpellWaiter(caster, "spell_reflect", CInt(dur * 1.5), tag[3], caster);
+
+  Detach();
+  caster := SystemFindObjectBySerial(caster.serial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+
+  // remember casters position
+  var pos := struct{
+    x := caster.x,
+    y := caster.y
+  };
+  // wait duration
+  var i;
+  For (i := 0; i <= dur; i += 1)
+    // handle special situations
+    If (!caster or caster.dead or !caster.connected)
+      break;
+    EndIf
+    // check if caster has moved
+    If (caster.x <> pos.x or caster.y <> pos.y)
+      break;
+    EndIf
+    Sleep(1);
+  EndFor
+
+  PlaySoundEffect(caster, SFX_F6);
+  If (caster and !caster.isa(POLCLASS_NPC))
+    PrintTextAbovePrivatePergon(
+      caster, "Der Heilige Spiegel verschwindet",
+      "The Holy Mirror disappears", caster
+    );
+  EndIf
+
+  // remove spelltag
+  BuffIcons(caster, "spell_reflect", 0, 1);
+  EraseObjProperty(caster, "spell_reflect");
+EndProgram
+
+// vim: sw=2 sts=2

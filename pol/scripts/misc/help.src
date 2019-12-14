@@ -1,0 +1,13 @@
+//////////////////////////////////
+// Help-Button in der Paperdoll
+//
+// Author: Shinigami
+
+use uo;
+include "include/msgs";
+include "include/urls";
+
+Program TextCMD_HomePage(who)
+  SendSysMessagePergon(who, "Das Pergon-Handbuch wird im Browser geöffnet...");
+  OpenURL(who, URL_HANDBOOK);
+EndProgram

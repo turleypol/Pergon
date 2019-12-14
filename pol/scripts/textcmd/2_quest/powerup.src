@@ -1,0 +1,36 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD PowerUp - Setzt alle Skills auf einen bestimmten Wert
+//
+// - Moeglichkeit der Uebergabe einer selbstgewaehlten Skillhoehe
+// - Check der Ober- und Untergrenze des uebergebenen Parameters
+
+Const MAX_SKILL := 200;  // maximal zu setzende Skillhoehe
+
+use file;
+use uo;
+include "include/modifyskill";
+include "include/quests";
+
+Program TextCMD_PowerUp(who, SkillHeight)
+  If (SkillHeight)
+    SkillHeight:=Max(0,Min(MAX_SKILL,CInt(SkillHeight)));
+  Else
+    SkillHeight := MAX_SKILL;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Setze Skills auf "+SkillHeight
+  );
+
+  For skillid:=0 To MAX_SKILLS
+    Var res := SetSkillPergon(who, skillid, SkillHeight);
+    If (res == error)
+      SendSysMessagePergon(who,
+        "Nicht möglich, Raw-Skill zu setzen: "+res.errortext
+      );
+    EndIf
+    SleepMS(2);
+  EndFor
+
+  QuestCharLog(who, "TextCMD PowerUp - SkillLevel "+SkillHeight);
+EndProgram

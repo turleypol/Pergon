@@ -1,0 +1,53 @@
+////////////////////////////////////////////////
+//
+//   TextCMD Harvest v1.0 (23.12.2002)
+//
+//     'Erntet' eine Ressource an einer Stelle
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+////////////
+// Include
+////////////
+
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_Harvest(who, params)
+  params:=SplitWords(params);
+
+  If (params.size()==3)
+    If (CInt(params[2]))
+      SendSysMessagePergon(who, "Bitte eine Stelle am Boden auswählen!");
+
+      Var use_on:=TargetCoordinates(who); // Welche Stelle will ich beeinflussen?
+      If (use_on)
+        Var difficultyold:=GetHarvestDifficulty(params[1], use_on.x, use_on.y, GetMapInfo(use_on.x, use_on.y,use_on.realm).landtile,use_on.realm);
+        Var harvest:=HarvestResource(params[1], use_on.x, use_on.y, CInt(params[2]), CInt(params[3]),use_on.realm);
+        Var difficultynew:=GetHarvestDifficulty(params[1], use_on.x, use_on.y, GetMapInfo(use_on.x, use_on.y,use_on.realm).landtile,use_on.realm);
+
+        SendSysMessagePergon(who, "Eure 'Ernte' von "+harvest+" veränderte GetHarvestDifficulty von "+difficultyold+" zu "+difficultynew);
+      Else
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Der Parameter 'b' darf nicht '0' sein! (Div0-Fehler) !");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Aufruf: .harvest ressourcename b n");
+    SendSysMessagePergon(who, "Hiermit 'erntet' ihr eine Ressource an dieser Stelle.");
+  EndIf
+EndProgram

@@ -1,0 +1,14 @@
+use uo;
+Include "include/starteqp";
+
+Program TextCMD_TestStartEqp(who, params)
+  If (CInt(params))
+    ForEach item in EnumerateItemsInContainer(who.backpack)
+      DestroyItem(item);
+    EndForEach
+
+    CreateStartingEquipment(who, {GetSkillName(CInt(params))});
+  Else
+    SendSysMessagePergon(who, "Ihr müsst eine SkillNUMMER angeben!");
+  EndIf
+EndProgram

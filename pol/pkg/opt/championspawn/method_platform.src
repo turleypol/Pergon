@@ -1,0 +1,29 @@
+/////////////////////////////////////////////////////////
+//
+//   method_platform - Farbwechsel für Platformteile
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     04.07.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Enum Color
+  COLOR_PLATFORM_ACTIVE:=  0x452,
+  COLOR_PLATFORM_INACTIVE:=0x497
+EndEnum
+
+Program Install()
+  Return(1);
+EndProgram
+
+Exported Function Activate(platform)
+  platform.color:=COLOR_PLATFORM_ACTIVE;
+EndFunction
+
+Exported Function Deactivate(platform)
+  platform.color:=COLOR_PLATFORM_INACTIVE;
+EndFunction

@@ -1,0 +1,261 @@
+<html>
+
+<head>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+<title>POL Object Reference - Mobile</title>
+</head>
+
+<body>
+
+<table border="0" width="100%">
+  <tr>
+    <td valign="top" width="100%"><strong><big>Mobile : <a href="objref.htm#UObject">UObject</a>
+    </big></strong></td>
+    <td width="50%" valign="top" align="right" nowrap><a href="objref.htm"><small>POL </small><br>
+    <small>Object Reference</small></a></td>
+  </tr>
+</table>
+
+<p>&nbsp; </p>
+
+<h3>Methods</h3>
+
+<table border="0" width="80%">
+  <tr>
+    <td width="25%">setlightlevel</td>
+    <td width="25%">squelch</td>
+    <td width="25%"></td>
+    <td width="25%"></td>
+  </tr>
+  <tr>
+    <td width="25%">setstr</td>
+    <td width="25%">setint</td>
+    <td width="25%">setdex</td>
+    <td width="25%"></td>
+  </tr>
+  <tr>
+    <td width="25%">enable</td>
+    <td width="25%">disable</td>
+    <td width="25%">enabled</td>
+    <td width="25%"></td>
+  </tr>
+</table>
+
+<p>mobile.setlightlevel( lightlevel, duration_in_seconds ); // set temporary light
+override<br>
+mobile.squelch( duration_in_seconds ); // shut a character up for a while<br>
+mobile.setstr( new_base_strength ); // set a character's strength<br>
+mobile.setint( new_base_intelligence ); // set a character's intelligence<br>
+mobile.setdex( new_base_dexterity ); // set a character's dexterity<br>
+mobile.enable( privilege ); // activate a privilege that the mobile has<br>
+mobile.disable( privilege ); // deactivate a privilege that the mobile has<br>
+mobile.enabled( privilege ); // true if a mobile has a privilege and it is enabled. </p>
+
+<h3>Properties</h3>
+
+<p>&nbsp;</p>
+
+<p>Mobiles have all UObject members, plus the following:</p>
+
+<table border="1" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="25%"><strong>member</strong></td>
+    <td width="25%"><strong>description</strong></td>
+    <td width="25%"><strong>type</strong></td>
+    <td width="25%"><strong>access</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">warmode</td>
+    <td width="25%">&nbsp;</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">gender</td>
+    <td width="25%">0=Male, 1=Female</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">trueobjtype</td>
+    <td width="25%">for polymorphed mobiles, original objtype</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">truecolor</td>
+    <td width="25%">true color (for ghosts/polymorphed)</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">hp<sup>1</sup></td>
+    <td width="25%">&nbsp;</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">maxhp</td>
+    <td width="25%">&nbsp;</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">mana</td>
+    <td width="25%">&nbsp;</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">maxmana</td>
+    <td width="25%">&nbsp;</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">stamina</td>
+    <td width="25%">&nbsp;</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">maxstamina</td>
+    <td width="25%">&nbsp;</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">strength</td>
+    <td width="25%">&nbsp;</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">dexterity</td>
+    <td width="25%">&nbsp;</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">intelligence</td>
+    <td width="25%">&nbsp;</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">strength_mod</td>
+    <td width="25%">strength modifier</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">intelligence_mod</td>
+    <td width="25%">intelligence modifier</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">dexterity_mod</td>
+    <td width="25%">dexterity modifier</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">ar_mod</td>
+    <td width="25%">Armor Rating modifier</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">hidden</td>
+    <td width="25%">&nbsp;</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">concealed</td>
+    <td width="25%">GM concealed flag</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">frozen</td>
+    <td width="25%">GM frozen flag</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">paralyzed</td>
+    <td width="25%">&nbsp;</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">poisoned</td>
+    <td width="25%">poisoned flag</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">stealthsteps</td>
+    <td width="25%">stealth steps remaining</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">squelched</td>
+    <td width="25%">&nbsp;</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">dead</td>
+    <td width="25%">dead true/false</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">ar</td>
+    <td width="25%">Armor Rating</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">backpack</td>
+    <td width="25%">(only if exists)</td>
+    <td width="25%">itemref</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">weapon</td>
+    <td width="25%">equipped weapon</td>
+    <td width="25%">itemref</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">acctname</td>
+    <td width="25%">Account Name</td>
+    <td width="25%">string</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">acct</td>
+    <td width="25%"><a href="account.htm">Account</a></td>
+    <td width="25%">acctref</td>
+    <td width="25%">read-only</td>
+  </tr>
+  <tr>
+    <td width="25%">cmdlevel</td>
+    <td width="25%">Command Level</td>
+    <td width="25%">integer</td>
+    <td width="25%"><strong>read-write</strong></td>
+  </tr>
+  <tr>
+    <td width="25%">criminal</td>
+    <td width="25%">criminal flag</td>
+    <td width="25%">integer</td>
+    <td width="25%">read-only</td>
+  </tr>
+</table>
+</body>
+</html>

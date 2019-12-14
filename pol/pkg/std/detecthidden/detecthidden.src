@@ -1,0 +1,156 @@
+//////////////////////////////////////////////////////////
+//detecthidden.src                                      //
+//                                                      //
+//Finds and reveals hidden players in the area If:      //
+//                                                      //
+// * The hider is in range(determined by your skill)    //
+// * You pass a skill check using the hider's skill     //
+//   as the difficulty                                  //
+//                                                      //
+//Finds(and shows) Trapped objects If:                  //
+//                                                      //
+// * It is in range                                     //
+// * It has a trapped prop                              //
+// * You pass a skill check                             //
+//                                                      //
+// Author: Racalac, modIfied 4/16/99                    //
+//////////////////////////////////////////////////////////
+//
+//  03.06.2002 Fraggulus: Skillanwender muss ungleich dem Gefundenen sein
+//  02.04.2003 Fraggulus: alt: Skillcheck als Wahrscheinlichkeit in Hoehe des Finder-Skills
+//                        neu: Skillcheck in Abhaengigkeit vom Versteckskill des Versteckten
+//  15.10.2003 Fraggulus: Versteckskill auswerten (wg.: Abgleichung magisches/skill Verstecken/Verstecktes Finden)
+//  01.12.2003 Fraggulus: Wenn tot, dann nix Verstecktes Finden
+//  28.01.2004 pJOTTR:    Wenn die Falle entdeckt wurde, wird sie nach X sec wieder "unentdeckt" fuer jederman
+//                        Skillcheck von Skill des Fallenstellers zu Skill des Finders auf 2/3 : 1
+//                        Range fuer Fallenfinden etwas erhoeht, da die Magie auch weiter reicht
+//  29.02.2004 Fraggulus: Sperre gegen zu haeufiges Anwenden eingebaut (#Cprop + Delay)
+//  22.01.2006 Seppel:    Delay auf allgemeines System umgestellt
+//
+//////////////////////////////////////////////////////////
+
+use attributes;
+use cfgfile;
+use uo;
+include "include/client";
+include "include/modifyskill";
+
+
+Const TRAP := "hiddentrap";
+
+program detecthidden(detective)
+	If (detective.dead)
+		SendSysMessagePergon(detective, "Ihr seid tot und könnt keine Versteckten finden.",
+		"You're dead and cannot find anyone.");
+		Return;
+	EndIf
+
+	If (GetObjProperty(detective, "#UsesSkill") > ReadGameClock())
+		SendSysMessagePergon(detective, "Ihr müsst Euch noch einen Moment gedulden, bevor Ihr wieder suchen könnt.",
+		"You have to wait a while before searching again.");
+		Return;
+	EndIf
+
+	SetObjProperty(detective, "#UsesSkill", ReadGameClock() + 2);
+
+	Var thepoints := GetSkillDefaultPoints(SKILLID_VERSTECKTES_FINDEN);
+	Var give_stats := ADVANCESTATS;
+//	Var item_cfg  := ReadConfigFile("::itemdesc");
+	Var range     := getDetectRange(CInt(GetSkillPergon(detective, SKILLID_VERSTECKTES_FINDEN)));
+	//  Var elem;
+	//  Var data;
+	Var prop;
+	Var dtct;
+	Var skill;
+	Var trapstrength;
+	Var trapperskill;
+
+	Var foundany  := 0;
+	ForEach mobile in ListMobilesNearLocationEx(detective.x, detective.y, detective.z, range, LISTEX_FLAG_HIDDEN,detective.realm)
+		If (Found(detective, mobile, range, thepoints, give_stats))
+			If (mobile.hidden) // Um unnoetige Events zu sparen...
+				mobile.hidden := 0;
+			EndIf
+			foundany := 1;
+			EraseObjProperty(mobile, "hiding_diff");;
+			PrintTextAbovePrivatePergon(mobile, "Ihr wurdet entdeckt!", "You were spotted!", mobile);
+			PrintTextAbovePrivatePergon(mobile, "Oh, da ist jemand!!!", "Oh, there is someone!!!", detective);
+		EndIf
+		SleepMS(2);
+	EndForEach
+
+	If (!foundany)
+		SendSysMessagePergon(detective, "Ihr findet niemanden.", "You cannot find anybody.");
+	EndIf
+
+	ForEach item in ListItemsNearLocation(detective.x , detective.y , detective.z , CInt(range * 1.5),detective.realm)
+		//      elem := FindConfigElem(item_cfg, item.objtype);
+		//      data := GetConfigString(elem, "WalkOnScript");
+		trapstrength:=GetObjProperty(item, "trap_strength");
+		trapperskill:=GetObjProperty(item, "buildersskill");
+		prop := GetObjProperty(item, "trap_type");
+		dtct := GetObjProperty(item, "trapped");
+
+		If (dtct)
+			skill := GetSkillPergon(detective, SKILLID_VERSTECKTES_FINDEN);
+			// eine entdeckte Falle wuerde jeder innerhalb der X sec auch finden, danach haengts von seinem Skill ab
+			If (skill >= 15) //Mindestanforderung um entdeckte Falle auch zufinden
+				If (dtct < ReadGameClock())
+					EraseObjProperty(item, "trapped");
+				Else
+					PrintTextAbovePrivatePergon(item, "Falle!", "Trap!", detective);
+				EndIf
+			EndIf
+		ElseIf (trapstrength)
+			If (!trapperskill)
+				trapperskill := GetSkillPergon(detective, SKILLID_VERSTECKTES_FINDEN) + 15;
+			Endif
+			If (CheckSkillPergon(detective, SKILLID_VERSTECKTES_FINDEN, cint(trapperskill * 2 / 3.0), thepoints,UNQUALIFIZIERT,give_stats))
+			  give_stats:=DONTADVANCESTATS; // nureinmal statserhöhen
+				PrintTextAbovePrivatePergon(item , "Achtung! Falle!", "Attention! Trap!", detective);
+				SetObjProperty(item, "trapped", ReadGameClock()+15);
+				detach();
+			EndIf
+		EndIf
+		SleepMS(2);
+	EndForEach
+
+endprogram
+
+function Found(finder, hider, range, thepoints, byref give_stats)
+
+	var dist      := Distance(finder, hider);
+	var hide_diff := GetObjProperty(hider, "hiding_diff");
+	If (!hide_diff)  // hide_diff (noch) nicht gesetzt, daher wie vorher den normalen Check nehmen
+		hide_diff := CInt((GetSkillPergon(hider, SKILLID_VERSTECKEN)+10)*2/5);
+	EndIf
+
+	var skill     := hide_diff + ((dist-1) * 20 ) / range;
+	If ((finder.serial) != (hider.serial))
+		If (CheckSkillPergon(finder, SKILLID_VERSTECKTES_FINDEN, CInt(skill*5/2), thepoints,UNQUALIFIZIERT,give_stats))
+		  give_stats:=DONTADVANCESTATS; // nureinmal statserhöhen
+			Return 1;
+		Else
+			Return 0;
+		EndIf
+	EndIf
+
+endfunction
+
+
+function getDetectRange(skill)
+
+  var range;
+
+  If (skill >= 100)
+    range := 10;
+  ElseIf (skill < 10)
+    range := 1;
+  Else
+    range := CInt(skill/10.0);
+  EndIf
+
+  Return(range);
+
+endfunction
+

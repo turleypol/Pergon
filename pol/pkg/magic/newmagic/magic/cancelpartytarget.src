@@ -1,0 +1,21 @@
+/////////////////////////////////////////////////////////
+//
+//   cancelpartytarget - Die 2 Party zauberbuttons führen
+//                       zu ner Targetreservierung also
+//                       SinnlosTarget losschicken damit
+//                       Reservierung weggeht
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     12.03.09 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+use uo;
+
+Program CancelPartyTarget(params)
+  Target(params[1]);
+EndProgram

@@ -1,0 +1,95 @@
+///////////////////////////////////////////////////////////////////////////
+// checkfrost -- Covetous-Eingangsfrage stellen
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.1  2008/08/23 21:14:55  mehdorn
+// + (unkonfigurierter) I-Stein ist nun auffaellig rot
+// - Template fuer Walk-On-Scripte namens template.src_
+// - einige Walk-On-Scripte erstellt
+//   - bis auf Frostkram sogar getestet
+// - Setupscript fuer Arenateleporter
+// - neue Konstanten eingefuehrt
+// - Goetterspendescript erzeugt nun bereits neuen I-Stein
+// + Bugfixes, Tippfehler, teilweise englische Texte eingebaut
+//
+
+include "include/msgs";
+include "common";
+use polsys;
+use uo;
+use util;
+
+Program CheckFrost(p)
+    If (p.who.isa(POLCLASS_NPC) or p.cmd)
+        return;
+    EndIf
+
+    If (p.who.dead)
+        MoveObjectToLocation(p.who,
+            2545, 856, 0, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+        );
+        SendSysMessagePergon(p.who,
+            "Auch eine falsche Antwort hätte Euch den Kopf "+
+            "kosten können, "+p.who.name+"!"
+        );
+        return;
+    EndIf
+
+    var oldfrozen := p.who.frozen;
+    p.who.frozen := 1;
+    IncRevision(p.who);
+    var text_de := "";
+    Case (RandomInt(6) + 1)
+    1:
+        text_de := "Fühlt Ihr die Kälte in Eure Knochen fahren?";
+    2:
+        text_de := "Spürt Ihr die Kälte?";
+    3:
+        text_de := "Die Kälte zieht in Eure Knochen.";
+    4:
+        text_de := "Ein kalter Hauch umstreift Euch.";
+    5:
+        text_de := "Ein kalter Wind bläst Euch um die Ohren.";
+    default:
+        text_de := "Fühlt Ihr die Kälte?";
+    EndCase
+    SendSysMessagePergon(p.who, text_de, "");
+
+    // PW-Abfrage
+    var val := SendTextEntryGump(p.who,
+        "Welche Zeichen wollt Ihr sprechen?",
+        TE_CANCEL_ENABLE, TE_STYLE_NORMAL, 40
+    );
+    If (Lower(val) == "frostlord")  // wehe, das verraet einer, F.
+        Sleep(3);
+        PrintTextAbovePrivatePergon(p.who,
+            "Die Zeichen waren korrekt. Ihr dürft passieren", "", p.who
+        );
+        PlaySoundEffect(p.who, SFX_203);
+        // Hinweis setzen, dass PW korrekt und die nachfolgenden Steine
+        // (blockfrost) ueberquert werden duerfen
+        SetObjProperty(p.who, PROP_FROST_DUNG, 1);
+
+        p.who.frozen := oldfrozen;
+        IncRevision(p.who);
+        return;
+    ElseIf (val == 0) // Abbruch
+        SendSysMessagePergon(p.who, "Eine weise Entscheidung.", "");
+    EndIf
+
+    // wird rausgeschmissen aufgrund falscher Wortwahl oder Abbruch
+    MoveObjectToLocation(p.who,
+        // Covetous-Ende
+        2545, 856, 0, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+    );
+    PrintTextAbovePergon(p.who, p.who,
+        "Eine falsche Antwort könnte Euch den Kopf kosten, "+
+        p.who.name+"!"
+    );
+    PlaySoundEffect(p.who, SFX_1F9);
+
+    p.who.frozen := oldfrozen;
+    IncRevision(p.who);
+EndProgram

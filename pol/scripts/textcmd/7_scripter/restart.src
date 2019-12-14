@@ -1,0 +1,26 @@
+Use uo;
+Include "include/msgs";
+Include "include/eventwaiter";
+
+Program TextCMD_Restart(who, newscript)
+  SendSysMessagePergon(who, "Wählt einen NPC zum Restarten!");
+  Var waitershort:=GetProcess(GetGlobalProperty(PID_EVENTWAITERSHORT));
+  Var waiterlong:=GetProcess(GetGlobalProperty(PID_EVENTWAITERLONG));
+  Var event:=struct{erase};
+  Var npc := Target(who, TGTOPT_NOCHECK_LOS);
+  If (!npc.isa(POLCLASS_NPC))
+    SendSysMessagePergon(who, "Das ist kein NPC!");
+    Return;
+  EndIf
+
+  If (newscript)
+    npc.script := newscript;
+  EndIf
+  event.erase:=npc.serial;
+  waitershort.sendevent(event);
+  waiterlong.sendevent(event);
+  Var res := RestartScript(npc);
+  If (!res)
+    SendSysMessagePergon(who, "Restart gescheitert: "+res.errortext);
+  EndIf
+EndProgram

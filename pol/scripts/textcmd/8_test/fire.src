@@ -1,0 +1,88 @@
+////////////////////////////////////////////////////////
+//
+//   TextCMD Fire - Legt in bestimmten Gebaeuden Feuer
+//
+//     Author: Shinigami
+//
+//   Modification:
+//
+////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use util;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/itemnpc";
+Include "include/msgs";
+
+///////////////
+// Konstanten
+///////////////
+
+Var FIRE:={0x36b0, 0x3704, 0x3715, 0x398c, 0x3996, 0x19b5};
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_Feuer(who)
+  ForEach range in {{255, 759, 315, 783}, {307, 784, 345, 799}, {331, 800, 345, 837}, {346, 831, 359, 858}, {335, 859, 391, 919}} // Yew-Gefaengnis
+   // ForEach item in ListObjectsInBox(range[1], range[2], -127, range[3], range[4], 128)
+   //   If (item.isa(POLCLASS_ITEM))
+   //     If (item.objtype==0x19ab)
+   //       DestroyItem(item);
+   //     EndIf
+   //   EndIf
+   // EndForEach
+
+    For x:=range[1] To range[3]
+      For y:=range[2] To range[4]
+        ForEach firepos in GetFirePos(x, y)
+          CreateItemAtLocationPergon(x, y, firepos, FIRE[RandomInt(FIRE.size())+1], 1,who.realm);
+        EndForEach
+      EndFor
+    EndFor
+  EndForEach
+EndProgram
+
+/////////////////////////////////////////////////////////
+// GetFirePos - Wo soll ueberall Feuer plaziert werden?
+/////////////////////////////////////////////////////////
+
+Function GetFirePos(x, y)
+  Var result:={};
+
+  Var hoehe1:=GetStandingHeight(x, y, 127).z; // Basishoehe
+  Var hoehe2:=GetStandingHeight(x, y, 20).z;
+  Var hoehe3:=GetStandingHeight(x, y, 0).z;
+
+  If (hoehe1<>GetMapInfo(x, y).z) // Ueberhaupt ein brennbares Gebaeude?
+    If ((hoehe3<>error) And (hoehe3==hoehe1))
+      hoehe3:=0; // Waere sonst doppelt
+    EndIf
+    If ((hoehe2<>error) And (hoehe2==hoehe1))
+      hoehe2:=0; // Waere sonst doppelt
+    EndIf
+
+    result:={hoehe1};
+    If (hoehe2<>error)
+      If (hoehe2<>hoehe1)
+        result.append(hoehe2);
+      EndIf
+    EndIf
+    If (hoehe3<>error)
+      If ((hoehe3<>hoehe1) And (hoehe3<>hoehe2))
+        result.append(hoehe3);
+      EndIf
+    EndIf
+  EndIf
+
+  Return (result);
+EndFunction

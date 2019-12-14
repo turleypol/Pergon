@@ -1,0 +1,52 @@
+/////////////////////////////////////////////////////////////////
+//
+//  SetTalk Befehl - mit diesem Befehl setzt man das CProp "talkme"
+//     mit talk geflaggte NPC's labern KI Infos
+//
+//     Author: Fox
+//
+/////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_SetTalk(who, param)
+  If (!(who.cmdlevel >= CMDLEVEL_SEER)) 
+		SendSysMessagePergon(who, "Ihr seid nicht berechtigt diesen Befehl zu nutzen.");
+		return;
+	EndIf
+
+	SendSysMessagePergon(who, "Den NPC anklicken den ihr zum reden bringen wollt!");
+
+  Var tgt:=Target(who, TGTOPT_NOCHECK_LOS);
+  If (tgt)
+  	Var wert:=GetObjProperty(tgt, "talkme");
+  	If (wert)
+  		EraseObjProperty(tgt, "talkme");
+  		SendSysMessagePergon(who, "Er wird nun schweigen.");
+  	Else
+  		Var talkme:=struct;
+  		talkme.serial:=who.serial;
+  		if (param)
+  			talkme.stufe:=param;
+  		else
+  			talkme.stufe:=1;
+  		endif
+			SetObjProperty(tgt, "talkme", talkme);  		
+			SendSysMessagePergon(who, "Er wird nun reden.");
+  	EndIf
+	Endif
+EndProgram

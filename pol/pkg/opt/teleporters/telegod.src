@@ -1,0 +1,68 @@
+///////////////////////////////////////////////////////////////////////////
+// telegod -- Teleporterscript, welches Richtung Goetterinsel beamt
+
+include "include/place";
+include "include/server";
+include "common";
+use uo;
+
+Program TeleGod(p)
+    If (p.who.isa(POLCLASS_NPC))
+        // NPCs sollten nicht im Teleporter herumstehen
+        StepBack(p);
+        return;
+    EndIf
+
+    If (p.who.dead)
+        return;
+    EndIf
+
+    // von Jhe'lom darf man kostenlos zur Goetterinsel
+    If (GetObjProperty(p.who, TYPNEWBIE) or p.cmd)
+        DoTele(p);
+
+    // man sollte als Festlaender spenden
+    Else
+        If (GetObjProperty(p.who, PROP_GODDONATION))
+            DoTele(p);
+        Else
+            SendSysMessagePergon(p.who,
+                "Spendet zunächst den Göttern!",
+                "Donate something to the gods!"
+            );
+        EndIf
+    EndIf
+EndProgram
+
+// Umziehen, Teleportieren und Aufraeumen
+Function DoTele(p) // {{{
+    // Waffen und [schwere] Ruestungen des Player ablegen
+    If (!p.cmd)
+        If (!CheckEquipmentForNewbieArea(p.who, 0))
+            SendSysMessagePergon(p.who,
+                "Ihr dürft das Tor nicht passieren!",
+                "You aren't allowed to pass through!"
+            );
+            return;
+        EndIf
+    EndIf
+
+    If (!PlaceNewbie(p.who))
+        // I-Stein verschieben und zur Loeschung freigeben, falls
+        // er nicht auf Jhe'lom benutzt wurde (pro Spende entsteht
+        // ein neuer Stein)
+        p.item.invisible := 1;
+        p.item.movable   := 1;
+        MoveObjectToLocation(p.item,
+            p.item.x, p.item.y, 127, p.item.realm,
+            MOVEOBJECT_FORCELOCATION
+        );
+        p.item.decayat := 1;
+    EndIf
+
+    // Teleport
+    MoveObjectToLocation(p.who,
+        5169, 391, 10, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+    );
+    EraseObjProperty(p.who, "spende_ok");
+EndFunction // }}}

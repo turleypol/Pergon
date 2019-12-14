@@ -1,0 +1,122 @@
+//////////////////////////////////////////////////////////////////
+//
+//   FloorExchange - exchanges marble floortiles (specific command - not for common use!)
+//
+//     Author: SeBB
+//
+//   Modifications:
+//
+//////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use util;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/errormsg";
+Include "include/itemnpc";
+Include "include/msgs";
+
+///////////////
+// Konstanten
+///////////////
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_ExchangeFloor(who, params)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  params:=SplitWords(params);
+  If (params.size()==8)
+    If ((0<=CInt(params[1])) And (CInt(params[1])<6144))
+      If ((0<=CInt(params[2])) And (CInt(params[2])<4096))
+        If ((-129<CInt(params[3])) And (CInt(params[3])<128))
+          If ((0<=CInt(params[4])) And (CInt(params[4])<6144))
+            If ((0<=CInt(params[5])) And (CInt(params[5])<4096))
+              If ((-129<CInt(params[6])) And (CInt(params[6])<128))
+                If ((CInt(params[1])<=CInt(params[4])) And (CInt(params[2])<=CInt(params[5])) And
+                    (CInt(params[3])<=CInt(params[6])))
+                  Var oldtypelow, oldtypehigh;
+                  Var newtypebase, newtypeoffset, newtypecount;
+                  Var oldhandle:= params[7];
+                  Var newhandle:= params[8];
+
+                  case (oldhandle)
+                    "ms":	oldtypelow:= 1173;		// marble stones
+                                oldtypehigh:= 1176;
+                    "mf":	oldtypelow:= 1297;		// marble floor
+                    		oldtypehigh:= 1300;
+                    "wm":	oldtypelow:= 1293;		// white marble floor
+                    		oldtypehigh:= 1294;
+                    default:	SendSysMessagePergon(who, "handle1 is no handle ('ms', 'mf' or 'wm')");
+                    		return 0;
+                  endcase;
+                  case (newhandle)
+                    "ms":	newtypebase:= 1173;		// marble stones
+                                newtypecount:= 4;
+                    "mf":	newtypebase:= 1297;		// marble floor
+                    		newtypecount:= 4;
+                    "wm":	newtypebase:= 1293;		// white marble floor
+                    		newtypecount:= 2;
+                    default:	SendSysMessagePergon(who, "handle2 is no handle ('ms', 'mf' or 'wm')");
+                    		return 0;
+                  endcase;
+
+                  SendSysMessagePergon(who, "Exchanging Floor Tiles...");
+
+                  Var x, y, z;
+                  Var movable;
+                  Var item;
+                  ForEach object in ListObjectsInBox(CInt(params[1]), CInt(params[2]), CInt(params[3]),
+                                                     CInt(params[4]), CInt(params[5]), CInt(params[6]),who.realm)
+                    If (object.isa(POLCLASS_ITEM) And
+                        (oldtypelow<=CInt(object.objtype)) And (CInt(object.objtype)<=oldtypehigh))
+		      x:= object.x;
+		      y:= object.y;
+		      z:= object.z;
+                      movable:= object.movable;
+
+                      DestroyItem(object);
+                      newtypeoffset:= RandomInt(newtypecount);
+                      item:= CreateItemAtLocationPergon(x, y, z, newtypebase+newtypeoffset, 1,who.realm);
+                      If (item)
+                        item.movable:= movable;
+                        item.decayat:= 0;
+                      EndIf
+                    EndIf
+                  EndForEach
+                  SendSysMessagePergon(who, "...Done");
+                Else
+                  SendSysMessagePergon(who, "X2 > X1 and Y2 > Y1 and Z2 > Z1 !");
+                EndIf
+              Else
+                SendSysMessagePergon(who, "-128 <= Z2 <= 127 !");
+              EndIf
+            Else
+              SendSysMessagePergon(who, "0 <= Y2 <= 4095 !");
+            EndIf
+          Else
+            SendSysMessagePergon(who, "0 <= X2 <= 6143 !");
+          EndIf
+        Else
+          SendSysMessagePergon(who, "-128 <= Z1 <= 127 !");
+        EndIf
+      Else
+        SendSysMessagePergon(who, "0 <= Y1 <= 4095 !");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "0 <= X1 <= 6143 !");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Usage: .floorexchange x1 y1 z1 x2 y2 z2 handle1 handle2");
+  EndIf
+EndProgram

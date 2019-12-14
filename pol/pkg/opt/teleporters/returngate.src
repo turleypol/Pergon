@@ -1,0 +1,108 @@
+///////////////////////////////////////////////////////////////////////////
+// Return gate
+//
+// teleportiert Char von beliebig vielen Gates zum Zielgate, bei
+// Eintritt ins Zielgate geht es zurück ins Gate, aus dem gestartet
+// wurde -- soll Gerichtsteleporter ablösen
+
+use os;
+use uo;
+include ":saver:saveopts";
+include "include/logutil";
+include "include/msgs";
+include "include/server";
+include "common";
+
+// falls diese Serial als Ziel gesetzt ist, ist es ein Rueckkehrtor
+Const DUMMY_DEST    := 0;
+// an Player - durch welches Tor gekommen (serial)
+Const RETGATE_PROP  := "returngate";
+// waehrend Transfer gesetzt, damit Zieltor nicht sofort zurueckschickt
+Const TRANSIT_PROP  := "#inretgate";
+
+Program ReturnGate(who, gate)
+    If (GetObjProperty(who, TRANSIT_PROP))
+        // bereits mit ReturnGate unterwegs
+        return;
+    EndIf
+
+    If (who.isa(POLCLASS_NPC))
+        // "keine NPCs"-Regel
+        return;
+    EndIf
+
+    // auf besondere CProps pruefen
+    If (!SpecialTeleChecks(gate, who))
+        return;
+    EndIf
+
+    var dest := GetObjProperty(gate, DEST_CPROP);
+    If (!dest)
+        dest := DUMMY_DEST;
+        SetObjProperty(gate, DEST_CPROP, dest);
+    EndIf
+
+    // Abwarten, falls Weltsicherung läuft
+    While (WorldsaveRunning())
+        Sleep(1);
+    EndWhile
+
+    If (dest == DUMMY_DEST)
+        // ohne Ziel ist es automatisch ein Rückkehrtor
+        ReturnToStartGate(who);
+        return;
+    EndIf
+
+    var destgate := SystemFindObjectBySerial(dest);
+    If (!destgate)
+        // kaputtes Ziel
+        SendSysMessagePergon(who,
+            "Dieses Tor ist derzeit ausser Betrieb.",
+            "This gate is currently out of order."
+        );
+        syslog(
+            "FEHLER: "+ItemInfoStr(gate, COORDS_REALM)+ " hat kaputtes Ziel."
+        );
+        return;
+    EndIf
+
+    BeamToDestGate(who, gate, destgate);
+EndProgram
+
+Function BeamToDestGate(who, source, dest)
+    If (DoTransit(who, dest))
+        // Ausgangstor an Player vermerken
+        SetObjProperty(who, RETGATE_PROP, source.serial);
+    EndIf
+EndFunction
+
+Function ReturnToStartGate(who)
+    var dest_serial := GetObjProperty(who, RETGATE_PROP);
+
+    If (!dest_serial)
+        return;
+    EndIf
+    var dest := SystemFindObjectBySerial(dest_serial);
+    If (!dest)
+        return;
+    EndIf
+
+    If (DoTransit(who, dest))
+        EraseObjProperty(who, RETGATE_PROP);
+    EndIf
+EndFunction
+
+Function DoTransit(who, dest)
+    // TODO: playsound
+
+    // notieren, dass Player unterwegs ist
+    SetObjProperty(who, TRANSIT_PROP, 1);
+    // Verschieben ans Ziel
+    var result := MoveObjectToLocation(who, dest.x, dest.y, dest.z, dest.realm);
+
+    // Transitproperty wieder löschen
+    SleepMS(500);
+    EraseObjProperty(who, TRANSIT_PROP);
+
+    return result;
+EndFunction

@@ -1,0 +1,115 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file dazzle.src
+//
+// implements spell 3 <Dazzle> - "Verwirrung"
+//
+// decreases intelligence of spelltarget
+// [ Reflected / Resisted (Magic) ]
+
+use uo;
+include "../magicpergon";
+include "../spellattack";
+include "include/spellcheck";
+
+Program CastDazzle(params)
+  var caster;
+  var caston;
+  var power;
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  := params[3];
+    caston := params[4];
+    send_attack(caston, caster, 3);
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_COMMON_DAZZLE);
+    caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  // Caster (z. B. beim Target) verstorben?
+  If (!caster)
+    return;
+  EndIf
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_DIR);
+
+  // get spelltarget (possible spell reflection)
+  var spelltarget := ReflectSpell(
+    caster, caston, power, 1, FX_CURSE_EFFECT, 7, 7, 0, SFX_SPELL_FEEBLEMIND
+  );
+
+  If (!spelltarget)
+    return;
+  EndIf
+
+  // check if spelltarget can be manipulated
+  If (GetObjProperty(spelltarget, "spell_dazzle"))
+    SendSysMessagePergon(caster,
+      "Die Intelligenz Eures Ziels wurde bereits magisch geschwächt",
+      "Your target's intelligence has already been magically weakened"
+    );
+    return;
+  EndIf
+
+  // load spelldata
+  var spells := ReadConfigFile("::spells");
+  var spell  := FindConfigElem(spells, SPELLID_COMMON_DAZZLE);
+
+  var dmg := spell.primary;
+  var dur := spell.duration;
+  // check and alter damage/duration according to spelltargets magic
+  // resistance and casting power
+  If (spell.resist)
+    dmg := CInt(MagicResistance(
+        spelltarget, spell.skill, spell.resist, power*dmg/100.0, 1
+    ));
+    dur := CInt(MagicResistance(
+        spelltarget, spell.skill, spell.resist, power*dur/100.0, 0
+    ));
+  Else
+    dmg := CInt(power*dmg/100.0);
+    dur := CInt(power*dur/100.0);
+  EndIf
+
+  // innerhalb der Grenzen pressen
+  If (spell.primarymin and spell.primarymin > dmg)
+    dmg := spell.primarymin;
+  ElseIf (spell.primarymax and spell.primarymax < dmg)
+    dmg := spell.primarymax;
+  EndIf
+  If (spell.durationmin and spell.durationmin > dur)
+    dur := spell.durationmin;
+  ElseIf (spell.durationmax and spell.durationmax < dur)
+    dur := spell.durationmax;
+  EndIf
+
+  var modifystruct:=struct{spelltarget:=0,
+                           int:=0,
+                           cprop:=struct{name:="",value:={}},
+                           CastPower:={}};
+  modifystruct.spelltarget:=spelltarget;
+  modifystruct.int:=-dmg;
+  modifystruct.cprop.value:={};
+  modifystruct.cprop.value[1]:= ReadGameClock() + dur;
+  modifystruct.cprop.value[2]:= dmg;
+  modifystruct.cprop.value[3]:= ReadMilliSecondClock();
+  modifystruct.cprop.name:="spell_dazzle";
+  modifystruct.CastPower:={{spelltarget, "Magie", dmg,"","",1}};
+
+  SendSpellWaiter(spelltarget, "spell_dazzle", dur, modifystruct.cprop.value[3], spelltarget,modifystruct);
+EndProgram
+
+// vim: sw=2 sts=2

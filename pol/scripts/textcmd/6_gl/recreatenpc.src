@@ -1,0 +1,25 @@
+use os;
+use uo;
+
+Include "include/modifyskill";
+
+program textcmd_kill( who )
+    Var tgt := TargetCoordinates( who );
+
+    if (tgt.mobile)
+        Var obj := tgt.mobile.npctemplate;
+        Var x := tgt.mobile.x;
+        Var y := tgt.mobile.y;
+        Var z := tgt.mobile.z;
+
+        Var mob := tgt.mobile;
+
+
+            RevokePrivilege( mob, "invul" );
+            setobjproperty(mob, "guardkill", 1);
+            KillMobile(mob, "TextCMD ReCreateNPC");
+            detach();
+            sleep(2);
+            createnpcfromtemplate(obj,x,y,z,0,who.realm);
+    endif
+endprogram

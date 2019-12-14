@@ -1,0 +1,4 @@
+<h3 id="changeskills">changeskills</h3>
+
+<p>Skills eines Characters ändern. <strong>Hinweis:</strong>
+Beschränkt auf bestimmte Character</p>

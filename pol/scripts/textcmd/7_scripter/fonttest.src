@@ -1,0 +1,29 @@
+///////////////////////////////////////////////////////////////////////////
+// fonttest - Gibt Spielern die Moeglichkeit, Tagebuchfarben zu testen
+
+use basic;
+use os;
+use uo;
+include "include/msgs";
+
+Program FontTest(who, color)
+    color := SplitWords(color);
+    color[1] := CInt(color[1]);
+    color[2] := CInt(color[2]);
+
+    If (!color[2])
+        color[2] := color[1];
+    EndIf
+    If (color[1] > color[2])
+        color.sort();
+    EndIf
+
+    var col;
+    For (col := color[1]; col <= color[2]; col += 1)
+        SleepMs(5);
+        SendSysMessagePergon(who,
+            "Fonttest mit Farbe "+col, "Font test with color "+col,
+            _DEFAULT_TEXT_FONT, col
+        );
+    EndFor
+EndProgram

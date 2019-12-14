@@ -1,0 +1,128 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für magischen Asteroid
+//
+// Asteroid wird auf Ziel geworfen und macht Erd- und Feuerschaden,
+// erzeugt zudem Feuerfelder am Aufschlagsort
+//
+// Author: Seppel (2005-10-31)
+
+include ":newspells:fields";
+include ":newspells:magicpergon";
+include ":newspells:resistance";
+include "common";
+include "include/effects";
+include "include/math";
+include "include/modifyskill";
+include "include/msgs";
+include "include/packets";
+use cfgfile;
+use os;
+use uo;
+use util;
+
+Program MagicAsteroid(who, item)
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var delay := artefact.delay;
+  var range := artefact.range;
+  var impactDelay := artefact.impactdelay;
+  var duration := artefact.duration;
+  var fieldCount := artefact.fieldcount;
+  var difficulty := artefact.useskill;
+  var damage := SplitWords(GetConfigString(artefact, "Damage"));
+  var minDamage := CInt(damage[1]);
+  var maxDamage := CInt(damage[3]);
+
+  If (GetSkillPergon(who, SKILLID_MAGIE) < difficulty)
+    SendSysMessagePergon(who,
+      "Ihr könnt das nicht benutzen", "You cannot use this"
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who, "Ziel wählen", "Select target");
+  var where := TargetCoordinates(who);
+  If (!where)
+    SendSysMessagePergon(who, "Zielen abgebrochen", "Cancelled");
+    return;
+  ElseIf (!CheckLosAt(who, where.x, where.y, where.z))
+    SendSysMessagePergon(who,
+      "Ihr könnt das nicht sehen", "You cannot see this"
+    );
+    return;
+  EndIf
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", ReadGameClock()+delay+impactDelay);
+
+  TurnCharTo(who, where);
+  PerformAction(who, ANIM_CAST_AREA);
+  SubtractAmount(item, 1);
+
+  Detach();
+
+  HighThrow(who, where, 0x1362, impactDelay);
+
+  PlaySoundEffectXYZ(where.x, where.y, where.z, 0x030a, who.realm);
+  ExplodeInCircle(
+    where.x, where.y, where.z + 15, who.realm, range, 50, 100, 25,
+    array{FX_EXPLODE_1, FX_EXPLODE_2, FX_EXPLODE_3}
+  );
+
+  ForEach victim in (ListMobilesNearLocationEx(
+      where.x, where.y, where.z, range,
+      LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN, where.realm
+  ))
+    SleepMs(2);
+    var resistEarth := 1 - CDbl(GetResistance(victim, "earth"));
+    var resistFire  := 1 - CDbl(GetResistance(victim, "fire"));
+    var rawDamage := CInt(
+      RandomIntMinMax(minDamage, 1+maxDamage)/2*resistEarth +
+      RandomIntMinMax(minDamage, 1+maxDamage)/2*resistFire);
+    ApplyRawDamagePergon(victim, rawDamage);
+  EndForEach
+
+  // Feuerfelder im kleineren Umkreis
+  range -= 2;
+  var fields := {};
+  fieldCount := 1+RandomInt(fieldCount);
+  var i;
+  For (i := 0; i <= fieldCount; i += 1)
+    SleepMs(2);
+    If (RandomInt(2))
+      fields.append(CreateNorthSouthField(who, 100, UOBJ_FIREFIELD_NS,
+        where.x+RandIntMinMax(-range, range),
+        where.y+RandIntMinMax(-range, range), where.z, 0
+      ));
+    Else
+      fields.append(CreateEastWestField(who, 100, UOBJ_FIREFIELD_EW,
+        where.x+RandIntMinMax(-range, range),
+        where.y+RandIntMinMax(-range, range), where.z, 0
+      ));
+    EndIf
+  EndFor
+
+  // ab und an Feuerwandsound spielen
+  For (i := 0; i <= duration; i += 1)
+    ForEach field in fields
+      SleepMs(2);
+      PlaySoundEffect(field[1], SFX_1DE);
+    EndForEach
+    Sleep(1);
+  EndFor
+
+  // Feuerfelder wieder zerstören
+  ForEach field in fields
+    ForEach fieldpart in field
+      PlaySoundEffect(fieldpart, SFX_2C);
+      Sleep(1);
+      DestroyItem(fieldpart);
+    EndForEach
+  EndForEach
+EndProgram
+
+// vim: sts=2 sw=2

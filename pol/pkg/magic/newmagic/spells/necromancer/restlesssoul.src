@@ -1,0 +1,91 @@
+//**************************************************************************************************
+// Script file restlesssoul.src
+//
+//    implements spell 329 <Restless Soul> - "Verdammung"
+//
+//	damns spelltarget - for duration of spell, spelltarget cannot resurrect using a gate
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+
+Include "include/spellcheck";
+Include "../magicpergon";
+Include "../spellattack";
+
+program cast_restlesssoul (params)
+
+   Var caster;
+   Var caston;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spellldata
+   Var spell:=  FindConfigElem(spells, SPELLID_NECRO_RESTLESSSOUL);
+   Var dur:=    spell.duration;
+   Var mindur:= spell.durationmin;
+   Var maxdur:= spell.durationmax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+      send_attack(caston, caster, 329);
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_NECRO_RESTLESSSOUL);
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+
+   if (GetObjProperty(caston, "spell_doomed"))				// check if spelltarget is already doomed
+      SendSysMessagePergon(caster, caston.name + " ist bereits verdammt", caston.name + "is already doomed");
+      return;
+   endif
+
+   if (caston.objtype <> UOBJ_CORPSE and caston.dead)		// check if spelltarget is dead and not a corpse
+
+      dur:= CInt(power*dur/100.0);								// calc spell duration according to casting power
+      if (mindur and mindur > dur)
+         dur:= mindur;
+      elseif (maxdur and maxdur < dur)
+         dur:= maxdur;
+      endif
+
+      PlaySoundEffect(caston, SFX_247);
+      PlayObjectCenteredEffect(caston, FX_GLOW_SPIKE, 5, 15);
+
+      SendSysMessagePergon(caster, "Ihr verdammt " + caston.name, "You doom " + caston.name);
+      PrintTextAbovePrivatePergon(caston, "Ihr erfahrt ewige Verdammnis", "You are doomed for eternity", caston);
+
+      Var tag:= array;
+
+      tag[1]:= ReadGameClock() + dur;
+      tag[2]:= power;
+      tag[3]:= ReadMilliSecondClock();
+
+      SetObjProperty(caston, "spell_doomed", tag);			// tag spelltarget for spellchecker
+      SendSpellWaiter(caston, "spell_doomed", dur, tag[3], caston);
+
+   else
+      SendSysMessagePergon(caster, "Das vermögt Ihr nicht zu verdammen", "You are unable to doom this");
+      return;
+   endif
+
+endprogram

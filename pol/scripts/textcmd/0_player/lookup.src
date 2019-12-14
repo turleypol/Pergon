@@ -1,0 +1,38 @@
+//////////////////////////////////////////////////////////////
+//
+//   Moon Phases
+//
+//   Author: Madman Across the Water
+//
+//   Modifications:
+//     2000/03/13 Madman:    create
+//     2000/03/20 Fraggulus: Translation (English -> German)
+//     2000/03/29 Shinigami: Complete ReWrite
+//     08.01.2006 Fraggulus: Umbau in Aufruf des Scripts :daymoonweather:spyglass, welches die gleiche Funktionalitaet hat
+//
+//
+//////////////////////////////////////////////////////////////
+//
+//   Player-TextCommand
+//
+//     .lookup - looks up and sees the position of the moons
+//
+// 11.01.2006 Fraggulus: Korrektur des Parameters
+//
+//////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonutil";
+
+Program TextCMD_LookUp(who)
+  Start_ScriptPergon(":daymoonweather:spyglass", who);
+EndProgram

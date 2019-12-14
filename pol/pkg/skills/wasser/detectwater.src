@@ -1,0 +1,190 @@
+//////////////////////////////////////////////////////////////////////////
+//
+//   Water - System
+//
+//   Author: Pauker
+//           11/2001
+//
+// Modifications:
+//   2003/09/25 Shinigami: In Jhe'lom darf man Wasser finden, trotz Stadt
+//   18.01.2005 Commander: Wassermenge der vein erhoeht, zufallsgesteuert,
+//                         Boni fuer gute Wildniskundler, Skillgain erhoeht
+//   23.08.2005 Turley:    Randomeinfluß auf Wassermenge nur noch 50%, Check auf Blocking+WaterFlag
+//   20.04.2012 Mentholia: Locationsuche mit FindPath(), alles grundlegend umgebaut, kleinere Suchentfernung für gute Wildniskundler,
+//                         QuestArrow zum leichteren finden des sparkles
+//////////////////////////////////////////////////////////////////////////
+
+use os;
+use uo;
+
+include "include/modifyskill";
+include "include/packets";
+
+Program DetectWater(who, item)
+
+  If (!IsEquipped(who, item))
+    SendSysMessagePergon(who, "Ihr müsst den Stab in die Hand nehmen!", "You have to equip this staff!");
+    return;
+  EndIf
+
+  If (!CheckPlace(who))
+    return;
+  Else
+    SendSysMessagePergon(who, "Ihr fangt an, nach Wasser zu suchen...", "You start to dig for water.");
+  EndIf
+
+  var counter, watervein;
+  While (!watervein)
+    
+    var skill := GetSkillPergon(who, SKILLID_WILDNISKUNDE);
+    var range := GetRange(skill);
+    var loc   := FindLocation(who, range);
+    
+    PlaySoundEffect(who, 0x20c);
+    PerformAction(who, ANIM_CAST_AREA);
+    Sleep(1);
+    var sparkle := CreateItemAtLocationPergon(loc.x, loc.y, loc.z, 0xff95, 1, who.realm);
+    
+    If (FoundSomething(who, sparkle))
+      If (!CheckPlace(who))   // Hat sich der Suchende inzwischen in eine unerlaubte Zone bewegt?
+        return;
+      EndIf
+      
+      var thepoints := GetSkillDefaultPoints(SKILLID_WILDNISKUNDE) * 2;
+      If (CheckSkillPergon(who, SKILLID_WILDNISKUNDE, -1, thepoints))
+        SendSysMessagePergon(who, "Ihr hört ein leises Rauschen...", "You hear a gentle rush ...");
+        PlaySoundEffect(who, 0x12);
+        Sleep(3);
+        
+        var wassertemp := CInt((2.231*skill+10)/2);  //Hälfte ist fest, die andere Zufallsbasierend (max 20 bis 300 Liter)
+        var wasser := CInt(RandomInt(wassertemp)+wassertemp+1);
+        var loc := FindLocation(who, range);
+        
+        watervein := CreateItemAtLocationPergon(loc.x, loc.y, loc.z, 0xff96, 1, who.realm);        
+        SetObjProperty(watervein, "wasser", wasser); // die Wassermenge wird gesetzt
+        If (FoundSomething(who, watervein, 0))
+          SendSysMessagePergon(who, "Grabt an dieser Stelle und Ihr werdet auf Wasser stossen.",
+                                    "Dig at this location and you'll find water.");
+        Else
+          SendSysMessagePergon(who, "Ihr wart so nahe dran...", "It was very close...");
+          Sleep(1);
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Hier ist kein Wasser zu finden...", "There isn't any water...");
+        SetWerkzeugSchaden(who, item, "Euer Stab hat gelitten!", "Euer Stab ist stark beschädigt!", "Euer Stab ist zerbrochen!");
+        counter += 1;
+        Sleep(1);
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Ihr habt die markierte Stelle nicht rechtzeitig erreicht.",
+                                "You couldn't arrive at the marked location.");
+      Sleep(1);
+      return;
+    EndIf
+    
+    If (counter == 10)
+      SendSysMessagePergon(who, "Eure Suche nach Wasser war erfolglos, probiert es an einer anderen Stelle.", 
+                                "Your search for water was unsuccessful, try it again at another location.");
+    EndIf
+  EndWhile
+EndProgram
+
+Function IsEquipped(who, item)
+  If (AccessiblePergon(who, item))
+    var equipped := GetEquipmentByLayer(who, LAYER_HAND1);
+    If (equipped.serial != item.serial)
+      return EquipItem(who, item);
+    Else
+      return 1;
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr kommt dort nicht ran!", "You cannot access it!");
+    return;
+  EndIf
+EndFunction
+
+Function CheckPlace(who)
+  var region := PlaceInfos(who);
+
+  If (region.name["Grenznaehe"] or region.name["Feindesland"])
+    SendSysMessagePergon(who, "Ihr befindet Euch zu nahe an einer Gefahrenzohne.",
+                              "You are too close to a dangerous area.");
+    return;
+  ElseIf (region.town and !region.name["Jhe'lom"])
+    SendSysMessagePergon(who, "Ihr befindet Euch zu nahe an " + region.name + ".",
+                              "You are too close to " + region.name + ".");
+    return;
+  ElseIf (region.name["Wueste"] and GetSkillPergon(who, SKILLID_WILDNISKUNDE) <= 80)   //In der Wüste finden nur die Besten etwas
+    SendSysMessagePergon(who, "Es ist schwer in der Wüste Wasser zu finden.",
+                              "It's very hard to find water in the desert.");
+    return;
+  EndIf
+  
+  return 1;
+EndFunction
+
+// Gibt den Suchradius zurück
+// je besser man ist, desto schneller findet man etwas in der Nähe
+Function GetRange(skill)
+  If (skill >= 130)
+    return 3;
+  ElseIf (skill >= 115)
+    return 5;
+  ElseIf (skill >= 100)
+    return 10;
+  ElseIf (skill >= 80)
+    return 15;
+  ElseIf (skill >= 60)
+    return 18;
+  Else
+    return 20;
+  EndIf
+EndFunction
+
+Function FindLocation(who, range)
+  var path, i, loc := struct{x, y, z};
+  For (i := 0; TypeOfInt(path) != OT_ARRAY and i <= 30; i += 1)
+    loc.x := RandomIntMinMax(who.x - range, who.x + range);
+    loc.y := RandomIntMinMax(who.y - range, who.y + range);
+    loc.z := GetStandingHeight(loc.x, loc.y, who.z).z;
+    // Mit FindPath() wird nicht nur sicher gestellt, dass die gefundene Location begehbar ist (Map),
+    // sondern auch, dass dort keine behindernden Items stehen und/oder die Stelle hinter einem Zaun/einer Tür liegt.
+    path   := FindPath(who.x, who.y, who.z, loc.x, loc.y, loc.z,
+                who.realm, FP_IGNORE_MOBILES, range
+              );
+    SleepMS(5);
+  EndFor
+  
+  If (i > 30)
+    SendSysMessagePergon(who, "Ihr findet nichts. Versucht es an einer anderen Stelle.",
+                              "You can't find anything. Try it again at another location.");
+    exit;
+  EndIf
+  
+  return loc;
+EndFunction
+
+Function FoundSomething(who, thing, destroy := 1)
+  
+  SetQuestArrow(who, 1, thing.x, thing.y);
+  
+  While (thing)
+    If (!who.connected or who.dead)
+      exit;
+    EndIf
+    
+    If (!Distance(who, thing))
+      SetQuestArrow(who, 0, thing.x, thing.y);
+      If (destroy)
+        DestroyItem(thing);
+      EndIf
+      return 1;
+    EndIf
+    
+    Sleep(1);
+  EndWhile
+  
+  SetQuestArrow(who, 0, who.x, who.y);
+
+  return 0;
+EndFunction

@@ -1,0 +1,42 @@
+/////////////////////////////////////////////////////////////////////////////
+// Forestfire - Waldbrände
+//
+// Dieses Script soll mal, wenn es denn funktioniert, Waldbrände erzeugen.
+//
+// 2006.02.12  Unforgiven:      Erstanlage
+
+use uo;
+Include "include/msgs";
+Include "include/objtype";
+Include "include/server";
+
+Program Forestscript (who, item)
+    If (who.cmdlevel < CMDLEVEL_QUESTCHAR)
+        return;
+    EndIf
+
+    SendSysMessagePergon(who, "Womit wollt Ihr das anstecken?");
+
+    var fackel := target(who);
+    if (!fackel)
+        SendSysMessagePergon(who, "Zielen abgebrochen.");
+        return;
+    Else
+        If (!( fackel.objtype == 0xf64))
+            SendSysMessagePergon(who, "Keine Fackel gewählt.");
+            return;
+        EndIf
+    EndIf
+
+    if (!(GetObjProperty(item, "script") == "forestscript"))
+        SendSysMessagePergon(who,
+            "Der Baum gehört nicht zum dynamischen Wald. Abbruch"
+        );
+        return;
+    EndIf
+
+    // hier beginnt das "Feuerprogramm"
+    // Ausgelagert, weil sich mehrere Bäume jeweils mit einem neuen Script
+    // "anstecken" (LOL, ich glaub, das wird mein erster Virus)
+    Start_ScriptPergon("burnforest", item);
+EndProgram

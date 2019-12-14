@@ -1,0 +1,29 @@
+//////////////////////////////////
+//
+//   Virtue Pentagramm in der Paperdoll
+//
+//     Author: Turley
+//
+//////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+include "include/pergonutil";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program VirtueButton(who)
+  If (!who.getprop("#spellpowergump"))
+    Start_ScriptPergon(":newmagic:spellpowercontrol",{who});
+  EndIf
+EndProgram

@@ -1,0 +1,43 @@
+///////////////////////////////////////////////////////////////////////////
+//
+//						Bountbox - Box fuer Gesuchte (neues Konzept der verwundbaren Townguards
+//
+//						Author: Hotny
+//						06.08.2006
+//
+//						Modifikations:
+//
+///////////////////////////////////////////////////////////////////////////
+
+use uo;
+use storage;
+
+Include "include/objtype";
+Include "include/msgs";
+Include "include/bountbox";
+Include "include/modifyskill";
+Include "include/npc";
+
+program UseBountBox(who,item)
+	//NPCs fallen raus
+	if (who.isa(POLCLASS_NPC))
+		return;
+	endif
+	//Checken ob BM oder GM	
+	if (IsPersonBMorGM(who))
+		var city;
+		if (who.cmdlevel >= CMDLEVEL_HIGHGM)
+			city:=PlaceName(who);
+		else
+			city:=who.getprop("MajorOf");
+		endif
+		if (!city)
+			SendSysMessagePergon(who,"Ihr habt keine Befugnis jene Kiste zu öffnen","You don't have the rights to open this box");
+		endif
+		// So ab hier darf man sich den Inhalt der Kiste anschauen
+		var BountBox := findbountbox(lower(PlaceName(item)));
+		SendOpenSpecialContainer(who, bountbox);
+	else
+		SendSysMessagePergon(who,"Ihr habt keine Befugnis jene Kiste zu öffnen","You don't have the rights to open this box");
+	endif
+endprogram

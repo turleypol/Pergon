@@ -1,0 +1,422 @@
+// Modifications:
+//   2003/03/21 Shinigami: Fauskampf-"Waffe" hat spezielle Eigenschaften
+//   2004/02/15 Zork:      Das Opfer ausweichen lassen!! Damit den verursachten Schaden reduzieren...
+//   2004/06/24 Fox:       Korrektur Ausweichen Wirkung und Skillanstieg, sowie Volltreffer und Anatomie
+//   2005/12/15 Fox:       Kein zusätzlicher Skill beim Ausweichen im PvP
+//   2006/04/09 Fox:       Anatomieskillgain abhängig von Waffengeschwindigkeit, wie in syshook->HookCombatAdvancementPergon
+//   2008/01/02 Fox:       CalcFaktorFight eingefügt
+
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+use attributes;
+use cfgfile;
+use math;
+use os;
+use uo;
+use util;
+use vitals;
+
+/////////////
+// Includes
+/////////////
+
+include ":combatabilities:combatabilities";
+include ":newspells:resistance";
+include "include/animal";
+include "include/balancing";
+include "include/eventid";
+include "include/modifyskill";
+include "include/npc";
+include "include/packets";
+include "include/poison";
+
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+// is das die armor vom defender?
+// is das die armor, wo der schlag reinhaut (also trefferzone)?
+
+Program MainHitScript(attacker, defender, weapon, armor, basedamage, rawdamage)
+  // var oldattacker := attacker;
+
+  // Statuen machen keinen Schaden
+  var statue := GetObjProperty(attacker, "spell_statue");
+  If (statue)
+    // sichergehen, dass es kein vergessenes Flag ist
+    If (ReadGameClock() < CInt(statue[1]))
+      return;
+    EndIf
+  EndIf
+
+  If (TypeOfInt(attacker) == OT_ARRAY) // Aufruf via eigenem Combat
+    defender   := attacker[2];
+    weapon     := attacker[3];
+    armor      := attacker[4];
+    basedamage := attacker[5];
+    rawdamage  := attacker[6];
+
+    attacker   := attacker[1];
+  EndIf
+
+  // auskommentiertes Logging {{{
+  // If (GetGlobalProperty("TESTCOMBAT")) // Mal eigenen Combat-Code probieren?
+  //   syslog("TestCombat - "+attacker+" "+attacker.serial+" "+attacker.name+" - "+rawdamage+" / "+basedamage+" / "+oldattacker+" / "+TypeOf(oldattacker));
+  // Else
+  //   syslog("CoreCombat - "+attacker+" "+attacker.serial+" "+attacker.name+" - "+rawdamage+" / "+basedamage+" / "+oldattacker+" / "+TypeOf(oldattacker));
+  // EndIf
+
+  // basedamage := 0;
+  // rawdamage := 0;
+
+  // If (weapon)
+  //   syslog("COMBATDEBUG: MainHitScript "+attacker.name+" "+attacker.npctemplate+" traegt "+weapon.desc);
+  // Else
+  //   syslog("COMBATDEBUG: MainHitScript "+attacker.name+" "+attacker.npctemplate+" hat 'ne FEHLERhafte Waffe!");
+  // EndIf
+
+  // syslog("COMBATDEBUG: MainHitScript "+attacker.name+" "+GetHPPergon(attacker)+" ("+Lower(Hex(weapon.serial))+") -> "+
+  //   defender.name+" "+GetHPPergon(defender)+" ("+Lower(Hex(armor.serial))+") = "+basedamage+" ("+rawdamage+")");
+  // If (!attacker.isa(POLCLASS_NPC))
+  //   SendSysMessagePergon(attacker, "HitScript: "+attacker.name+" -> "+defender.name, "", _DEFAULT_TEXT_FONT, 38);
+  // EndIf
+  // If (!defender.isa(POLCLASS_NPC))
+  //   SendSysMessagePergon(defender, "HitScript: "+attacker.name+" -> "+defender.name, "", _DEFAULT_TEXT_FONT, 38);
+  // EndIf
+  // Set_Debug(1);
+
+  // syslog("HitScript1: "+attacker.name+" ["+attacker.ar+"] -> "+defender.name+" ["+defender.ar+"] ("+basedamage+"/"+rawdamage+")");
+  // }}}
+
+  If (armor) // Gibts ueberhaupt was zum Kaputtgehen?
+    statue := GetObjProperty(defender, "spell_statue");
+    If (statue)                 // weniger Schaden bei einer Statue
+      If (!RandomInt(400))  // 0,25% Chance, also irgendein Wert von 0 bis 400
+        If (!Randomint(2))  // 50% Chance, dass Schild anstatt Rüstung leidet
+          armor.hp -= 1;
+          IncRevision(armor);
+        ElseIf (defender.shield)
+          var shield := defender.shield;
+          shield.hp -= 1;
+          IncRevision(shield);
+        EndIf
+      EndIf
+    ElseIf (!RandomInt(100)) // 1% Chance, also irgendein Wert von 0 bis 99
+      If (!Randomint(2))  // 50% Chance, dass Schild anstatt Rüstung leidet
+        armor.hp -= 1;
+        IncRevision(armor);
+      ElseIf (defender.shield)
+        var shield := defender.shield;
+        shield.hp -= 1;
+        IncRevision(shield);
+      EndIf
+    EndIf
+  EndIf
+
+ // mehr auskommentierter Kram {{{
+ // var arstring := "";
+ // ForEach item in ListEquippedItems(attacker)
+ //   arstring := arstring+item.ar+" ";
+ // EndForEach
+ // syslog(attacker.name+" "+arstring);
+
+ // var arstring := "";
+ // ForEach item in ListEquippedItems(defender)
+ //   arstring := arstring+item.ar+" ";
+ // EndForEach
+ // syslog(defender.name+" "+armor.desc+" "+arstring);
+
+ // If (attacker.isa(POLCLASS_NPC) And (!GetObjProperty(defender, "TestAusweichen"))) // Ganz bloeder Fix... unbedingt ueberarbeiten
+ //   If (attacker.cmdlevel >= CMDLEVEL_SEER)
+ //     SendSysMessagePergon(attacker, "HitScript: "+attacker.name+" -> "+defender.name+" ("+basedamage+"/"+rawdamage+")", "", _DEFAULT_TEXT_FONT, 38);
+ //   EndIf
+ //   If (defender.cmdlevel >= CMDLEVEL_SEER)
+ //     SendSysMessagePergon(defender, "HitScript: "+attacker.name+" -> "+defender.name+" ("+basedamage+"/"+rawdamage+")", "", _DEFAULT_TEXT_FONT, 38);
+ //   EndIf
+ //
+ //   ApplyRawDamagePergon(defender, rawdamage); // Schaden verursachen
+ //
+ //   If (attacker.cmdlevel >= CMDLEVEL_SEER)
+ //     SendSysMessagePergon(attacker, "DealDamage: "+attacker.name+" -> "+defender.name+" ("+rawdamage+")", "", _DEFAULT_TEXT_FONT, 90);
+ //   EndIf
+ //   If (defender.cmdlevel >= CMDLEVEL_SEER)
+ //     SendSysMessagePergon(defender, "DealDamage: "+attacker.name+" -> "+defender.name+" ("+rawdamage+")", "", _DEFAULT_TEXT_FONT, 90);
+ //   EndIf
+ //
+ //   return;
+ // EndIf
+ // }}}
+
+  // Definition der Waffe holen
+  var itemdesc := ReadConfigFile("::itemdesc");
+  If (!itemdesc)
+    syslog("FEHLER: Kann globale itemdesc.cfg nicht oeffnen!");
+    return;
+  EndIf
+
+  var itemdef := itemdesc[weapon.objtype];
+  If (!itemdef)
+    syslog(
+      "FEHLER: Konnte die Waffe "+LHex(weapon.objtype)+
+      " nicht in der itemdesc.cfg finden!"
+    );
+    return;
+  EndIf
+
+  // Debugging Output fuer CommandLevel-Chars
+  If (attacker.cmdlevel >= CMDLEVEL_SEER)
+    SendSysMessagePergon(attacker,
+      "HitScript: "+attacker.name+" -> "+defender.name+
+      " ("+basedamage+"/"+rawdamage+")", "", _DEFAULT_TEXT_FONT, 38
+    );
+  EndIf
+  If (defender.cmdlevel >= CMDLEVEL_SEER)
+    SendSysMessagePergon(
+      defender, "HitScript: "+attacker.name+" -> "+defender.name+
+      " ("+basedamage+"/"+rawdamage+")", "", _DEFAULT_TEXT_FONT, 38
+    );
+  EndIf
+  // syslog(
+  //   "HitScript2: "+attacker.name+" ["+attacker.ar+"] -> "+
+  //   defender.name+" ["+defender.ar+"] ("+basedamage+"/"+rawdamage+")"
+  // );
+
+  // Darf das Item vom Typ Waffe auch als Waffe benutzt werden?
+  If (itemdef.noweapon)
+    // Wird der Gegenstand missbraucht? Soll er weggelegt werden?
+    If (!attacker.isa(POLCLASS_NPC)) // Nur Player erhalten die Nachricht
+      SendSysMessagePergon(attacker,
+        "Ihr legt "+EntferneA(weapon.desc)+" aus Vorsicht weg.", ""
+      );
+    EndIf
+    
+    var success := MoveItemToContainer(weapon, attacker.backpack);
+    If (!success)
+      success := MoveObjectToLocation(weapon, attacker.x, attacker.y, attacker.z);
+      If (!success)
+        If (!attacker.isa(POLCLASS_NPC))
+          SendSysMessagePergon(attacker,
+            EntferneA(weapon.desc)+" konnte nicht beiseite gelegt werden:\n"+success.errortext, ""
+          );
+        Else
+          syslog(ItemInfoStr(weapon)+" konnte nicht beiseite gelegt werden. ("+success.errortext+")");
+        EndIf
+      EndIf
+    EndIf
+    return;
+  EndIf
+  
+  // Fernkampfwaffe erleidet zu 0.5% Schaden
+  If (itemdef.projectile && !RandomInt(200))
+    weapon.hp -= 1;
+    IncRevision(weapon);
+  EndIf
+
+  // Ruestungs- und Waffenbeschaedigung pruefen und ggf. zerstoeren
+  CheckWerkzeugSchaden(defender, armor);
+  CheckWerkzeugSchaden(defender, defender.shield);
+  If (weapon.objtype != 0xf020) // Faustkampf kann sich nicht abnutzen ...
+    If (CheckWerkzeugSchaden(attacker, weapon))
+      // Abbruch, nur wenn Waffe kaputtgeht (kein Schaden...)
+      return;
+    EndIf
+  EndIf
+
+  // Anatomie-Skillzuwachs ermitteln
+  var points := 0.0;
+  If (!attacker.isa(POLCLASS_NPC)) // Wenn Player, dann Punkte
+    var faktor := 1.0;
+    var itemdef := itemdesc[weapon.objtype];
+    If (itemdef)
+      // sorgt dafür das über eine feste Zeit der Skillgain für
+      // verschiedene Waffen gleich ist (noch mit Fehler von 20%
+      // schnellste zu langsamste Waffe)
+      faktor := 50.0/CDbl(itemdef.Speed);
+      // If (attacker.cmdlevel >= CMDLEVEL_SEER)
+      //   SendSysMessagePergon(attacker,
+      //     "Mainhitskript: Anatomy (Speed/Multi)"+itemdef.speed+"/"+faktor,
+      //     "", _DEFAULT_TEXT_FONT, 38
+      //   );
+      // EndIf
+    EndIf
+    // ! wird der Modifizierende Faktor (2.0) geändert muss die Änderung
+    // auch in modifyskill.inc nachgezogen werden
+
+    // Teilen durch 2 vieleicht weil Anatomy trainieren mit Obduktion
+    // langsamer ist (längerer Timeout)
+    points := GetSkillDefaultPoints(SKILLID_ANATOMIE)*faktor/2.0;
+    points *= CalcFaktorFight(
+      attacker, defender, SKILLID_ANATOMIE, 1, attacker, 0
+    );
+  EndIf
+
+  var dealdamage := rawdamage;
+
+  // :combatabilities:
+  // ArmorIgnore, DamageMastery und Feint Ability ganz am Anfang
+  // behandeln
+  If (!attacker.isA(POLCLASS_NPC))
+    If (attacker.getprop(AB_CPROP))
+      PraeAusweichenAttacker(attacker, defender, basedamage, dealdamage);
+    EndIf
+  EndIf
+  If (!defender.isA(POLCLASS_NPC))
+    If (defender.getprop(AB_CPROP))
+      PraeAusweichenDefender(attacker, defender, dealdamage);
+    EndIf
+  EndIf
+
+  // Elementarschaden, Anatomie, Faustkampfstrboni
+  // geben Dmgboni vor Ausweichen, kann aber noch durch Schildkampf
+  // gesenkt werden
+  var dmgboni := 0;
+
+  // Elementarschaden addieren
+  If (weapon.getprop("spell_damage"))
+    var element := weapon.getprop("spell_damage")[2];
+    If (element)
+      var resist;
+      resist := 1-CDbl(GetResistance(defender, element));
+      resist*=CInt(weapon.getprop("damage_"+element));
+      dmgboni += resist;
+    EndIf
+  EndIf
+
+  If (!attacker.isa(POLCLASS_NPC)) // Wohl zu heftig bei NPCs
+    If (CheckSkillPergon(attacker, SKILLID_ANATOMIE, -1, points))
+      // Fox-Anatomie
+      dmgboni += GetSkillPergon(attacker, SKILLID_ANATOMIE)/6;
+    EndIf
+
+    // Beim Faustkampf haengt der Schaden auch von der Staerke ab
+    If (weapon.objtype == 0xf020)
+      dmgboni += GetStrPergon(attacker)/13;
+    EndIf
+  EndIf
+
+  If (dmgboni>0)  // Damit Schildkampf und Ausweichen ausgeglichen ist
+    If (defender.shield)  // Core-like-Check
+      If (RandomFloat(1.0)<(GetSkillPergon(defender, SKILLID_SCHILDKAMPF)/200.0))
+        dmgboni*=0.5;
+      EndIf
+    EndIf
+    dealdamage += Max(0, dmgboni);
+  EndIf
+
+  If (!defender.isa(POLCLASS_NPC)) // Wenn Player, dann Punkte
+    points := GetSkillDefaultPoints(SKILLID_AUSWEICHEN)*CalcFaktorFight(defender, attacker, SKILLID_AUSWEICHEN, 1, defender, 0);
+    points := CINT(points/16.0);
+    // Für die Rawpoints
+    CheckSkillPergon(defender, SKILLID_AUSWEICHEN, -1, points);
+  EndIf
+
+  If (RandomFloat(1.0)<(GetSkillPergon(defender, SKILLID_AUSWEICHEN)/140.0))
+    var damage_divisor := (GetSkillPergon(defender, SKILLID_AUSWEICHEN)+50+GetDexPergon(defender)*0.2)*0.0085;
+    If (damage_divisor>1.0)
+      dealdamage := Max(dealdamage/damage_divisor, 0);
+    EndIf
+  EndIf
+
+  // Erstmal haben nur Player ueberhaupt die Chance auf soetwas
+  // (Diskussion steht an)
+  If (!attacker.isa(POLCLASS_NPC))
+    // Besteht die Chance auf einen toedlichen Treffer (Fechten & Bogen)?
+    If (itemdef.criticalhit)
+      If (armor) // Hat der Angegriffene ein Schild in der Hand?
+        If (RandomInt(200) <= itemdef.criticalhit)
+          // Japp, das Opfer stirbt sofort, halbe Chance
+          If (RandomInt(100)<10)
+            // Von obiger Chance nochmal 10% fuer schweren Critical Hit
+            dealdamage*=6; // Fox-CriticalHit
+            SendSysMessagePergon(
+              attacker, "Ihr landet einen Volltreffer.", ""
+            );
+          Else
+            dealdamage*=2; // Das Schild bremst doch etwas ...
+            SendSysMessagePergon(attacker,
+              "Ihr landet einen schweren Treffer.", ""
+            );
+          EndIf
+        EndIf
+      Else // hat keinen Schild
+        If (RandomInt(100) <= itemdef.criticalhit)
+          // Japp, das Opfer stirbt sofort, volle Chance
+          If (RandomInt(100)<10)
+            // Von obiger Chance nochmal 10% fuer schweren Critical Hit
+            dealdamage*=6; // Fox-CriticalHit
+            SendSysMessagePergon(
+              attacker, "Ihr landet einen Volltreffer.", ""
+            );
+          Else
+            dealdamage*=3;
+            SendSysMessagePergon(
+              attacker, "Ihr landet einen schweren Treffer.", ""
+            );
+          EndIf
+        EndIf
+      EndIf
+    EndIf
+  EndIf
+
+  // Kampffähigkeiten auswerten :combatabilities:
+  If (!attacker.isA(POLCLASS_NPC))
+    If (attacker.getprop(AB_CPROP))
+      PostAusweichenAttacker(attacker, defender, dealdamage);
+    EndIf
+  EndIf
+  If (!defender.isA(POLCLASS_NPC))
+    If (defender.getprop(AB_CPROP))
+      PostAusweichenDefender(attacker, defender, dealdamage);
+    EndIf
+  EndIf
+  // erst am Ende vorher double Berechnung
+  dealdamage := CInt(dealdamage);
+  // Den letzten erfolgreichen Schlag merken
+  LogLastHit(defender, attacker, weapon);
+  ApplyRawDamagePergon(defender, dealdamage); // Schaden verursachen
+
+  // Vergiftete Waffe
+  var poisonlvl := GetPoisonLevel(weapon);
+  If (poisonlvl)
+    var poison := RandomIntMinMax(3, 6);
+    If (poisonlvl<poison*2)
+      poison := poisonlvl/2;
+      SetPoisonLevel(weapon, 0); // Zwecks Rundungsfehler direkt auf 0
+      IncRevision(weapon);
+    Else
+      AddPoisonLevel(weapon, -poison*2);
+    EndIf
+    AddPoisonLevel(defender, poison, attacker);
+  EndIf
+
+  // Der Spieler könnte stark verletzt sein, also sogar bluten
+  If (!defender.isa(POLCLASS_NPC))
+    var item := defender.backpack;
+    If (item)
+      var listener := GetObjProperty(item, "#Statistik");
+      If (listener)
+        var listenerev := struct;
+        listenerev.+type := SYSEVENT_DAMAGED;
+        listenerev.+source := attacker;
+
+        GetProcess(listener).sendevent(listenerev);
+      EndIf
+    EndIf
+  EndIf
+
+  // Debugging Output fuer CommandLevel-Chars (auskommentiert) {{{
+  // If (attacker.cmdlevel >= CMDLEVEL_SEER)
+  //   SendSysMessagePergon(attacker, "DealDamage: "+attacker.name+" -> "+defender.name+" ("+dealdamage+")", "", _DEFAULT_TEXT_FONT, 90);
+  // EndIf
+  // If (defender.cmdlevel >= CMDLEVEL_SEER)
+  //   SendSysMessagePergon(defender, "DealDamage: "+attacker.name+" -> "+defender.name+" ("+dealdamage+")", "", _DEFAULT_TEXT_FONT, 90);
+  // EndIf
+  // syslog("DealDamage: "+attacker.name+" ["+attacker.ar+"] -> "+defender.name+" ["+defender.ar+"] ("+dealdamage+")");
+  // }}}
+EndProgram
+
+// vim: sw=2 sts=2

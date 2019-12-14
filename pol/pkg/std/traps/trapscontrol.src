@@ -1,0 +1,89 @@
+///////////////////////////////////////////////////////////
+//
+//    Autor: Hotny
+//    Erstellt: 24.05.2007
+//
+///////////////////////////////////////////////////////////
+
+use os;
+use uo;
+use cfgfile;
+use util;
+
+//include "include/poison";
+include "traps";
+
+
+Program trapcontrol(trap)
+
+  SleepMS(20);
+
+  var cfg := ReadConfigFile("create");
+  // var cfg := ReadConfigFile("traps");
+  // var buildersdex := CInt(GetObjProperty(trap, "buildersdex"));
+  var buildersserial := CInt(GetObjProperty(trap, "buildersserial"));
+  var buildersskill := CInt(GetObjProperty(trap, "buildersskill"));
+  // var trap_strength := CInt(GetObjProperty(trap, "trap_strength"));
+  var ViechID := CInt(GetObjProperty(trap,"wishviech"));
+  var trapid := GetObjProperty(trap, "trap");
+  var cfgtrap := FindConfigElem(cfg, trapid);            //Fallenwerte aus der traps.cfg auslesen
+  var expiretime := trap.decayat;                    //lebensdauer der Fallen auslesen
+  var traprange := 5;                                  // umkreis um die Falle darf nichts stehen
+  var sleeptimetocheck := 300;                           //warten bis naechsten Respawn  ??5min (300sec.)??
+  var where := 0;
+
+        //Bonus auf das grosse Netz
+  If(trap.desc=="Fischernetz" OR trap.desc=="zweiklappige_Kastenfalle")
+    sleeptimetocheck := CInt(sleeptimetocheck*2/3);
+    buildersskill := CInt(buildersskill+10);
+  EndIf
+  var RandomTime := sleeptimetocheck - 2*buildersskill-20;
+  If (RandomTime <=0)
+    RandomTime := 0;
+  EndIf
+  sleeptimetocheck := 20 + RandomInt(RandomTime);
+
+  // test auf Land- oder Wasserfalle
+  If(cfgtrap.type==TRAP_TYPE_SEEFALLEN)                 //wenn Wasserfalle
+    where := "sea";
+  Else
+    where := "land";
+  EndIf
+
+  Sleep(sleeptimetocheck); //warten bis zum ersten Viech
+  While(expiretime > ReadGameClock())
+    //falls die Falle abgebaut wurde soll auch das Script aufhoeren.
+    If(!trap)
+      return;
+    EndIf
+    var mobiles := ListMobilesNearLocationEx(trap.x, trap.y, trap.z, traprange, LISTEX_FLAG_NORMAL,trap.realm);
+    If (mobiles.size()>=1)
+      Sleep(sleeptimetocheck);
+    Else
+      var viehID := chooseaviech(trap, "create", buildersskill, where, ViechID);
+      If (viehID)
+        //Es wurde ein Vieh erzeugt, dann abbrechen
+        var jaeger := SystemFindObjectBySerial(buildersserial,SYSFIND_SEARCH_OFFLINE_MOBILES);
+        Set_Critical(1);
+        var cprop := jaeger.getprop("Traps_Skill");
+        If (cprop.CatchedViechs[viehID])
+          cprop.CatchedViechs[viehID]+=1;
+        Else
+          If (cprop.CatchedViechs)
+            cprop.CatchedViechs[viehID] := 1;
+          Else
+            cprop.+CatchedViechs := Dictionary;
+            cprop.CatchedViechs[viehID] := 1;
+          EndIf
+        EndIf
+        jaeger.setprop("Traps_Skill",cprop);
+        Set_Critical(0);
+        expiretime := ReadGameClock()-1;
+      EndIf
+    EndIf
+
+
+    Sleep(sleeptimetocheck);
+  EndWhile
+  DestroyItem(trap);
+EndProgram

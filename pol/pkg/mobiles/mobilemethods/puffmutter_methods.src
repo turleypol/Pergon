@@ -1,0 +1,19 @@
+use uo;
+
+Include ":popuphook:popupmenu";
+
+Program Install()
+	return 1;
+EndProgram
+
+Exported Function haspopup(mobile)
+	return 1;
+	mobile := mobile;
+EndFunction
+
+Exported Function popupinfo(mobile, who)
+	return ({ID_PUFF_RELAX, CLILOC_PUFF_RELAX});
+	
+	mobile := mobile;
+	who := who;
+EndFunction

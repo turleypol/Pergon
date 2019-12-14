@@ -1,0 +1,40 @@
+/*
+ * Spieler ohne Klasse/Beruf blockieren
+ */
+ 
+Include "common";
+ 
+Program BlockWithoutClass(p)
+  If (p.who.isa(POLCLASS_NPC))
+    // NPCs duerfen immer
+    return;
+  EndIf
+  
+  If (!GetObjProperty(p.who, SKKLASSE) || !GetObjProperty(p.who, SKBERUF))
+    SendSysMessagePergon(p.who, "Ihr müsst erst eine Klasse und einen Beruf wählen bevor ihr die Welt Pergon erkunden könnt!",
+      "First you need to choose a class and a profession. After that, you can explore the world of Pergon!",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+    );
+    
+    // Damit er nicht sofort noch einmal auf den Stein tritt
+    p.who.frozen := 1;
+    StepBack(p);
+    Sleep(5);
+    p.who.frozen := 0;
+    
+    ForEach mobile in (ListMobilesInLineOfSight(p.who, 10))
+      If (!mobile.isa(POLCLASS_NPC))
+        continue;
+      EndIf
+      
+      SleepMS(2);
+      
+      If (mobile.npctemplate in {"guildmasterm", "guildmasterw"})
+        PrintTextAbovePergon(p.who, mobile, "Kommt zu mir, wenn Ihr einen Beruf ergreifen wollt!",
+          "If you want to choose a profession, easily come to me!"
+        );
+        break;
+      EndIf
+    EndForEach
+  EndIf
+EndProgram

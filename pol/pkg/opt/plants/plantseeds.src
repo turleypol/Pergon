@@ -1,0 +1,37 @@
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   Plantseeds - ControlScript für Samen
+//
+//     Author: Turley
+//
+// Modification:
+//     07.12.05 Turley - Erste Version
+//     09.12.05 Turley - Verschwinden sollten sie eigentlich nich :)
+//     17.01.06 Turley - CProps nurnoch einmal setzen
+//     17.01.07 Turley - Nicht nur Spawnnetsamen bekommen CProps
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+Use util;
+
+Program plantseeds(seed)
+  Sleep(5); // mal zur Sicherheit ne Sekunde warten, falls die CProp nicht schnell genug gesetzt wird
+  If (GetObjProperty(seed,"spawnnet"))
+    seed.decayat:=0;
+  EndIf
+  If ((!GetObjProperty(seed,"seedtype")) || (!GetObjProperty(seed,"seedcolor")))
+    Case (RandomInt(4))  // Color
+      0:  SetObjProperty(seed,"seedcolor", 0);  // Farblos
+      1:  SetObjProperty(seed,"seedcolor", 1);  // dunkel Rot
+      2:  SetObjProperty(seed,"seedcolor", 5);  // dunkel Gelb
+      3:  SetObjProperty(seed,"seedcolor", 9);  // dunkel Blau
+    EndCase
+    Case (RandomInt(3))  // Seedtype
+      0:  SetObjProperty(seed,"seedtype",1);   // Champion
+      1:  SetObjProperty(seed,"seedtype",9);   // Fern
+      2:  SetObjProperty(seed,"seedtype",17);  // TriBarrel Cactus
+    EndCase
+  EndIf
+EndProgram

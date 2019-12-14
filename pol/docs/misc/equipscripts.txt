@@ -1,0 +1,87 @@
+Equip / Unequip Scripts
+========================
+
+From: "Eric Swanson" <eswanson@crl.com>
+
+I'm considering a modification to the EquipItem function, and want to get
+some feedback before I do it.  This comes from adding equip/unequip scripts.
+
+In case anyone doesn't know, an equip script is a script called just before
+an item is equipped.  If the equip script returns a 'true' value, the item
+is allowed to be equipped.  If it returns a 'false' value, the item is not
+allowed to be equipped.  If the equip script is called, and the equip script
+returns a 'true' value, the item is _guaranteed_ to be equipped.  An unequip
+script is called just before an item is unequipped.  It can return a 'true'
+value to allow the item to be unequipped, or a 'false' value to not allow it
+to be unequipped.
+
+In this way wizard hats, magic rings, cursed swords, whatever, can be
+implemented.
+
+Anyway, a problem arises with the 'EquipItem' function.  The item passed to
+this function is removed from wherever it is - a container, a mobile, the
+ground - before being equipped on the mobile passed.  The trick is that now
+I have to run _both_ the unequip script (to remove it from the current
+mobile) and the equip script (to see if I can add it to the new mobile) to
+see if the operation can happen.
+
+Take for example a wizard hat.  Suppose there were some restriction on
+equipping wizard hats, like your magery had to be above 40.  Suppose a
+wizard hat were equipped on some mage, and EquipItem was called to equip it
+onto someone with 35 magery.  The unequip script would run, removing the INT
+bonus.  Next the equip script would run, and we would learn that the
+equipping can't happen.  So now the item is in limbo - there's no foolproof
+way to avoid this that I can think of (hey, I know, just use a database with
+full commit/rollback semantics..pffffft).  And this is just one example.
+
+So, what I'm thinking of doing is to make EquipItem simply not work on items
+that are currently equipped on a mobile.  It would only work on items that
+are either in a container or on the ground.  Looking at the scripts, I don't
+see any that try to act on equipped items anyway.  Does anyone depend on
+EquipItem operating on currently-equipped items?
+
+-Syzygy
+
+
+
+
+>From: LeoDaBrain@aol.com
+>
+>So items with functions like your wizard hat would have to be re-equipped
+>whenever a character logs in with the item on, right?
+>
+>-Hammerstorm, M:DR
+>
+
+No.  Equip and Unequip scripts are "run-to-completion" which means
+everything stops until they're done.  When you log back in, the wizard hat
+would still be equipped, so the equip script wouldn't need to run again.
+
+The Equip script takes three parameters:
+program equip_script( mobile, item, equiptype );
+
+Equip scripts are called for three different reasons:
+1) During normal operation, an item is equipped (equiptype := 0 /
+EQUIPTYPE_NORMAL)
+2) During system startup, when loading all items from the data directory
+(equiptype :=1 / EQUIPTYPE_STARTUP)
+3) At resurrection, for things whos unequip script returned 0 (equiptype :=
+2 / EQUIPTYPE_RESURRECTION)
+
+This is my current thinking, anyway.  I haven't implemented (3) yet.
+'equiptype' would normally only be checked for items that burn charges when
+they're equipped, if any such items exist.  (I was never a fan of items that
+burned a charge whenever you put them on, but that's just me)
+
+-Syzygy
+
+
+
+CURRENT HOLES
+=============
+    DestroyItem() - unequip scripts aren't called (same problem as EquipItem)
+    An equip script could do something to make the item no longer pass the internal
+      equippable() test - examples would be equipping something else on that layer
+      (for shame..), decreasing the mobile's base strength, or equipping a shield
+      when a two-handed weapon is about to be equipped.
+    EquipFromTemplate

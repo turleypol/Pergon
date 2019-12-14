@@ -1,0 +1,232 @@
+////////////////////////////////////////////////////////////////////////
+// Spawn BookCase - Buecherregal mit vordefinierten Buechern fuellen
+//
+// based on Bookcase Spawning System v0.3 (2000/12/08)
+// Author: Syzygy, Zulu, Bishop Ebonhand
+//
+// Author: Shinigami
+//
+// Benutzte GProp's
+//   Boolean(resetbookcases) - Die Buecherregale neu bestuecken?
+//
+// Benutzte CProp's
+//   Boolean(book.noremove)  - Darf das Buch aus dem Regal entfernt werden?
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use datafile;
+use os;
+use uo;
+use util;
+
+include ":housing:house";
+include "common";
+
+Const GLOBALIZED_BOOK    := 0xff85;
+// spaetestens ab 6 Buechern wird es eng wegen Ueberlappungen
+Const MAX_BOOKS_PER_CASE := 5;
+Const E_REALLY_NO_BOOK   := "No book available";
+Const E_APPROX_NO_BOOK   := "No book today";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program SpawnBookCase(bookcase)
+  // veraltete Property entsorgen
+  EraseObjProperty(bookcase, "notglobalized");
+
+  // nicht alle gleichzeitig loslegen beim Start
+  If (PolCore().uptime < 300)
+    Sleep(RandomIntMinMax(30, 60));
+  EndIf
+
+  // Start-Checks {{{
+  If (!AutoFillAllowed(bookcase))
+    return;
+  EndIf
+
+  var staticbooks := OpenDataFile("staticbooks");
+  If (!staticbooks)
+    syslog("FEHLER: 'staticbooks.cfg' konnte nicht geoeffnet werden!");
+    return;
+  EndIf
+
+  var anzahl := staticbooks.keys().size();
+  If (anzahl <= 0)
+    // gibt keine Buecher
+    return;
+  EndIf // }}}
+
+  // Liste aller Buecher im Regal machen // {{{
+  var books := dictionary{};
+  If (GetGlobalProperty(GPROP_RECREATE_BOOKS))
+    // die Regale sollen neubestueckt werden, daher
+    // bereits vorhandene Buecher loeschen
+    While (1)
+      SleepMs(2);
+      var book := FindObjtypeInContainer(bookcase, GLOBALIZED_BOOK);
+      If (book == error)
+        break;
+      EndIf
+      DestroyItem(book);
+    EndWhile
+  Else
+    // sonst vorhandene Buecher ermitteln
+    ForEach book in EnumerateItemsInContainer(bookcase)
+      SleepMs(2);
+      If (book.objtype != GLOBALIZED_BOOK)
+        // kein Buch
+        continue;
+      EndIf
+
+      var bookid := GetObjProperty(book, PROP_BOOK_ID);
+      If (bookid in books.key())
+        // Duplikate vermeiden
+        DestroyItem(book);
+      EndIf
+
+      // Rest merken
+      books.insert(bookid, book);
+    EndForEach
+  EndIf
+  // }}}
+
+  // bis zu <MAX_BOOKS_PER_CASE> Buecher pro Regal aussuchen // {{{
+  For index := 1 To (MAX_BOOKS_PER_CASE-books.size())
+    SleepMs(2);
+    var bookid := FindNewBook(anzahl, books);
+    If (bookid == error)
+      If (bookid.errortext == E_REALLY_NO_BOOK)
+        // gruendliche Suche wuerde auch bei
+        // weiteren Buechern garantiert scheitern
+        break;
+      EndIf
+      // schnelle Suche hat sich vielleicht nur geirrt
+      continue;
+    EndIf
+
+    var book := CreateItemInContainer(bookcase, 0xff85, 1);
+    If (!book)
+      // alle Rueckgabewerte wuerden wahrscheinlich
+      // in den naechsten Runden ebenfalls auftreten
+      break;
+    EndIf
+
+    // bookid merken
+    books.insert(bookid, book);
+
+    // Buch erzeugen
+    var bookdata := staticbooks.findelement(bookid);
+    var title  := bookdata.getprop("title");
+    var author := bookdata.getprop("author");
+    If (title and author)
+      book.name := title+" von "+author;
+    ElseIf (title)
+      book.name := title;
+    Else
+      book.name := "Verfasst von "+author;
+    EndIf
+
+    // zufaelligen Einband waehlen
+    book.graphic := RandomIntMinMax(0x0fef, 1 + 0x0ff2);
+
+    // Inhalt des Buches zufaellig bestimmen
+    SetObjProperty(book, PROP_BOOK_ID, bookid);
+    // Buch darf nicht aus dem Regal entfernt werden
+    SetObjProperty(book, PROP_BOOK_NO_REMOVE, 1);
+  EndFor // }}}
+
+  // Buecher huebsch ausrichten // {{{
+  If (books.size() <= 0)
+    // leeres Regal, nichts auszurichten
+    return;
+  EndIf
+
+  var pos := array{
+    struct{x := 76, y := 12},
+    struct{x := 96, y := 12},
+    struct{x := 86, y := 24},
+    struct{x := 76, y := 36},
+    struct{x := 96, y := 36}
+  };
+  var num := 1;
+  ForEach bookid in (books.keys())
+    MoveItemToContainer(books[bookid], bookcase, pos[num].x, pos[num].y);
+    num += 1;
+  EndForEach
+  // }}}
+
+  // falls Buchreset war, nach einiger Zeit die GProp wieder loeschen
+  // (temporäre Prop geht hier leider nicht,
+  // die waere beim Startup schon weg)
+  If (GetGlobalProperty(GPROP_RECREATE_BOOKS))
+    Sleep(RandomIntMinMax(300, 600));
+    EraseGlobalProperty(GPROP_RECREATE_BOOKS);
+  EndIf
+EndProgram
+
+Function FindNewBook(anzahl, books) // {{{
+  If (anzahl < 4*MAX_BOOKS_PER_CASE)
+    // es gibt nur wenige Buecher, die ins Regal könnten;
+    // gruendliche Suche ausfuehren
+    var ids_avail := array{};
+    For i := 1 To anzahl
+      SleepMs(2);
+      If (i in books.keys())
+        continue;
+      EndIf
+      ids_avail.append(i);
+    EndFor
+
+    // keine freien Buecher?
+    If (ids_avail.size() <= 0)
+      var ret := error;
+      ret.errortext := E_REALLY_NO_BOOK;
+      return ret;
+    EndIf
+
+    return ids_avail[1+RandomInt(ids_avail.size())];
+  EndIf
+
+  // es gibt eine ganze Menge Buecher
+  // schnelle Suche, damit wir nicht alle abklappern muessen,
+  // dafuer Ergebnis nicht immer optimal
+  For i := 1 To 3
+    var bookid := 1+RandomInt(anzahl);
+    If (bookid in books.keys())
+      // haben wir schon, neuer Versuch
+      continue;
+    EndIf
+    // hatten wir noch nicht
+    return bookid;
+  EndFor
+
+  // Anzahl der Versuche hat nicht gereicht,
+  // um ein noch nicht benutztes Buch zu finden
+  var ret := error;
+  ret.errortext := E_APPROX_NO_BOOK;
+  return ret;
+EndFunction // }}}
+
+Function AutoFillAllowed(bookcase) // {{{
+  If (!GetObjProperty(bookcase, PROP_CASE_AUTOSPAWN))
+    // Regal soll sich nicht selbst verwalten
+    return 0;
+  EndIf
+
+  // nicht richtig aufgebaut
+  If (bookcase.container or bookcase.movable or bookcase.locked)
+    return 0;
+  EndIf
+
+  If (!PlaceTown(bookcase))
+    // nicht in einer Stadt, aber Bibliotheken
+    // soll es nur in Staedten geben
+    return 0;
+  EndIf
+
+  return 1;
+EndFunction // }}}
+
+// vim: sw=2 sts=2

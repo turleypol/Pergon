@@ -1,0 +1,21 @@
+///////////////////////////////////////////////////////////////////////////
+// panelsong
+//
+// spielt Lieder gestartet vom Panel (damit es sofort wieder da ist)
+
+Include "common";
+
+Program PanelSong(params)
+  Var who:=params[1];
+  Var book:=params[2];
+  Var song:=params[3];
+  Var musicdefs:=book.getprop("musicdefs");
+  If (musicdefs[song])
+    If (musicdefs[song][3])
+      // ein Bardenlied spielen
+      PlayBardSong(who, LoadBardSong(musicdefs[song][3]));
+    Else // eine eigene Komposition spielen, ohne Wirkung
+      PlayMelody(who, musicdefs[song][1], musicdefs[song][2]);
+    EndIf
+  EndIf
+EndProgram

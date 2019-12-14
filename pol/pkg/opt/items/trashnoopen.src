@@ -1,0 +1,26 @@
+///////////////////////////////////////////////////////////////////////////
+// trashnoopen -- Oeffnet einen Muelleimer nicht
+
+use uo;
+include "include/msgs";
+
+Const TYP_BARREL := 0x0e77;
+Const TYP_BUCKET := 0x14e0;
+
+Program NoOpen(who, trash)
+    If (trash.container)
+        If (trash.graphic == TYP_BUCKET)
+            trash.graphic := TYP_BARREL;
+        Else
+            trash.graphic := TYP_BUCKET;
+        EndIf
+        return 0;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Wer will denn hier im Müll wühlen? Geh weg!",
+        "No rifling through the waste, please! Go away!"
+    );
+
+    return 0;
+EndProgram

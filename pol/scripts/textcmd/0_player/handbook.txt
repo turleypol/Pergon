@@ -1,0 +1,4 @@
+<h3 id="handbook">handbook</h3>
+
+<p>Startet einen Browser mit dem
+<a data-href="">Handbuch</a>.</p>

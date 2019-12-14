@@ -1,0 +1,91 @@
+//
+// Mais Poliertuch fuer den fuersorglichen Drachenbesitzer
+//
+//
+//
+
+use os;
+use uo;
+
+Include "include/client";
+Include "include/modifyskill";
+
+Const TREUEZEIT := 57600; //sollte die nicht lieber im animal.inc declariert sein?!
+
+program polish(character)
+    SendSysMessagePergon( character, "Tier wählen." );
+    var subject := Target(character);
+
+    if (!subject)
+        SendSysMessagePergon(character, "Zielen abgebrochen");
+        return;
+    elseif (!CheckLineOfSight(character,subject))
+	SendSysMessagePergon(character,"Ihr könnt das gar nicht sehen.");
+	return;
+    elseif (Distance(character, subject) >= 2 )
+        SendSysMessagePergon(character, "So lange Arme habt ihr nicht!");
+        return;
+    elseif( (subject.isa(POLCLASS_MOBILE)) && (!subject.isa(POLCLASS_NPC)) )
+	PolishHuman( character, subject );
+    elseif((!(Lower(subject.npctemplate) in { "giantbeatle", "arswampdragon", "swampdragon", "ridgeback", "lavaridgeback_m", "lavaridgeback_w", "savageridgeback" })))
+	SendSysMessagePergon(character,"Das wollt ihr wirklich nicht polieren.");
+	return;
+    else
+	PolishAnimal( character, subject );
+    EndIf
+
+endprogram
+
+function PolishAnimal( character, subject )
+
+      SendSysMessagePergon(Character, "Ihr poliert " + subject.name + " liebevoll bis er glänzt.");
+      PlaySoundEffect( character, 0x3E4 ); //poliersound
+      SleepMs(2000);
+      if (Lower(subject.npctemplate)=="giantbeatle" )
+	PlaySoundEffect( character, 0x3C2 ); //kaefersound
+      elseif( Lower(subject.npctemplate)["swampdragon"] )
+	PlaySoundEffect( character, 0x2C5 ); //drachensound
+      else
+	PlaySoundEffect( character, 0x2D3 ); //kleiner drachen sound
+      EndIf
+
+    // 1/60 der Treuezeit fuers Streicheln hinzufuegen :)
+    if( GetObjProperty(subject, "master") == character.serial ) //aber nur beim eigenen tier
+    	If (GetObjProperty(subject, "RoamsFreeAt"))
+        	SetObjProperty(subject, "RoamsFreeAt", GetObjProperty(subject, "RoamsFreeAt") + CInt(TREUEZEIT/60.0));
+		//SendSysMessagePergon( character, "punkte " + GetObjProperty(subject, "RoamsFreeAt") );
+
+    	EndIf
+    endif
+
+endfunction
+
+function PolishHuman( character, subject )
+  if(!GetEquipmentByLayer(subject, LAYER_HAIR)) //wenn er keine Haare also Glatze hat
+	if (!GetEquipmentByLayer(subject, LAYER_HELMET)) //wenn er auch noch keine Kopfbedeckung hat
+	  if( character.serial == subject.serial )
+	    SendSysMessagePergon(character, "Ihr poliert eure Glatze bis sie glänzt.");
+	  else
+            SendSysMessagePergon(character, "Was wird wohl " + subject.name + " dazu sagen?");
+            SendSysMessagePergon(character, "Ihr poliert " + subject.name + "s Glatze bis sie glänzt.");
+            SendSysMessagePergon(subject, character.name + " polierte gerade eure Glatze.");
+	  endif
+	  PrintTextAbovePergon(subject, subject, "*wisch*" );
+	  PrintTextAbovePergon(subject, subject, "*wisch*" );
+	  PlaySoundEffect( character, 0x3E4 ); //poliersound
+	else
+          if( character.serial == subject.serial )
+		SendSysMessagePergon(character, "Ihr tragt doch eine Kopfbedeckung! Wollt Ihr die gleich mitpolieren?");
+	  else
+		SendSysMessagePergon(character, subject.name + " trägt doch eine Kopfbedeckung! Wollt Ihr die gleich mitpolieren?");
+	  endif
+	endif
+  else
+        if( character.serial == subject.serial )
+	  SendSysMessagePergon(character, "Ihr habt doch gar keine Glatze! Was wollt Ihr da polieren?");
+	else
+          SendSysMessagePergon(character, subject.name + " hat doch gar keine Glatze! Was wollt Ihr da polieren?");
+	endif
+  endif
+
+endfunction

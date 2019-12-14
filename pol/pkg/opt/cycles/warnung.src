@@ -1,0 +1,54 @@
+/////////////////////////////////////////////////////////////////////
+//
+//   Warnung - Cycle
+//
+//     based on DayNight Pkg (1999/06/02)
+//       Author: Racalac
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     1999/06/02 Rac: Day/Night transitions for one time zone only
+//     2000/04/23 Raxxla: Played around with a little bit
+//     2000/06/01 Shinigami: Complete ReWrite
+//
+/////////////////////////////////////////////////////////////////////
+
+//////////////
+// Libraries
+//////////////
+
+Use os;
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/client";
+Include "include/msgs";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program TimeCycle()
+  BroadcastPergon("Warnungs-Zyklus wird aktiviert...", "Warning-cycle activated...");
+  SysLog("Warnungs-Zyklus wird aktiviert...");
+
+  //Set_Critical/(1);
+
+  While (1)
+    BroadcastPergon("Warnung !!! Der UO-Server wurde verschoben...");
+    BroadcastPergon("Näheres siehe News: TUI-Net.uo");
+
+    ForEach player in EnumerateOnlineCharacters()
+      If (player.x<5120)
+        PlaySoundEffect(player, SFX_THUNDER);
+        PlayLightningBoltEffect(player);
+      EndIf
+    EndForEach
+
+    Sleep(30);
+  EndWhile
+EndProgram

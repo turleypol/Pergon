@@ -1,0 +1,9 @@
+<h3 id="changeclass">changeclass</h3>
+
+<h4>Parameter: keiner oder <kbd>c</kbd> oder <kbd>h</kbd> oder <kbd>k</kbd>
+oder <kbd>m</kbd> oder <kbd>w</kbd></h4>
+
+<p>Ändert die eigene Klasse. Ohne Angabe wird zur nächsten Klasse
+gewechselt. Mit Parameter &bdquo;c&rdquo; oder &bdquo;h&rdquo; wird man
+Handwerker, &bdquo;k&rdquo; oder &bdquo;w&rdquo; machen zum Krieger, und
+mit &bdquo;m&rdquo; wird man Magier.</p>

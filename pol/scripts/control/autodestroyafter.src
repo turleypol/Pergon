@@ -1,0 +1,34 @@
+// "Auto Destroy"-Script
+// Vernichtet Item nach Ablauf der Lebenszeit
+
+use math;
+use os;
+use uo;
+use util;
+
+Program AutoDestroy(item)
+    Sleep(RandomInt(3) + 1);
+    While (item)
+        // kritischer Abschnitt, um Destroyzeitpunkt zu setzen
+        // (könnte sonst Änderung von außen versehentlich überschreiben)
+        Set_Critical(1);
+        var decaytime := GetObjProperty(item, "decaytime");
+        var clock := ReadGameClock();
+        If (decaytime.errortext)
+            // noch keine Zeit gesetzt? -> eine 1 Minute überleben
+            decaytime := clock + 60;
+            SetObjProperty(item, "decaytime", decaytime);
+        EndIf
+        Set_Critical(0);
+        // Ende kritischer Abschnitt
+
+        If (decaytime <= clock)
+            DestroyItem(item);
+            // Schleifentest einsparen
+            return;
+        EndIf
+
+        // passend schlafen
+        Sleep(CInt(Max(1, decaytime - clock - 5)));
+    EndWhile
+EndProgram

@@ -1,0 +1,77 @@
+//////////////////////////////////////////////////////////////////
+//
+//   StepColor - colorizes marble steps (specific command - not for common use!)
+//
+//     Author: SeBB
+//
+//   Modifications:
+//
+//////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/errormsg";
+Include "include/msgs";
+
+///////////////
+// Konstanten
+///////////////
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_ColorizeSteps(who, params)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  Var color;
+
+  params:=SplitWords(params);
+  If ((params.size()>=4) And (params.size() <=5))
+    If ((0<=CInt(params[1])) And (CInt(params[1])<6144))
+      If ((0<=CInt(params[2])) And (CInt(params[2])<4096))
+        If ((0<=CInt(params[3])) And (CInt(params[3])<6144))
+          If ((0<=CInt(params[4])) And (CInt(params[4])<4096))
+            If ((CInt(params[1])<=CInt(params[3])) And (CInt(params[2])<=CInt(params[4])))
+              If (params[5])
+                color:= CInt(params[5]);
+              Else
+              	color:= 0;
+              EndIf
+
+              SendSysMessagePergon(who, "Colorizing Steps...");
+              ForEach object in ListObjectsInBox(CInt(params[1]), CInt(params[2]), -128,
+                                                 CInt(params[3]), CInt(params[4]), 127,who.realm)
+                If (object.isa(POLCLASS_ITEM) And (1800<CInt(object.objtype)) And (CInt(object.objtype)<1822))
+                  object.color:= color;
+                EndIf
+              EndForEach
+              SendSysMessagePergon(who, "...Done");
+            Else
+              SendSysMessagePergon(who, "X2 > X1 and Y2 > Y1 !");
+            EndIf
+          Else
+            SendSysMessagePergon(who, "0 <= Y2 <= 4095 !");
+          EndIf
+        Else
+          SendSysMessagePergon(who, "0 <= X2 <= 6143 !");
+        EndIf
+      Else
+        SendSysMessagePergon(who, "0 <= Y1 <= 4095 !");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "0 <= X1 <= 6143 !");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Usage: .stepcolor x1 y1 x2 y2 [color]");
+  EndIf
+EndProgram

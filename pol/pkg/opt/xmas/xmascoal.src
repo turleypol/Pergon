@@ -1,0 +1,26 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+// - funky xmas coal.
+// updated November 19, 2000
+//
+/////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+
+Include "include/msgs";
+
+Program XMasCoal(who, xmas)
+  If (ReserveItem(xmas))
+    DestroyItem(xmas);
+
+    If (who.gender)
+      SendSysMessagePergon(who, "Ihr müsst ein böses kleines Mädchen gewesen sein!",
+                                "You must have been a little bad girl!");
+    Else
+      SendSysMessagePergon(who, "Ihr müsst ein böser kleiner Junge gewesen sein!",
+                                "You must have been a little bad boy!");
+    EndIf
+    SendSysMessagePergon(who, "Vielleicht bekommt Ihr im nächsten Jahr etwas.",
+                              "Maybe next year you'll be more dutiful.");
+  EndIf
+EndProgram

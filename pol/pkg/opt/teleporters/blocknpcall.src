@@ -1,0 +1,14 @@
+///////////////////////////////////////////////////////////////////////////
+// blocknpcall -- NPCs generell nicht durchlassen
+
+include "common";
+use uo;
+
+Program BlockNpcAll(p)
+    DestroyItem(p.item);
+    // If (!p.who.isa(POLCLASS_NPC))
+    //     return;
+    // EndIf
+
+    // StepBack(p);
+EndProgram

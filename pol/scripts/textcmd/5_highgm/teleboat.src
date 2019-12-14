@@ -1,0 +1,65 @@
+////////////////////////////////////////////////////////////////////////
+//
+//   TeleBoat - Teleportiert ein Boot an die Angegebenen Koordinaten, oder per Target
+//
+//     Author: Turley
+//
+//   Modification:
+//
+////////////////////////////////////////////////////////////////////////
+
+Use uo;
+Use boat;
+
+Include "include/msgs";
+
+const WORLD_X:=5119; //Weltgröße
+const WORLD_Y:=4096;
+
+Program teleboat(who,params)
+  Var mast,tar,koords;
+  SendSysMessagePergon(who,"Zielt auf den Masten.", "Target the mast.");
+  mast:=Target(who, TGTOPT_NOCHECK_LOS);
+  If (mast)
+    If (!params)
+      SendSysMessagePergon(who,"Wohin Bewegen?","Where to move?");
+      tar:=TargetCoordinates(who);
+      If (tar)
+        If (!MoveBoatXY(mast,tar.x,tar.y))
+          If (!TurnBoat(mast,1))
+            TurnBoat(mast,3);
+          EndIf
+          If (!MoveBoatXY(mast,tar.x,tar.y))
+            SendSysMessagePergon(who,"Ziel nicht erreichbar!","Target is not reachable!");
+            SendSysMessagePergon(who,"Abbruch","Abort");
+            Return;
+          EndIf
+        EndIf
+      EndIf
+    Else
+      koords:=SplitWords(params);
+      koords[1]:=CInt(koords[1]);
+      koords[2]:=CInt(koords[2]);
+      If (koords)
+        If ((koords[1]>WORLD_X) || (koords[1]<12) || (koords[2]>WORLD_Y) || (koords[2]<12))
+          SendSysMessagePergon(who,"Koords ausserhalb der Weltgrenze!","Coords out of Border!");
+          Return;
+        EndIf
+        If(!MoveBoatXY(mast,koords[1],koords[2]))
+          If (!TurnBoat(mast,1))
+            TurnBoat(mast,3);
+          EndIf
+          If (!MoveBoatXY(mast,koords[1],koords[2]))
+            SendSysMessagePergon(who,"Ziel nicht erreichbar!","Target is not reachable!");
+            SendSysMessagePergon(who,"Abbruch","Abort");
+            Return;
+          EndIf
+        EndIf
+      EndIf
+    EndIf
+  Else
+    SendSysMessagePergon(who,"Abbruch","Abort");
+    Return;
+  EndIf
+EndProgram
+

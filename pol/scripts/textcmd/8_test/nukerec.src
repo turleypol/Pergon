@@ -1,0 +1,85 @@
+//////////////////////////////////////
+// NukeRec - Destroy Items in Rec
+//
+// Author: Shinigami
+
+// Bibliotheken&Includes
+use cfgfile;
+use os;
+use uo;
+include "include/msgs";
+include "include/objtype";
+include "include/place";
+include "include/varutil";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_NukeRec(who, params)
+  params := SplitWords(params);
+  If (params.size() <> 4)
+    SendSysMessagePergon(who,
+      "Sie müssen 4 Parameter angeben: X1 Y1 X2 Y2",
+      "You've to enter 4 Parameters: X1 Y1 X2 Y2"
+    );
+    return;
+  EndIf
+
+  params := CIntArray(params);
+
+  var coordlist := CheckCoords(
+    array{params[1], params[2], -128}, array{params[3], params[4], 127},
+    who.realm
+  );
+  If (!coordlist)
+    SendSysMessagePergon(who,
+      "Fehler: "+coordlist.errortext,
+      "Error: "+coordlist.errortext
+    );
+    return;
+  EndIf
+
+  var northwest := coordlist[1];
+  var southeast := coordlist[2];
+
+  var count := 0;
+  ForEach item in (ListObjectsInBox(
+      northwest.x, northwest.y, northwest.z,
+      southeast.x, southeast.y, southeast.z,
+      northwest.realm
+  ))
+    SleepMs(2);
+    If (!item.isa(POLCLASS_ITEM))
+      // nur Items abarbeiten, keine Mobiles
+      continue;
+    EndIf
+
+    If (
+      // unsichtbare Items ignorieren
+      item.invisible or
+      // Runen, Stadt- und Gildensteine nicht begrabbeln
+      item.objtype in (array{UOBJ_SPAWNRUNE, UOBJ_TOWNSTONE, UOBJ_GUILDSTONE})
+    )
+      continue;
+    EndIf
+
+    If (item.isa(POLCLASS_CONTAINER))
+      If (EnumerateItemsInContainer(item).size() >= 1)
+        // volle Container verschonen
+        continue;
+      EndIf
+    EndIf
+
+    DestroyItem(item);
+    count += 1;
+  EndForEach
+
+  If (count == 0)
+    SendSysMessagePergon(who, "Es wurd kein Item zerstört.");
+  ElseIf (count == 1)
+    SendSysMessagePergon(who, "Es wurde ein Item zerstört.");
+  Else
+    SendSysMessagePergon(who, "Es wurden "+count+" Items zerstört.");
+  EndIf
+EndProgram

@@ -1,0 +1,13 @@
+Use uo;
+
+Include "include/itemnpc";
+
+Program TextCMD_PlayStationaryEffect(who, params)
+  params:=SplitWords(params);
+  PlayStationaryEffect(who.x+1, who.y+1, who.z, CInt(params[1]), CInt(params[2]), CInt(params[3]), CInt(params[4]),who.realm);
+
+  If (CInt(params[5]))
+    SleepMS(CInt(params[2])*50);
+    CreateItemAtLocationPergon(who.x+1, who.y+1, who.z, CInt(params[5]), 1,who.realm);
+  EndIf
+EndProgram

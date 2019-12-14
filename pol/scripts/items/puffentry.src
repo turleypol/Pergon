@@ -1,0 +1,178 @@
+///////////////////////////////////////////////////////////////////////////
+// puffentry - Item kontrolliert Eingaenge vom Puff und dessen Zimmmern
+//
+// Author: Fraggulus
+
+///////////////////////////////////////////////////////////////////////////
+// auswahl:
+//
+//  1 - Puff-Eingang. Kontrolle ob Propertys korrekt gesetzt,
+//      ob Waffen mitgefuehrt werden und das Gewicht nicht zu hoch ist
+//  2 - Eingang roemisches Zimmer
+//  3 - Eingang Luxus-Zimmer
+//  4 - Eingang Natur-Zimmer
+//  5 - Eingang SM-Zimmer
+
+
+use os;
+use uo;
+include "include/logutil";
+include "include/msgs";
+include "include/npc";
+include "include/server";
+
+Program Puff_Entry(who, walk_item, lx, ly, lz)
+  var auswahl := CInt(GetObjProperty(walk_item, "auswahl"));
+
+  If (auswahl < 1 or auswahl > 5)
+    syslog(
+      "FEHLER: "+ItemInfoStr(walk_item)+" hat ungueltige CProp 'auswahl'"
+    );
+    return;
+  EndIf
+
+  // unnuetz rumstehende Sklaven entfernen
+  CheckForOldSlaves();
+
+
+  // alte Werte beseitigen
+  If (auswahl == 1)
+    If (GetObjProperty(who, "Puff_Austritt"))
+      SendSysMessagePergon(who, "Auf Wiedersehen.", "");
+      EraseObjProperty(who, "Puff_Austritt");
+      EraseObjProperty(who, "Puff_Eintritt");
+      EraseObjProperty(who, "Puff_Wunsch");
+      EraseObjProperty(who, "Puff_WunschMW");
+      return;
+    EndIf
+  EndIf
+
+  If (who.cmdlevel >= CMDLEVEL_SEER)
+    // der Rest ist nur bei Spielern relevant
+    return;
+  EndIf
+
+  If (GetObjProperty(who, "Puff_Austritt"))
+    // man darf immer passieren, wenn man gerade geht
+    return;
+  EndIf
+
+  Case (auswahl)
+  1: // Property-Check
+    If (
+      !GetObjProperty(who, "Puff_Eintritt") or
+      !GetObjProperty(who, "Puff_Wunsch") or
+      !GetObjProperty(who, "Puff_WunschMW")
+    )
+      SendSysMessagePergon(who,
+        "Entweder Ihr habt vergessen zu bezahlen oder "+
+        "Eure Registrierung ist nicht korrekt.", ""
+      );
+      PlayerRausschmeissen(who);
+      return;
+    EndIf
+
+    // Waffen-Check // rekursiv machen!
+    // ... backpack noch rekursiv durchsuchen?
+    If (WaffenEquipt(who))
+      SendSysMessagePergon(who,
+        "Waffen sind hier nicht erlaubt! "+
+        "Bitte hinterlegt sie an einem sicheren Ort."
+      );
+      MoveObjectToLocation(
+        who, walk_item.x, 1+walk_item.y, 0, who.realm,
+        MOVEOBJECT_FORCELOCATION
+      );
+      return;
+    EndIf
+
+    // Gewichts-Check
+    If (who.weight > 250)
+      SendSysMessagePergon(who,
+        "Mit dieser Masse an Inventar werdet Ihr sicher keine Freude "+
+        "hier haben. Bitte legt vor Eintritt so viel wie möglich "+
+        "davon beiseite.", ""
+      );
+      MoveObjectToLocation(
+        who, lx, ly, lz, who.realm, MOVEOBJECT_FORCELOCATION
+      );
+      return;
+    EndIf
+
+    SendSysMessagePergon(who, "Willkommen.", "");
+
+  2:
+    If (GetObjProperty(who, "Puff_Wunsch") != "ROM")
+      SendSysMessagePergon(who, "Ihr habt Euch in der Tür geirrt.", "");
+      MoveObjectToLocation(
+        who, lx, ly, lz, who.realm, MOVEOBJECT_FORCELOCATION
+      );
+    EndIf
+
+  3:
+    If (GetObjProperty(who, "Puff_Wunsch") != "LUXUS")
+      SendSysMessagePergon(who, "Ihr habt Euch in der Tür geirrt.", "");
+      MoveObjectToLocation(
+        who, lx, ly, lz, who.realm, MOVEOBJECT_FORCELOCATION
+      );
+    EndIf
+
+  4:
+    If (GetObjProperty(who, "Puff_Wunsch") != "NATUR")
+      SendSysMessagePergon(who, "Ihr habt Euch in der Tür geirrt.", "");
+      MoveObjectToLocation(
+        who, lx, ly, lz, who.realm, MOVEOBJECT_FORCELOCATION
+      );
+    EndIf
+
+  5:
+    If (GetObjProperty(who, "Puff_Wunsch") != "SM")
+      SendSysMessagePergon(who, "Ihr habt Euch in der Tür geirrt.", "");
+      MoveObjectToLocation(
+        who, lx, ly, lz, who.realm, MOVEOBJECT_FORCELOCATION
+      );
+    EndIf
+  EndCase
+EndProgram
+
+// Setzt den Player vor die Tuer
+Function PlayerRausschmeissen(who)
+  MoveObjectToLocation(
+    who, 2227, 1168, 0, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+  );
+  EraseObjProperty(who, "Puff_Austritt");
+  EraseObjProperty(who, "Puff_Eintritt");
+  EraseObjProperty(who, "Puff_Wunsch");
+  EraseObjProperty(who, "Puff_WunschMW");
+
+  who.facing := 4;
+  PrintTextAbovePergon(who, who, who.name + " wurde rausgeschmissen.");
+EndFunction
+
+// Check, Ob Waffen in der Hand sind
+Function WaffenEquipt(who)
+  var Waffen := 0;
+  ForEach item in ListEquippedItems(who)
+    If (item.hitscript)
+      Waffen := 1;
+    EndIf
+  EndForEach
+
+  return (Waffen);
+EndFunction
+
+// ueberprueft die Gegend nach Lustsklaven, die schon zu lang da stehn
+// (und anscheinend nicht gebraucht werden)
+Function CheckForOldSlaves()
+  ForEach mobile in ListMobilesNearLocation(2219, 1154, 0, 13, REALM_BRITANNIA)
+    If (!Lower(mobile.npctemplate)["lustsklave"])
+      continue;
+    EndIf
+
+    // Sklave steht schon zu lange rum oder hat gar keine Zeitangabe
+    var ts := GetObjProperty(mobile, "TimeStamp");
+    If (!ts or (ts + 900 < ReadGameClock()))
+      KillNPCSilent(mobile, "forgotten prostitute");
+    EndIf
+  EndForEach
+EndFunction

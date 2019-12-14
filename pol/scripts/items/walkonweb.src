@@ -1,0 +1,21 @@
+use attributes;
+use uo;
+// Thanks to Menace from the TUS dev team For letting me borrow his idea!
+include "include/modifyskill";
+include "include/spellcheck";
+
+Program walkon_spiderweb(who)
+  If (who.cmdlevel < CMDLEVEL_SEER)
+    If (!CheckSkillPergon(who, SKILLID_MAGIERESISTENZ, -1, 20))
+      SendSysMessagePergon(who, "Ihr seid in Spinnenweben gefangen!");
+      who.paralyzed := 1;
+      var tag := array;
+      tag[1] := ReadGameClock() + 15;
+      tag[2] := 100;
+      tag[5] := ReadMilliSecondClock();
+      IncRevision(who);
+      SetObjProperty(who, "spell_paralyze", tag);
+      SendSpellWaiter(who, "spell_paralyze", 15, tag[5], who);
+    EndIf
+  EndIf
+EndProgram

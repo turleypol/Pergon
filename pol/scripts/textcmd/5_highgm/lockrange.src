@@ -1,0 +1,99 @@
+///////////////////////////////////////////////
+// LockRange - Locks all Items within Range
+//
+// Author: Shinigami
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use os;
+use uo;
+include "include/msgs";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_LockRange(who, params)
+  params := SplitWords(params);
+
+  If (params.size() <> 4)
+    SendSysMessagePergon(who,
+      "Sie müssen 4 Parameter angeben: X1 Y1 X2 Y2",
+      "You've to enter 4 parameters: X1 Y1 X2 Y2"
+    );
+    return;
+  EndIf
+
+  // in Zahlen konvertieren
+  params[1] := CInt(params[1]);
+  params[2] := CInt(params[2]);
+  params[3] := CInt(params[3]);
+  params[4] := CInt(params[4]);
+
+  // diverse Checks
+  If ((0 > params[1]) or (params[1] >= 6144))
+    SendSysMessagePergon(who,
+      "X1 darf nur 0 bis 6143 sein!",
+      "X1 must be between 0 and 6143!"
+    );
+    return;
+  EndIf
+
+  If ((0 > params[2]) or (params[2] >= 4096))
+    SendSysMessagePergon(who,
+      "Y1 darf nur 0 bis 4095 sein!",
+      "Y1 must be between 0 and 4095!"
+    );
+    return;
+  EndIf
+
+  If ((0 > params[3]) or (params[3] >= 6144))
+    SendSysMessagePergon(who,
+      "X2 darf nur 0 bis 6143 sein!",
+      "X2 must be between 0 and 6143!"
+    );
+    return;
+  EndIf
+
+  If ((0 > params[4]) or (params[4] >= 4096))
+    SendSysMessagePergon(who,
+      "Y2 darf nur 0 bis 4095 sein!",
+      "Y2 must be between 0 and 4095!"
+    );
+    return;
+  EndIf
+
+  // Werte nach Groesse sortieren fuer ListObjectsInBox
+  If (params[1] > params[3])
+    var temp  := params[3];
+    params[3] := params[1];
+    params[1] := temp;
+  EndIf
+  If (params[2] > params[4])
+    var temp  := params[4];
+    params[4] := params[2];
+    params[2] := temp;
+  EndIf
+
+  // los geht's
+  SendSysMessagePergon(who,
+    "LockRange aktiviert ...",
+    "LockRange started ..."
+  );
+
+  ForEach object in (ListObjectsInBox(
+      params[1], params[2], -128, params[3], params[4], 127,who.realm
+  ))
+    SleepMs(2);
+    If (object.isa(POLCLASS_ITEM))
+      // nur Items sind verankerbar
+      object.movable := 0;
+    EndIf
+  EndForEach
+
+  SendSysMessagePergon(who,
+    "Die Objekte wurden verankert. LockRange beendet.",
+    "Objects have been locked. LockRange done."
+  );
+EndProgram

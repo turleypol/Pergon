@@ -1,0 +1,375 @@
+///////////////////////////////////////////////////////////////////////////
+//   Legier2 - Legieren von Metallen v1.0
+//
+//     Author: Paukerli & Goebi
+//     eMail:  ???
+//
+//     Modificator: Goebi & Laas
+//
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.7  2008/07/31 12:08:05  turley
+// Controlscript nur hier setzen für den Smoke
+//
+// Revision 1.6  2008/07/25 22:09:05  mehdorn
+// + Rauch sollte nun waehrend des Vorgangs bleiben
+//
+// 2004/02/09 Turley:    Mehrfachnutzung verhindert
+// 10.02.2005 Commander: Abfrage in der Schleife ob Barren noch accessible sind
+// 2004/09/22 Shinigami: Man kann nimmer zweimal den selben Stapel waehlen
+// 15.10.2003 Fraggulus: in While-Schleife wird auf Tod des Spielers geprueft
+// 01.09.2003 Fraggulus: Reag Obsidian faellt ab und zu beim Legieren von
+//                       Obsidian ab
+// 26.03.2003 Fraggulus: Fehlende Kombination Holmium+Promethium ergänzt
+// 20.02.2003 Fraggulus: Tippfehler korrigiert
+// 17.02.2003 Fraggulus: Fehler bei der Kombination der Legierungen korrigiert
+// 2002/07/...
+
+use attributes;
+use os;
+use uo;
+use util;
+use vitals;
+
+include "include/client";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/objtype";
+
+var hat_legiert := 0;
+var UOBJ_SCHMIEDEFEUER := {UOBJ_SMALL_FORGE, 0x197A, 0x19A2, 0x19A6, 0x1982, 0x199E};
+
+Const SOUND_EFFECT_EXPLOSION := SFX_208;
+Const EFFECT_EXPLOSION := FX_EXPLODE_3;
+Const SOUND_EFFECT_BELLOWS := SFX_2C;
+Const SOUND_EFFECT_BUBBLE := SFX_22;
+
+
+Program ItemUse_BarrenSchmelzen(who, use_on)
+
+  SendSysMessagePergon(who, "Wählt den ersten Barren!", "");
+
+  var barren1 := target(who);
+  If ( (!AccessiblePergon(who,barren1)) or (distance(who, barren1) > 1) )
+    SendSysMessagePergon(who, "Ihr kommt da nicht ran.", "");
+    return;
+  EndIf
+
+  If (!ReserveItem(barren1))
+    SendSysMessagePergon(who, "Dieser Gegenstand ist bereits in Gebrauch.");
+    return;
+  EndIf
+
+  If ( ((barren1.objtype>=UOBJ_BARREN_START) And (barren1.objtype<=UOBJ_BARREN_END)) or (barren1.objtype==UOBJ_GOLD_BARREN) or (barren1.objtype==UOBJ_GLASS))
+    If (!CheckLegierenSkill(who, barren1))
+      SendSysMessage_NoChance(who);
+      return;
+    EndIf
+  EndIf
+
+  SendSysMessagePergon(who, "Wählt den zweiten Barren!", "");
+
+  var barren2 := target(who);
+  If ( (!AccessiblePergon(who,barren2)) or (distance(who, barren2) > 1) )
+    SendSysMessagePergon(who, "Ihr kommt da nicht ran.", "");
+    return;
+  EndIf
+  If (barren1.serial==barren2.serial)
+    SendSysMessagePergon(who, "Ihr solltet einen anderen als den ersten Barren auswählen!", "");
+    return;
+  EndIf
+
+  If (!ReserveItem(barren2))
+    SendSysMessagePergon(who, "Dieser Gegenstand ist bereits in Gebrauch.");
+    return;
+  EndIf
+
+  If ( ((barren2.objtype>=UOBJ_BARREN_START) And (barren2.objtype<=UOBJ_BARREN_END)) or (barren2.objtype==UOBJ_GOLD_BARREN) or (barren2.objtype==UOBJ_GLASS))
+    If (!CheckLegierenSkill(who, barren2))
+      SendSysMessage_NoChance(who);
+      return;
+    EndIf
+  EndIf
+
+  Case (barren1.objtype)
+    UOBJ_EISEN_BARREN:      If (barren2.objtype==UOBJ_MOLYBDAEN_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_CERIUM_BARREN);
+                            EndIf
+    UOBJ_MOLYBDAEN_BARREN:  If (barren2.objtype==UOBJ_EISEN_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_CERIUM_BARREN);
+                            ElseIf (barren2.objtype==UOBJ_MANGAN_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_PRODYMIUM_BARREN);
+                            EndIf
+    UOBJ_MANGAN_BARREN:     If (barren2.objtype==UOBJ_MOLYBDAEN_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_PRODYMIUM_BARREN);
+                            ElseIf (barren2.objtype==UOBJ_IRIDIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_NEODYMIUM_BARREN);
+                            EndIf
+    UOBJ_IRIDIUM_BARREN:    If (barren2.objtype==UOBJ_MANGAN_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_NEODYMIUM_BARREN);
+                            ElseIf (barren2.objtype==UOBJ_TENERUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_PROMETHIUM_BARREN);
+                            EndIf
+    UOBJ_TENERUM_BARREN:    If (barren2.objtype==UOBJ_IRIDIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_PROMETHIUM_BARREN);
+                            ElseIf (barren2.objtype==UOBJ_INDIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_SAMARIUM_BARREN);
+                            EndIf
+    UOBJ_INDIUM_BARREN:     If (barren2.objtype==UOBJ_LANTHAN_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_ROPIUM_BARREN);
+                            ElseIf (barren2.objtype==UOBJ_TENERUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_SAMARIUM_BARREN);
+                            EndIf
+    UOBJ_LANTHAN_BARREN:    If (barren2.objtype==UOBJ_WOLFRAM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_GADONIUM_BARREN);
+                            ElseIf (barren2.objtype==UOBJ_INDIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_ROPIUM_BARREN);
+                            EndIf
+    UOBJ_WOLFRAM_BARREN:    If (barren2.objtype==UOBJ_PLATIN_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_TERBIUM_BARREN);
+                            ElseIf (barren2.objtype==UOBJ_LANTHAN_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_GADONIUM_BARREN);
+                            EndIf
+    UOBJ_PLATIN_BARREN:     If (barren2.objtype==UOBJ_CHROM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_HOLMIUM_BARREN);
+                            ElseIf (barren2.objtype==UOBJ_WOLFRAM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_TERBIUM_BARREN);
+                            EndIf
+    UOBJ_CHROM_BARREN:      If (barren2.objtype==UOBJ_TITANIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_ERBIUM_BARREN);
+                            ElseIf (barren2.objtype==UOBJ_PLATIN_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_HOLMIUM_BARREN);
+                            EndIf
+    UOBJ_TITANIUM_BARREN:   If (barren2.objtype==UOBJ_CHROM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_ERBIUM_BARREN);
+                            ElseIf (barren2.objtype==UOBJ_GLASS)
+                                legieren(who, use_on, barren1, barren2, UOBJ_TITAN_OBSIDIAN_BARREN);
+                            EndIf
+
+    UOBJ_CERIUM_BARREN:     If (barren2.objtype==UOBJ_ROPIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_SOLARUM_BARREN);
+                            EndIf
+    UOBJ_PRODYMIUM_BARREN:  If (barren2.objtype==UOBJ_GADONIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_HYDRIUM_BARREN);
+                            EndIf
+    UOBJ_NEODYMIUM_BARREN:  If (barren2.objtype==UOBJ_TERBIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_LAVARIUM_BARREN);
+                            EndIf
+    UOBJ_PROMETHIUM_BARREN: If (barren2.objtype==UOBJ_HOLMIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_TERADIUM_BARREN);
+                            EndIf
+    UOBJ_SAMARIUM_BARREN:   If (barren2.objtype==UOBJ_ERBIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_TERATUM_BARREN);
+                            EndIf
+    UOBJ_ERBIUM_BARREN:     If (barren2.objtype==UOBJ_ERBIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_ENERGIUM_BARREN);
+                            ElseIf (barren2.objtype==UOBJ_SAMARIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_TERATUM_BARREN);
+                            EndIf
+    UOBJ_ROPIUM_BARREN:     If (barren2.objtype==UOBJ_CERIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_SOLARUM_BARREN);
+                            EndIf
+    UOBJ_GADONIUM_BARREN:   If (barren2.objtype==UOBJ_PRODYMIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_HYDRIUM_BARREN);
+                            EndIf
+    UOBJ_TERBIUM_BARREN:    If (barren2.objtype==UOBJ_NEODYMIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_LAVARIUM_BARREN);
+                            EndIf
+    UOBJ_HOLMIUM_BARREN:    If (barren2.objtype==UOBJ_PROMETHIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_TERADIUM_BARREN);
+                            EndIf
+
+    UOBJ_GOLD_BARREN:       If (barren2.objtype==UOBJ_GLASS)
+                                legieren(who, use_on, barren1, barren2, UOBJ_OBSIDIAN_BARREN);
+                            EndIf
+    UOBJ_GLASS:             If (barren2.objtype==UOBJ_GOLD_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_OBSIDIAN_BARREN);
+                            ElseIf (barren2.objtype==UOBJ_TITANIUM_BARREN)
+                                legieren(who, use_on, barren1, barren2, UOBJ_TITAN_OBSIDIAN_BARREN);
+                            EndIf
+
+    default: SendSysMessagePergon(who, "Ihr könnt das nicht legieren!", "");
+             return;
+  EndCase
+
+  If (!hat_legiert)
+    SendSysMessagePergon(who, "Ihr habt keine machbare Legierung gewählt!", "");
+  EndIf
+
+EndProgram
+
+
+Function legieren(who, use_on, barren1, barren2, product)
+
+  hat_legiert := 1;
+  var anzahl_barren1 := getamount(barren1);
+  var anzahl_barren2 := getamount(barren2);
+  var barren_pro_durchlauf;
+  var barren_max := anzahl_barren1;
+  If (anzahl_barren2<barren_max)
+    barren_max := anzahl_barren2;
+  EndIf
+
+  // Werkzeug auslesen
+  SendSysMessagePergon (who, "Wählt den Schmelztiegel mit dem Ihr arbeiten wollt.", "");
+  var tool := target(who);
+  If (! ((tool) and ((tool.objtype==0x7051) or (tool.objtype==0x09e2))) )
+    SendSysMessagePergon (who, "Das ist kein Schmelztiegel!", "");
+    return 0;
+  EndIf
+  If ( (!AccessiblePergon(who,tool)) or (distance(who, tool) > 1) )
+    SendSysMessagePergon(who, "Ihr könnt den Schmelztiegel nicht benutzen!", "");
+    return 0;
+  EndIf
+  ReserveItem(tool);
+
+  If ((tool.objtype==0x09e2) and (barren_max<10))
+    SendSysMessagePergon (who, "Ihr habt zu wenig Barren um den gr. Schmelztiegel benutzen zu können.", "");
+    return 0;
+  EndIf
+
+  var skill1 := CheckLegierenSkill(who, barren1);
+  If (!skill1)
+    return 0;
+  EndIf
+
+  var skill2 := CheckLegierenSkill(who, barren2);
+  If (!skill2)
+    return 0;
+  EndIf
+
+  If (skill2>skill1)
+    skill1 := skill2;
+  EndIf // skill1 uebernimmt den groessten skill%
+
+  If (tool.objtype==0x09e2)
+    skill1+=10; // +10% skill wenn man mit dem gr. Schmelztiegel arbeitet, wegen der Menge
+    barren_pro_durchlauf := 20;
+  Else
+    barren_pro_durchlauf := 5;
+  EndIf
+
+  var smelztiegel := GetPropertyItem(tool);
+
+  If ( (GetSkillPergon( who, SKILLID_ERZVERARBEITUNG)+5+smelztiegel.quality) < skill1 )
+    SendSysMessagePergon(who, "Ihr habt nicht die geringste Chance, etwas mit dem Material anzufangen!", "");
+    return 0;
+  EndIf
+
+  var descriptor:=GetItemDescriptor(FX_SMOKE);
+  descriptor.controlscript:="autodestroyafter";
+  descriptor.movable:=0;
+  var rauch := CreateItemAtLocationPergon(
+    use_on.x+1, use_on.y+1, use_on.z+15, descriptor, 1, use_on.realm
+  );
+
+  While ((barren_max >= barren_pro_durchlauf) && !who.dead && who.connected)
+    SetObjProperty(rauch, "decaytime", ReadGameClock() + 10);
+    performaction(who, UACTION_SMELT);
+    PlaySoundEffect(who, SOUND_EFFECT_BELLOWS);
+    Sleep(1);
+    PlaySoundEffect(who, SOUND_EFFECT_BUBBLE);
+    Sleep(1);
+
+    If (Distance(who, use_on) > 1)
+      SendSysMessagePergon(who, "Ihr seid zu weit weg vom Schmiedefeuer.", "");
+      destroyitem(rauch);
+      return 0;
+    EndIf
+
+    If ( !AccessiblePergon(who,barren1) or (distance(who, barren1) > 1) or !AccessiblePergon(who,barren2) or (distance(who, barren2) > 1) )
+      SendSysMessagePergon(who, "Ihr kommt an einen der Barrenstapel nicht mehr heran.", "");
+      destroyitem(rauch);
+      return;
+    EndIf
+
+    If (CheckSkillPergon(who, SKILLID_ERZVERARBEITUNG, cint(skill1-smelztiegel.quality), cint(skill1*(10+barren_pro_durchlauf))))
+      var item := CreateItemInBackpackPergon(who, product, barren_pro_durchlauf);
+      rauch.color := item.color;
+      SendSysMessagePergon(who, "Ihr fertigt "+barren_pro_durchlauf+" von "+item.desc+" und legt Sie in Euren Rucksack.", "");
+      SubtractAmount(barren1, barren_pro_durchlauf);
+      SubtractAmount(barren2, barren_pro_durchlauf);
+
+      // Reagenzie Obsidian ab und zu erhalten
+      If (product == UOBJ_OBSIDIAN_BARREN)
+        var obsidianteile := CInt(barren_pro_durchlauf/2.0);
+        If ((obsidianteile > 0) && (RandomInt(1000) < 10))
+          SendSysMessagePergon(who, "Euch fallen aus Versehen " + barren_pro_durchlauf + " Barren herunter und zersplittern.", "");
+          SubtractAmount(item, barren_pro_durchlauf);
+          item := CreateItemInBackpackPergon(who, UOBJ_OBSIDIAN, obsidianteile);
+          If (!item)
+            SendSysMessagePergon(who, "Euer Rucksack ist zu voll!", "You backpack is full!");
+          EndIf
+        EndIf
+      EndIf
+    Else
+      If ((randomint(100)+1)>90)
+        SendSysMessagePergon(who, "Irgendetwas ist schief gelaufen!!", "", _DEFAULT_TEXT_FONT, 0x22);
+        Sleep(2);
+        PlayObjectCenteredEffect(who, EFFECT_EXPLOSION, 10,10);
+        ApplyRawDamagePergon(who, randomint(30)+10);
+        PlaySoundEffect(who, SOUND_EFFECT_EXPLOSION);
+        SubtractAmount(barren1, barren_pro_durchlauf);
+        SubtractAmount(barren2, barren_pro_durchlauf);
+        destroyitem(rauch);
+        return 1;
+      Else
+        SubtractAmount(barren1, cint(barren_pro_durchlauf/2.0));
+        SubtractAmount(barren2, cint(barren_pro_durchlauf/2.0));
+        SendSysMessagePergon(who, "Das ging daneben.", "");
+        If (SetWerkzeugSchaden(who, tool, "Euer Schmelztiegel hat gelitten!", "Euer Schmelztiegel ist stark beschädigt!", "Euer Schmelztiegel ist zerbrochen!"))
+          destroyitem(rauch);
+          return 0;
+        EndIf
+      EndIf
+    EndIf
+    barren_max := getamount(barren1);
+    If (getamount(barren2)<barren_max)
+      barren_max := getamount(barren2);
+    EndIf
+    Sleep(1);
+  EndWhile
+  destroyitem(rauch);
+EndFunction
+
+
+Function CheckLegierenSkill(who, barren1)
+  Case (barren1.objtype)
+    UOBJ_EISEN_BARREN:      return 50;
+    UOBJ_GLASS:             return 55;
+    UOBJ_GOLD_BARREN:       return 60;
+    UOBJ_MOLYBDAEN_BARREN:  return 65;
+    UOBJ_MANGAN_BARREN:     return 70;
+    UOBJ_IRIDIUM_BARREN:    return 75;
+    UOBJ_TENERUM_BARREN:    return 80;
+    UOBJ_INDIUM_BARREN:     return 85;
+    UOBJ_LANTHAN_BARREN:    return 90;
+    UOBJ_WOLFRAM_BARREN:    return 95;
+    UOBJ_PLATIN_BARREN:     return 100;
+    UOBJ_CHROM_BARREN:      return 105;
+    UOBJ_TITANIUM_BARREN:   return 110;
+    UOBJ_CERIUM_BARREN:     return 75;
+    UOBJ_PRODYMIUM_BARREN:  return 80;
+    UOBJ_NEODYMIUM_BARREN:  return 85;
+    UOBJ_PROMETHIUM_BARREN: return 90;
+    UOBJ_SAMARIUM_BARREN:   return 95;
+    UOBJ_ROPIUM_BARREN:     return 100;
+    UOBJ_GADONIUM_BARREN:   return 105;
+    UOBJ_TERBIUM_BARREN:    return 110;
+    UOBJ_HOLMIUM_BARREN:    return 115;
+    UOBJ_ERBIUM_BARREN:     return 119;
+
+    default: SendSysMessagePergon(who, "Ihr könnt das nicht legieren!", "");
+             return (0);
+  EndCase
+EndFunction
+
+Function SendSysMessage_NoChance(who)
+  SendSysMessagePergon(who, "Ihr habt nicht die geringste Chance, etwas mit dem Material anzufangen!", "");
+EndFunction
+
+Function SendSysMessage_NoLegierung(who)
+  SendSysMessagePergon(who, "Aus den Materialien könnt ihr keine Legierung fertigen!", "");
+EndFunction

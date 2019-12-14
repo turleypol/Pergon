@@ -1,0 +1,176 @@
+/////////////////////////////////////////////////////////
+// large_scripts - Zeigt alle Scripte, sortiert nach Groesse (absteigend)
+
+use http;
+use os;
+use uo;
+include "header";
+
+Program HTMLPage()
+  var listmax := CInt(QueryParam("listmax"));
+  If (!listmax)
+    listmax := 100;
+  EndIf
+  var groupsum := CInt(QueryParam("group"));
+  If (groupsum)
+    groupsum := " checked";
+  EndIf
+  var filter := QueryParam("filter");
+  If (!filter)
+    filter := "";
+  Else
+    // clean up string (prevent quoting problems)
+    filter:=StrReplace(filter,"'","");
+  EndIf
+
+  DoHeader("Large Scripts");
+
+  WriteHTML("<div id='container'>");
+  WriteHTML("<div id='header'></div>");
+  WriteHTML("<div id='content'>");
+  TableHeader("Large Scripts");
+  
+  DenyAccess(isALLOWED_STRICT);
+
+  WriteHTML("<fieldset><legend>Konfiguration</legend><form method=get>");
+  WriteHTML(
+    "<label for=listmax>maximal angezeigte Zeilen (-1 &#x22cd; kein Limit):"+
+    "</label> "
+  );
+  WriteHTML(
+    "<input class=num type=text size=4 maxsize=10 id=listmax name=listmax "+
+    "value="+listmax+">; "
+  );
+  WriteHTML("<input type=checkbox id=group name=group value=1 "+groupsum+">");
+  WriteHTML("<label for=group>Gruppierung nach Scriptname</label><br>");
+  WriteHTML("<label for=filter>Anzeigefilter:</label> ");
+  WriteHTML(
+    "<input type=text size=20 maxsize=80 id=filter name=filter "+
+    "value='"+EscapeHTML(filter)+"'>"
+  );
+  WriteHTML("<input type=hidden name=user value="+user+">");
+  WriteHTML("<input type=hidden name=pass value="+pass+">");
+  WriteHTML("<input type=submit value='Anwenden'>");
+  WriteHTML("</form></fieldset>");
+
+  If (groupsum)
+    WriteHTML(
+      "<p>F&uuml;r <em>PID</em>, <em>Cycles</em> und <em>Globals</em> "+
+      "wurde beispielhaft ein Script pro Gruppe ausgew&auml;hlt. "+
+      "<em>Var&nbsp;Size</em> ist die Summe &uuml;ber die Gruppe. "+
+      "<em>Count</em> gibt die Anzahl der Scripte pro Gruppe an.</p>"
+    );
+  EndIf
+
+  WriteHTML("<table>");
+  WriteHTML("<tr>");
+  WriteHTML("<th>PID</th>");
+  WriteHTML("<th>Script Name</th>");
+  WriteHTML("<th>Cycles</th>");
+  WriteHTML("<th>Sleep Cycles</th>");
+  // WriteHTML("<th>Prog Counter</th>");
+  // WriteHTML("<th>Call Depth</th>");
+  WriteHTML("<th>Globals</th>");
+  WriteHTML("<th>Var Size</th>");
+  // WriteHTML("<th>State</th>");
+  If (groupsum)
+    WriteHTML("<th>Count</th>");
+  EndIf
+  WriteHTML("</tr>");
+
+  var scripts := POLCore().all_scripts;
+
+  If (groupsum)
+    var scripts_by_name := dictionary{};
+    ForEach script in (scripts)
+      SleepMs(2);
+      // create expandable struct
+      var newscript := struct{
+        pid          := script.pid,
+        name         := script.name,
+        instr_cycles := script.instr_cycles,
+        sleep_cycles := script.sleep_cycles,
+        num_globals  := script.num_globals,
+        var_size     := script.var_size
+      };
+      // build and sum up in new script dictionary
+      If (scripts_by_name.exists(newscript.name))
+        scripts_by_name[newscript.name]["groupsize"] += 1;
+        scripts_by_name[newscript.name]["var_size"]  += newscript.var_size;
+      Else
+        newscript["groupsize"] := 1;
+        scripts_by_name.insert(newscript.name, newscript);
+      EndIf
+    EndForEach
+    scripts := scripts_by_name;
+  EndIf
+
+  // nach Groesse gruppieren
+  var sort_dict := dictionary{};
+  ForEach script in (scripts)
+    SleepMs(2);
+    // es kann mehrere Scripte gleicher Groesse geben
+    If (sort_dict.exists(script.var_size))
+      sort_dict[script.var_size].append(script);
+    Else
+      sort_dict.insert(script.var_size, array{script});
+    EndIf
+  EndForEach
+
+  // Sortierung ermitteln
+  var keys := sort_dict.keys();
+  keys.sort(); keys.reverse();
+  var count := 0;
+
+  MAIN: ForEach group in (keys)
+    SleepMs(2);
+    ForEach script in (sort_dict[group])
+      SleepMs(2);
+      If (script.name == "scripts/www/servmgmt/large_scripts.ecl")
+        // aendert eigene Groesse bei Messung und wuerde daher
+        // immer falsch einsortiert
+        continue;
+      EndIf
+      If (!script.name[filter])
+        continue;
+      EndIf
+
+      WriteHTML("<tr>");
+      WriteHTML(
+        "<td class='num'><a href='scriptex.ecl?PID="+script.pid+"&"+
+        A_PARAM+"'>"+script.pid+"</a></td>"
+      );
+      WriteHTML("<td>"+script.name+"</td>");
+      WriteHTML("<td class='num'>"+script.instr_cycles+"</td>");
+      WriteHTML("<td class='num'>"+script.sleep_cycles+"</td>");
+      // WriteHTML("<td class='num'>"+script.PC+"</td>");
+      // WriteHTML("<td class='num'>"+script.call_depth+"</td>");
+      WriteHTML("<td class='num'>"+script.num_globals+"</td>");
+      WriteHTML("<td class='num'>"+script.var_size+"</td>");
+      // WriteHTML("<td>"+script.state+"</td>");
+      If (groupsum)
+        WriteHTML("<td class='num'>"+script.groupsize+"</td>");
+      EndIf
+      WriteHTML("</tr>");
+      count += 1;
+      If (listmax == -1)
+        continue;
+      EndIf
+      If (count >= listmax)
+        break MAIN;
+      EndIf
+    EndForEach
+  EndForEach
+  WriteHTML("</table>");
+
+  // correct removed own script
+  WriteHTML(
+    "<p>"+(scripts.size()-1)+" scripts found, "+count+" lines shown</p>"
+  );
+
+  WriteHTML("</div>");
+
+  DoFooter();
+EndProgram
+
+// vim: sw=2 sts=2

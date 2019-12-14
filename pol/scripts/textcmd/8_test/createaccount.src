@@ -1,0 +1,22 @@
+include "include/msgs";
+
+Program TextCMD_CreateAccount(who, params)
+  params := SplitWords(params);
+  If (Len(params) != 2)
+    SendSysMessagePergon(who,
+      "Aufruf: .createaccount {login} {passwort}",
+      "Usage: .createaccount {login} {password}"
+    );
+    return;
+  EndIf
+
+  var account := CreateAccount(params[1], params[2], 1);
+  If (!account)
+    SendSysMessagePergon(who,
+      "Fehler: "+account.errortext,
+      "Error: "+account.errortext
+    );
+    return;
+  EndIf
+  SendSysMessagePergon(who, "Account angelegt.", "Account created.");
+EndProgram

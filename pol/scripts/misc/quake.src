@@ -1,0 +1,87 @@
+//////////////////////////////////////////////////////////////////////////////////////////////
+//
+//  Quake - Versetzt Mobile, in Erdbebenstatus
+//        - Gehoert (im Moment) zum Textkommando .EarthQuake
+//
+//  13.05.2003 - Fraggulus
+//
+//  Modification:
+//
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use util;
+
+/////////////////
+// Globales
+/////////////////
+
+Var SOUND_EFFECT_QUAKE := {0x2F4, 0x20E, 0x4CF};
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Quake(params)
+
+    Var who := params[1];
+    Var strength := params[2];
+
+    SetObjProperty(who, "#earthquake", 1);                  // setzt Status, um mehrmaliges Earthquaken zu vermeiden
+
+    Var x_orig := who.x, y_orig := who.y, z_orig := who.z;  // orig. Koords
+    Var cnt := strength * 100;                              // Staerke des Benes zur Bestimmung der Dauer
+    Var chg := RandomInt(8);                                // bestimmt Richtung, in die (zurueck-)geschleudert wird
+    Var new := 0;                                           // zeigt an, dass eine neue Richtun gewuerfelt werden soll
+    Var stg := CInt(strength/3) + 1;                        // bestimmt Entfernung, die der Char geschleudert wird
+    If (stg < 1)
+        stg := 1;
+    EndIf
+
+    While ((cnt > 0) && (who))
+        Case (chg)
+            0:  MoveObjectToLocation(who, who.x      , who.y - stg, who.z, who.realm, MOVEOBJECT_NORMAL);
+                chg := 4;
+            1:  MoveObjectToLocation(who, who.x + stg, who.y - stg, who.z, who.realm, MOVEOBJECT_NORMAL);
+                chg := 5;
+            2:  MoveObjectToLocation(who, who.x + stg, who.y,       who.z, who.realm, MOVEOBJECT_NORMAL);
+                chg := 6;
+            3:  MoveObjectToLocation(who, who.x + stg, who.y + stg, who.z, who.realm, MOVEOBJECT_NORMAL);
+                chg := 7;
+            4:  MoveObjectToLocation(who, who.x,       who.y + stg, who.z, who.realm, MOVEOBJECT_NORMAL);
+                chg := 0;
+            5:  MoveObjectToLocation(who, who.x - stg, who.y + stg, who.z, who.realm, MOVEOBJECT_NORMAL);
+                chg := 1;
+            6:  MoveObjectToLocation(who, who.x - stg, who.y,       who.z, who.realm, MOVEOBJECT_NORMAL);
+                chg := 2;
+            7:  MoveObjectToLocation(who, who.x - stg, who.y - stg, who.z, who.realm, MOVEOBJECT_NORMAL);
+                chg := 3;
+        EndCase
+
+        If (!who.isa(POLCLASS_NPC))
+            PlaySoundEffect(who, SOUND_EFFECT_QUAKE[RandomInt(3) + 1]);
+        EndIf
+
+        If (new)
+            chg := RandomInt(8);
+            new := 0;
+        Else
+            new := 1;
+        EndIf
+
+        SleepMs(200);
+        cnt -= 10;
+    EndWhile
+
+    If (who)
+        MoveObjectToLocation(who, x_orig, y_orig, z_orig, who.realm, MOVEOBJECT_FORCELOCATION);
+    EndIf
+
+    EraseObjProperty(who, "#earthquake");
+
+EndProgram

@@ -1,0 +1,19 @@
+// DicesAndCup.src
+// Version: r1y2002
+// © 2002 Maximilian Scherr
+//
+// 27.08.2002 Fraggulus - edit
+
+use uo;
+use util;
+include "include/msgs";
+
+Program DicesAndCup(who)
+  var wuerfel1 := RandomInt(6) + 1;
+  var wuerfel2 := RandomInt(6) + 1;
+
+  PrintTextAboveLocalizedPergon(who,
+    "*"+wuerfel1+" und "+wuerfel2+" gewürfelt*",
+    "*"+"rolls "+wuerfel1+" and "+wuerfel2+"*"
+  );
+EndProgram

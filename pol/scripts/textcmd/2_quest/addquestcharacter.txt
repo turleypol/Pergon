@@ -1,0 +1,5 @@
+<h3 id="addquestcharacter">addquestcharacter</h3>
+
+<p>Erlaubt dem gew‰hlten Spieler das Erzeugen eines
+QuestChar-Accounts. <strong>Hinweis:</strong>Wegen Miﬂbrauch
+muﬂ man derzeit auﬂerdem High-GM sein.</p>

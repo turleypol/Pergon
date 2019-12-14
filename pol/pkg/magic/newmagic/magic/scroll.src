@@ -1,0 +1,326 @@
+//////////////////////////////////////////////////////////////////////
+// Scrolls - sprechen oder ins Buch schreiben
+//
+
+use attributes;
+use cfgfile;
+use os;
+use uo;
+include ":newspells:magicpergon";
+include "include/logutil";
+include "spellbook";
+include "spelldefs";
+
+Program Use_Scroll(who, scroll)
+  If (!scroll.movable)
+    SendSysMessagePergon(who,
+      "Die Rolle könnt Ihr so nicht benutzen.",
+      "This scroll cannot be used in this way."
+    );
+    return;
+  EndIf
+
+  ReserveItem(scroll);
+
+  If (!CanReadScroll(who))
+    ReleaseItem(scroll);
+    return;
+  EndIf
+
+  var spells := ReadConfigFile("::spells");        // load spells.cfg
+  If (!spells)
+    syslog("FEHLER: Spells-ConfigFile nicht gefunden! "+spells.errotext);
+    return;
+  EndIf
+
+  var spellid := GetSpellId(scroll);             // read spellid from scroll
+  var spell := FindConfigElem(spells, spellid);  // look up spell to spellid
+  If (!spell)
+    SendSysMessagePergon(who,
+      "Dieser Spruch existiert nicht", "This spell does not exist"
+    );
+    syslog(
+      "FEHLER: Scroll mit nichtexistenter SpellId ("+spellid+
+      ") bei Player "+CharInfoStr(who)
+    );
+    return;
+  EndIf
+
+  var scrollobjtype := scroll.objtype;
+  If (MIN_CAST_ITEM <= scrollobjtype && scrollobjtype <= MAX_CAST_ITEM)
+    // scroll is casting scroll
+
+    // get skill connotated with scroll
+    var skillid;
+    If (
+      MIN_MAGE_CAST_ITEM <= scrollobjtype &&
+      scrollobjtype <= MAX_MAGE_CAST_ITEM
+    )
+      skillid := SKILLID_MAGIE;
+    ElseIf (
+      MIN_CLERIC_CAST_ITEM <= scrollobjtype &&
+      scrollobjtype <= MAX_CLERIC_CAST_ITEM
+    )
+      skillid := SKILLID_SEGNEN;
+    ElseIf (
+      MIN_NECRO_CAST_ITEM <= scrollobjtype &&
+      scrollobjtype <= MAX_NECRO_CAST_ITEM
+    )
+      skillid := SKILLID_FLUCHEN;
+    Else
+      SendSysMessagePergon(who,
+        "Ihr könnt diese Rolle nicht benutzen", "You cannot use this scroll"
+      );
+      syslog(
+        "FEHLER: Unbrauchbare Scroll ("+LHex(scrollobjtype)+
+        ") bei Player "+CharInfoStr(who)
+      );
+      return;
+    EndIf
+
+    // check if cleric uses a necro scroll or a necro a cleric scroll
+    If (
+      (skillid == SKILLID_FLUCHEN && HasPlayerSkill(who, SKILLID_SEGNEN)) ||
+      (skillid == SKILLID_SEGNEN  && HasPlayerSkill(who, SKILLID_FLUCHEN))
+    )
+      // decrease number of scrolls
+      SubtractAmount(scroll, 1);
+      SendSysMessagePergon(who,
+        "Die Rolle verbrennt vor Euren Augen, als Ihr sie benutzen wollt.",
+        "The scroll burns right in front of you as you try to use it."
+      );
+      PlaySoundEffect(who, SFX_55);
+      return;
+    EndIf
+
+    // check if casting scroll is activated with thaumaturgy
+    If (GetObjProperty(scroll, "castable") != 1)
+      SendSysMessagePergon(who,
+        "Ihr müsst die Zauberrolle erst beim Thaumaturgen aktivieren lassen",
+        "You have to get the casting scroll activated by a thaumaturge"
+      );
+      return;
+    EndIf
+
+    If (!CanCast(who, spellid)) // check spellrestrictions
+      return;
+    EndIf
+
+    // Delay einhalten
+    If (GetObjProperty(who, "#UsesScroll") > ReadGameClock())
+      SendSysMessagePergon(who,
+        "Ihr müsst noch etwas warten, bevor Ihr wieder eine "+
+        "Zauberrolle nutzen könnt!",
+        "You have to wait before using another scroll!"
+      );
+      return;
+    EndIf
+    SetObjProperty(who, "#UsesScroll", (ReadGameClock() + 5));
+
+    var difficulty := spell.skill;
+
+    If (!CheckSkillPergon(who, skillid, difficulty, 0))
+      SendSysMessagePergon(who,
+        "Ihr versagt beim Nutzen der Rolle", "You fail to use the scroll"
+      );
+      SubtractAmount(scroll, 1);
+      PlayObjectCenteredEffect(who, FX_SPELL_FAIL, 5, 15);
+      PlaySoundEffect(who, SFX_2C);
+      return;
+    EndIf
+
+    // decrease number of scrolls
+    SubtractAmount(scroll, 1);
+    // utter powerwords
+    PowerWordsPergon(who, spellid, skillid);
+
+    // get script for spelleffect
+    var script := GetConfigString(spell, "Script");
+    var params := {};
+
+    // prepare parameters for spelleffect
+    params[1] := "#SCROLL";
+    params[2] := who;
+    params[3] := GetCastPowerPergon(who, spellid);
+    params[4] := skillid;
+
+    Detach();
+    Start_ScriptPergon(":newspells:"+script, params); // call spelleffect
+    return;
+
+  ElseIf ( // scroll is inscription scroll
+    MIN_SPELL_ITEM <= scrollobjtype && scrollobjtype <= MAX_SPELL_ITEM
+  )
+
+    var bookobjtype := 0;  // which book spell should be inscribed used by error message
+    var bookdesc;
+
+    If (
+      MIN_MAGE_SPELL_ITEM <= scrollobjtype &&
+      scrollobjtype <= MAX_MAGE_SPELL_ITEM
+    )
+      bookobjtype := UOBJ_SPELLBOOK_MAGE;        // Grimoire
+      bookdesc := "Grimoire";
+    ElseIf (
+      MIN_CLERIC_SPELL_ITEM <= scrollobjtype &&
+      scrollobjtype <= MAX_CLERIC_SPELL_ITEM
+    )
+      bookobjtype := UOBJ_SPELLBOOK_CLERIC;      // Liber Castus
+      bookdesc := "Liber Castus";
+    ElseIf (
+      MIN_NECRO_SPELL_ITEM <= scrollobjtype &&
+      scrollobjtype <= MAX_NECRO_SPELL_ITEM
+    )
+      bookobjtype := UOBJ_SPELLBOOK_NECRO;       // paq mu'qaDmey
+      bookdesc := "paq mu'qaDmey";
+    EndIf
+
+    // check if spell is valid
+    If (!bookobjtype)
+      SendSysMessagePergon(who,
+        "Die Spruchrolle ist fehlerhaft!", "The scroll is defective!"
+      );
+      PlaySoundEffect(who, SFX_55);
+      SendSysMessagePergon(who,
+        "Die Rolle fängt vor Euren Augen Feuer und verbrennt",
+        "The scroll catches fire and burns in front of you"
+      );
+      return;
+    EndIf
+
+    // get spellbook for inscription
+    var spellbook := SearchSpellBookInBackpack(who, bookobjtype);
+    If (!spellbook)
+      SendSysMessagePergon(who,
+        "Ihr habt kein "+bookdesc+", in das Ihr hineinschreiben könntet!",
+        "You have no "+bookdesc+", you could write into!"
+      );
+      return;
+    EndIf
+
+    If (!AccessiblePergon(who, spellbook))
+      SendSysMessagePergon(who,
+        "Ihr kommt nicht an Euer Buch heran!", "You cannot reach your book!"
+      );
+      return;
+    EndIf
+
+    // Darf die Rolle eingetragen werden?
+    If (GetObjProperty(scroll, "copied"))
+      SendSysMessagePergon(who,
+        "Dieser Rolle eignet sich nicht zum Eintragen!",
+        "This scroll cannot be written into your book!"
+      );
+      return;
+    EndIf
+
+    // check if scroll can be inscribed in spellbook
+    SubtractAmount(scroll, 1);
+    Case (bookobjtype)
+    UOBJ_SPELLBOOK_MAGE: // check Grimoire
+      If (GetSkillPergon(who, SKILLID_MAGIE) + 20 >= GetConfigInt(spell, "Skill") ||
+          GetSkillPergon(who, SKILLID_MAGISCHEGEGENST) + 20 >= GetConfigInt(spell, "Skill"))
+        SendSysMessagePergon(who,
+          "Ihr schreibt den Spruch in das Grimoire",
+          "You write the spell in your Grimoire"
+        );
+        PlaySoundEffect(who, SFX_24A);
+
+        // falls das Buch noch keinen Besitzer hat
+        PersonalizeSpellBook(who, spellbook);
+
+        CreateSpellInBook(spellbook, scrollobjtype);
+        return;
+      EndIf
+
+    UOBJ_SPELLBOOK_CLERIC: // check Liber Castus
+      If (GetSkillPergon(who, SKILLID_SEGNEN) + 20 >= GetConfigInt(spell, "Skill") ||
+          GetSkillPergon(who, SKILLID_GESEGNETEGEGENST) + 20 >= GetConfigInt(spell, "Skill"))
+        SendSysMessagePergon(who,
+          "Ihr schreibt den Spruch in das Liber Castus",
+          "You write the spell in your Liber Castus"
+        );
+        PlaySoundEffect(who, SFX_24A);
+
+        // falls das Buch noch keinen Besitzer hat
+        PersonalizeSpellBook(who, spellbook);
+
+        CreateSpellInBook(spellbook, scrollobjtype);
+        return;
+      EndIf
+
+    UOBJ_SPELLBOOK_NECRO: // check paq mu'qaDmey
+      If (GetSkillPergon(who, SKILLID_FLUCHEN) + 20 >= GetConfigInt(spell, "Skill") ||
+          GetSkillPergon(who, SKILLID_VERFLUCHTEGEGENST) + 20 >= GetConfigInt(spell, "Skill"))
+        SendSysMessagePergon(who,
+          "Ihr schreibt den Spruch in das paq mu'qaDmey",
+          "You write the spell in your paq mu'qaDmey"
+        );
+        PlaySoundEffect(who, SFX_24A);
+
+        // falls das Buch noch keinen Besitzer hat
+        PersonalizeSpellBook(who, spellbook);
+
+        CreateSpellInBook(spellbook, scrollobjtype);
+        return;
+      EndIf
+    EndCase
+
+    SendSysMessagePergon(who,
+      "Ihr seid nicht geübt genug, um diesen Spruch zu lernen",
+      "You are not talented enough to learn this spell"
+    );
+    PlaySoundEffect(who, SFX_50);
+    SendSysMessagePergon(who,
+      "Bei Euren stümperhaften Versuchen zerstört Ihr die Rolle",
+      "During your awkward efforts you destroy the scroll"
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Ihr könnt diese Rolle nicht benutzen", "You cannot use this scroll"
+  );
+  syslog(
+    "FEHLER: Unbrauchbare Scroll ("+LHex(scrollobjtype)+") bei Player "+
+    CharInfoStr(who)
+  );
+EndProgram
+
+///////////////////////////////////////////////////////////////
+// CanReadScroll - Kann der Spieler die Rolle jetzt benutzen?
+///////////////////////////////////////////////////////////////
+Function CanReadScroll(who)
+  var itemdesccfg := ReadConfigFile("::itemdesc"); // ItemDesc.cfg oeffnen
+  If (itemdesccfg)
+    // Gegenstand in der ersten Hand des Spielers ueberpruefen
+    // ("BlocksCastingIfInHand")
+    var item := GetEquipmentByLayer(who, LAYER_HAND1);
+    If (item)
+      If (itemdesccfg[item.objtype].blockscastingifinhand <> 0)
+        SendSysMessagePergon(who,
+          "Macht Eure Hände frei zum Zaubern!", "Free your hands to cast!"
+        );
+        PlaySoundEffect(who, SFX_2C);
+        return 0;
+      EndIf
+    EndIf
+
+    // Gegenstand in der zweiten Hand des Spielers ueberpruefen
+    // ("BlocksCastingIfInHand")
+    item := GetEquipmentByLayer(who, LAYER_HAND2);
+    If (item)
+      If (itemdesccfg[item.objtype].blockscastingifinhand<>0)
+        SendSysMessagePergon(who,
+          "Macht Eure Hände frei zum Zaubern!", "Free your hands to cast!"
+        );
+        PlaySoundEffect(who, SFX_2C);
+        return 0;
+      EndIf
+    EndIf
+  EndIf
+
+  return 1; // wenn alles klar ist gehts zurück
+EndFunction
+
+// vim: sw=2 sts=2

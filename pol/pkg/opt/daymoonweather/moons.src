@@ -1,0 +1,97 @@
+/////////////////////////////////////////////////////////////////////
+// Moons - Cycle
+//
+// based on DayNight Pkg (1999/06/02)
+//   Author: Racalac
+//
+// Author: Shinigami
+//
+// Modifications:
+//   1999/06/02 Rac: Day/Night transitions for one time zone only
+//   2000/04/23 Raxxla: Played around with a little bit
+//   2000/05/28 Shinigami: Complete ReWrite
+/////////////////////////////////////////////////////////////////////
+
+//////////////
+// Libraries
+//////////////
+
+Use os;
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "daymoonweather";
+Include "include/msgs";
+Include "include/place";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program MoonPhase()
+  BroadcastPergon("Mond-Zyklus wird aktiviert...", "Moon-cycle activated...");
+  SysLog("Mond-Zyklus wird aktiviert...");
+
+  Var tphase:=CheckGlobalProperty("TrammelPhase");
+  Var fphase:=CheckGlobalProperty("FeluccaPhase");
+
+  //Set_Critical/(1);
+
+  While (1)
+    Felucca(fphase);
+    ChangeMoonLight(tphase, fphase);
+    Felucca(fphase);
+    ChangeMoonLight(tphase, fphase);
+    Felucca(fphase);
+
+    tphase:=tphase+1;
+    If (tphase==8)
+      tphase:=0;
+    EndIf
+    SetGlobalProperty("TrammelPhase", tphase);
+
+    ChangeMoonLight(tphase, fphase);
+  EndWhile
+EndProgram
+
+///////////////////////////////////
+// Felucca - Phase weiterschalten
+///////////////////////////////////
+
+Function Felucca(ByRef fphase)
+  Sleep(1800);
+
+  fphase:=fphase+1;
+  If (fphase==8)
+    fphase:=0;
+  EndIf
+  SetGlobalProperty("FeluccaPhase", fphase);
+EndFunction
+
+//////////////////////////////////////////////////////////////
+// ChangeMoonLight - Dunkelheit ist abhaengig von den Monden
+//////////////////////////////////////////////////////////////
+
+Function ChangeMoonLight(tphase, fphase)
+  SetMoonLight((MoonLight(tphase)+MoonLight(fphase))/2);
+EndFunction
+
+/////////////////////////////
+// MoonLight - Leuchtstarke
+/////////////////////////////
+
+Function MoonLight(phase)
+  Case (phase)
+    0: Return (0);
+    1: Return (1);
+    2: Return (2);
+    3: Return (3);
+    4: Return (4);
+    5: Return (3);
+    6: Return (2);
+    7: Return (1);
+  EndCase
+EndFunction

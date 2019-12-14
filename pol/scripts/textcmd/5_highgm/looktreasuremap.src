@@ -1,0 +1,21 @@
+use uo;
+include "include/objtype";
+
+Include "include/msgs";
+
+program looktreasuremap (who)
+  SendSysMessagePergon(who,"Wähle Schatzkarte");
+  Var map:=Target(who,TGTOPT_NOCHECK_LOS);
+  if (map and map.graphic==UOBJ_MAP1)
+    if (GetObjProperty(map, "level"))
+      SendSysMessagePergon (who, "Treasure X = "+GetObjProperty(map,"chestx"));
+      SendSysMessagePergon (who, "Treasure Y = "+GetObjProperty(map,"chesty"));
+      SendSysMessagePergon (who, "Treasure Z = "+GetObjProperty(map,"chestz"));
+    else
+      SendSysMessagePergon (who, "Das ist keine Schatzkarte.");
+    endif
+  else
+    SendSysMessagePergon (who, "Abbruch oder keine Karte.");
+  endif
+endprogram
+      

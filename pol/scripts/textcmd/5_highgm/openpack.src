@@ -1,0 +1,21 @@
+use storage;
+use uo;
+include "include/itemnpc";
+
+Program textcmd_pack(who)
+    var me := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!me or !me.isa(POLCLASS_MOBILE))
+        return;
+    EndIf
+
+    If (!me.backpack)
+        var newbackpack := CreateItemAtLocationPergon(
+            me.x, me.y, me.z, 0xe75, 1, me.realm
+        );
+        If (!EquipItem(me, newbackpack))
+            return;
+        EndIf
+    EndIf
+
+    SendOpenSpecialContainer(who, me.backpack);
+EndProgram

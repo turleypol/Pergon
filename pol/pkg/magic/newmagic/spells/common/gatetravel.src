@@ -1,0 +1,77 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file gatetravel.src
+// implements spell 31 <Gate Travel> - "Magisches Tor"
+// creates gate on rune
+
+use os;
+include "../magicpergon";
+include ":runebook:rune";
+
+Program Cast_GateTravel(params)
+    var caster;
+    var caston;
+    var skill;
+    var power;
+
+    If (params[1] == "#SCROLL")
+        caster := params[2];
+        power  := params[3];
+        skill  := params[4];         // to determine gate type
+    Else
+        caster := params[1];
+        skill  := params[2];         // to determine gate type
+        power  := GetCastPowerPergon(caster, SPELLID_COMMON_GATETRAVEL);
+    EndIf
+
+    SendSysMessagePergon(caster,
+        "Wählt eine Rune, mit deren Hilfe Ihr ein Tor öffnen wollt!",
+        "Choose a rune for opening a gate!"
+    );
+
+    // choose rune
+    caston := TargetThing(caster, TGTOPT_CHECK_LOS);
+
+    If (!caston)
+        // nothing choosen
+        SendSysMessagePergon(caster, "Kein Ziel", "No target");
+        return;
+    EndIf
+
+    If (!AccessiblePergon(caster, caston))
+        // target is inaccessible
+        SendSysMessagePergon(caster,
+            "Ihr kommt da nicht ran.", "You cannot reach that."
+        );
+        return;
+    EndIf
+
+    If (caston.objtype <> UOBJ_RUNE)
+        // target is no rune
+        SendSysMessagePergon(caster,
+            "Diesen Zauber könnt Ihr nur auf Runen anwenden.",
+            "This spell can only be casted on runes.");
+        return;
+    EndIf
+
+    If (!IsRuneMarked(caston))
+        // rune is not marked yet
+        SendSysMessagePergon(caster,
+            "Diese Rune ist noch nicht markiert",
+            "This rune is not marked yet"
+        );
+        return;
+    EndIf
+
+    PerformAction(caster, ANIM_CAST_AREA);
+    ReserveItem(caston);
+    SleepMS(250);
+
+    // create gate to rune location
+    If (CastGateRune(caster, caston, power) == RUNE_CANCEL_NORUNE)
+        SendSysMessagePergon(caster,
+            "Die Rune wird dabei zerstört",
+            "Your rune has been destroyed"
+        );
+        DestroyItem(caston);
+    EndIf
+EndProgram

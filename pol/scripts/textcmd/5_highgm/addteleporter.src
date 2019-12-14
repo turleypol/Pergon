@@ -1,0 +1,126 @@
+use cfgfile;
+use uo;
+
+Include "include/itemnpc";
+Include "include/msgs";
+
+Program AddTeleporter(who, param)
+  Var elem := struct;
+
+  Var addtocfg:=0;
+  If (param["cfg"])
+    addtocfg:=1;
+  EndIf
+
+  var cfg;
+  var maxint;
+  elem.+name;
+  elem.+value;
+  var elems := array;
+  SendSysMessagePergon(who, "Wo soll der Teleporter plaziert werden?");
+
+  Var where := targetcoordinates(who);
+
+  If (!where)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  Endif
+
+  SendSysMessagePergon(who, "Wo soll das Ziel liegen?");
+  SendSysMessagePergon(who, "Ihr könnt Euch mit .goto, .goxyz, oder walk zum Ziel bewegen.");
+
+  Var whereto := targetcoordinates(who); 
+
+  If (!whereto)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  Endif
+  
+  var teleporters:= array{
+    // rotes Moongate
+    0x0dda, 0x0ddb, 0x0ddc, 0x0ddd, 0x0dde,
+    // blaues Moongate
+    0x0f6c, 0x0f6d, 0x0f6e, 0x0f6f, 0x0f70,
+    // schwarzes Moongate
+    0x1fd4,
+    // weisses Moongate
+    0x1fe7,
+    // Returngate
+    0x6002,
+    // Systemteleporter
+    0x6200, 0x6201,
+    // I-Stein
+    0x70d0,
+    // statisches Moongate
+    0x70da
+  };
+  
+  Foreach item in (ListItemsAtLocation(whereto.x, whereto.y, LIST_IGNORE_Z, whereto.realm))
+  	Foreach tele in (teleporters)
+  		If (item.objtype == tele)
+  		  SendSysMessagePergon(who, "Dort ist schon ein Teleporter!");
+  		  SendSysMessagePergon(who, "Abbruch", "Abort");
+  		  return;
+  		EndIf
+    EndForeach
+  EndForeach
+
+  If (addtocfg)
+    elem.name := "fromx";
+    elem.value := where.x;
+    elems[1] := elem;
+
+    elem.name := "fromy";
+    elem.value := where.y;
+    elems[2] := elem;
+
+    elem.name := "fromz";
+    elem.value := getmapinfo(where.x, where.y,where.realm).z;
+    elems[3] := elem;
+
+    elem.name := "fromrealm";
+    elem.value := where.realm;
+    elems[4] := elem;
+
+    elem.name := "tox";
+    elem.value := whereto.x;
+    elems[5] := elem;
+
+    elem.name := "toy";
+    elem.value := whereto.y;
+    elems[6] := elem;
+
+    elem.name := "toz";
+    elem.value := getmapinfo(whereto.x, whereto.y,whereto.realm).z;
+    elems[7] := elem;
+
+    elem.name := "torealm";
+    elem.value := whereto.realm;
+    elems[8] := elem;
+
+
+    cfg := readconfigfile("teleporters");
+    
+    maxint := getconfigmaxintkey(cfg) + 1;
+
+    AppendConfigFileElem("teleporters", "teleporter", maxint, elems );
+
+    Syslog("Fuege " + elems + " den Teleportern hinzu.");
+    SendSysMessagePergon(who,"Zur teleporter.cfg hinzugefügt.");
+    unloadconfigfile("teleporters");
+  Endif
+
+  var teleporter := CreateItemAtLocationPergon( where.x, where.y, getmapinfo(where.x, where.y,where.realm).z, "systemteleporter", 1 ,where.realm);
+  If ( teleporter )
+    SetObjProperty( teleporter, "DestX", whereto.x );
+    SetObjProperty( teleporter, "DestY", whereto.y );
+    SetObjProperty( teleporter, "DestZ", getmapinfo(whereto.x, whereto.y,whereto.realm).z );
+    SetObjProperty( teleporter, "DestRealm", whereto.realm );
+    SetObjProperty( teleporter, "enabled", 0);
+  Else
+    SendSysMessagePergon( who, "Fehler: " + teleporter.errortext  );
+  Endif
+  
+  Start_ScriptPergon("textcmd/3_seer/configtele", struct{who := who, item := teleporter});
+  
+Endprogram 

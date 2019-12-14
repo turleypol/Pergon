@@ -1,0 +1,169 @@
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/itemnpc";
+
+Var layout:={
+  "page 0",                          // Seite 0 (Basisseite)
+  "nodispose",
+
+  "gumppic 10 10 2620",              // Hintergrundflaeche
+  "gumppic 30 10 2621",
+  "gumppic 300 10 2622",
+  "gumppic 10 28 2623",
+  "gumppic 32 28 2624",
+  "gumppic 298 28 2625",
+  "gumppic 10 232 2623",
+  "gumppic 32 232 2624",
+  "gumppic 298 232 2625",
+  "gumppic 10 436 2626",
+  "gumppic 30 436 2627",
+  "gumppic 300 436 2628",
+
+  "button 20 35 2640 2641 1 1 12882",
+  "tilepic 45 225 12917",
+  "button 20 85 2640 2641 1 1 12884",
+  "tilepic 45 275 12916",
+  "button 20 135 2640 2641 1 1 12885",
+  "tilepic 55 25 12882",
+  "button 20 185 2640 2641 1 1 12886",
+  "tilepic 55 75 12884",
+  "button 20 235 2640 2641 1 1 12917",
+  "tilepic 45 325 12919",
+  "button 20 285 2640 2641 1 1 12916",
+  "tilepic 45 375 12918",
+  "button 20 335 2640 2641 1 1 12919",
+  "tilepic 55 125 12885",
+  "button 20 385 2640 2641 1 1 12918",
+  "tilepic 55 175 12886",
+
+  "button 120 35 2640 2641 1 1 12924",
+  "tilepic 155 25 12924",
+  "button 120 85 2640 2641 1 1 12923",
+  "tilepic 140 85 12923",
+  "button 120 135 2640 2641 1 1 12925",
+  "tilepic 155 125 12925",
+  "button 120 185 2640 2641 1 1 12921",
+  "tilepic 155 190 12921",
+  "button 120 235 2640 2641 1 1 12926",
+  "tilepic 155 225 12926",
+  "button 120 285 2640 2641 1 1 12920",
+  "tilepic 170 285 12920",
+  "button 120 335 2640 2641 1 1 12927",
+  "tilepic 155 335 12927",
+  "button 120 385 2640 2641 1 1 12922",
+  "tilepic 155 390 12922",
+
+  "button 220 35 2640 2641 1 1 1",
+  "tilepic 255 25 12924",
+  "tilepic 255 35 12923",
+  "button 220 85 2640 2641 1 1 2",
+  "tilepic 255 80 12925",
+  "tilepic 255 105 12921",
+  "button 220 135 2640 2641 1 1 3",
+  "tilepic 255 130 12926",
+  "tilepic 255 139 12920",
+  "button 220 185 2640 2641 1 1 4",
+  "tilepic 255 190 12927",
+  "tilepic 255 181 12922",
+
+  "gumppic 610 10 2620",              // Hintergrundflaeche
+  "gumppic 630 10 2621",
+  "gumppic 900 10 2622",
+  "gumppic 610 28 2623",
+  "gumppic 632 28 2624",
+  "gumppic 898 28 2625",
+  "gumppic 610 232 2623",
+  "gumppic 632 232 2624",
+  "gumppic 898 232 2625",
+  "gumppic 610 436 2626",
+  "gumppic 630 436 2627",
+  "gumppic 900 436 2628",
+
+  "button 620 35 2640 2641 1 1 12890",
+  "tilepic 655 25 12890",
+  "button 620 85 2640 2641 1 1 12891",
+  "tilepic 660 75 12891",
+  "button 620 135 2640 2641 1 1 12892",
+  "tilepic 655 130 12892",
+  "button 620 185 2640 2641 1 1 12893",
+  "tilepic 655 180 12893",
+  "button 620 235 2640 2641 1 1 12894",
+  "tilepic 655 225 12894",
+  "button 620 285 2640 2641 1 1 12895",
+  "tilepic 660 280 12895",
+  "button 620 335 2640 2641 1 1 12896",
+  "tilepic 655 330 12896",
+  "button 620 385 2640 2641 1 1 12897",
+  "tilepic 655 380 12897",
+
+  "button 720 35 2640 2641 1 1 12810",
+  "tilepic 755 25 12810",
+  "button 720 85 2640 2641 1 1 12888",
+  "tilepic 755 80 12888",
+  "button 720 135 2640 2641 1 1 12901",
+  "tilepic 755 125 12901",
+  "button 720 185 2640 2641 1 1 12904",
+  "tilepic 755 180 12904",
+  "button 720 235 2640 2641 1 1 12809",
+  "tilepic 755 225 12809",
+  "button 720 285 2640 2641 1 1 12902",
+  "tilepic 755 280 12902",
+  "button 720 335 2640 2641 1 1 12903",
+  "tilepic 755 330 12903",
+  "button 720 385 2640 2641 1 1 12900",
+  "tilepic 755 385 12900",
+
+  "button 820 35 2640 2641 1 1 12889",
+  "tilepic 855 25 12889",
+  "button 820 85 2640 2641 1 1 12898",
+  "tilepic 855 80 12898",
+  "button 820 135 2640 2641 1 1 12899",
+  "tilepic 855 125 12899",
+  "button 820 185 2640 2641 1 1 12906",
+  "tilepic 855 180 12906",
+  "button 820 235 2640 2641 1 1 12907",
+  "tilepic 855 225 12907",
+  "button 820 285 2640 2641 1 1 12908",
+  "tilepic 855 280 12908",
+  "button 820 335 2640 2641 1 1 12909",
+  "tilepic 855 330 12909",
+  "button 820 385 2640 2641 1 1 12910",
+  "tilepic 855 385 12910"
+};
+
+Var data:={
+};
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Textcmd_CreateSumpfItem(who)
+  Var result:=1;
+
+  While (result)
+    result:=CInt(SendDialogGump(who, layout, data)[0]);
+    If (result)
+      If (result<10)
+        Var objtype1;
+        Var objtype2;
+
+        Case (result)
+          1: objtype1:=12924;objtype2:=12923;
+          2: objtype1:=12925;objtype2:=12921;
+          3: objtype1:=12926;objtype2:=12920;
+          4: objtype1:=12927;objtype2:=12922;
+        EndCase
+
+        CreateItemAtLocationPergon(who.x, who.y, 2, objtype1, 1,who.realm).movable:=0;
+        CreateItemAtLocationPergon(who.x, who.y, 2, objtype2, 1,who.realm).movable:=0;
+      Else
+        CreateItemAtLocationPergon(who.x, who.y, 2, result, 1,who.realm).movable:=0;
+      EndIf
+    EndIf
+  EndWhile
+EndProgram

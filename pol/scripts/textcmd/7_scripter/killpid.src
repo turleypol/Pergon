@@ -1,0 +1,56 @@
+/////////////////////////////////////////////////////////
+//
+//   killpid - Killt angegebene PID
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     15.07.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+
+Include "include/msgs";
+Include "include/logutil";
+
+Program ChangeNPCScript(who, pid)
+  pid:=CInt(pid);
+  If (pid)
+    Var process:=GetProcess(pid);
+    If (process)
+      If (YesNo(who, "<br><br>Wirklich '"+process.name+"'<br>mit PID:"+process.pid+" killen?"))
+        SysLog(CharInfoStr(who)+" killt "+process.pid+" '"+process.name+"'");
+        process.kill();
+      Else
+        SendSysMessagePergon(who,"Abbruch", "Abort");
+      EndIf
+    Else
+      SendSysMessagePergon(who,"Process von PID:"+pid+" nicht gefunden. "+process.errortext);
+    EndIf
+  Else
+    SendSysMessagePergon(who,"Ungültige PID");
+  EndIf
+EndProgram
+
+Function YesNo(who,prompt)
+  var layoutyn := {"nodispose",
+                   "page 0",
+                   "gumppic 0 0 1140",
+                   "button 115 200 2130 2129 1 0 1",
+                   "button 205 200 2119 2120 1 0 0",
+                   "htmlgump 57 40 278 135 0 0 0"
+                  };
+
+  var datayn := {"<center>"+prompt+"</center>"};
+  var res := SendDialogGump( who, layoutyn, datayn,100,100 );
+
+  if (res)
+    return 1;
+  else
+    return 0;
+  endif
+EndFunction

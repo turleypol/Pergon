@@ -1,0 +1,97 @@
+///////////////////////////////////////////////////////////////////////////
+// .name - Dinge umbenennen
+//
+// Author: Shinigami
+
+use uo;
+include "include/itemnpc";
+include "include/msgs";
+
+var allowed_items := {
+  UOBJ_RUNEBOOK, UOBJ_COPPER_KEY, UOBJ_GOLD_KEY, UOBJ_IRON_KEY,
+  UOBJ_KEY_RING, UOBJ_MAGIC_KEY, UOBJ_RUSTY_IRON_KEY, UOBJ_SEED,
+  UOBJ_BLUE_MOONGATE, 0x2d50 // Rezeptbuch
+};
+
+Program TextCMD_Name(who, newname)
+  If (!newname or newname["?"])
+    SendSysMessagePergon(who,
+      "Benutzung: .name {neuer Name}", "Usage: .name {new name}"
+    );
+    return;
+  EndIf
+
+  // Ziel ermitteln und ueberpruefen
+  SendSysMessagePergon(who,
+    "Was oder wen umbenennen?", "Rename what or whom?"
+  );
+  var obj := Target(who);
+  If (!obj)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+  If (!RenameAllowed(who, obj))
+    return;
+  EndIf
+
+  // Umbenennen und Erfolgsmeldung ausgeben
+  If (who.cmdlevel < CMDLEVEL_SEER)
+    var length := Len(newname);
+    If (who.serial != obj.serial)
+      PrintTextAbovePrivatePergon(obj, "Neuer Name: "+newname, "New name: "+newname, who);
+    ElseIf (length > MAX_NAME_LEN)
+      SendSysMessagePergon(who,
+        "Euer angeforderter Name ist mit einer Länge von "+length+" Zeichen um "+(length-MAX_NAME_LEN)+" Zeichen zu lang!",
+        "Your requested name is with a length of "+length+" characters about "+(length-MAX_NAME_LEN)+" characters too long.",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+      );
+      return;
+    EndIf    
+    SetNamePergon(obj, newname);  
+  Else
+    // Logging nur bei Cmdlevel
+    // (Spieler koennen nichts relevantes umbenennen)
+    SetNamePergon(obj, newname, who);
+    PrintTextAbovePrivatePergon(obj, "Neuer Name: "+newname, "New name: "+newname, who);
+  EndIf     
+EndProgram
+
+// pruefen, ob Umbenennung erlaubt ist
+Function RenameAllowed(who, obj)
+  If (who.cmdlevel >= CMDLEVEL_SEER)
+    // Staff darf immer
+    return 1;
+  EndIf
+  
+  If (who.serial == obj.serial)
+    // Man darf sich selber umbenennen bzw. die Änderung beantragen
+    return 1;
+  EndIf
+  
+  If (!IsMine(who, obj))
+    // Spieler duerfen fremde Sachen nicht umbenennnen
+    SendSysMessagePergon(who, "Das gehoert Euch nicht.", "That's not yours!");
+    return 0;
+  EndIf
+
+  If (obj.isa(POLCLASS_NPC))
+    // ein eigener NPC ist ohne Einschraenkung erlaubt
+    return 1;
+  ElseIf (obj.isa(POLCLASS_ITEM))
+    If (
+      // Container kann man generell umbenennen
+      obj.isa(POLCLASS_CONTAINER) ||
+      // auswaehlte Items darf man umbenennen
+      (obj.objtype in allowed_items)
+    )
+      return 1;
+    EndIf
+  EndIf
+
+  // alles andere ist nicht erlaubt, entsprechende Fehlermeldung ausgeben
+  SendSysMessagePergon(who,
+    "Ihr duerft nur Container, Runenbuecher, Schluessel oder "+
+    "eigene magische Tore bzw. NPCs und euch selbst umbenennen!"
+  );
+  return 0;
+EndFunction

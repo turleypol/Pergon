@@ -1,0 +1,3 @@
+Eine weitere interessante Makro-Option ist "LastTarget".
+
+Immer, wenn ein Zielcursor auftaucht (Kreis mit vier Dreiecken), kann man durch Aufruf des Makros das letzte Ziel erneut auswaehlen, beispielsweise den zuletzt benutzen Rohstoff oder das zuletzt ausgewaehlte Landschaftsfeld.

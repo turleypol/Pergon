@@ -1,0 +1,21 @@
+//////////////////////////////////////////////////////////////////////////
+// Conceal - Stein, der umliegende Monster versteckt
+
+use os;
+use uo;
+include "common";
+include "include/animal";
+
+Program Conceal(item)
+    While (item)
+        var config := GetConcealConfig(item);
+        Sleep(60*config.interval);
+        ForEach mob in (ListMobilesNearLocation(
+            item.x, item.y, item.z, config.range, item.realm
+        ))
+            If (mob.isa(POLCLASS_NPC) and !mob.getprop("master"))
+                mob.hidden := 1;
+            EndIf
+        EndForEach
+    EndWhile
+EndProgram

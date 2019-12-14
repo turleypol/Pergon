@@ -1,0 +1,273 @@
+///////////////////////////////////////////////////////////////////////////
+// Drinking-System - Drink
+//
+// Author: Shinigami
+
+//////////////
+// Libraries&Includes
+//////////////
+use cfgfile;
+use os;
+use uo;
+include "common";
+include "include/itemnpc";
+include "include/msgs";
+include "include/pergonutil";
+include "include/poison";
+include "include/spellcheck";
+
+//////////////
+// Constants
+//////////////
+
+Const SOUND_EFFECT_DRINK1 := SFX_31;
+Const SOUND_EFFECT_DRINK2 := SFX_32;
+Const ACTION_DRINK        := ANIM_EAT;
+
+Program Drink(who, vessel)
+  If (!vessel.movable)
+    SendSysMessagePergon(who,
+      "Das sieht lecker aus, ist aber nicht zum Verzehr geeignet."
+    );
+    return;
+  EndIf
+
+  // Item reserven
+  If (!ReserveItem(vessel))
+    SendSysMessagePergon(who,
+      "Das wird schon benutzt.", "That is already being used."
+    );
+    return;
+  EndIf
+
+  // Getraenk trinken
+  PerformAction(who, ACTION_DRINK);
+  If (RandomInt(2))
+    PlaySoundEffect(who, SOUND_EFFECT_DRINK1);
+  Else
+    PlaySoundEffect(who, SOUND_EFFECT_DRINK2);
+  EndIf
+
+  // Daten zum Getraenk holen
+  var itemdesc := ReadConfigFile("::itemdesc");
+  If (!itemdesc)
+    syslog("FEHLER: Kann die Datei 'itemdesc.cfg' nicht oeffnen!");
+    return;
+  EndIf
+  var elem := itemdesc[vessel.objtype];
+
+  // Fuellstatus vom Gefaess ermitteln und neu setzen
+  var filled := vessel.getprop("filled");
+  If (!filled)
+    // Nix angegeben ... Mindestmenge aus Konfig holen
+    filled := elem.filledmax;
+    If (!filled)
+      // Konfig unvollstaendig?
+      syslog("HINWEIS: "+ItemInfoStr(vessel)+" hat keinen Saettigungswert.");
+      filled := 0.5;
+    EndIf
+  EndIf
+
+  If (filled > 1.0)
+    // Maximalmenge pro Trinkvorgang
+    SetObjProperty(vessel, "filled", filled - 1.0);
+    filled := 1.0;
+  Else
+    EraseObjProperty(vessel, "filled"); // Wird gleich komplett geleert
+  EndIf
+
+  If (who.cmdlevel >= CMDLEVEL_SCRIPTER)
+    SendSysMessagePergon(who, "Trinkmenge: "+filled);
+  EndIf
+
+  // Wurde das Getraenk vergiftet? {{{
+  var poison := GetPoisonLevel(vessel);
+  If (poison > 0)
+    PrintTextAbovePrivatePergon(who, "Ihr wurdet vergiftet!", "", who);
+
+    // Vergifter weitergeben an Opfer fuer Beweise
+    var poisoner := vessel.getprop(EV_POISONER);
+    If (poisoner)
+      who.setprop(EV_POISONER, poisoner);
+    EndIf
+
+    AddPoisonLevel(who, poison); // Vergiftung durchfuehren
+
+    // Flasche ggf. leeren
+    EmptyDrink(who, vessel, elem.targetitem);
+    return;
+  EndIf
+  // }}}
+
+  // Befindet sich Alkohol im Getraenk? {{{
+  var alccfg := ReadConfigFile(":drinking:types");
+  If (!alccfg)
+    syslog("FEHLER: Kann die Datei 'types.cfg' nicht oeffnen!");
+    return;
+  EndIf
+  var alctype := FindConfigElem(alccfg, elem.drinktype);
+  var alcohol := GetConfigReal(alctype, "Alcohol");
+  var satur   := GetConfigReal(alctype, "Saturation");
+  If (!alctype)
+    syslog("FEHLER: Alkoholfestlegung für "+elem.drinktype+" fehlt");
+    alcohol := 0.0;
+    satur   := 1.0;
+  EndIf
+
+  If (alcohol and alcohol > 0.0)
+    // Alkoholwert aus Basiswert und getrunkener Menge ermitteln
+    var alcvalue := alcohol*filled;
+
+    If (who.cmdlevel >= CMDLEVEL_SCRIPTER)
+      SendSysMessagePergon(
+        who, "Alkoholmenge Basis: "+alcohol+", effektiv: "+alcvalue
+      );
+    EndIf
+
+    var crit := Is_Critical();
+    Set_Critical(1);
+    // Betrunkenheitswert des Trinkers
+    var alclevel := CDbl(who.getprop(PROP_ALCOHOL));
+    If (alclevel > ALC_LEVEL_SOBER)
+      // schon betrunken, erhoehen
+      who.setprop(PROP_ALCOHOL, alclevel+alcvalue);
+    Else
+      // Erstbetrinkung, setzen und Betrunkenheit starten
+      who.setprop(PROP_ALCOHOL, ALC_LEVEL_SOBER+alcvalue);
+      Start_ScriptPergon(":drinking:drunken", who);
+    EndIf
+
+    // Besoffener verliert Intelligenz
+    var tag := array;
+    AlterIntModPergon(who, -CInt(2*alcvalue));
+
+    // Malus verlaengern und erweitern, falls schon vorhanden
+    If (who.getprop("drinking_int_malus"))
+      tag[2] := CInt(2*alcvalue)+who.getprop("drinking_int_malus")[2];
+    Else
+      tag[2] := CInt(2*alcvalue);
+    EndIf
+
+    var dur := CInt(alcvalue) * 12 + 30 + RandomInt(20);
+    tag[1] := ReadGameClock() + dur;
+    tag[3] := ReadMilliSecondClock();
+    // tag for spellchecker
+    SetObjProperty(who, "drinking_int_malus", tag);
+
+    Set_Critical(crit);
+
+    SendSpellWaiter(who, "drinking_int_malus", dur, tag[3], who);
+  EndIf
+  // }}}
+
+  // Trink-Level veraendern
+  If (who.cmdlevel >= CMDLEVEL_SCRIPTER)
+    SendSysMessagePergon(
+      who, "Sättigung Basis: "+satur+", effektiv: "+satur*filled
+    );
+  EndIf
+  var crit := Is_Critical();
+  Set_Critical(1);
+  var drinklevel := who.getprop(PROP_THIRST);
+  drinklevel := CDbl(drinklevel) + satur*filled;
+  SetObjProperty(who, PROP_THIRST, drinklevel);
+  Set_Critical(crit);
+
+  // Trinkreport
+  SendDrinkStatus(who, drinklevel);
+
+  // Flasche ggf. leeren
+  EmptyDrink(who, vessel, elem.targetitem);
+EndProgram
+
+// nach Bedarf leere Flasche etc. erstellen
+Function EmptyDrink(who, vessel, leergut) // {{{
+  Sleep(2);
+
+  // Leere Flasche "behandeln"
+  var filled := vessel.getprop("filled");
+  If (!filled or filled <= 0.1)
+    var oldpos := struct;
+    oldpos.+x  := vessel.x;
+    oldpos.+y  := vessel.y;
+    oldpos.+z  := vessel.z;
+    oldpos.+c  := vessel.container;
+    SubtractAmount(vessel, 1);
+
+    If (leergut) // Leergut erstellen
+      var empty := CreateItemInBackpackPergon(who, leergut, 1);
+      If (oldpos.c)
+        MoveItemToContainer(empty, oldpos.c, oldpos.x, oldpos.y);
+      Else
+        MoveObjectToLocation(empty, oldpos.x, oldpos.y, oldpos.z);
+      EndIf
+    EndIf
+  EndIf
+EndFunction // }}}
+
+// Meldung über aktuellen Trinkstatus ausgeben
+Function SendDrinkStatus(who, drinklevel) // {{{
+  var drinkmsg;
+  Case (CInt(drinklevel))
+  1:
+    drinkmsg := {"Ihr sterbt fast vor Durst", ""};
+  2:
+    drinkmsg := {"Ihr seid am Verdursten!", ""};
+  3:
+    drinkmsg := {
+      "Eure Nieren dürstet und Ihr fühlt Euch schwummrig!",
+      "Your kidneys scream for water, you are feeling queasy."
+    };
+  4:
+    drinkmsg := {
+      "Eure Nieren schmerzen vor Durst!", "Your kidneys are aching!"
+    };
+  5:
+    drinkmsg := {"Ihr seid verdammt durstig!", ""};
+  6:
+    drinkmsg := {"Ihr seid durstig.", "You are thirsty."};
+  7:
+    drinkmsg := {"Eure Nieren brauchen Arbeit.", "Your kidneys need work."};
+  8:
+    drinkmsg := {"Ihr seid nicht durstig.", "You aren't thirsty."};
+  9:
+    drinkmsg := {"Ihr habt genug getrunken.", "You drank enough."};
+  10:
+    drinkmsg := {
+      "Ihr habt genug getrunken. Übertreibt es nicht!",
+      "You have drunk enough, don't overact!"
+    };
+  11:
+    drinkmsg := {
+      "Wenn Ihr weiterso trinkt, werdet Ihr krank.",
+      "You will get ill, if you drink anymore."
+    };
+  12:
+    drinkmsg := {"Ihr habt zuviel getrunken.", "You drank too much!"};
+  13:
+    drinkmsg := {"Eure Nieren schmerzen vom vielen trinken!", ""};
+  14:
+    drinkmsg := {"Eure Nieren vertragen kein ganzes Fass!", ""};
+  15:
+    drinkmsg := {
+      "Euer Harnfluss ist ungebremst!", "Your urinary flow is unstopable!"
+    };
+  16:
+    drinkmsg := {"Eure Blase schmerzt unerträglich!", ""};
+  17:
+    drinkmsg := {"Ihr habt Euch kurz vor Euren Tod gesoffen!", ""};
+  18:
+    drinkmsg := {"Neuerdings könnt Ihr nicht mehr sinnlos trinken!", ""};
+  19:
+    drinkmsg := {"Ihr könnt Euch keinen Wochenvorrat ansaufen!", ""};
+  20:
+    drinkmsg := {"Der Tod spült sich bereits durch Eure Adern!", ""};
+  default:
+    drinkmsg := {"Der Tod ergreift Besitz von Eurem Geist!", ""};
+  EndCase
+  SendSysMessagePergon(who,
+    drinkmsg[1], drinkmsg[2], _DEFAULT_TEXT_FONT, _DEFAULT_TEXT_COLOR
+  );
+EndFunction // }}}
+
+// vim: sw=2 sts=2

@@ -1,0 +1,336 @@
+// Script fuer Katapult
+// made by A. Kaufmann alias Pacmaker
+
+//Catapult version: 1.0
+//muss geladen werden mit Holzspaenne, Oel, Explosion Potion & man muss ne Fackel halten
+//
+// -> Feature: kann nur in bestimmten Winkeln und reichweiten feuern!
+
+use vitals;
+use util;
+use math;
+use os;
+use uo;
+
+Include "include/client";
+Include "include/itemnpc";
+Include "include/msgs";
+Include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program catapult(bediener, catapult)
+
+  Var targetcoords;
+  Var tempitem:={};
+  Var i,j;
+  Var sleeptime;
+  Var tempbuff;
+  Var tempstr;
+
+  if (GetObjProperty(catapult, "InUse") == 1)
+    SetObjProperty(catapult, "InUse",2);
+  elseif (GetObjProperty(catapult, "InUse") == 2)
+    SendSysMessagePergon(bediener, "Das Katapult wird gerade von jemand anderem genutzt.",
+                                   "This catapult is already in use.");
+    SetObjProperty(catapult, "InUse", 1);
+    return;
+  else
+    SendSysMessagePergon(bediener, "Fehler aufgetreten im Katapultskript.",
+                                   "There was an error in the catapult script.");
+    SetObjProperty(catapult, "InUse", 1);
+    return;
+  EndIf
+
+// Katapult mit Munition fuettern <cs-syndrom>hoffentlich kommt keiner um die Ecke</cs-syndrom>
+
+  SendSysMessagePergon(bediener, "Legt das Holz für die Holzkohle in die Katapultschaufel.",
+                                 "Put some firewood into the catapult.");
+  tempitem[1]:=Target(bediener);
+
+  if (!((tempitem[1].objtype == 0x0DE1) or (tempitem[1].objtype == 0x0DE2)))
+    SendSysMessagePergon(bediener, "Ihr müsst Brennholz verwenden, um das Katapult zu laden.",
+                                   "You've to use kindlings to load the catapult.");
+    SetObjProperty(catapult, "InUse", 1);
+    return;
+  else
+    if(tempitem[1].amount < 5)
+      SendSysMessagePergon(bediener, "Ihr habt nicht genügend Brennholz, um den Katapult zu laden.",
+                                     "That's not enough firewood to load the catapult.");
+      SetObjProperty(catapult, "InUse", 1);
+      return;
+    else
+      tempbuff:=tempitem[1].amount;
+      tempbuff-=5;
+      tempitem[2]:=CreateItemAtLocationPergon(tempitem[1].x, tempitem[1].y, tempitem[1].z, 0xDE2, tempbuff,tempitem[1].realm);
+      DestroyItem(tempitem[1]);
+    EndIf
+  EndIf
+  tempitem[1]:=0;
+  tempitem[2]:=0;
+
+
+  SendSysMessagePergon(bediener, "Übergießt das Holz nun mit einer Flasche Öl.",
+                                 "Douse the firewood with oil.");
+  tempitem[1]:=Target(bediener);
+
+  if (!(tempitem[1].objtype == 0x1C18))
+    SendSysMessagePergon(bediener, "Ihr müsst Öl in die Katapultschaufel geben, um ihn zu laden.",
+                                   "That was no oil, wasn't it?");
+    SetObjProperty(catapult, "InUse", 1);
+    return;
+  else
+    DestroyItem(tempitem[1]);
+  EndIf
+  tempitem[1]:=0;
+
+  SendSysMessagePergon(bediener, "Und zum Schluss noch eine explosive Flüssigkeit hinzufügen.",
+                                 "In a final step load the catapult with some explosive liquids.");
+  tempitem[1]:=Target(bediener);
+
+  if (!(tempitem[1].objtype == 0xDC09))
+    SendSysMessagePergon(bediener, "Ihr braucht eine explosive Flüssigkeit zum Laden des Katapults.",
+                                   "You need explosive liquids to load the catapult.");
+    SetObjProperty(catapult, "InUse", 1);
+    return;
+  else
+    DestroyItem(tempitem[1]);
+  EndIf
+  tempitem[1]:=0;
+
+  tempbuff:=0;
+  tempstr:="";
+  tempitem:=ListEquippedItems(bediener);
+
+  for(i:=1; i <= len(tempitem); i+=1)
+    if ((tempitem[i].objtype == 0x0A12) || (tempitem[i].objtype == 0x0A13) || (tempitem[i].objtype == 0x0A14))
+      tempbuff:=1;
+    EndIf
+  endfor
+
+  if (tempbuff == 0)
+    SendSysMessagePergon(bediener, "Ihr müsst eine Fackel zum Anzünden halten um den Katapult abzufeuern.",
+                                   "Hold a torch to fire off the catapult.");
+    SetObjProperty(catapult, "InUse", 1);
+    return;
+  else
+    tempbuff:=0;
+  EndIf
+
+
+//Ab hier Ziel auswählen und Abschuss usw.
+
+  SendSysMessagePergon(bediener, "Nun wählt Euer Ziel.", "Choose a target location.");
+
+  targetcoords:= TargetCoordinates(bediener);
+
+  if ( (Abs(targetcoords.x - catapult.x) >= 15) or (Abs(targetcoords.y - catapult.y) >= 15) )
+    SendSysMessagePergon(bediener, "Das Ziel ist ausserhalb der Reichweite.", "Target location out of range.");
+    SetObjProperty(catapult, "InUse", 1);
+    return;
+  EndIf
+
+
+  case (catapult.objtype)
+    //Schussfeldberechnung bzw -ermittlung Katapult Nord
+    0x16b1: if (targetcoords.y > catapult.y)
+        SendSysMessagePergon(bediener, "Ziel ausserhalb des Schussfeldes.", "Target out of range.");
+        SetObjProperty(catapult, "InUse", 1);
+        return;
+      EndIf
+      tempbuff:= (CDbl(Abs(targetcoords.x - catapult.x)) / CDbl(Abs(targetcoords.y - catapult.y)));
+      if ( tempbuff > 0.5)
+        SendSysMessagePergon(bediener, "Ziel ausserhalb des Schussfeldes.", "Target out of range.");
+        SetObjProperty(catapult, "InUse", 1);
+        return;
+      EndIf
+      if ( (Abs(targetcoords.y - catapult.y) < 6) )
+        SendSysMessagePergon(bediener, "Das Ziel ist zu nah.", "Target location is too near.");
+        SetObjProperty(catapult, "InUse", 1);
+        return;
+      EndIf
+      break;
+
+    //Schussfeldberechnung bzw -ermittlung Katapult Sued
+    0x1663: if (targetcoords.y < catapult.y)
+        SendSysMessagePergon(bediener, "Ziel ausserhalb des Schussfeldes.", "Target out of range.");
+        SetObjProperty(catapult, "InUse", 1);
+        return;
+      EndIf
+      tempbuff:= (CDbl(Abs(targetcoords.x - catapult.x)) / CDbl(Abs(targetcoords.y - catapult.y)));
+      if ( tempbuff > 0.5)
+        SendSysMessagePergon(bediener, "Ziel ausserhalb des Schussfeldes.", "Target out of range.");
+        SetObjProperty(catapult, "InUse", 1);
+        return;
+      EndIf
+      if ( (Abs(targetcoords.y - catapult.y) < 6) )
+        SendSysMessagePergon(bediener,"Das Ziel ist zu nah.", "Target location is too near.");
+        SetObjProperty(catapult,"InUse", 1);
+        return;
+      EndIf
+      break;
+
+    //Schussfeldberechnung bzw -ermittlung Katapult West
+    0x16d6: if (targetcoords.x > catapult.x)
+        SendSysMessagePergon(bediener, "Ziel ausserhalb des Schussfeldes.", "Target out of range.");
+        SetObjProperty(catapult, "InUse", 1);
+        return;
+      EndIf
+      tempbuff:= (CDbl(Abs(targetcoords.y - catapult.y)) / CDbl(Abs(targetcoords.x - catapult.x)));
+      if ( tempbuff > 0.5)
+        SendSysMessagePergon(bediener, "Ziel ausserhalb des Schussfeldes.", "Target out of range.");
+        SetObjProperty(catapult, "InUse", 1);
+        return;
+      EndIf
+      if ( (Abs(targetcoords.x - catapult.x) < 6) )
+        SendSysMessagePergon(bediener, "Das Ziel ist zu nah.", "Target location is too near.");
+        SetObjProperty(catapult, "InUse", 1);
+        return;
+      EndIf
+      break;
+
+    //Schussfeldberechnung bzw -ermittlung Katapult Ost
+    0x168D: if (targetcoords.x < catapult.x)
+        SendSysMessagePergon(bediener, "Ziel ausserhalb des Schussfeldes.", "Target out of range.");
+        SetObjProperty(catapult, "InUse", 1);
+        return;
+      EndIf
+      tempbuff:= (CDbl(Abs(targetcoords.y - catapult.y)) / CDbl(Abs(targetcoords.x - catapult.x)));
+      if ( tempbuff > 0.5)
+        SendSysMessagePergon(bediener, "Ziel ausserhalb des Schussfeldes.", "Target out of range.");
+        SetObjProperty(catapult, "InUse", 1);
+        return;
+      EndIf
+      if ( (Abs(targetcoords.x - catapult.x) < 6) )
+        SendSysMessagePergon(bediener, "Das Ziel ist zu nah.", "Target location is too near.");
+        SetObjProperty(catapult, "InUse", 1);
+        return;
+      EndIf
+      break;
+  endcase
+
+  targetcoords.x:=targetcoords.x+RandomInt(3)-1;
+
+  if ( !(Abs(targetcoords.y - catapult.y) == 6) )
+    targetcoords.y:=targetcoords.y+RandomInt(3)-1;
+  EndIf
+
+  sleeptime:= CoordinateDistanceEuclidean(targetcoords.x, targetcoords.y, catapult.x, catapult.y) * 100; //Berechnung der Diagonalen bzw der direkten Distanz zw beiden Objekten
+                               //und anschliessende Mul mit 100ms je feld bzw distanzeinheit
+// Katapultschleuderanimation
+
+  case (catapult.objtype)
+    0x16b1 : catapult.graphic:= 0x16b2;
+       sleepms(250);
+       catapult.graphic:= 0x16b3;
+       sleepms(250);
+       catapult.graphic:= 0x16b4;
+       break;
+
+    0x1663 : catapult.graphic:= 0x1664;
+       sleepms(250);
+       catapult.graphic:= 0x1665;
+       sleepms(250);
+       catapult.graphic:= 0x1666;
+       break;
+
+    0x16d6 : catapult.graphic:= 0x16d7;
+       sleepms(250);
+       catapult.graphic:= 0x16d8;
+       sleepms(250);
+       catapult.graphic:= 0x16d9;
+       break;
+
+    0x168d : catapult.graphic:= 0x168d;
+       sleepms(250);
+       catapult.graphic:= 0x168f;
+       sleepms(250);
+       catapult.graphic:= 0x1690;
+       break;
+  endcase
+
+
+  foreach player in ListMobilesInLineOfSight(catapult,15)
+    PlaySoundEffect(player,0x23A);
+  endforeach
+
+// Ende Katapultschleuderanimation
+
+  PlayMovingEffectXYZ(catapult.x,catapult.y,catapult.z+10,
+      targetcoords.x, targetcoords.y, targetcoords.z+10, FX_FIREBALL, 10, 0, 0,catapult.realm);
+
+  sleepms(sleeptime);
+
+  foreach player in ListMobilesInLineOfSight(catapult,15)
+    PlaySoundEffect(player,0x209);
+  endforeach
+
+//Explosionserzeugung und Animation
+
+  tempitem[1]:=CreateItemAtLocationPergon(targetcoords.x, targetcoords.y, targetcoords.z, 14092,1,targetcoords.realm);
+  tempitem[1].facing:=2;
+
+  sleepms(50);
+
+  for(i:=0; i<=25; i+=1)
+    if ((i==9) or (i==14) or (i==23))
+      i+=1;
+    EndIf
+    tempitem[1].graphic:= 14092 + i;
+    sleepms(50);
+  endfor
+  DestroyItem(tempitem[1]);
+
+  foreach player in ListMobilesInLineOfSight(catapult,15)
+    PlaySoundEffect(player,0x11E);
+  endforeach
+
+  foreach mobile in ListMobilesNearLocation(targetcoords.x,targetcoords.y,targetcoords.z,2,targetcoords.realm)
+    if(!mobile.enabled("invul"))
+      ApplyRawDamagePergon(mobile, 50+RandomInt(26));
+    EndIf
+  endforeach
+
+  tempitem[1]:=CreateItemAtLocationPergon(targetcoords.x, targetcoords.y, targetcoords.z, 14002,1,targetcoords.realm);
+  tempitem[2]:=CreateItemAtLocationPergon(targetcoords.x+1, targetcoords.y, targetcoords.z, 14002,1,targetcoords.realm);
+  tempitem[3]:=CreateItemAtLocationPergon(targetcoords.x+1, targetcoords.y-1, targetcoords.z, 14002,1,targetcoords.realm);
+  tempitem[4]:=CreateItemAtLocationPergon(targetcoords.x+2, targetcoords.y-1, targetcoords.z, 14002,1,targetcoords.realm);
+  tempitem[5]:=CreateItemAtLocationPergon(targetcoords.x, targetcoords.y-2, targetcoords.z, 14002,1,targetcoords.realm);
+  tempitem[6]:=CreateItemAtLocationPergon(targetcoords.x-1, targetcoords.y-1, targetcoords.z, 14002,1,targetcoords.realm);
+  tempitem[7]:=CreateItemAtLocationPergon(targetcoords.x-1, targetcoords.y-2, targetcoords.z, 14002,1,targetcoords.realm);
+  tempitem[8]:=CreateItemAtLocationPergon(targetcoords.x-2, targetcoords.y, targetcoords.z, 14002,1,targetcoords.realm);
+  tempitem[9]:=CreateItemAtLocationPergon(targetcoords.x, targetcoords.y+1, targetcoords.z, 14002,1,targetcoords.realm);
+  tempitem[10]:=CreateItemAtLocationPergon(targetcoords.x-1, targetcoords.y+1, targetcoords.z, 14002,1,targetcoords.realm);
+
+  for(i:=0; i<=10; i+=1)
+    for (j:=1; j<=10; j+=1)
+      tempitem[j].graphic:= 14002 + i;
+    endfor
+    sleepms(100);
+  endfor
+
+  for(i:=1; i<=10; i+=1)
+    DestroyItem(tempitem[i]);
+  endfor
+
+// Ende Explosionen und Feuereffekte
+
+  case (catapult.objtype)
+    0x16b1 : catapult.graphic:= 0x16b1;
+       break;
+
+    0x1663 : catapult.graphic:= 0x1663;
+       break;
+
+    0x16d6 : catapult.graphic:= 0x16d6;
+       break;
+
+    0x168d : catapult.graphic:= 0x168d;
+       break;
+  endcase
+
+  SetObjProperty(catapult, "InUse", 1);
+
+EndProgram

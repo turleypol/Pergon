@@ -1,0 +1,29 @@
+///////////////////////////////////////////////////////////////////////////
+// .enable [priv] - enable a privilege
+//
+
+use polsys;
+use uo;
+include "include/msgs";
+include "include/properties";
+
+Program TextCMD_Enable(who, priv)
+  If (!priv)
+    SendSysMessagePergon(who, "Ihr müsst ein Privileg angeben!");
+    return;
+  EndIf
+  priv := Lower(priv);
+
+  If (!IsValidPrivilege(priv))
+    SendSysMessagePergon(who, "Unbekanntes Privileg. Vertippt?");
+    return;
+  EndIf
+
+  var res := who.enable(priv);
+  If (res)
+    SendSysMessagePergon(who, "Privileg '"+priv+"' ist aktiviert.");
+    IncRevision(who);
+  Else
+    SendSysMessagePergon(who, "Ihr habt nicht dieses Privileg.");
+  EndIf
+EndProgram

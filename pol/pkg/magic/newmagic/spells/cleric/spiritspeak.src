@@ -1,0 +1,69 @@
+//**************************************************************************************************
+// Script file spiritspeak.src
+//
+//    implements spell 231 <Spirit Speak> - "Geistersprache"
+//
+//	caster can speak to ghosts
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use os;
+
+Include "../magicpergon";
+Include "include/spellcheck";
+
+program cast_spiritspeak (params)
+
+   Var caster;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_SPIRITSPEAK);
+   Var dur:=    spell.duration;
+   Var mindur:= spell.durationmin;
+   Var maxdur:= spell.durationmax;
+   Var power;
+
+   if (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_SPIRITSPEAK);
+   endif
+
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   dur:=CInt(power*dur/100.0);					// calc spell duration according to casting power
+   if (mindur and mindur > dur)
+      dur:= mindur;
+   elseif (maxdur and maxdur < dur)
+      dur:= maxdur;
+   endif
+
+   PlaySoundEffectPrivate(caster, SFX_SKILL_SPIRITSPEAK, caster);
+   PrintTextAbovePrivatePergon(caster, "Ihr vernehmt die Stimmen der Geister",
+   				       						"You now listen to the ghosts' voices", caster);
+
+   GrantPrivilege(caster, "hearghosts");				// grant privilege to speak to ghosts
+   GrantPrivilege(caster, "seeghosts");				// grant privilege to see ghosts
+   if (!caster.enable("hearghosts"))		        	// activate privilege hearghosts
+      Syslog("WARNUNG: Spell Spiritspeak - Cannot activate granted privilege hearghosts");
+   endif
+   if (!caster.enable("seeghosts"))		        		// activate privilege seeghosts
+      Syslog("WARNUNG: Spell Spiritspeak - Cannot activate granted privilege seeghosts");
+   endif
+
+	 //MoveObjectToLocation(caster, caster.x, caster.y, caster.z, caster.realm);		  // damit man auch Geister sieht die beim casten in Sichtweite stehen
+
+   Var tag:= array;
+
+   tag[1]:= ReadGameClock() + dur;
+   tag[2]:= ReadMilliSecondClock();
+
+   SetObjProperty(caster, "spell_spiritspeak", tag);		// tag spelltarget for spellchecker
+   SendSpellWaiter(caster, "spell_spiritspeak", dur, tag[2], caster);
+
+endprogram

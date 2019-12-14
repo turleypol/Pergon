@@ -1,0 +1,130 @@
+///////////////////////////////////////////////////////////////////////////
+// provocation -- Tiere provozieren (Skill)
+
+use attributes;
+use cfgfile;
+use uo;
+include "include/bard";
+include "include/client";
+include "include/eventid";
+include "include/modifyskill";
+include "include/objtype";
+
+Program BardProvoke(who) // {{{
+    If (GetObjProperty(who, "#UsesSkill") > ReadGameClock())
+        SendSysMessagePergon(who, "Ihr müsst noch etwas warten");
+        return;
+    EndIf
+    SetObjProperty(who, "#UsesSkill", ReadGameClock() + 2);
+
+    SendSysMessagePergon(who, "Was soll provoziert werden?");
+    var animal := Target(who);
+    If (!animal)
+        SendSysMessagePergon(who, "Zielen abgebrochen.");
+        EraseObjProperty(who, "#provocating");
+        return;
+    EndIf
+
+    // diverse Machbarkeitsstudien {{{
+    // wieviel Zeit vergeht beim Provozieren?
+    var provtime := CheckProvocability(who, animal);
+    If (!provtime)
+        EraseObjProperty(who, "#provocating");
+        return;
+    EndIf
+
+    // etwas warten, je nach Restriktion
+    Sleep(provtime);
+
+    var diff := GetNPCConfig(animal.npctemplate).provoke;
+    If (!diff)
+        EraseObjProperty(who, "#provocating");
+        return;
+    EndIf
+
+    If (!Can_Sing(who, 5))
+        EraseObjProperty(who, "#provocating");
+        return;
+    EndIf
+
+    var instrument := FindInstrument(who);
+    If (!instrument)
+        SendSysMessagePergon(who, "Ihr habt kein Instrument zum Spielen!");
+        EraseObjProperty(who, "#provocating");
+        return;
+    EndIf
+    // }}}
+
+    // eigentliches Provozieren {{{
+    var ev   := struct;
+    ev.+type := SYSEVENT_ENGAGED;
+    If (CheckSkillPergon(
+            who, SKILLID_PROVOZIEREN, CInt(diff), CInt(diff *2)
+        ) && (musicprovoke(who, instrument, 20))
+    )
+        SendSysMessagePergon(who,
+            "Worauf wollt Ihr die provozierte Kreatur hetzen?"
+        );
+        var newtarg := Target(who, TGTOPT_HARMFUL);
+        If (!newtarg)
+            SendSysMessagePergon(who, "Zielen abgebrochen.");
+            return;
+        EndIf
+        ev.+source := newtarg;
+        sendevent(animal, ev);
+    Else
+        If (RandomInt(1000) < 250)
+            SendSysMessagePergon(who,
+                "Oha, das ging gründlich schief!"
+            );
+            ev.+source := who;
+            SendEvent(animal, ev);
+        Else
+            SendSysMessagePergon(who,
+                "Es gelingt Euch nicht, das Tier zu provozieren."
+            );
+        EndIf
+    EndIf
+    // }}}
+EndProgram // }}}
+
+// Restriktionen festlegen
+Function CheckProvocability(who, animal) // {{{
+    // - angebunde Viechers kann man nicht provozieren {{{
+    If (animal.getprop("parking"))
+        SendSysMessagePergon(who,
+            "Das Tier ist angebunden und kann sich nicht losreissen."
+        );
+        return error{errortext := "Animal is hitched"};
+    EndIf
+    // }}}
+
+    // - abgerichtete blaue Tiere kann nur Besitzer oder PK provozieren {{{
+    If (
+        // abgerichtet
+        animal.master and
+        // Besitzer ist weder grau noch rot -> Tier blau
+        !(animal.master.criminal or animal.master.murderer)
+    )
+        If (who.getprop(TYPKILLER))
+            // ist PK
+            who.setcriminal(1);
+            // bei blauen Tieren dauert es lange
+            return 5;
+        EndIf
+        If (who.serial == animal.master.serial)
+            // eigenes Tier
+            who.setcriminal(1);
+            return 5;
+        EndIf
+
+        SendSysMessagePergon(who,
+            "Das Tier ist zu treu und lässt sich nicht provozieren."
+        );
+        return error{errortext := "Animal is well-trained"};
+    EndIf
+    // }}}
+
+    // Standardzeit
+    return 1;
+EndFunction // }}}

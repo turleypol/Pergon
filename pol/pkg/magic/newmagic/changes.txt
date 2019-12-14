@@ -1,0 +1,117 @@
+
+Allgemein:
+
+- Umstellung der 'aufrechterhaltenen' Sprueche (alles was eine Wirkung ueber eine laengere Zeit hinweg
+  erzielt) auf Verwaltung mittels Timestamps - damit unabhaengig von Abstuerzen, Ein- und Ausloggen etc.
+
+- Zentrale Verwaltung der Timestamps im 'Spellchecker'
+
+- Zweisprachige Messages
+
+- Ueberarbeitung einer ganzen Reihe von Spruchwirkungen
+
+- Zurueckkehren und Mauer tauschen ihre Plaetze im Zauberbuch. 
+  Ergo: Zurueckkehren -> Zirkel 5 / Mauer -> Zirkel 4
+  (Anpassen der globalen Konstanten noch noetig (Jason) und Update der Spruchsymbole ebenso)
+
+- Bei Beschwoerungen greifen die Critter ihre 'Besitzer' nicht mehr an, wenn sie aufgrund des Spruchs HP
+  verlieren
+
+- Bei Flaechenzaubern und Feldern werden Geister nicht mehr zum 'Opfer'
+
+- Alle Auren erhalten einen stochastischen 'Pushback', der Angreifer zurueckschleudert
+  (Muss noch weiter getestet werden, da STR vs. INT die 'Reichweite' steuert) 
+  und in der Zeitdauer verkuerzt (aus nem strategischen eird ein taktischer Spruch ;) )
+
+
+
+Speziell - Sprueche (ueber das allgemeine hinaus):
+
+
+- Incognito: Wiederholtes Casten von Incognito veraendert den Namen, nicht die Dauer des Spruches
+             (Wenn jemand der Name mal nicht gefaellt)
+
+- Invisibility: Anpassung an Verstecktes Entdecken/Verstecken (hiding_diff) und Ermoeglichung des Schleichens
+                einer bestimmten Strecke
+
+- Light: keine Aenderung, aber auf diesem Wege ne sanfte Erinnerung an die notwendige Implementation einer
+         Funktion, die das aktuelle Licht-Level eines Mobiles liefert
+
+- Magic Trap: Anpassung an neues Fallenstellen (Fallen jetzt via Funktion aus Trappackage)
+
+- Magic Unlock: Anpassung ans Schloesserknacken (Tueren fallen nach bestimmter Zeit wieder ins Schloss und                    sind als geknackt gekennzeichnet, nicht geoeffnet)
+
+- Magic Untrap: Anpassung an neues Fallenstellen (Effekte beim Entschaerfen und Ausloesen jetzt direkt
+                aus dem Trap-Package (Peter))
+
+- Mark: Runenmarkieren innerhalb von Haeusern ist generell unmoeglich
+        (derzeit nur Check auf Multi - kuenftig sollen auch Static-Haeuser abgedeckt werden)
+
+- Polymorph: Wiederholtes Casten von Polymorph veraendert die Gestalt (aber nicht die Spruchdauer)
+             => Begrenzte Kontrolle ueber das Aussehen
+
+- Reveal: Anpassung an Verstecken (Nutzen von CProp hiding_diff) und das neue Fallenstellen
+
+- Telekinese: Telekinese ist nur noch innerhalb eines (durch die INT bestimmten) Radius moeglich
+
+- Teleport: Man kann sich nur noch innerhalb eines (durch die INT bestimmten) Radius teleporten
+            Eventuell Check auf NoRune-Region noch ueberarbeiten
+
+
+- Chainlightning: Komplett neu. Am naehsten beim 'Einschlagpunkt' stehende Kreatur/Player bestimmt Typ der
+                  Ziele des Spruchs (wenns nen Player ist, dann ists Pech). Spruch schlaegt dann auf 
+                  bestimmte Anzahl legaler Ziele in Reichweite durch
+
+- Charybdis: Komplett neu. Verhaelt sich wie ein stationaerer Wasserstrudel (zieht Opfer an und verteilt
+             Schaden) - sollte unbedingt weiter getestet werden (was eigentlich laengst aufm Bauserver haette
+             passieren sollen)
+
+- Earthquake: Schaden nimmt vom 'Epizentrum' her exponentiell ab
+
+- Vulcano: Animation verkleinert (hat zu sehr gelaggt) und etwas umgestellt -> multipler Flamestrike
+
+
+- Dispel Field: Antimagie kann jetzt auch magische Tore zerstoeren
+
+- Fog: Angepasst an kuenftiges HitScript - kein Missbrauch zum Skillen mehr moeglich
+
+- Holy Warrior: Ist jetzt ein 'Multi-Segen', d.h. gesamtes Equipment bekommt ItemBless und Char bekommt
+                staerkeren 'normalen' Segen
+
+- Spiritspeak: Privilegien werden nicht nur vergeben/genommen sondern auch (de)aktiviert - sollte also 
+               endlich funzen wie erwartet
+
+- Uncurse: Anpassung an veraendertes Deadknight und Abstimmung auf kuenftige Thaumaturgie
+
+
+- Deadknight: Ist jetzt ein 'Multi-Fluch', d.h. gesamtes Equipment bekommt ItemCurse, Rest wie gehabt, nur das
+              Privileg auch (de)aktviert wird, also funzt
+
+- Soulsense: Privileg wird (de)aktiviert, damit man auch wirklich Geister sehen kann
+
+- Statue: Privileg wird (de)aktiviert, sollte also auch wirklich funktionieren
+
+
+
+Speziell - Includes und sonstige:
+
+
+- inscription.inc: Beim Abschreiben werden deaktivierte Zauberrollen erzeugt
+
+- rune.inc: Recall und GateTravel funktionieren nur noch innerhalb einer bestimmten Reichweite / Gates sind
+            zerstoerbar
+
+- misc/blinded.src: Angepasst an Spellchecker
+
+- misc/equiptest, misc/unequiptest: Angepasst an Spruchaenderungen (Curse, Item-Sprueche)
+
+- items/resgate.src: Resgate verweigert Resurrect bei Verdammung
+
+- include/teleporters.inc: Statische Teleporter der Arena von Wind hinzugefuegt
+
+- include/spellcheck.inc: Spellchecker - zentrales Dingensbums, ohne das nichts geht ;)
+
+- include/thaumaturgy.inc: Thaumaturgie-Kram - bevor ihr rumgeifert - alles alpha, bis auf ein paar Sachen
+				(Gilt auch fuer den Rest, wo Thaumaturgie dransteht)
+
+

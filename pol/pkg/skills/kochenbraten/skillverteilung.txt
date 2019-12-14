@@ -1,0 +1,44 @@
+010 * Teig
+015 * Teig
+020 * Eierkuchen
+030 * rohe Pizza
+035 * Pizza
+040 * rohe Kaesepizza
+040 * zwei rohe Kaesepizza
+045 * Kaesepizza
+050 * rohe Zwiebelpizza
+055 * Zwiebelpizza
+
+015 C Spiegelei
+020 C gruener Salat
+025 C Fischfilet
+030 C Moehrensalat
+035 C gegartes Rippchen
+040 C Maissalat
+045 C Wuerstchen
+055 C Huehnerbein
+060 C Grillhuehnchen
+065 C Lammkeule
+070 C rohe Fischpastete
+075 C Fischpastete
+080 C rohe Fleischpastete
+085 C Fleischpastete
+090 C rohe Huehnerpastete
+095 C Huehnerpastete
+100 C Sushirolle
+105 C Sushiplatte
+
+020 B Brot
+025 B rohe Kekse
+025 B rohe Kekse
+030 B Kekseplatte
+035 B Pergonisches Milchbroetchen
+040 B roher Eischneekuchen
+045 B Eischneekuchen
+050 B Muffin
+055 B roher Apfelkuchen
+060 B Apfelkuchen
+065 B roher Birnenkuchen
+070 B Birnenkuchen
+075 B roher Pfirsichkuchen
+080 B Pfirsichkuchen

@@ -1,0 +1,58 @@
+///////////////////////////////////////////////////////////////////////////
+// telemage -- alle Elementarmagier duerfen teleportieren
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.2  2008/08/25 12:04:18  mehdorn
+// - Walkonaction gibt nun auch Ursprungskoordinaten weiter
+// - OneStepBack entsprechend umgebaut
+//
+// Revision 1.1  2008/08/25 10:50:47  mehdorn
+// - allgemeines Teleportsetupscript
+// - restliche Auswahlen konvertiert
+//
+
+include "include/modifyskill";
+include "include/msgs";
+include "common";
+use uo;
+
+Program TeleMage(p)
+    If (p.who.isa(POLCLASS_NPC))
+        // NPCs vom Teleporter werfen
+        StepBack(p);
+        return;
+    EndIf
+
+    var dest := GetTeleDest(p.item);
+    If (dest == error)
+        SendSysMessagePergon(p.who,
+            "Dieser Teleport ist leider defekt. Wendet Euch an einen GM.",
+            "Sorry, this teleport is broken. Ask a GM for further help."
+        );
+        return;
+    EndIf
+
+    If (
+        p.cmd or
+        // Klasse Magier
+        p.who.getprop(SKKLASSE) == "Magier" and
+        // mindestens ein Magieskill im Beruf
+        (
+            SKILLTYP_BERUF in (array{
+                p.who.getprop(SKILLTYPKENNUNG+SKILLID_MAGIE),
+                p.who.getprop(SKILLTYPKENNUNG+SKILLID_MAGISCHEGEGENST)
+            })
+        )
+    )
+        MoveObjectToLocation(p.who, dest.x, dest.y, dest.z, dest.realm);
+        return;
+    EndIf
+
+    SendSysMessagePergon(p.who,
+        "Ihr seid nicht vertraut mit der Elementarmagie. "+
+        "Zugang wird verweigert.",
+        "You have no knowlegde about elemental magic. Access denied."
+    );
+EndProgram

@@ -1,0 +1,36 @@
+Use uo;
+Use os;
+
+Include "include/modifyskill";
+
+Program TextCMD_Test()
+  SysLog("GetPlayerSkills...");
+
+  ForEach accountname in ListAccounts();
+    Var account:=FindAccount(accountname);
+    If (account)
+      Var created:=0;
+
+      Var charnr;
+      For (charnr:=1; charnr<=5; charnr:=charnr+1)
+        Var char:=account.getcharacter(charnr);
+        If (char)
+          If (!created)
+            SysLog("  "+account.name);
+            created:=1;
+          EndIf
+          SysLog("    "+char.name);
+
+          For skillid:=0 To MAX_SKILLS
+            If (GetRawSkillPergon(char, skillid))
+              SysLog("      Skill "+skillid+" = "+GetSkillPergon(char, skillid)+
+                " ("+GetRawSkillPergon(char, skillid)+")");
+            EndIf
+          EndFor
+        EndIf
+      EndFor
+    Else
+      SysLog("'"+accountname+"' gibt es nicht !");
+    EndIf
+  EndForEach
+EndProgram

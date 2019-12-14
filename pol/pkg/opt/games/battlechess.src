@@ -1,0 +1,1720 @@
+///////////////////////////////////////////////////////////////////////////
+// BattleChess - Über ein Schachgump steuert man Monster
+//
+// Author: Turley
+
+///////////////////////////////////////////////////////////////////////////
+// TODO:
+//
+// CProps nötig:
+// "serial" - Serial des jeweils anderen
+// "startx" "starty" - Weißer Spieler NW-Ecke des Spielfeldes
+// "white" - Auf 1 beim weißen Feld
+//
+// Fehlerbehebung:
+// CProp "canceled" 1 egal auf welches Schachbrett
+// oder
+// CProp "monsterdone" 1 auf Schachbrett das gerade gezogen hat
+
+use math;
+use os;
+use uo;
+include "include/client";
+include "include/eventid";
+include "include/modifyskill";
+include "include/msgs";
+include "include/packets";
+include "include/pergonutil";
+
+var layout := {
+  "page 0",                          // Basisseite
+  "nodispose",                       // Kein Esc zum Beenden
+  "resizepic 25 25 83 470 500",      // Hintergrund
+  "button 370 485 2450 2451 1 0 99",  // OK
+  "button 420 485 2453 2454 1 0 100",  // Cancel
+  "text 50 485 101 0"
+};
+
+var data := {"Battle Chess"};
+var layout2 := {};
+
+// Matrix der Figuren
+var Figurenorig := {
+  {"25 ST", "26 SS", "27 SL", "28 SD", "29 SK", "30 SL", "31 SS", "32 ST"},
+  {"17 SB", "18 SB", "19 SB", "20 SB", "21 SB", "22 SB", "23 SB", "24 SB"},
+  {   ""  ,   ""   ,   ""   ,   ""   ,   ""   ,   ""   ,   ""   ,   ""   },
+  {   ""  ,   ""   ,   ""   ,   ""   ,   ""   ,   ""   ,   ""   ,   ""   },
+  {   ""  ,   ""   ,   ""   ,   ""   ,   ""   ,   ""   ,   ""   ,   ""   },
+  {   ""  ,   ""   ,   ""   ,   ""   ,   ""   ,   ""   ,   ""   ,   ""   },
+  {" 9 WB", "10 WB", "11 WB", "12 WB", "13 WB", "14 WB", "15 WB", "16 WB"},
+  {" 1 WT", " 2 WS", " 3 WL", " 4 WD", " 5 WK", " 6 WL", " 7 WS", " 8 WT"}
+};
+
+Const start := 40;    // x/y Startpunkt
+Const modfeld := 55;  // Größe eines Feldes
+Const modx_f := 20;   // xMod für Figur relativ zur Oberkante des Feldes
+Const mody_f := 10;   // yMod ".."
+Const feldsize := 2;  // 2x2 Felder
+
+// CreatureTemplates
+var Creaturetemp := dictionary{
+  "WT" -> "ChessWhiteT",
+  "WS" -> "ChessWhiteS",
+  "WL" -> "ChessWhiteL",
+  "WD" -> "ChessWhiteD",
+  "WK" -> "ChessWhiteK",
+  "WB" -> "ChessWhiteB",
+  "ST" -> "ChessBlackT",
+  "SS" -> "ChessBlackS",
+  "SL" -> "ChessBlackL",
+  "SD" -> "ChessBlackD",
+  "SK" -> "ChessBlackK",
+  "SB" -> "ChessBlackB"
+};
+
+// Durchnummerierung der Figuren wie bei Figureorig für serials
+var Creature := dictionary{
+   "1",  "2",  "3",  "4",  "5",  "6",  "7",  "8",
+   "9", "10", "11", "12", "13", "14", "15", "16",
+  "17", "18", "19", "20", "21", "22", "23", "24",
+  "25", "26", "27", "28", "29", "30", "31", "32"
+};
+
+Const ungueltigerZug := "Ungültiger Zug";
+
+var Figuren := Figurenorig;
+var whiteplayer;
+
+Program battlechess(who, board)
+  var boardserial, secondboard, ret, retMov;
+  var feld1 := struct{x, y}, feld2 := struct{x, y};
+  var retOpp, i, rochadeerror := 0;
+
+  If(!ReserveItem(board))
+    SendSysMessagePergon(who,
+      "Ein Spiel ist bereits im Gange.", "You cannot use that."
+    );
+    return;
+  EndIf
+  EraseObjProperty(board, "done");
+  EraseObjProperty(board, "canceled");
+
+  boardserial := GetObjProperty(board, "serial");
+  If (!boardserial)
+    SendSysMessagePergon(who, "Kein zweites Board gefunden!");
+    return;
+  EndIf
+  secondboard := SystemFindObjectBySerial(boardserial);
+
+  SetObjProperty(board, "play", "1");
+
+  Gumpmuster();  // Schachbrettmuster
+  If (!GetObjProperty(secondboard, "play"))
+    SendSysMessagePergon(who, "Warten auf zweiten Spieler");
+    If (!WaitforPlayer(who, secondboard))
+      EraseObjProperty(board, "play");
+      return;
+    EndIf
+  EndIf
+  If (GetObjProperty(board, "white"))  // Weiß?
+    whiteplayer := 1;
+    CreatureCreate(who, board, secondboard);
+  Else
+    whiteplayer := 0;
+    Figuren[1] := Figurenorig[8];  // Ummodeln...
+    Figuren[2] := Figurenorig[7];
+    Figuren[3] := Figurenorig[6];
+    Figuren[4] := Figurenorig[5];
+    Figuren[5] := Figurenorig[4];
+    Figuren[6] := Figurenorig[3];
+    Figuren[7] := Figurenorig[2];
+    Figuren[8] := Figurenorig[1];
+    For (i := 1;i <= 8;i += 1)
+      Spiegeln(i);
+    EndFor
+    SendSysMessagePergon(who, "Warten auf den ersten Zug des Gegners");
+    retOpp := WaitForOpponent(who, board, secondboard);
+    If (!retOpp)
+      EraseObjProperty(board, "play");
+      return;
+    EndIf
+  EndIf
+
+  Repeat
+    rochadeerror := 0;
+    ShowFiguren();
+    ret := SendDialogGump(who, layout2, data);
+    If (ret[0] == 99) // OK
+      If (ret.keys.size() == 4)
+        feld1.y := ret.keys[2] / 10;   // Umwandlung der keys in Feldnummern
+        feld1.x := ret.keys[2] % 10;
+        feld2.y := ret.keys[3] / 10;
+        feld2.x := ret.keys[3] % 10;
+
+        If ((Figuren[feld1.y][feld1.x]) && (Figuren[feld2.y][feld2.x]))              // Beide Felder belegt?
+          If (Figuren[feld1.y][feld1.x][4, 1] != Figuren[feld2.y][feld2.x][4, 1])      // Unterschiedliche Farben?
+            If (Whiteplayer)                                                         // Weißer Spieler?
+              If (Figuren[feld1.y][feld1.x][4, 1] == "W")
+                retMov := MoveLegal(who, feld1, feld2, secondboard);
+                If (retMov)
+                  If (!Figuren[feld1.y][feld1.x][6, 1])                               // Erster Zug der Figur?
+                    Figuren[feld1.y][feld1.x] += "1";
+                  EndIf
+                  PrintTextAboveLocalizedPergon(who, Figurkonvert(Figuren[feld1.y][feld1.x])+" "+Feldkonvertx(feld1.x)+""+Feldkonverty(feld1.y)+" schlägt "+Figurkonvert(Figuren[feld2.y][feld2.x])+" "+Feldkonvertx(feld2.x)+""+Feldkonverty(feld2.y));
+                  SetObjProperty(board, "monsterdone", 0);
+                  EventSenden(board, secondboard, Figuren[feld1.y][feld1.x], feld2.x, feld2.y, 1, 0);
+                  Repeat
+                    If (GetObjProperty(board, "canceled"))
+                      Break;
+                    EndIf
+                    Sleep(1);
+                  Until (GetObjProperty(board, "monsterdone"));
+                  Figuren[feld2.y][feld2.x] := Figuren[feld1.y][feld1.x];                // 1 auf 2
+                  Figuren[feld1.y][feld1.x] := "";                                       // 1 löschen
+                  Bauerumwandlung(who, board, secondboard, feld2);                                  // Check auf Bauer y=1
+                  SetObjProperty(board, "last", feld2.x+""+feld2.y);  // letzten Zug speichern
+                  retOpp := WaitForOpponent(who, board, secondboard);
+                  If (!retOpp)
+                    Break;
+                  EndIf
+                Else
+                  SendSysMessagePergon(who, ungueltigerZug);
+                EndIf
+              ElseIf (Figuren[feld2.y][feld2.x][4, 1] == "W")
+                retMov := MoveLegal(who, feld2, feld1, secondboard);
+                If (retMov)
+                  If (!Figuren[feld2.y][feld2.x][6, 1])                               // Erster Zug der Figur?
+                    Figuren[feld2.y][feld2.x] += "1";
+                  EndIf
+                  PrintTextAboveLocalizedPergon(who, Figurkonvert(Figuren[feld2.y][feld2.x])+" "+Feldkonvertx(feld2.x)+""+Feldkonverty(feld2.y)+" schlaegt "+Figurkonvert(Figuren[feld1.y][feld1.x])+" "+Feldkonvertx(feld1.x)+""+Feldkonverty(feld1.y));
+                  SetObjProperty(board, "monsterdone", 0);
+                  EventSenden(board, secondboard, Figuren[feld2.y][feld2.x], feld1.x, feld1.y, 1, 0);
+                  Repeat
+                    If (GetObjProperty(board, "canceled"))
+                      Break;
+                    EndIf
+                    Sleep(1);
+                  Until (GetObjProperty(board, "monsterdone"));
+                  Figuren[feld1.y][feld1.x] := Figuren[feld2.y][feld2.x];                // 2 auf 1
+                  Figuren[feld2.y][feld2.x] := "";                                       // 2 löschen
+                  Bauerumwandlung(who, board, secondboard, feld1);                                  // Check auf Bauer y=1
+                  SetObjProperty(board, "last", feld1.x+""+feld1.y);  // letzten Zug speichern
+                  retOpp := WaitForOpponent(who, board, secondboard);
+                  If (!retOpp)
+                    Break;
+                  EndIf
+                Else
+                  SendSysMessagePergon(who, ungueltigerZug);
+                EndIf
+              Else
+                SendSysMessagePergon(who, ungueltigerZug);
+              EndIf
+            Else
+              If (Figuren[feld1.y][feld1.x][4, 1] == "S")
+                retMov := MoveLegal(who, feld1, feld2, secondboard);
+                If (retMov)
+                  If (!Figuren[feld1.y][feld1.x][6, 1])                               // Erster Zug der Figur?
+                    Figuren[feld1.y][feld1.x] += "1";
+                  EndIf
+                  PrintTextAboveLocalizedPergon(who, Figurkonvert(Figuren[feld1.y][feld1.x])+" "+Feldkonvertx(feld1.x)+""+Feldkonverty(feld1.y)+" schlaegt "+Figurkonvert(Figuren[feld2.y][feld2.x])+" "+Feldkonvertx(feld2.x)+""+Feldkonverty(feld2.y));
+                  SetObjProperty(board, "monsterdone", 0);
+                  EventSenden(board, secondboard, Figuren[feld1.y][feld1.x], feld2.x, feld2.y, 1, 0);
+                  Repeat
+                    If (GetObjProperty(board, "canceled"))
+                      Break;
+                    EndIf
+                    Sleep(1);
+                  Until (GetObjProperty(board, "monsterdone"));
+                  Figuren[feld2.y][feld2.x] := Figuren[feld1.y][feld1.x];                // 1 auf 2
+                  Figuren[feld1.y][feld1.x] := "";                                       // 1 löschen
+                  Bauerumwandlung(who, board, secondboard, feld2);                                  // Check auf Bauer y=1
+                  SetObjProperty(board, "last", feld2.x+""+feld2.y);  // letzten Zug speichern
+                  retOpp := WaitForOpponent(who, board, secondboard);
+                  If (!retOpp)
+                    Break;
+                  EndIf
+                Else
+                  SendSysMessagePergon(who, ungueltigerZug);
+                EndIf
+              ElseIf (Figuren[feld2.y][feld2.x][4, 1] == "S")
+                retMov := MoveLegal(who, feld2, feld1, secondboard);
+                If (retMov)
+                  If (!Figuren[feld2.y][feld2.x][6, 1])                               // Erster Zug der Figur?
+                    Figuren[feld2.y][feld2.x] += "1";
+                  EndIf
+                  PrintTextAboveLocalizedPergon(who, Figurkonvert(Figuren[feld2.y][feld2.x])+" "+Feldkonvertx(feld2.x)+""+Feldkonverty(feld2.y)+" schlaegt "+Figurkonvert(Figuren[feld1.y][feld1.x])+" "+Feldkonvertx(feld1.x)+""+Feldkonverty(feld1.y));
+                  SetObjProperty(board, "monsterdone", 0);
+                  EventSenden(board, secondboard, Figuren[feld2.y][feld2.x], feld1.x, feld1.y, 1, 0);
+                  Repeat
+                    If (GetObjProperty(board, "canceled"))
+                      Break;
+                    EndIf
+                    Sleep(1);
+                  Until (GetObjProperty(board, "monsterdone"));
+                  Figuren[feld1.y][feld1.x] := Figuren[feld2.y][feld2.x];                // 2 auf 1
+                  Figuren[feld2.y][feld2.x] := "";                                       // 1 löschen
+                  Bauerumwandlung(who, board, secondboard, feld1);                                  // Check auf Bauer y=1
+                  SetObjProperty(board, "last", feld1.x+""+feld1.y);  // letzten Zug speichern
+                  retOpp := WaitForOpponent(who, board, secondboard);
+                  If (!retOpp)
+                    Break;
+                  EndIf
+                Else
+                  SendSysMessagePergon(who, ungueltigerZug);
+                EndIf
+              Else
+                SendSysMessagePergon(who, ungueltigerZug);
+              EndIf
+            EndIf
+          // Rochade
+          ElseIf (((Figuren[feld1.y][feld1.x][5, 1] == "K") && (Figuren[feld2.y][feld2.x][5, 1] == "T")) || ((Figuren[feld1.y][feld1.x][5, 1] == "T") && (Figuren[feld2.y][feld2.x][5, 1] == "K")))
+            If ((!Figuren[feld1.y][feld1.x][6, 1]) && (!Figuren[feld2.y][feld2.x][6, 1]))  // Noch nicht gezogen
+              If (feld1.x<feld2.x)  // Check auf Figuren zwischen Turm und König
+                For (i := feld1.x+1;i<feld2.x;i += 1)
+                  If (Figuren[feld1.y][i])
+                    rochadeerror := 1;
+                  EndIf
+                EndFor
+              Else
+                For (i := feld2.x+1;i<feld1.x;i += 1)
+                  If (Figuren[feld1.y][i])
+                    rochadeerror := 1;
+                  EndIf
+                EndFor
+              EndIf
+              If (!rochadeerror)  // Felder Frei
+                rochadeerror := RochadeTest(feld1.x, feld1.y, feld2.x, feld2.y);  // Felder dazwischen angegriffen?
+                If (!rochadeerror)
+                  If (Figuren[feld1.y][feld1.x][5, 1] == "K")  // König auf erstem Feld?
+                    If (feld1.x<feld2.x) // König links
+                      PrintTextAboveLocalizedPergon(who, "Rochade");
+                      SetObjProperty(board, "monsterdone", 0);
+                      EventSenden(board, secondboard, Figuren[feld1.y][feld1.x], feld1.x+2, feld1.y, 0, 0);// König
+                      EventSenden(board, secondboard, Figuren[feld2.y][feld2.x], feld1.x+1, feld1.y, 0, 0);// Turm
+                      Repeat
+                        If (GetObjProperty(board, "canceled"))
+                          Break;
+                        EndIf
+                        Sleep(1);
+                      Until (GetObjProperty(board, "monsterdone"));
+                      Figuren[feld1.y][feld1.x+2] := Figuren[feld1.y][feld1.x];  // König 2 nach rechts
+                      Figuren[feld1.y][feld1.x+1] := Figuren[feld2.y][feld2.x];  // Turm links neben König
+                      Figuren[feld1.y][feld1.x] := "";
+                      Figuren[feld2.y][feld2.x] := "";
+                      SetObjProperty(board, "last", "rochade");  // letzten Zug speichern
+                      retOpp := WaitForOpponent(who, board, secondboard);
+                      If (!retOpp)
+                        Break;
+                      EndIf
+                    Else
+                      PrintTextAboveLocalizedPergon(who, "Rochade");
+                      SetObjProperty(board, "monsterdone", 0);
+                      EventSenden(board, secondboard, Figuren[feld1.y][feld1.x], feld1.x-2, feld1.y, 0, 0);// König
+                      EventSenden(board, secondboard, Figuren[feld2.y][feld2.x], feld1.x-1, feld1.y, 0, 0);// Turm
+                      Repeat
+                        If (GetObjProperty(board, "canceled"))
+                          Break;
+                        EndIf
+                        Sleep(1);
+                      Until (GetObjProperty(board, "monsterdone"));
+                      Figuren[feld1.y][feld1.x-2] := Figuren[feld1.y][feld1.x];  // König 2 nach links
+                      Figuren[feld1.y][feld1.x-1] := Figuren[feld2.y][feld2.x];  // Turm rechts neben König
+                      Figuren[feld1.y][feld1.x] := "";
+                      Figuren[feld2.y][feld2.x] := "";
+                      SetObjProperty(board, "last", "rochade");  // letzten Zug speichern
+                      retOpp := WaitForOpponent(who, board, secondboard);
+                      If (!retOpp)
+                        Break;
+                      EndIf
+                    EndIf
+                  Else
+                    If (feld2.x<feld1.x) // König links
+                      PrintTextAboveLocalizedPergon(who, "Rochade");
+                      SetObjProperty(board, "monsterdone", 0);
+                      EventSenden(board, secondboard, Figuren[feld2.y][feld2.x], feld1.x+2, feld1.y, 0, 0);// König
+                      EventSenden(board, secondboard, Figuren[feld2.y][feld2.x], feld1.x+1, feld1.y, 0, 0);// Turm
+                      Repeat
+                        If (GetObjProperty(board, "canceled"))
+                          Break;
+                        EndIf
+                        Sleep(1);
+                      Until (GetObjProperty(board, "monsterdone"));
+                      Figuren[feld2.y][feld2.x+2] := Figuren[feld2.y][feld2.x];  // König 2 nach rechts
+                      Figuren[feld2.y][feld2.x+1] := Figuren[feld1.y][feld1.x];  // Turm links neben König
+                      Figuren[feld1.y][feld1.x] := "";
+                      Figuren[feld2.y][feld2.x] := "";
+                      SetObjProperty(board, "last", "rochade");  // letzten Zug speichern
+                      retOpp := WaitForOpponent(who, board, secondboard);
+                      If (!retOpp)
+                        Break;
+                      EndIf
+                    Else
+                      PrintTextAboveLocalizedPergon(who, "Rochade");
+                      SetObjProperty(board, "monsterdone", 0);
+                      EventSenden(board, secondboard, Figuren[feld2.y][feld2.x], feld2.x-2, feld1.y, 0, 0);// König
+                      EventSenden(board, secondboard, Figuren[feld1.y][feld1.x], feld2.x-1, feld2.y, 0, 0);// Turm
+                      Repeat
+                        If (GetObjProperty(board, "canceled"))
+                          Break;
+                        EndIf
+                        Sleep(1);
+                      Until (GetObjProperty(board, "monsterdone"));
+                      Figuren[feld2.y][feld2.x-2] := Figuren[feld2.y][feld2.x];  // König 2 nach links
+                      Figuren[feld2.y][feld2.x-1] := Figuren[feld1.y][feld1.x];  // Turm rechts neben König
+                      Figuren[feld1.y][feld1.x] := "";
+                      Figuren[feld2.y][feld2.x] := "";
+                      SetObjProperty(board, "last", "rochade");  // letzten Zug speichern
+                      retOpp := WaitForOpponent(who, board, secondboard);
+                      If (!retOpp)
+                        Break;
+                      EndIf
+                    EndIf
+                  EndIf
+                Else
+                  SendSysMessagePergon(who, ungueltigerZug);
+                EndIf
+              Else
+                SendSysMessagePergon(who, ungueltigerZug);
+              EndIf
+            Else
+              SendSysMessagePergon(who, ungueltigerZug);
+            EndIf
+          Else
+            SendSysMessagePergon(who, ungueltigerZug);
+          EndIf
+        ElseIf (Figuren[feld1.y][feld1.x])                                       // Nur erstes Feld belegt?
+          If ((whiteplayer) && (Figuren[feld1.y][feld1.x][4, 1] == "W") || (!whiteplayer) && (Figuren[feld1.y][feld1.x][4, 1] == "S"))
+            retMov := MoveLegal(who, feld1, feld2, secondboard);
+            If (retMov == 2) // en passant
+              PrintTextAboveLocalizedPergon(who, Figurkonvert(Figuren[feld1.y][feld1.x])+" "+Feldkonvertx(feld1.x)+""+Feldkonverty(feld1.y)+" auf "+Feldkonvertx(feld2.x)+""+Feldkonverty(feld2.y-1)+" en passant");
+              SetObjProperty(board, "monsterdone", 0);
+              EventSenden(board, secondboard, Figuren[feld1.y][feld1.x], feld2.x, feld2.y, 1, 1);
+              Repeat
+                If (GetObjProperty(board, "canceled"))
+                  Break;
+                EndIf
+                Sleep(1);
+              Until (GetObjProperty(board, "monsterdone"));
+              Figuren[feld2.y][feld2.x] := Figuren[feld1.y][feld1.x];                  // 1 auf 2
+              Figuren[feld1.y][feld1.x] := "";                                         // 1 löschen
+              Figuren[feld2.y+1][feld2.x] := "";                                       // en passant Bauer löschen
+              SetObjProperty(board, "last", feld2.x+""+feld2.y);  // letzten Zug speichern
+              retOpp := WaitForOpponent(who, board, secondboard);
+              If (!retOpp)
+                Break;
+              EndIf
+            ElseIf (retMov)
+              If (!Figuren[feld1.y][feld1.x][6, 1])                               // Erster Zug der Figur?
+                If ((Figuren[feld1.y][feld1.x][5, 1] == "B") && (abs(feld1.y-feld2.y) == 2))// Bauer und 2 Felder (en passant)
+                  Figuren[feld1.y][feld1.x] += "2";
+                Else
+                  Figuren[feld1.y][feld1.x] += "1";
+                EndIf
+              EndIf
+              PrintTextAboveLocalizedPergon(who, Figurkonvert(Figuren[feld1.y][feld1.x])+" "+Feldkonvertx(feld1.x)+""+Feldkonverty(feld1.y)+" auf "+Feldkonvertx(feld2.x)+""+Feldkonverty(feld2.y));
+              SetObjProperty(board, "monsterdone", 0);
+              EventSenden(board, secondboard, Figuren[feld1.y][feld1.x], feld2.x, feld2.y, 0, 0);
+              Repeat
+                If (GetObjProperty(board, "canceled"))
+                  Break;
+                EndIf
+                Sleep(1);
+              Until (GetObjProperty(board, "monsterdone"));
+              Figuren[feld2.y][feld2.x] := Figuren[feld1.y][feld1.x];                  // 1 auf 2
+              Figuren[feld1.y][feld1.x] := "";                                         // 1 löschen
+              Bauerumwandlung(who, board, secondboard, feld2);                                    // Check auf Bauer y=1
+              SetObjProperty(board, "last", feld2.x+""+feld2.y);  // letzten Zug speichern
+              retOpp := WaitForOpponent(who, board, secondboard);
+              If (!retOpp)
+                Break;
+              EndIf
+            Else
+              SendSysMessagePergon(who, ungueltigerZug);
+            EndIf
+          Else
+            SendSysMessagePergon(who, ungueltigerZug);
+          EndIf
+        ElseIf (Figuren[feld2.y][feld2.x])                                       // Nur zweites Feld belegt?
+          If ((whiteplayer) && (Figuren[feld2.y][feld2.x][4, 1] == "W") || (!whiteplayer) && (Figuren[feld2.y][feld2.x][4, 1] == "S"))
+            retMov := MoveLegal(who, feld2, feld1, secondboard);
+            If (retMov == 2) // en passant
+              PrintTextAboveLocalizedPergon(who, Figurkonvert(Figuren[feld2.y][feld2.x])+" "+Feldkonvertx(feld2.x)+""+Feldkonverty(feld2.y)+" auf "+Feldkonvertx(feld1.x)+""+Feldkonverty(feld1.y)+" en passant");
+              SetObjProperty(board, "monsterdone", 0);
+              EventSenden(board, secondboard, Figuren[feld2.y][feld2.x], feld1.x, feld1.y, 1, 1);
+              Repeat
+                If (GetObjProperty(board, "canceled"))
+                  Break;
+                EndIf
+                Sleep(1);
+              Until (GetObjProperty(board, "monsterdone"));
+              Figuren[feld1.y][feld1.x] := Figuren[feld2.y][feld2.x];                  // 1 auf 2
+              Figuren[feld2.y][feld2.x] := "";                                         // 1 löschen
+              Figuren[feld1.y+1][feld1.x] := "";                                       // en passant Bauer löschen
+              SetObjProperty(board, "last", feld1.x+""+feld1.y);  // letzten Zug speichern
+              retOpp := WaitForOpponent(who, board, secondboard);
+              If (!retOpp)
+                Break;
+              EndIf
+            ElseIf (retMov)
+              If (!Figuren[feld2.y][feld2.x][6, 1])                               // Erster Zug der Figur?
+                If ((Figuren[feld2.y][feld2.x][5, 1] == "B") && (abs(feld1.y-feld2.y) == 2))// Bauer und 2 Felder (en passant)
+                  Figuren[feld2.y][feld2.x] += "2";
+                Else
+                  Figuren[feld2.y][feld2.x] += "1";
+                EndIf
+              EndIf
+              PrintTextAboveLocalizedPergon(who, Figurkonvert(Figuren[feld2.y][feld2.x])+" "+Feldkonvertx(feld2.x)+""+Feldkonverty(feld2.y)+" auf "+Feldkonvertx(feld1.x)+""+Feldkonverty(feld1.y));
+              SetObjProperty(board, "monsterdone", 0);
+              EventSenden(board, secondboard, Figuren[feld2.y][feld2.x], feld1.x, feld1.y, 0, 0);
+              Repeat
+                If (GetObjProperty(board, "canceled"))
+                  Break;
+                EndIf
+                Sleep(1);
+              Until (GetObjProperty(board, "monsterdone"));
+              Figuren[feld1.y][feld1.x] := Figuren[feld2.y][feld2.x];                  // 2 auf 1
+              Figuren[feld2.y][feld2.x] := "";                                         // 2 löschen
+              Bauerumwandlung(who, board, secondboard, feld1);                                  // Check auf Bauer y=1
+              SetObjProperty(board, "last", feld1.x+""+feld1.y);  // letzten Zug speichern
+              retOpp := WaitForOpponent(who, board, secondboard);
+              If (!retOpp)
+                Break;
+              EndIf
+            Else
+              SendSysMessagePergon(who, ungueltigerZug);
+            EndIf
+          Else
+            SendSysMessagePergon(who, ungueltigerZug);
+          EndIf
+        Else
+          SendSysMessagePergon(who, ungueltigerZug);
+        EndIf
+      Else
+        SendSysMessagePergon(who, ungueltigerZug);
+      EndIf
+    EndIf
+  Until (ret[0] == 100);
+  KillCreatures(board, secondboard);
+  SetObjProperty(secondboard, "canceled", 1);
+  SendSysMessagePergon(who, "Spiel beendet");
+  EraseObjProperty(board, "done");
+  EraseObjProperty(board, "canceled");
+  EraseObjProperty(board, "play");
+  EraseObjProperty(board, "last");
+EndProgram
+
+//////////////////////////////////////////////////////
+// Gumpmuster - Schachbrettmuster mit Checkbox
+//////////////////////////////////////////////////////
+
+Function Gumpmuster()
+  var col, i, j, x, y;
+
+  x := start;
+  y := start;
+  For (i := 1;i <= 8;i += 1)
+    For (j := 1;j <= 8;j += 1)
+      If (i % 2)  // Gerade/Ungerade? Schwarz/Weiß...
+        If (j % 2)
+          col := 9354;  // weiß
+        Else
+          col := 9274;  // schwarz
+        EndIf
+      Else
+        If(j % 2)
+          col := 9274;
+        Else
+          col := 9354;
+        EndIf
+      EndIf
+      layout.append("gumppictiled "+x+" "+y+" 55 55 "+col);
+      layout.append("checkbox "+x+" "+y+" 208 209 0 "+i+""+j);
+      x += modfeld;
+    EndFor
+    y += modfeld;
+    x := start;
+  EndFor
+EndFunction
+
+//////////////////////////////////////////////////////
+// ShowFiguren - Umwandlung der Matrix in Gumpbefehle
+//////////////////////////////////////////////////////
+
+Function ShowFiguren()
+  var i, j, x, y, figur;
+  layout2 := layout;  // Reset des Layouts
+  layout2.append("page 1");
+  x := start;
+  y := start;
+
+  For (i := 1;i <= 8;i += 1)
+    For (j := 1;j <= 8;j += 1)
+      Case (Figuren[i][j][4, 2])
+        "ST": figur := 2340;
+        "SS": figur := 2342;
+        "SL": figur := 2339;
+        "SK": figur := 2341;
+        "SD": figur := 2344;
+        "SB": figur := 2343;
+        "WT": figur := 2333;
+        "WS": figur := 2335;
+        "WL": figur := 2332;
+        "WK": figur := 2334;
+        "WD": figur := 2337;
+        "WB": figur := 2336;
+        default: figur := 0;
+      EndCase
+      If (figur)
+        layout2.append("gumppic "+(x+modx_f)+" "+(y+mody_f)+" "+figur+" hue=0");
+      EndIf
+      x += modfeld;
+    EndFor
+    x := start;
+    y += modfeld;
+  EndFor
+EndFunction
+
+//////////////////////////////////////////////////////
+// Feldkonvertx - Wandelt Zahlen in Buchstaben um
+//////////////////////////////////////////////////////
+
+Function Feldkonvertx(x)
+  Case (x)
+    1: If (whiteplayer)
+         return("A");
+       Else
+         return("H");
+       EndIf
+    2: If (whiteplayer)
+         return("B");
+       Else
+         return("G");
+       EndIf
+    3: If (whiteplayer)
+         return("C");
+       Else
+         return("F");
+       EndIf
+    4: If (whiteplayer)
+         return("D");
+       Else
+         return("E");
+       EndIf
+    5: If (whiteplayer)
+         return("E");
+       Else
+         return("D");
+       EndIf
+    6: If (whiteplayer)
+         return("F");
+       Else
+         return("C");
+       EndIf
+    7: If (whiteplayer)
+         return("G");
+       Else
+         return("B");
+       EndIf
+    8: If (whiteplayer)
+         return("H");
+       Else
+         return("A");
+       EndIf
+  EndCase
+EndFunction
+
+//////////////////////////////////////////////////////
+// Feldkonverty - Verdrehung der Zahlen bei weißem Spieler
+//////////////////////////////////////////////////////
+
+Function Feldkonverty(y)
+  If (!whiteplayer)
+    return(y);
+  EndIf
+  return (9-y);
+EndFunction
+
+//////////////////////////////////////////////////////
+// Figurkonvert - Abkürzung zu richtiger Bezeichnung
+//////////////////////////////////////////////////////
+
+Function Figurkonvert(figur)
+  Case (figur[5, 1])
+    "T": return("Turm");
+    "S": return("Springer");
+    "L": return("Läufer");
+    "K": return("König");
+    "D": return("Dame");
+    "B": return("Bauer");
+
+    default: return("");
+  EndCase
+EndFunction
+
+//////////////////////////////////////////////////////
+// WaitForOpponent - Wartet auf Ende des gegnerischen Zuges
+//////////////////////////////////////////////////////
+
+Function WaitForOpponent(who, board, secondboard)
+  var Figurentemp, i;
+  Start_ScriptPergon("battlechesswait", {who, board, layout, data, Figuren});
+  SetObjProperty(board, "figuren", Figuren);  // Position Speichern für Gegner
+  SetObjProperty(board, "done", 1);
+  Repeat
+    Sleep(1);
+    If ((abs(who.x-board.x)>30) || (abs(who.y-board.y)>30) || (GetObjProperty(board, "canceled")) || (!who.ip))
+      SetObjProperty(secondboard, "canceled", 1);
+      CloseGumpPergon(who, CInt(GetObjProperty(board, "GumpPID")), 3);  // WaitGump schließen
+      SendSysMessagePergon(who, "Spiel beendet");
+      EraseObjProperty(board, "done");
+      EraseObjProperty(board, "canceled");
+      return(0);
+    EndIf
+  Until (GetObjProperty(secondboard, "done"));
+  EraseObjProperty(board, "done");
+  Figuren := GetObjProperty(secondboard, "figuren");
+  Figurentemp := Figuren;
+  Figuren[1] := Figurentemp[8];  // Ummodeln...
+  Figuren[2] := Figurentemp[7];
+  Figuren[3] := Figurentemp[6];
+  Figuren[4] := Figurentemp[5];
+  Figuren[5] := Figurentemp[4];
+  Figuren[6] := Figurentemp[3];
+  Figuren[7] := Figurentemp[2];
+  Figuren[8] := Figurentemp[1];
+  For (i := 1;i <= 8;i += 1)
+    Spiegeln(i);
+  EndFor
+  CloseGumpPergon(who, CInt(GetObjProperty(board, "GumpPID")), 3);  // WaitGump schließen
+  return(1);
+EndFunction
+
+//////////////////////////////////////////////////////
+// MoveLegal - Legale Bewegung der Figur
+//////////////////////////////////////////////////////
+
+Function MoveLegal(who, startF, endF, secondboard)
+  var temp, x, y, i, legal := 1, passant := 0, schach := 0;
+
+  Case (Figuren[startF.y][startF.x][5, 1])
+    "T":  If (startF.x == endF.x)
+            If (startF.y < endF.y)
+              For (i := startF.y+1;i<endF.y;i += 1)
+                If (Figuren[i][startF.x])
+                  legal := 0;
+                  Break;
+                EndIf
+              EndFor
+            Else
+              For (i := startF.y-1;i>endF.y;i -= 1)
+                If (Figuren[i][startF.x])
+                  legal := 0;
+                  Break;
+                EndIf
+              EndFor
+            EndIf
+          ElseIf (startF.y == endF.y)
+            If (startF.x < endF.x)
+              For (i := startF.x+1;i<endF.x;i += 1)
+                If (Figuren[startF.y][i])
+                  legal := 0;
+                  Break;
+                EndIf
+              EndFor
+            Else
+              For (i := startF.x-1;i>endF.x;i -= 1)
+                If (Figuren[startF.y][i])
+                  legal := 0;
+                  Break;
+                EndIf
+              EndFor
+            EndIf
+          Else
+          	legal := 0;
+          EndIf
+    "S":  If ((abs(startF.x-endF.x) == 1) && (abs(startF.y-endF.y) == 2))
+            legal := 1;
+          ElseIf ((abs(startF.x-endF.x) == 2) && (abs(startF.y-endF.y) == 1))
+            legal := 1;
+          Else
+            legal := 0;
+          EndIf
+    "L":  If (abs(startF.x-endF.x) == abs(startF.y-endF.y))
+            If ((startF.x < endF.x) && (startF.y < endF.y))
+              For (i := 1;i<(endF.x-startF.x);i += 1)
+                If (Figuren[startF.y+i][startF.x+i])
+                  legal := 0;
+                  Break;
+                EndIf
+              EndFor
+            ElseIf ((startF.x < endF.x) && (startF.y > endF.y))
+              For (i := 1;i<(endF.x-startF.x);i += 1)
+                If (Figuren[startF.y-i][startF.x+i])
+                  legal := 0;
+                  Break;
+                EndIf
+              EndFor
+            ElseIf ((startF.x > endF.x) && (startF.y > endF.y))
+              For (i := 1;i<(startF.x-endF.x);i += 1)
+                If (Figuren[startF.y-i][startF.x-i])
+                  legal := 0;
+                  Break;
+                EndIf
+              EndFor
+            ElseIf ((startF.x > endF.x) && (startF.y < endF.y))
+              For (i := 1;i<(startF.x-endF.x);i += 1)
+                If (Figuren[startF.y+i][startF.x-i])
+                  legal := 0;
+                  Break;
+                EndIf
+              EndFor
+            EndIf
+          Else
+          	legal := 0;
+          EndIf
+    "K":  If ((abs(startF.x-endF.x) <= 1) && (abs(startF.y-endF.y) <= 1))
+            legal := 1;
+          Else
+            legal := 0;
+          EndIf
+    "D":  If (abs(startF.x-endF.x) == abs(startF.y-endF.y))
+            If ((startF.x < endF.x) && (startF.y < endF.y))
+              For (i := 1;i<(endF.x-startF.x);i += 1)
+                If (Figuren[startF.y+i][startF.x+i])
+                  legal := 0;
+                  Break;
+                EndIf
+              EndFor
+            ElseIf ((startF.x < endF.x) && (startF.y > endF.y))
+              For (i := 1;i<(endF.x-startF.x);i += 1)
+                If (Figuren[startF.y-i][startF.x+i])
+                  legal := 0;
+
+                  Break;
+                EndIf
+              EndFor
+            ElseIf ((startF.x > endF.x) && (startF.y > endF.y))
+              For (i := 1;i<(startF.x-endF.x);i += 1)
+                If (Figuren[startF.y-i][startF.x-i])
+                  legal := 0;
+                  Break;
+                EndIf
+              EndFor
+            ElseIf ((startF.x > endF.x) && (startF.y < endF.y))
+              For (i := 1;i<(startF.x-endF.x);i += 1)
+                If (Figuren[startF.y+i][startF.x-i])
+                  legal := 0;
+                  Break;
+                EndIf
+              EndFor
+            EndIf
+          ElseIf ((startF.x == endF.x) || (startF.y == endF.y))
+            If (startF.x == endF.x)
+              If (startF.y < endF.y)
+                For (i := startF.y+1;i<endF.y;i += 1)
+                  If (Figuren[i][startF.x])
+                    legal := 0;
+                    Break;
+                  EndIf
+                EndFor
+              Else
+                For (i := startF.y-1;i>endF.y;i -= 1)
+                  If (Figuren[i][startF.x])
+                    legal := 0;
+                    Break;
+                  EndIf
+                EndFor
+              EndIf
+            EndIf
+            If (startF.y == endF.y)
+              If (startF.x < endF.x)
+                For (i := startF.x+1;i<endF.x;i += 1)
+                  If (Figuren[startF.y][i])
+                    legal := 0;
+                    Break;
+                  EndIf
+                EndFor
+              Else
+                For (i := startF.x-1;i>endF.x;i -= 1)
+                  If (Figuren[startF.y][i])
+                    legal := 0;
+                    Break;
+                  EndIf
+                EndFor
+              EndIf
+            EndIf
+          Else
+          	legal := 0;
+          EndIf
+    "B":  If ((startF.y == 7) && (!Figuren[endF.y][endF.x])) // Startpos?
+            If ((((startF.y-endF.y) == 1) || ((startF.y-endF.y) == 2)) && (startF.x == endF.x))
+              If ((startF.y-endF.y) == 2)
+                If (startF.y<endF.y)
+                  If (Figuren[startF.y+1][startF.x])
+                    legal := 0;
+                    Break;
+                  EndIf
+                Else
+                  If (Figuren[startF.y-1][startF.x])
+                    legal := 0;
+                    Break;
+                  EndIf
+                EndIf
+              EndIf
+            Else
+              legal := 0;
+              Break;
+            EndIf
+          EndIf
+          If (Figuren[endF.y][endF.x])  // Schlag?
+            If ((abs(startF.x-endF.x) == 1) && ((startF.y-endF.y) == 1))
+              legal := 1;
+              Break;
+            Else
+              legal := 0;
+              Break;
+            EndIf
+          ElseIf (((startF.y-endF.y) == 1) && (startF.x == endF.x))  // Normaler Zug
+            legal := 1;
+            Break;
+          ElseIf (startF.y<endF.y) // Falsche Richtung
+            legal := 0;
+            Break;
+          EndIf
+          // en passant
+          temp := GetObjProperty(secondboard, "last");
+          If (temp!="rochade")
+            x := CInt(temp[1, 1]);
+            y := CInt(temp[2, 1]);
+            x := 9-x;
+            y := 9-y;
+
+            If ((abs(startF.x-endF.x) == 1) && ((startF.y-endF.y) == 1) && (x == endF.x) && (y == endF.y+1))
+              If (Figuren[y][x][5, 2] == "B2")
+                passant := 1; // en passant return
+                Break;
+              EndIf
+            EndIf
+          EndIf
+          If (startF.x<>endF.x)  // schief ohne Schlag
+            legal := 0;
+            Break;
+          EndIf
+  EndCase
+
+
+  If (passant)
+    schach := SchachTest(startF.x, startF.y, endF.x, endF.y); // Schach?
+    Case (schach)
+      0:  return(2);  // Kein Schach
+      1:  SendSysMessagePergon(who, ungueltigerZug+", Koenig wuerde im Schach stehen!");
+          return(0);
+      2:  PrintTextAboveLocalizedPergon(who, "Schach!");
+          return(2);
+    EndCase
+  ElseIf (legal)
+    schach := SchachTest(startF.x, startF.y, endF.x, endF.y); // Schach?
+    Case (schach)
+      0:  return(1);  // Kein Schach
+      1:  SendSysMessagePergon(who, ungueltigerZug+", Koenig wuerde im Schach stehen!");
+          return(0);
+      2:  PrintTextAboveLocalizedPergon(who, "Schach!");
+          return(1);
+    EndCase
+  Else
+    return(0);
+  EndIf
+EndFunction
+
+//////////////////////////////////////////////////////
+// Spiegeln - Spiegelt innerhalb der Reihe
+//////////////////////////////////////////////////////
+
+Function Spiegeln(Reihe)
+  var i, j := 8, tempreihe := {};
+  For (i := 1;i <= 8;i += 1)
+    tempreihe[j] := Figuren[Reihe][i];
+    j -= 1;
+  EndFor
+  Figuren[Reihe] := tempreihe;
+EndFunction
+
+//////////////////////////////////////////////////////
+// RochadeTest - Angriffstest für Rochade
+//////////////////////////////////////////////////////
+
+Function RochadeTest(f1x, f1y, f2x, f2y)
+  var temp, i, j, x, y, abbruchrechts := 0, abbruchlinks := 0;
+
+  If (f1x>f2x)  // Ummodeln der Felder falls falsch rum
+    temp := f1x;
+    f1x := f2x;
+    f2x := temp;
+  EndIf
+
+  // Gerade nach oben für Turm, Dame, König
+  For (i := f1x; i <= f2x; i += 1)  // Alle Felder durchgehen die nicht bedroht werden dürfen
+    For (j := f2y-1; j >= 1; j -= 1);  // Gerade nach oben
+      If (Figuren[j][i])
+        If (((whiteplayer) && (Figuren[j][i][4, 1] == "S")) || ((!whiteplayer) && (Figuren[j][i][4, 1] == "W")))
+          If ((Figuren[j][i][5, 1] == "T") || (Figuren[j][i][5, 1] == "D"))
+            return(1);  // Abbruch
+          ElseIf ((j == f2y-1) && (Figuren[j][i][5, 1] == "K"))
+            return(1);  // Abbruch
+          EndIf
+        Else
+          Break; // Test Bestanden, nächste Reihe
+        EndIf
+      EndIf
+    EndFor
+  EndFor
+
+  // Schief für Dame, Läufer, König, Bauer
+  For (i := f1x; i <= f2x; i += 1)  // Alle Felder durchgehen die nicht bedroht werden dürfen
+    For (j := 1; j <= 8; j += 1)
+      If (!abbruchrechts) // nach rechts noch checken?
+        y := f1y-j;
+        x := i+j;
+        If ((y<1) || (x>8)) // Feldgrenze erreicht?
+          abbruchrechts := 1; // Test Bestanden, nächste Reihe
+        EndIf
+        If (Figuren[y][x])
+          If (((whiteplayer) && (Figuren[y][x][4, 1] == "S")) || ((!whiteplayer) && (Figuren[y][x][4, 1] == "W")))
+            If ((Figuren[y][x][5, 1] == "D") || (Figuren[y][x][5, 1] == "L"))
+              return(1);  // Abbruch
+            ElseIf ((j == 1) && ((Figuren[y][x][5, 1] == "K") || (Figuren[y][x][5, 1] == "B")))
+              return(1);  // Abbruch
+            EndIf
+          Else
+            abbruchrechts := 1; // Test Bestanden, nächste Reihe
+          EndIf
+        EndIf
+      EndIf
+      If (!abbruchlinks) // nach rechts noch checken?
+        y := f1y-j;
+        x := i-j;
+        If ((y<1) || (x<1)) // Feldgrenze erreicht?
+          abbruchlinks := 1; // Test Bestanden, nächste Reihe
+        EndIf
+        If (Figuren[y][x])
+          If (((whiteplayer) && (Figuren[y][x][4, 1] == "S")) || ((!whiteplayer) && (Figuren[y][x][4, 1] == "W")))
+            If ((Figuren[y][x][5, 1] == "D") || (Figuren[y][x][5, 1] == "L"))
+              return(1);  // Abbruch
+            ElseIf (((j == 1) && (Figuren[y][x][5, 1] == "K")) || ((j == 1) && (Figuren[y][x][5, 1] == "B")))
+              return(1);  // Abbruch
+            EndIf
+          Else
+            abbruchlinks := 1; // Test Bestanden, nächste Reihe
+          EndIf
+        EndIf
+      EndIf
+      If ((abbruchrechts) && (abbruchlinks))
+        Break; // Beides Bestanden dann nächste Reihe
+      EndIf
+    EndFor
+    abbruchlinks := 0;
+    abbruchrechts := 0;
+  EndFor
+
+  // Check auf Pferd
+  For (i := f1x; i <= f2x; i += 1)  // Alle Felder durchgehen die nicht bedroht werden dürfen
+    If     (((whiteplayer) && (Figuren[f1y-2][i+1][4, 2] == "SS")) || ((!whiteplayer) && (Figuren[f1y-2][i+1][4, 2] == "WS")))
+      return(1);  // Abbruch
+    ElseIf (((whiteplayer) && (Figuren[f1y-2][i-1][4, 2] == "SS")) || ((!whiteplayer) && (Figuren[f1y-2][i-1][4, 2] == "WS")))
+      return(1);  // Abbruch
+    ElseIf (((whiteplayer) && (Figuren[f1y-1][i+2][4, 2] == "SS")) || ((!whiteplayer) && (Figuren[f1y-1][i+2][4, 2] == "WS")))
+      return(1);  // Abbruch
+    ElseIf (((whiteplayer) && (Figuren[f1y-1][i-2][4, 2] == "SS")) || ((!whiteplayer) && (Figuren[f1y-1][i-2][4, 2] == "WS")))
+      return(1);  // Abbruch
+    EndIf
+  EndFor
+  return(0);  // Alles Bestanden
+EndFunction
+
+//////////////////////////////////////////////////////
+// Bauernumwandlung - Bauer am Ende des Feldes?
+//////////////////////////////////////////////////////
+
+Function Bauerumwandlung(who, board, secondboard, feld)
+  var layoutB := {}, dataB := {}, ret, bauer, bauertemp, x, y, z, monsterneu;
+  If ((Figuren[feld.y][feld.x][5, 1] == "B") && (feld.y == 1))
+    bauertemp := SplitWords(Figuren[feld.y][feld.x]);
+    bauer := SystemFindObjectBySerial(Creature[bauertemp[1]]);
+    x := bauer.x;
+    y := bauer.y;
+    z := bauer.z;
+
+    Repeat
+      CloseGumpPergon(who, GetPID(), 3);
+      layoutB := {
+                "page 0",                            // Basisseite
+                "nodispose",                         // Kein Esc zum Beenden
+                "resizepic 25 25 2620 170 170",      // Hintergrund
+                "button 85 155 2450 2451 1 0 1",     // OK
+                "text 50 40  1152 0",                // Überschrift
+                "text 40 65  1152 1",
+                "text 40 85  1152 2",
+                "text 40 105 1152 3",
+                "text 40 125 1152 4",
+                "checkbox 100 70  2360 2361 0 2",
+                "checkbox 100 90  2360 2361 0 3",
+                "checkbox 100 110 2360 2361 0 4",
+                "checkbox 100 130 2360 2361 0 5"
+               };
+      dataB := {
+                "Bauer umwandeln in:",
+                "Dame",
+                "Turm",
+                "Läufer",
+                "Springer"
+             };
+
+      ret := SendDialogGump(who, layoutB, dataB);
+      If (ret[0] == 1) // OK
+        If (ret.keys.size() == 3);  // Nur 1 Checkbox gedrückt?
+          Case (ret.keys[3])
+            2:  Figuren[feld.y][feld.x][5, 1] := "D";  // Dame
+                RevokePrivilege(bauer, "invul");
+                KillMobile(bauer, "BattleChess");
+                If (whiteplayer)
+                  monsterneu := CreateNPCFromTemplate(Creaturetemp["WD"], x, y, z, 0, who.realm);
+                  PlaySoundEffect(monsterneu, 0x1F8);
+                  Creature[bauertemp[1]] := monsterneu.serial;
+                  SetObjProperty(board, "Creature", Creature);
+                  SetObjProperty(monsterneu, "wboard", board.serial);
+                  SetObjProperty(monsterneu, "bboard", secondboard.serial);
+                Else
+                  monsterneu := CreateNPCFromTemplate(Creaturetemp["SD"], x, y, z, 0, who.realm);
+                  PlaySoundEffect(monsterneu, 0x1F8);
+                  Creature[bauertemp[1]] := monsterneu.serial;
+                  SetObjProperty(secondboard, "Creature", Creature);
+                  SetObjProperty(monsterneu, "wboard", board.serial);
+                  SetObjProperty(monsterneu, "bboard", secondboard.serial);
+                EndIf
+            3:  Figuren[feld.y][feld.x][5, 1] := "T";  // Turm
+                RevokePrivilege(bauer, "invul");
+                KillMobile(bauer, "BattleChess");
+                If (whiteplayer)
+                  monsterneu := CreateNPCFromTemplate(Creaturetemp["WT"], x, y, z, 0, who.realm);
+                  Creature[bauertemp[1]] := monsterneu.serial;
+                  SetObjProperty(board, "Creature", Creature);
+                  SetObjProperty(monsterneu, "wboard", board.serial);
+                  SetObjProperty(monsterneu, "bboard", secondboard.serial);
+                Else
+                  monsterneu := CreateNPCFromTemplate(Creaturetemp["ST"], x, y, z, 0, who.realm);
+                  Creature[bauertemp[1]] := monsterneu.serial;
+                  SetObjProperty(secondboard, "Creature", Creature);
+                  SetObjProperty(monsterneu, "wboard", board.serial);
+                  SetObjProperty(monsterneu, "bboard", secondboard.serial);
+                EndIf
+            4:  Figuren[feld.y][feld.x][5, 1] := "L";  // Laeufer
+                RevokePrivilege(bauer, "invul");
+                KillMobile(bauer, "BattleChess");
+                If (whiteplayer)
+                  monsterneu := CreateNPCFromTemplate(Creaturetemp["WL"], x, y, z, 0, who.realm);
+                  Creature[bauertemp[1]] := monsterneu.serial;
+                  SetObjProperty(board, "Creature", Creature);
+                  SetObjProperty(monsterneu, "wboard", board.serial);
+                  SetObjProperty(monsterneu, "bboard", secondboard.serial);
+                Else
+                  monsterneu := CreateNPCFromTemplate(Creaturetemp["SL"], x, y, z, 0, who.realm);
+                  Creature[bauertemp[1]] := monsterneu.serial;
+                  SetObjProperty(secondboard, "Creature", Creature);
+                  SetObjProperty(monsterneu, "wboard", board.serial);
+                  SetObjProperty(monsterneu, "bboard", secondboard.serial);
+                EndIf
+            5:  Figuren[feld.y][feld.x][5, 1] := "S";  // Springer
+                RevokePrivilege(bauer, "invul");
+                KillMobile(bauer, "BattleChess");
+                If (whiteplayer)
+                  monsterneu := CreateNPCFromTemplate(Creaturetemp["WS"], x, y, z, 0, who.realm);
+                  Creature[bauertemp[1]] := monsterneu.serial;
+                  SetObjProperty(board, "Creature", Creature);
+                  SetObjProperty(monsterneu, "wboard", board.serial);
+                  SetObjProperty(monsterneu, "bboard", secondboard.serial);
+                Else
+                  monsterneu := CreateNPCFromTemplate(Creaturetemp["SS"], x, y, z, 0, who.realm);
+                  Creature[bauertemp[1]] := monsterneu.serial;
+                  SetObjProperty(secondboard, "Creature", Creature);
+                  SetObjProperty(monsterneu, "wboard", board.serial);
+                  SetObjProperty(monsterneu, "bboard", secondboard.serial);
+                EndIf
+          EndCase
+        EndIf
+      EndIf
+    Until ((ret[0] == 1) && (ret.keys.size() == 3));
+  Else
+    return;
+  EndIf
+  If (SchachTest(feld.x, feld.y, feld.x, feld.y) == 2) // Schachtest mit neuer Figur
+  	PrintTextAboveLocalizedPergon(who, "Schach!");
+  EndIf
+EndFunction
+
+//////////////////////////////////////////////////////
+// WaitforPlayer - Wartet auf zweiten Spieler
+//////////////////////////////////////////////////////
+
+Function WaitforPlayer(who, secondboard)
+  var oldx := who.x, oldy := who.y;
+  Repeat
+    If ((who.x<>oldx) || (who.y<>oldy) || (!who.ip))
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return(0);
+    EndIf
+    Sleep(1);
+  Until (GetObjProperty(secondboard, "play"));
+  return(1);
+EndFunction
+
+//////////////////////////////////////////////////////
+// CreatureCreate - Erzeugt die Monster auf dem Feld
+//////////////////////////////////////////////////////
+
+Function CreatureCreate(who, board, secondboard)
+  var startx, starty, FigurenC := {}, si, sj, i, j, Figur := {}, creatureobjref, z := {};
+  var tempreihe := {};
+  startx := CInt(GetObjProperty(board, "startx"))-1;  // NW-Ecke des Feldes
+  starty := CInt(GetObjProperty(board, "starty"))-1;
+
+  FigurenC[1] := Figurenorig[8];  // Ummodeln...praktisch wie für Blackpalyer
+  FigurenC[2] := Figurenorig[7];
+  FigurenC[3] := Figurenorig[6];
+  FigurenC[4] := Figurenorig[5];
+  FigurenC[5] := Figurenorig[4];
+  FigurenC[6] := Figurenorig[3];
+  FigurenC[7] := Figurenorig[2];
+  FigurenC[8] := Figurenorig[1];
+  For (i := 1;i <= 8;i += 1)
+    sj := 8;
+    tempreihe := {};
+    For (si := 1;si <= 8;si += 1)
+      tempreihe[sj] := FigurenC[i][si];
+      sj -= 1;
+    EndFor
+    FigurenC[i] := tempreihe;
+  EndFor
+  z := GetStandingHeight(startx, starty, 0, who.realm);
+  If (!z)
+    SendSysMessagePergon(who, "Fehler bei Erzeugung der Monster");
+    return(0);
+  EndIf
+  For (i := 1;i <= 8;i += 1)
+    For (j := 1;j <= 8;j += 1)
+      If (FigurenC[i][j])
+        Figur := SplitWords(FigurenC[i][j]);
+        creatureobjref := CreateNPCFromTemplate(Creaturetemp[Figur[2]], (startx+j*2), (starty+i*2), z.z, 0, who.realm);
+        If (!creatureobjref)
+          SendSysMessagePergon(who, "Fehler bei Erzeugung der Monster");
+          return(0);
+        EndIf
+        creatureobjref.saveonexit:=0;
+        PlaySoundEffect(creatureobjref, SFX_2A);
+        PlayLightningBoltEffect(creatureobjref);
+        Creature[Figur[1]] := creatureobjref.serial;  // Speichern der Objref
+        SetObjProperty(creatureobjref, "wboard", board.serial);
+        SetObjProperty(creatureobjref, "bboard", secondboard.serial);
+        SleepMS(100);
+      EndIf
+    EndFor
+  EndFor
+  SetObjProperty(board, "Creature", Creature);
+  return(1);
+EndFunction
+
+//////////////////////////////////////////////////////
+// EventSenden - Sendet Event an Monster für Bewegung, Angriff...
+//////////////////////////////////////////////////////
+
+Function EventSenden(board, secondboard, monster, x, y, angriff, passant)
+  var ev := struct;
+  var Ziel, startx, starty;
+  If (whiteplayer)
+    startx := CInt(GetObjProperty(board, "startx"))-1;  // NW-Ecke des Feldes
+    starty := CInt(GetObjProperty(board, "starty"))-1;
+    Creature := GetObjProperty(board, "Creature");
+  Else
+    startx := CInt(GetObjProperty(secondboard, "startx"))-1;  // NW-Ecke des Feldes
+    starty := CInt(GetObjProperty(secondboard, "starty"))-1;
+    Creature := GetObjProperty(secondboard, "Creature");
+  EndIf
+
+  If ((angriff) && (passant))
+    Ziel := SplitWords(Figuren[y+1][x]);
+    Ziel := Creature[Ziel[1]];
+    Ziel := SystemFindObjectBySerial(Ziel);
+  ElseIf (angriff)
+    Ziel := SplitWords(Figuren[y][x]);
+    Ziel := Creature[Ziel[1]];
+    Ziel := SystemFindObjectBySerial(Ziel);
+  EndIf
+
+  monster := SplitWords(monster);
+  monster := Creature[monster[1]];
+  monster := SystemFindObjectBySerial(monster);
+
+  If (whiteplayer)  // Ummodeln
+    y := Feldkonverty(y);
+    x := 9-x;
+  EndIf
+  x := startx+x*2;
+  y := starty+y*2;
+
+  ev.+type := EVID_CHESSCMD;
+  ev.+source := board;
+  ev.+x := x;
+  ev.+y := y;
+  ev.+angriff := Ziel;
+  ev.+passant := passant;
+
+  SendEvent(monster, ev);
+EndFunction
+
+//////////////////////////////////////////////////////
+// KillCreatures - Killt alle Monster bei Spielende
+//////////////////////////////////////////////////////
+
+Function KillCreatures(board, secondboard)
+  var monsterref, keys, i;
+  If (whiteplayer)
+    Creature := GetObjProperty(board, "Creature");
+  Else
+    Creature := GetObjProperty(secondboard, "Creature");
+  EndIf
+  keys := Creature.keys();
+  For (i := 1;i <= len(keys);i += 1);
+    monsterref := SystemFindObjectBySerial(Creature[keys[i]]);
+    If (monsterref)
+      RevokePrivilege(monsterref, "invul");
+      PlayStationaryEffect(monsterref.x, monsterref.y, monsterref.z, FX_FLAMESTRIKE, 10, 30, 0, monsterref.realm);
+      PlaySoundEffect(monsterref, SFX_209);
+      KillMobile(monsterref, "BattleChess");
+      SleepMS(100);
+    EndIf
+  EndFor
+EndFunction
+
+//////////////////////////////////////////////////////
+// SchachTest - Steht der könig im Schach /wird er stehen?
+//////////////////////////////////////////////////////
+
+Function SchachTest(Kx, Ky, Kxneu, Kyneu)
+  var i, x, y, altepos, neuepos, abbruchpferd := {0, 0, 0, 0, 0, 0, 0, 0};
+  var Koenige := {}, abbruchoben := 0, abbruchunten := 0, schach := "", abbruchrechts := 0, abbruchlinks := 0;
+  var abbruchplusplus := 0, abbruchplusminus := 0, abbruchminusplus := 0, abbruchminusminus := 0;
+  var schachstatus := {};
+  var wer := Figuren[Ky][Kx][4, 1];
+
+  altepos := Figuren[Ky][Kx]; // alte Speichern
+  neuepos := Figuren[Kyneu][Kxneu]; // neue Speichern
+  Figuren[Ky][Kx] := "";  // temporär bewegen
+  Figuren[Kyneu][Kxneu] := altepos;
+
+  For (x := 1; x <= 8; x += 1)  // Könige suchen und speichern
+    For (y := 1; y <= 8; y += 1)
+      If (Figuren[y][x][5, 1] == "K")
+        Koenige.append({Figuren[y][x], x, y});
+      EndIf
+      SleepMS(2);
+    EndFor
+    If (Koenige.size() == 2)
+      Break;
+    EndIf
+  EndFor
+
+  ForEach Koenig in (Koenige)  // beide Könige durchgehen
+    abbruchoben := 0; abbruchunten := 0; schach := ""; abbruchrechts := 0; abbruchlinks := 0;  // Reset
+    abbruchplusplus := 0; abbruchplusminus := 0; abbruchminusplus := 0; abbruchminusminus := 0;
+    abbruchpferd := {0, 0, 0, 0, 0, 0, 0, 0};
+
+    For (i := 1;i <= 8; i += 1)  // gerade nach rechts und links
+      If ((Koenig[2]+i)>8)
+        abbruchlinks := 1;
+      EndIf
+      If ((Koenig[2]-i)<1)
+        abbruchrechts := 1;
+      EndIf
+      If (abbruchlinks && abbruchrechts)  // ende erreicht bei beiden?
+        Break;
+      EndIf
+      If (!abbruchrechts)
+        If (Figuren[Koenig[3]][Koenig[2]+i]) // nach rechts
+          Case (Koenig[1][4, 1])  // Welche Farbe
+            "S":  If (Figuren[Koenig[3]][Koenig[2]+i][4, 1] == "S")  // Selbe Farbe dann abbruch
+                    abbruchrechts := 1;
+                  ElseIf (Figuren[Koenig[3]][Koenig[2]+i][4, 2] in {"WT", "WD"})  // Turm, Dame?
+                    schach := "S";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]][Koenig[2]+i][4, 2] == "WK")) // König?
+                    schach := "S";
+                  Else  // irgendwas anders
+                    abbruchrechts := 1;
+                  EndIf
+
+            "W":  If (Figuren[Koenig[3]][Koenig[2]+i][4, 1] == "W")  // Selbe Farbe dann abbruch
+                    abbruchrechts := 1;
+                  ElseIf (Figuren[Koenig[3]][Koenig[2]+i][4, 2] in {"ST", "SD"})  // Turm, Dame?
+                    schach := "W";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]][Koenig[2]+i][4, 2] == "SK")) // König?
+                    schach := "W";
+                  Else  // irgendwas anders
+                    abbruchrechts := 1;
+                  EndIf
+          EndCase
+        EndIf
+      EndIf
+      If (schach)  // Schach?
+        Break;
+      EndIf
+      SleepMS(2);
+      If (!abbruchlinks)
+        If (Figuren[Koenig[3]][Koenig[2]-i]) // nach oben
+          Case (Koenig[1][4, 1])  // Welche Farbe
+            "S":  If (Figuren[Koenig[3]][Koenig[2]-i][4, 1] == "S")  // Selbe Farbe dann abbruch
+                    abbruchlinks := 1;
+                  ElseIf (Figuren[Koenig[3]][Koenig[2]-i][4, 2] in {"WT", "WD"})  // Turm, Dame?
+                    schach := "S";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]][Koenig[2]-i][4, 2] == "WK")) // König?
+                    schach := "S";
+                  Else  // irgendwas anders
+                    abbruchlinks := 1;
+                  EndIf
+
+            "W":  If (Figuren[Koenig[3]][Koenig[2]-i][4, 1] == "W")  // Selbe Farbe dann abbruch
+                    abbruchlinks := 1;
+                  ElseIf (Figuren[Koenig[3]][Koenig[2]-i][4, 2] in {"ST", "SD"})  // Turm, Dame?
+                    schach := "W";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]][Koenig[2]-i][4, 2] == "SK")) // König?
+                    schach := "W";
+                  Else  // irgendwas anders
+                    abbruchlinks := 1;
+                  EndIf
+          EndCase
+        EndIf
+      EndIf
+
+      If (schach) // Schach?
+        Break;
+      EndIf
+      SleepMS(2);
+    EndFor
+    If (!schach)  // Schach?
+    For (i := 1;i <= 8; i += 1)  // oben und unten
+      If ((Koenig[3]+i)>8)
+        abbruchunten := 1;
+      EndIf
+      If ((Koenig[3]-i)<1)
+        abbruchoben := 1;
+      EndIf
+      If (abbruchunten && abbruchoben)  // ende erreicht bei beiden?
+        Break;
+      EndIf
+      If (!abbruchunten)
+        If (Figuren[Koenig[3]+i][Koenig[2]]) // nach rechts
+          Case (Koenig[1][4, 1])  // Welche Farbe
+            "S":  If (Figuren[Koenig[3]+i][Koenig[2]][4, 1] == "S")  // Selbe Farbe dann abbruch
+                    abbruchunten := 1;
+                  ElseIf (Figuren[Koenig[3]+i][Koenig[2]][4, 2] in {"WT", "WD"})  // Turm, Dame?
+                    schach := "S";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]+i][Koenig[2]][4, 2] == "WK")) // König?
+                    schach := "S";
+                  Else  // irgendwas anders
+                    abbruchunten := 1;
+                  EndIf
+
+            "W":  If (Figuren[Koenig[3]+i][Koenig[2]][4, 1] == "W")  // Selbe Farbe dann abbruch
+                    abbruchunten := 1;
+                  ElseIf (Figuren[Koenig[3]+i][Koenig[2]][4, 2] in {"ST", "SD"})  // Turm, Dame?
+                    schach := "W";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]+i][Koenig[2]][4, 2] == "SK")) // König?
+                    schach := "W";
+                  Else  // irgendwas anders
+                    abbruchunten := 1;
+                  EndIf
+          EndCase
+        EndIf
+      EndIf
+
+      If (schach) // Schach?
+        Break;
+      EndIf
+      SleepMS(2);
+      If (!abbruchoben)
+        If (Figuren[Koenig[3]-i][Koenig[2]]) // nach links
+          Case (Koenig[1][4, 1])  // Welche Farbe
+            "S":  If (Figuren[Koenig[3]-i][Koenig[2]][4, 1] == "S")  // Selbe Farbe dann abbruch
+                    abbruchoben := 1;
+                  ElseIf (Figuren[Koenig[3]-i][Koenig[2]][4, 2] in {"WT", "WD"})  // Turm, Dame?
+                    schach := "S";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]-i][Koenig[2]][4, 2] == "WK")) // König?
+                    schach := "S";
+                  Else  // irgendwas anders
+                    abbruchoben := 1;
+                  EndIf
+
+            "W":  If (Figuren[Koenig[3]-i][Koenig[2]][4, 1] == "W")  // Selbe Farbe dann abbruch
+                    abbruchoben := 1;
+                  ElseIf (Figuren[Koenig[3]-i][Koenig[2]][4, 2] in {"ST", "SD"})  // Turm, Dame?
+                    schach := "W";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]-i][Koenig[2]][4, 2] == "SK")) // König?
+                    schach := "W";
+                  Else  // irgendwas anders
+                    abbruchoben := 1;
+                  EndIf
+          EndCase
+        EndIf
+      EndIf
+
+      If (schach) // Schach?
+        Break;
+      EndIf
+      SleepMS(2);
+    EndFor
+    EndIf
+
+    If (!schach)
+    // Schief für Dame, Läufer, König, Bauer
+    For (i := 1; i <= 8; i += 1)  // Alle Felder durchgehen die nicht bedroht werden dürfen
+
+      If ((Koenig[2]+i) > 8)
+        abbruchplusplus := 1;
+        abbruchplusminus := 1;
+      EndIf
+      If ((Koenig[2]-i) < 1)
+        abbruchminusminus := 1;
+        abbruchminusplus := 1;
+      EndIf
+      If ((Koenig[3]+i) > 8)
+        abbruchplusplus := 1;
+        abbruchminusplus := 1;
+      EndIf
+      If ((Koenig[3]-i) < 1)
+        abbruchplusminus := 1;
+        abbruchminusminus := 1;
+      EndIf
+      If (abbruchplusplus && abbruchplusminus && abbruchminusplus && abbruchminusminus)  // alles außerhalb?
+        Break;
+      EndIf
+      // Schief rechts unten
+      If (!abbruchplusplus)
+        If (Figuren[Koenig[3]+i][Koenig[2]+i])
+          Case (Koenig[1][4, 1])  // Welche Farbe
+            "S":  If (Figuren[Koenig[3]+i][Koenig[2]+i][4, 1] == "S")  // Selbe Farbe dann abbruch
+                    abbruchplusplus := 1;
+                  ElseIf (Figuren[Koenig[3]+i][Koenig[2]+i][4, 2] in {"WL", "WD"})  // Läufer, Dame?
+                    schach := "S";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]+i][Koenig[2]+i][4, 2] == "WK")) // König?
+                    schach := "S";
+                  Else  // irgendwas anders
+                    abbruchplusplus := 1;
+                  EndIf
+
+            "W":  If (Figuren[Koenig[3]+i][Koenig[2]+i][4, 1] == "W")  // Selbe Farbe dann abbruch
+                    abbruchplusplus := 1;
+                  ElseIf (Figuren[Koenig[3]+i][Koenig[2]+i][4, 2] in {"SL", "SD"})  // Läufer, Dame?
+                    schach := "W";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]+i][Koenig[2]+i][4, 2] == "SK")) // König?
+                    schach := "W";
+                  Else  // irgendwas anders
+                    abbruchplusplus := 1;
+                  EndIf
+          EndCase
+        EndIf
+      EndIf
+
+      If (schach) // Schach?
+       Break;
+      EndIf
+      SleepMS(2);
+      // Schief rechts oben
+      If (!abbruchplusminus)
+        If (Figuren[Koenig[3]-i][Koenig[2]+i])
+          Case (Koenig[1][4, 1])  // Welche Farbe
+            "S":  If (Figuren[Koenig[3]-i][Koenig[2]+i][4, 1] == "S")  // Selbe Farbe dann abbruch
+                    abbruchplusminus := 1;
+                  ElseIf (Figuren[Koenig[3]-i][Koenig[2]+i][4, 2] in {"WL", "WD"})  // Läufer, Dame?
+                    schach := "S";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]-i][Koenig[2]+i][4, 2] == "WK")) // König?
+                    schach := "S";
+                  Else  // irgendwas anders
+                    abbruchplusminus := 1;
+                  EndIf
+
+            "W":  If (Figuren[Koenig[3]-i][Koenig[2]+i][4, 1] == "W")  // Selbe Farbe dann abbruch
+                    abbruchplusminus := 1;
+                  ElseIf (Figuren[Koenig[3]-i][Koenig[2]+i][4, 2] in {"SL", "SD"})  // Läufer, Dame?
+                    schach := "W";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]-i][Koenig[2]+i][4, 2] == "SK")) // König?
+                    schach := "W";
+                  Else  // irgendwas anders
+                    abbruchplusminus := 1;
+                  EndIf
+          EndCase
+        EndIf
+      EndIf
+
+      If (schach) // Schach?
+        Break;
+      EndIf
+      SleepMS(2);
+      // Schief links oben
+      If (!abbruchminusplus)
+        If (Figuren[Koenig[3]+i][Koenig[2]-i])
+          Case (Koenig[1][4, 1])  // Welche Farbe
+            "S":  If (Figuren[Koenig[3]+i][Koenig[2]-1][4, 1] == "S")  // Selbe Farbe dann abbruch
+                    abbruchminusplus := 1;
+                  ElseIf (Figuren[Koenig[3]+i][Koenig[2]-i][4, 2] in {"WL", "WD"})  // Läufer, Dame?
+                    schach := "S";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]+i][Koenig[2]-i][4, 2] == "WK")) // König?
+                    schach := "S";
+                  Else  // irgendwas anders
+                    abbruchminusplus := 1;
+                  EndIf
+
+            "W":  If (Figuren[Koenig[3]+i][Koenig[2]-i][4, 1] == "W")  // Selbe Farbe dann abbruch
+                    abbruchminusplus := 1;
+                  ElseIf (Figuren[Koenig[3]+i][Koenig[2]-i][4, 2] in {"SL", "SD"})  // Läufer, Dame?
+                    schach := "W";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]+i][Koenig[2]-i][4, 2] == "SK")) // König?
+                    schach := "W";
+                  Else  // irgendwas anders
+                    abbruchminusplus := 1;
+                  EndIf
+          EndCase
+        EndIf
+      EndIf
+
+      If (schach) // Schach?
+        Break;
+      EndIf
+      SleepMS(2);
+      // Schief links unten
+      If (!abbruchminusminus)
+        If (Figuren[Koenig[3]-i][Koenig[2]-i])
+          Case (Koenig[1][4, 1])  // Welche Farbe
+            "S":  If (Figuren[Koenig[3]-i][Koenig[2]-i][4, 1] == "S")  // Selbe Farbe dann abbruch
+                    abbruchminusminus := 1;
+                  ElseIf (Figuren[Koenig[3]-i][Koenig[2]-i][4, 2] in {"WL", "WD"})  // Läufer, Dame?
+                    schach := "S";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]-i][Koenig[2]-i][4, 2] == "WK")) // König?
+                    schach := "S";
+                  Else  // irgendwas anders
+                    abbruchminusminus := 1;
+                  EndIf
+
+            "W":  If (Figuren[Koenig[3]-i][Koenig[2]-i][4, 1] == "W")  // Selbe Farbe dann abbruch
+                    abbruchminusminus := 1;
+                  ElseIf (Figuren[Koenig[3]-i][Koenig[2]-i][4, 2] in {"SL", "SD"})  // Läufer, Dame?
+                    schach := "W";
+                  ElseIf ((i == 1) && (Figuren[Koenig[3]-i][Koenig[2]-i][4, 2] == "SK")) // König?
+                    schach := "W";
+                  Else  // irgendwas anders
+                    abbruchminusminus := 1;
+                  EndIf
+          EndCase
+        EndIf
+      EndIf
+
+      If (schach) // Schach?
+        Break;
+      EndIf
+      SleepMS(2);
+    EndFor
+    EndIf
+    If (!schach)
+    // Check auf Pferd
+    If ((Koenig[2]-1) < 1)
+      abbruchpferd[1] := 1;
+    EndIf
+    If ((Koenig[2]-2) < 1)
+      abbruchpferd[2] := 1;
+    EndIf
+    If ((Koenig[2]+1) > 8)
+      abbruchpferd[3] := 1;
+    EndIf
+    If ((Koenig[2]+2) > 8)
+      abbruchpferd[4] := 1;
+    EndIf
+    If ((Koenig[3]-1) < 1)
+      abbruchpferd[5] := 1;
+    EndIf
+    If ((Koenig[3]-2) < 1)
+      abbruchpferd[6] := 1;
+    EndIf
+    If ((Koenig[3]+1) > 8)
+      abbruchpferd[7] := 1;
+    EndIf
+    If ((Koenig[3]+2) > 8)
+      abbruchpferd[8] := 1;
+    EndIf
+    Case (Koenig[1][4, 1]) // Welche Farbe
+      "S":  If (((Figuren[Koenig[3]-2][Koenig[2]+1][4, 2] == "WS") && (!abbruchpferd[6]) && (!abbruchpferd[3]))
+             || ((Figuren[Koenig[3]-2][Koenig[2]-1][4, 2] == "WS") && (!abbruchpferd[6]) && (!abbruchpferd[1]))
+             || ((Figuren[Koenig[3]-1][Koenig[2]+2][4, 2] == "WS") && (!abbruchpferd[5]) && (!abbruchpferd[4]))
+             || ((Figuren[Koenig[3]-1][Koenig[2]-2][4, 2] == "WS") && (!abbruchpferd[5]) && (!abbruchpferd[2]))
+             || ((Figuren[Koenig[3]+1][Koenig[2]-2][4, 2] == "WS") && (!abbruchpferd[7]) && (!abbruchpferd[2]))
+             || ((Figuren[Koenig[3]+1][Koenig[2]+2][4, 2] == "WS") && (!abbruchpferd[7]) && (!abbruchpferd[4]))
+             || ((Figuren[Koenig[3]+2][Koenig[2]+1][4, 2] == "WS") && (!abbruchpferd[8]) && (!abbruchpferd[3]))
+             || ((Figuren[Koenig[3]+2][Koenig[2]-1][4, 2] == "WS") && (!abbruchpferd[8]) && (!abbruchpferd[1])))
+              schach := "S";
+            EndIf
+      "W":  If (((Figuren[Koenig[3]-2][Koenig[2]+1][4, 2] == "SS") && (!abbruchpferd[6]) && (!abbruchpferd[3]))
+             || ((Figuren[Koenig[3]-2][Koenig[2]-1][4, 2] == "SS") && (!abbruchpferd[6]) && (!abbruchpferd[1]))
+             || ((Figuren[Koenig[3]-1][Koenig[2]+2][4, 2] == "SS") && (!abbruchpferd[5]) && (!abbruchpferd[4]))
+             || ((Figuren[Koenig[3]-1][Koenig[2]-2][4, 2] == "SS") && (!abbruchpferd[5]) && (!abbruchpferd[2]))
+             || ((Figuren[Koenig[3]+1][Koenig[2]-2][4, 2] == "SS") && (!abbruchpferd[7]) && (!abbruchpferd[2]))
+             || ((Figuren[Koenig[3]+1][Koenig[2]+2][4, 2] == "SS") && (!abbruchpferd[7]) && (!abbruchpferd[4]))
+             || ((Figuren[Koenig[3]+2][Koenig[2]+1][4, 2] == "SS") && (!abbruchpferd[8]) && (!abbruchpferd[3]))
+             || ((Figuren[Koenig[3]+2][Koenig[2]-1][4, 2] == "SS") && (!abbruchpferd[8]) && (!abbruchpferd[1])))
+              schach := "S";
+            EndIf
+    EndCase
+    EndIf
+
+    // Bauern
+    If (!schach)
+    	Case (Koenig[1][4, 1])
+    		"S":  If (wer == "S")
+    			      If ((Figuren[Koenig[3]-1][Koenig[2]-1][4, 2] == "WB")
+    			      	|| (Figuren[Koenig[3]-1][Koenig[2]+1][4, 2] == "WB"))
+    			      	schach := "S";
+    			      EndIf
+    			    Else
+    			    	If ((Figuren[Koenig[3]+1][Koenig[2]+1][4, 2] == "WB")
+    			      	|| (Figuren[Koenig[3]+1][Koenig[2]-1][4, 2] == "WB"))
+    			      	schach := "S";
+    			      EndIf
+    			    EndIf
+    		"W":  If (wer == "W")
+    			      If ((Figuren[Koenig[3]-1][Koenig[2]-1][4, 2] == "SB")
+    			      	|| (Figuren[Koenig[3]-1][Koenig[2]+1][4, 2] == "SB"))
+    			      	schach := "W";
+    			      EndIf
+    			    Else
+    			    	If ((Figuren[Koenig[3]+1][Koenig[2]+1][4, 2] == "SB")
+    			      	|| (Figuren[Koenig[3]+1][Koenig[2]-1][4, 2] == "SB"))
+    			      	schach := "W";
+    			      EndIf
+    			    EndIf
+    	EndCase
+    EndIf
+
+    If (schach) // Schach?
+      schachstatus.append(Koenig);
+    EndIf
+  EndForEach
+  Figuren[Ky][Kx] := altepos;  // Zug rückgängigmachen
+  Figuren[Kyneu][Kxneu] := neuepos;
+  If (schachstatus.size()<1)  // Kein Schach
+    return(0);
+  ElseIf (schachstatus.size()>1)  // Beide im Schach
+    return(1);
+  Else  // Nur einer
+    If (((whiteplayer) && (schachstatus[1][1][4, 1] == "W")) || ((!whiteplayer) && (schachstatus[1][1][4, 1] == "S")))
+      return(1); // eigener im Schach
+    Else
+      return(2);
+    EndIf
+  EndIf
+EndFunction
+
+// vim: sw=2 sts=2

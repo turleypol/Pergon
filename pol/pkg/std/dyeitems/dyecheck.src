@@ -1,0 +1,97 @@
+///////////////////////////////////////////////////////////////////////////
+// Dye System - version .4
+// - Updated April 5, 2000
+//
+// to add items, load dyeitems.cfg
+//
+// item <object type>
+// {
+// player <cmd level>
+// }
+
+use cfgfile;
+use file;
+use os;
+use uo;
+include "include/msgs";
+
+Program dyecheck(who, dyetub)
+    var dye_cfg := ReadConfigFile("dyeitems");
+    If (!dye_cfg)
+        SendSysMessagePergon (who,
+            "Interner Fehler. Staff wurde informiert."
+        );
+        syslog("FEHLER: Unable to open dyeitems.cfg: "+dye_cfg.errortext);
+        return;
+    EndIf
+
+    If (!ReserveItem(dyetub))
+        SendSysMessagePergon(who,
+            "Ich fürchte, das wird schon anderweitig benutzt."
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who, "Wählt etwas zum Färben aus.");
+    var item := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!item)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (!ReserveItem(item))
+        Releaseitem(dyetub);
+        SendSysMessagePergon(who,
+            "Ich fürchte, das wird schon anderweitig benutzt."
+        );
+        return;
+    EndIf
+
+    If (!AccessiblePergon(who, item))
+        SendSysMessagePergon(who, "Ihr könnt dies nicht erreichen!");
+        Releaseitem(dyetub);
+        Releaseitem(item);
+        return;
+    EndIf
+
+    // wer darf das Item faerben?
+    var allowdye := CMDLEVEL_GL;
+    var element := FindConfigElem (dye_cfg, item.objtype);
+    If (element)
+        allowdye := Cint(GetConfigInt(element, "player"));
+    EndIf
+
+    If (who.cmdlevel < allowdye)
+        SendSysMessagePergon(who, item.desc+" kann nicht gefärbt werden.");
+        Releaseitem(dyetub);
+        Releaseitem(item);
+        return;
+    EndIf
+
+    If (
+        // Questchars duerfen auch NPC-Items anmalen
+        who.cmdlevel >= CMDLEVEL_QUESTCHAR or
+        // jeder darf sein Backpack faerben
+        item.serial == who.backpack.serial or
+        // Runenbücher darf man auch faerben
+        item.objtype == UOBJ_RUNEBOOK
+    )
+        item.color := dyetub.color;
+        Releaseitem(dyetub);
+        Releaseitem(item);
+        return;
+    EndIf
+
+    var cprops := GetObjProperty(item, "Werkzeug");
+    If (!cprops)
+        SendSysMessagePergon(who, "NPC-Items können nicht gefärbt werden.");
+        Releaseitem(dyetub);
+        Releaseitem(item);
+        return;
+    EndIf
+
+    // sonst faerben
+    item.color := dyetub.color;
+    Releaseitem(dyetub);
+    Releaseitem(item);
+EndProgram

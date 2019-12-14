@@ -1,0 +1,83 @@
+//**************************************************************************************************
+// Script file resurrect.src
+//
+//    implements spell 226 <Resurrect> - "Wiedererwecken"
+//
+//	Resurrects dead character
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+// Vers. 1.1   - 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+use util;
+
+Include "../magicpergon";
+Include "include/vitals";
+
+Program cast_resurrect (params)
+
+   Var caster;
+   Var caston;
+   Var power;
+
+   if (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_RESURRECT);
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   if (!caston.dead)												// check if spelltarget is really dead
+      SendSysMessagePergon(caster, "Das ist nicht tot", "This is not dead");
+      return;
+   endIf
+
+   if (caston.isa(POLCLASS_NPC))								// check if spelltarget is npc
+      SendSysMessagePergon(caster, "Das könnt Ihr nicht wiedererwecken", "You cannot resurrect this");
+      return;
+   endif
+
+   if (GetObjProperty(caston, "spell_doomed"))					// check if spelltarget is damned
+
+      Var tag:= GetObjProperty(caston, "spell_doomed");		// get spelltag
+
+      if (power - tag[2] + 20 >= RandomInt(41))					// check if spelltarget is resurrected
+      	 SendSysMessagePergon(caster, "Ihr brecht die Verdammnis von " + caston.name,
+      	 			      					"You break the damnation curse of " + caston.name);
+      	 PrintTextAbovePrivatePergon(caston, "Die Verdammnis wurde von Euch genommen durch " + caster.name,
+      	 				     							 "Your damnation curse has been broken by " + caster.name, caston);
+      	 EraseObjProperty(caston, "spell_doomed");			// untag spelltarget
+      	 BuffIcons(caston, "spell_doomed", 0, 1);       // remove bufficon
+      else
+         SendSysMessagePergon(caster, "Euch gelingt es nicht die Verdammnis von " + caston.name + " zu brechen",
+         			      				  "You do not succeed in breaking the damnation curse upon " + caston.name);
+         return;
+      endif
+   endif
+
+   PlaySoundEffect(caston, SFX_244);
+   PlayObjectCenteredEffect(caston, FX_SPARK_EFFECT, 10, 20);
+
+   // resurrect spelltarget using functions
+   if (ResNow(caston) == 1)
+      ResurrectPergon(caston);
+      ResPenalties(caston);
+   endif
+
+EndProgram

@@ -1,0 +1,23 @@
+Use uo;
+
+Include "include/msgs";
+
+Program TextCMD_GetAcctP(who, params)
+  If (params)
+    SendSysMessagePergon(who, "Bitte einen Player anklicken!");
+
+    Var tgt:=Target(who, TGTOPT_NOCHECK_LOS);
+    If ((tgt.isa(POLCLASS_MOBILE)) And (!tgt.isa(POLCLASS_NPC)))
+      Var value:=(tgt.acct).getprop(params);
+      If (value)
+        SendSysMessagePergon(who, "Die AccountProperty "+params+" hat den Wert: "+value);
+      Else
+        SendSysMessagePergon(who, "Die AccountProperty "+params+" gibt es nicht!");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr müsst eine AccountProperty angeben!");
+  EndIf
+EndProgram

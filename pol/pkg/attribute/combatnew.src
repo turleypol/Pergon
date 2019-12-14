@@ -1,0 +1,1169 @@
+// Pionierauftraege:
+//   AttackAnimation -> NPCDesc (gibt aber wohl immer genau 3 Stueck von 4 bis 6 und dann noch 2 GetHits 15/16, allerdings manchmal auch 3 - komisch)
+//   Weapons can specify MountedAnim in itemdesc.cfg, normalerweise paßt aber die animxlate.cfg
+//
+// vielleicht fuettert der die Anim auch nur falsch in getitemdesc
+
+//////////////////////////////////////////////////////////////////////////////
+//
+//   Pergon Combat - Nachbau der originalen Combat-Funktionen zu Testzwecken
+//
+//     Author: Shinigami
+//
+//     based on: Combat Pseudocode by Racalac
+//
+//   Modification
+//
+//////////////////////////////////////////////////////////////////////////////
+//
+/////////////////
+// Bibliotheken
+/////////////////
+//
+////
+/////////////
+// Includes
+/////////////
+//
+//Include "include/modifyskill";
+//
+///////////////
+// Konstanten
+///////////////
+//
+//Const WAFFENSKILL_PUNKTE   :=30; // 30 // Default-Divisor = 8 / 50% Punkte bei 50% Chance
+//Const TAKTIK_PUNKTE        :=10; // 15
+//Const SCHILDKAMPF_PUNKTE   :=20; // 20
+//Const AUSWEICHEN_PVP_PUNKTE:=37;
+//Const AUSWEICHEN_PVM_PUNKTE:=6;
+//
+//Const SHOW_FIGHTING_PERSONS:=0; // Wer kaempft eigentlich mit wem?
+//Const SHOW_ATTACKER_INFO   :=0; // Was fuer eine Waffe hat der Angreifer?
+//Const SHOW_DEFENDER_INFO   :=0; // Was fuer eine Waffe hat der Verteidiger?
+//Const SHOW_VALUES          :=0; // Zeigt bestimmte berechnete Werte an
+//Const SHOW_ARMORZONES      :=0; // Zeigt die Auswahl der ArmorZone an
+//
+//////////////////
+// Hauptprogramm
+//////////////////
+//
+//Program Combat(params)
+//  CombatPergon(params[1], params[2]);
+//EndProgram
+//
+/////////////////////////////////////////////////////////////////////////////
+// CombatPergon - Eigenes Combat System (Testweise an Pseudocode angelehnt)
+/////////////////////////////////////////////////////////////////////////////
+//
+//Function CombatPergon(attacker, defender)
+//  SysLog("Combat: "+attacker.name+" -> "+defender.name);
+//
+//  Var key;
+//  If (GetObjProperty(attacker, "#INCOMBAT"))
+//    key:=GetObjProperty(attacker, "#INCOMBAT");
+//    SysLog("WARNUNG: Ich kaempf doch noch! "+key+" "+ReadMillisecondClock()+". Nix da, keine Lust...");
+//    Return;
+//  Else
+//    key:={attacker.serial+"."+defender.serial+"."+RandomFloat(1.0), ReadMillisecondClock()};
+//    SetObjProperty(attacker, "#INCOMBAT", key);
+//    SysLog("Ich kaempfe... "+key);
+//  EndIf
+//
+//  Var attweapon:=attacker.weapon;
+//  Var tempname:=attacker.name;
+
+ // If (attweapon.serial<>attacker.weapon.serial)
+ //   SysLog("FEHLER6: Die Waffe des Angreifers "+attacker.name+" "+tempname+" ist irgendwie... weg... "+attweapon+" / "+attacker.weapon+" "+key);
+ // EndIf
+
+//  If (attweapon) // Sollte immer eine Waffe haben!
+//    Var defweapon:=defender.weapon;
+//    If (defweapon) // Sollte immer eine Waffe haben!
+//      Var attweapondesc:=GetItemDescriptor(attweapon.objtype);
+//      If (attweapondesc) // Auch dies sollte immer funktionieren!
+//        Var defweapondesc:=GetItemDescriptor(defweapon.objtype);
+//        If (defweapondesc) // Auch dies sollte immer funktionieren!
+//          If (SHOW_FIGHTING_PERSONS And (CInt(GetGlobalProperty("TESTCOMBATSERIAL"))==attacker.serial)) // Infos anzeigen?
+//            SysLog("  "+attacker.name+" ["+Lower(Hex(attacker.serial))+"] kaempft gegen "+defender.name+" ["+Lower(Hex(defender.serial))+"]");
+//          EndIf
+//
+//          If (SHOW_ATTACKER_INFO And (CInt(GetGlobalProperty("TESTCOMBATSERIAL"))==attacker.serial)) // Infos anzeigen?
+//            SysLog("  Waffe von "+attacker.name+" ["+Lower(Hex(attacker.serial))+"]:");
+//            SysLog("    Bezeichnung     = "+attweapondesc.desc);                                                                     // benutzt
+//            SysLog("    Skill           = "+attweapondesc.attribute+" / Wert = "+GetSkillPergon(attacker, attweapondesc.attribute)); // benutzt
+//            SysLog("    Schaden         = "+attweapondesc.damage);                                                                   // benutzt
+//            SysLog("    Geschwindigkeit = "+attweapondesc.speed);                                                                    // indirekt
+//            SysLog("    Schaden         = "+attweapondesc.damage);                                                                   // benutzt
+//            SysLog("    HP              = "+attweapon.hp+" von "+attweapondesc.maxhp);                                               // benutzt
+//            SysLog("    Intrinsic       = "+attweapondesc.intrinsic);                                                                // benutzt
+//            SysLog("    Anim            = "+attweapondesc.anim);                                                                     // benutzt
+//            SysLog("    MountedAnim     = "+attweapondesc.mountedanim);                                                              // benutzt
+//            SysLog("    MinRange        = "+attweapondesc.minrange);                                                                 // indirekt
+//            SysLog("    MaxRange        = "+attweapondesc.maxrange);                                                                 // indirekt
+//            SysLog("    HitSound        = "+attweapondesc.hitsound);                                                                 // benutzt
+//            SysLog("    MissSound       = "+attweapondesc.misssound);                                                                // benutzt
+//            SysLog("    Projectile      = "+attweapondesc.projectile);                                                               // benutzt
+//            SysLog("    ProjectileAnim  = "+attweapondesc.projectileanim);                                                           // benutzt
+//            SysLog("    ProjectileSound = "+attweapondesc.projectilesound);                                                          // benutzt
+//            SysLog("    ProjectileType  = "+attweapondesc.projectiletype);                                                           // benutzt
+//            SysLog("    HitScript  = :combat:"+attweapondesc.hitscript);                                                             // benutzt
+//          EndIf
+//
+//          If (SHOW_DEFENDER_INFO And (CInt(GetGlobalProperty("TESTCOMBATSERIAL"))==attacker.serial)) // Infos anzeigen?
+//            SysLog("  Waffe von "+defender.name+" ["+Lower(Hex(defender.serial))+"]:");
+//            SysLog("    Bezeichnung     = "+defweapondesc.desc);
+//            SysLog("    Skill           = "+defweapondesc.attribute+" / Wert = "+GetSkillPergon(defender, defweapondesc.attribute));
+//            SysLog("    Schaden         = "+defweapondesc.damage);
+//            SysLog("    Geschwindigkeit = "+defweapondesc.speed);
+//            SysLog("    Schaden         = "+defweapondesc.damage);
+//            SysLog("    HP              = "+defweapon.hp+" von "+defweapondesc.maxhp);
+//            SysLog("    Intrinsic       = "+defweapondesc.intrinsic);
+//            SysLog("    Anim            = "+defweapondesc.anim);
+//            SysLog("    MountedAnim     = "+defweapondesc.mountedanim);
+//            SysLog("    MinRange        = "+defweapondesc.minrange);
+//            SysLog("    MaxRange        = "+defweapondesc.maxrange);
+//            SysLog("    HitSound        = "+defweapondesc.hitsound);
+//            SysLog("    MissSound       = "+defweapondesc.misssound);
+//            SysLog("    Projectile      = "+defweapondesc.projectile);
+//            SysLog("    ProjectileAnim  = "+defweapondesc.projectileanim);
+//            SysLog("    ProjectileSound = "+defweapondesc.projectilesound);
+//            SysLog("    ProjectileType  = "+defweapondesc.projectiletype);
+//            SysLog("    HitScript  = :combat:"+defweapondesc.hitscript);
+//          EndIf
+
+         // If (attweapon.serial<>attacker.weapon.serial)
+         //   SysLog("FEHLER7: Die Waffe des Angreifers "+attacker.name+" "+tempname+" ist irgendwie... weg... "+attweapon+" / "+attacker.weapon+" "+key);
+         // EndIf
+
+//          If (attweapondesc.projectile) // Ist es eine Projektilwaffe?
+//            Var projectile:=FindObjTypeInContainer(attacker.backpack, attweapondesc.projectiletype);
+//            If (projectile)
+//              SubtractAmount(projectile, 1); // Einen Pfeil/Bolzen verbrauchen...
+//            Else
+//              Var projectiledesc:=GetItemDescriptor(attweapondesc.projectiletype);
+//              If (projectiledesc)
+//                SendSysMessagePergon(attacker, "Euch fehlen "+projectiledesc.desc+".");
+//              Else
+//                SysLog("FEHLER: "+Lower(Hex(attweapondesc.projectiletype))+"] ist nicht in der itemdesc.cfg definiert!");
+//              EndIf
+//
+//              If ((!defender) Or (defender.dead))
+//                SysLog("HINWEIS: "+key[1]+" Fertsch nach "+(ReadMillisecondClock()-key[2])+" tod");
+//              Else
+//                SysLog("HINWEIS: "+key[1]+" Fertsch nach "+(ReadMillisecondClock()-key[2]));
+//              EndIf
+//              EraseObjProperty(attacker, "#INCOMBAT");
+//              Return; // Keine Munition, nix zu schiessen, tja, pech...
+//            EndIf
+//          EndIf
+
+          // RepSys Effects
+
+         // If (attweapon.serial<>attacker.weapon.serial)
+         //   SysLog("FEHLER8: Die Waffe des Angreifers "+attacker.name+" "+tempname+" ist irgendwie... weg... "+attweapon+" / "+attacker.weapon+" "+key);
+         // EndIf
+
+          // irgendwie fehlt hier sowas wie 'nen AttackSound
+
+//          If ((attacker.graphic==0x190) Or (attacker.graphic==0x191)) // Menschen haben ausgefeiltere Animationen, die an die Waffe gebunden sind
+//            If (GetEquipmentByLayer(attacker, LAYER_MOUNT)) // Sitzt der Angreifer auf einem Tierchen?
+//              PerformAction(attacker, attweapondesc.mountedanim);
+//            Else
+//              PerformAction(attacker, attweapondesc.anim);
+//            EndIf
+//          Else
+//            PerformAction(attacker, RandomInt(3)+4); // Animation 4 bis 6 (sollte es immer geben, theoretisch)
+//          EndIf
+
+         // If (attweapon.serial<>attacker.weapon.serial)
+         //   SysLog("FEHLER9: Die Waffe des Angreifers "+attacker.name+" "+tempname+" ist irgendwie... weg... "+attweapon+" / "+attacker.weapon+" "+key);
+         // EndIf
+
+//          If (attweapondesc.projectile) // Ist es eine Projektilwaffe?
+//            PlayMovingEffect(attacker, defender, attweapondesc.projectileanim, 5, 1);
+//            PlaySoundEffect(attacker, attweapondesc.projectilesound);
+//          EndIf
+
+         // If (attweapon.serial<>attacker.weapon.serial)
+         //   SysLog("FEHLER1: Die Waffe des Angreifers "+attacker.name+" "+tempname+" ist irgendwie... weg... "+attweapon+" / "+attacker.weapon+" "+key);
+         // EndIf
+//          HookCombatAdvancementPergon(attacker, attweapon, defender);
+//
+//          Var damage_dice;
+//          Var damage_multiplier;
+//          Var basedamage;
+//          Var rawdamage;
+//          Var shield;
+//          Var parry_chance;
+//
+//          Var hit_chance:=(GetSkillPergon(attacker, attweapondesc.attribute)+50.0)/(2.0*GetSkillPergon(defender, defweapondesc.attribute));
+//
+//          If (SHOW_VALUES And (CInt(GetGlobalProperty("TESTCOMBATSERIAL"))==attacker.serial)) // Infos anzeigen?
+//            SysLog("  Hit_Chance   = "+hit_chance);
+//          EndIf
+//
+//          If (RandomFloat(1.0)<hit_chance)
+//            PlaySoundEffect(attacker, attweapondesc.hitsound);
+//
+//            If ((defender.graphic==0x190) Or (defender.graphic==0x191)) // Menschen haben andere Animationen
+//              PerformAction(defender, ANIM_HIT);
+//            Else
+//              PerformAction(defender, RandomInt(2)+15); // Animation 15 bis 16 (sollte es immer geben, theoretisch)
+//            EndIf
+
+           // If (attweapon.serial<>attacker.weapon.serial)
+           //   SysLog("FEHLER12: Die Waffe des Angreifers "+attacker.name+" "+tempname+" ist irgendwie... weg... "+attweapon+" / "+attacker.weapon+" "+key);
+           // EndIf
+
+//            If (!attweapondesc.intrinsic) // Bei Intrinsic macht das keinen Sinn...
+//              If (RandomInt(100)==0) // 1% Chance, also irgendein Wert von 0 bis 99
+//                attweapon.hp:=attweapon.hp-1;
+//              EndIf
+//            EndIf
+//
+//            damage_dice:=RandomDiceRoll(attweapondesc.damage);
+//            damage_multiplier:=(GetSkillPergon(attacker, SKILLID_TAKTIK)+50+GetStrPergon(attacker)*0.2)*0.01;
+//            basedamage:=damage_dice*damage_multiplier;
+//            rawdamage:=basedamage;
+
+           // If (attweapon.serial<>attacker.weapon.serial)
+           //   SysLog("FEHLER11: Die Waffe des Angreifers "+attacker.name+" "+tempname+" ist irgendwie... weg... "+attweapon+" / "+attacker.weapon+" "+key);
+           // EndIf
+
+//            // Schild des Verteidigers suchen (eigentlich nur LAYER_HAND2, aber man weiss ja nie :)
+//            Var equipment:=GetEquipmentByLayer(defender, LAYER_HAND2);
+//            If (equipment.isa(POLCLASS_ARMOR))
+//              shield:=equipment;
+//            Else
+//              equipment:=GetEquipmentByLayer(defender, LAYER_HAND1);
+//              If (equipment.isa(POLCLASS_ARMOR))
+//                shield:=equipment;
+//              EndIf
+//            EndIf
+
+           // If (attweapon.serial<>attacker.weapon.serial)
+           //   SysLog("FEHLER10: Die Waffe des Angreifers "+attacker.name+" "+tempname+" ist irgendwie... weg... "+attweapon+" / "+attacker.weapon+" "+key);
+           // EndIf
+
+//            If (shield) // Hat der Verteidiger ein Schild?
+//             // If (attweapon.serial<>attacker.weapon.serial)
+//             //   SysLog("FEHLER2: Die Waffe des Angreifers "+attacker.name+" "+tempname+" ist irgendwie... weg... "+attweapon+" / "+attacker.weapon+" "+key);
+//             // EndIf
+//              HookParryAdvancementPergon(attacker, attweapon, defender, shield);
+//
+//              parry_chance:=GetSkillPergon(defender, SKILLID_SCHILDKAMPF)/200.0;
+//              If (RandomFloat(1.0)<parry_chance)
+//                SendSysMessagePergon(attacker, "Ihr verbeult das Schild von "+defender.name+".");
+//                SendSysMessagePergon(defender, attacker.name+" verbeult euer schönes Schild.");
+//
+//                rawdamage:=rawdamage-shield.ar;
+//              EndIf
+//            EndIf
+
+           // If (attweapon.serial<>attacker.weapon.serial)
+           //   SysLog("FEHLER5: Die Waffe des Angreifers "+attacker.name+" "+tempname+" ist irgendwie... weg... "+attweapon+" / "+attacker.weapon+" "+key);
+           // EndIf
+
+//            Var armor:=ChooseArmorPiece(attacker, defender);
+//
+//            Var blocked:=armor[1]+defender.ar_mod;
+//            Var absorbed:=blocked/2;
+//            blocked:=blocked-absorbed;
+//            absorbed:=absorbed+RandomInt(blocked+1);
+//
+//            rawdamage:=rawdamage-absorbed;
+//            If (rawdamage>=2.0)
+//              rawdamage:=rawdamage*0.5;
+//            EndIf
+//            If (rawdamage<0)
+//              rawdamage:=0;
+//            EndIf
+//
+//            If (!attweapondesc.hitscript)
+//              If (armor[2]) // Gibts ueberhaupt was zum Kaputtgehen?
+//                If (RandomInt(100)==0) // 1% Chance, also irgendein Wert von 0 bis 99
+//                  armor[2].hp:=armor[2].hp-1;
+//                EndIf
+//              EndIf
+
+             // PerformAction(defender, ANIM_HIT); // Hmm, muss das auch das HitScript selber machen? Bzw. die is doch oben schon...
+
+//              ApplyRawDamagePergon(defender, rawdamage); // Der Schadenswert wurde ja schon durch Ruestung etc. entsprechend veraendert...
+//            Else
+//             // If (attweapon.serial<>attacker.weapon.serial)
+//             //   SysLog("FEHLER3: Die Waffe des Angreifers "+attacker.name+" "+tempname+" ist irgendwie... weg... "+attweapon+" / "+attacker.weapon+" "+key);
+//             // EndIf
+//             // Start_ScriptPergon(":combat:"+attweapondesc.hitscript, {attacker, defender, attweapon, armor[2], CInt(basedamage), CInt(rawdamage)});
+//              Run_Script_To_CompletionPergon(":combat:"+attweapondesc.hitscript, {attacker, defender, attweapon, armor[2], CInt(basedamage), CInt(rawdamage)});
+//            EndIf
+//
+//            If (SHOW_VALUES And (CInt(GetGlobalProperty("TESTCOMBATSERIAL"))==attacker.serial)) // Infos anzeigen?
+//              SysLog("  DamageDice   = "+damage_dice+" aus "+attweapondesc.damage);
+//              SysLog("  DamageFaktor = "+damage_multiplier+" / "+GetSkillPergon(attacker, SKILLID_TAKTIK)+" / "+GetStrPergon(attacker));
+//              SysLog("  DamageBase   = "+basedamage);
+//              SysLog("  DamageRaw    = "+rawdamage);
+//              If (shield)
+//                SysLog("  Parry_Chance = "+parry_chance+" / "+GetSkillPergon(defender, SKILLID_SCHILDKAMPF));
+//                SysLog("  Schild       = "+shield.desc+" / "+shield.ar);
+//              EndIf
+//              SysLog("  Armor        = "+armor[1]+" / "+armor[2].desc);
+//              SysLog("  Blocked      = "+blocked+" / "+defender.ar_mod);
+//              SysLog("  Absorbed     = "+absorbed);
+//            EndIf
+//          Else
+//            PlaySoundEffect(attacker, attweapondesc.misssound);
+//          EndIf
+//        Else
+//          SysLog("FEHLER: "+defweapon.desc+" ["+Lower(Hex(defweapon.objtype))+"] ist nicht in der itemdesc.cfg definiert!");
+//        EndIf
+//      Else
+//        SysLog("FEHLER: "+attweapon.desc+" ["+Lower(Hex(attweapon.objtype))+"] ist nicht in der itemdesc.cfg definiert!");
+//      EndIf
+//    Else
+//      SysLog("FEHLER: Verteidiger "+defender.name+" ["+Lower(Hex(defender.serial))+"] hat keine Waffe!");
+//    EndIf
+//  Else
+//    SysLog("FEHLER: Angreifer "+attacker.name+" ["+Lower(Hex(attacker.serial))+"] hat keine Waffe!");
+//  EndIf
+//
+//  If ((!defender) Or (defender.dead))
+//    SysLog("HINWEIS: "+key[1]+" Fertsch nach "+(ReadMillisecondClock()-key[2])+" tod");
+//  Else
+//    SysLog("HINWEIS: "+key[1]+" Fertsch nach "+(ReadMillisecondClock()-key[2]));
+//  EndIf
+//  EraseObjProperty(attacker, "#INCOMBAT");
+//EndFunction
+//
+//////////////////////////////////////////////////////////
+// HookCombatAdvancementPergon - Angreifer hat getroffen
+//////////////////////////////////////////////////////////
+//
+//Function HookCombatAdvancementPergon(attacker, weapon, defender)
+// // SysLog("COMBATDEBUG: HookCombatAdvancementPergon "+attacker.name+" "+GetHPPergon(attacker)+
+// //   " ("+Lower(Hex(weapon.serial))+") -> "+defender.name+" "+GetHPPergon(defender));
+// // If (!attacker.isa(POLCLASS_NPC))
+// //   SendSysMessagePergon(attacker, "Combat: "+attacker.name+"  -> "+defender.name, "", _DEFAULT_TEXT_FONT, 38);
+// // EndIf
+// // If (!defender.isa(POLCLASS_NPC))
+// //   SendSysMessagePergon(defender, "Combat: "+attacker.name+"  -> "+defender.name, "", _DEFAULT_TEXT_FONT, 38);
+// // EndIf
+// // Set_Debug(1);
+//
+//  If (!attacker.isa(POLCLASS_NPC))
+//    If (attacker.cmdlevel >= CMDLEVEL_SEER)
+//      SendSysMessagePergon(attacker, "Combat: "+attacker.name+" "+GetHPPergon(attacker)+
+//        " -> "+defender.name+" "+GetHPPergon(defender), "", _DEFAULT_TEXT_FONT, 38);
+//    EndIf
+//
+//    SysLog("DEBUG Adv "+weapon+" / "+weapon.attribute);
+//    CheckSkillPergon(attacker, weapon.attribute, -1, WAFFENSKILL_PUNKTE);
+//    CheckSkillPergon(attacker, SKILLID_TAKTIK, -1, TAKTIK_PUNKTE);
+//  EndIf
+//
+//  If (!defender.isa(POLCLASS_NPC))
+//    If (defender.cmdlevel >= CMDLEVEL_SEER)
+//      SendSysMessagePergon(defender, "Combat: "+attacker.name+" "+GetHPPergon(attacker)+
+//        " -> "+defender.name+" "+GetHPPergon(defender), "", _DEFAULT_TEXT_FONT, 38);
+//    EndIf
+//
+//    CheckSkillPergon(defender, SKILLID_TAKTIK, -1, TAKTIK_PUNKTE);
+//  EndIf
+//EndFunction
+//
+/////////////////////////////////////////////////////////////
+// HookParryAdvancementPergon - Verteidiger wurde getroffen
+/////////////////////////////////////////////////////////////
+//
+//Function HookParryAdvancementPergon(attacker, weapon, defender, shield)
+// // SysLog("COMBATDEBUG: HookParryAdvancementPergon "+attacker.name+" "+GetHPPergon(attacker)+
+// //   " ("+Lower(Hex(weapon.serial))+") -> "+defender.name+" "+GetHPPergon(defender)+" ("+Lower(Hex(shield.serial))+")");
+// // If (!attacker.isa(POLCLASS_NPC))
+// //   SendSysMessagePergon(attacker, "Parry: "+attacker.name+"  -> "+defender.name, "", _DEFAULT_TEXT_FONT, 38);
+// // EndIf
+// // If (!defender.isa(POLCLASS_NPC))
+// //   SendSysMessagePergon(defender, "Parry: "+attacker.name+"  -> "+defender.name, "", _DEFAULT_TEXT_FONT, 38);
+// // EndIf
+// // Set_Debug(1);
+//
+//  If (!attacker.isa(POLCLASS_NPC))
+//    If (attacker.cmdlevel >= CMDLEVEL_SEER)
+//      SendSysMessagePergon(attacker, "Parry: "+attacker.name+" "+GetHPPergon(attacker)+
+//        " -> "+defender.name+" "+GetHPPergon(defender), "", _DEFAULT_TEXT_FONT, 38);
+//    EndIf
+//  EndIf
+//
+//  If (!defender.isa(POLCLASS_NPC))
+//    If (defender.cmdlevel >= CMDLEVEL_SEER)
+//      SendSysMessagePergon(defender, "Parry: "+attacker.name+" "+GetHPPergon(attacker)+
+//        " -> "+defender.name+" "+GetHPPergon(defender), "", _DEFAULT_TEXT_FONT, 38);
+//    EndIf
+//
+//    CheckSkillPergon(defender, SKILLID_SCHILDKAMPF, -1, SCHILDKAMPF_PUNKTE);
+//  EndIf
+//EndFunction
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////////
+//
+//   Pergon Combat - Das sagenumwobene "Neue HitScript"...
+//
+//     Author: Shinigami, Sebastian 'SeBB' Giese, Peter 'PeSt' Straube
+//
+//     based on: Combat Pseudocode by Racalac and Rohfassung-QuasiCode v0.06a
+//
+//   Modification
+//
+///////////////////////////////////////////////////////////////////////////////
+//
+// NPCs noch nicht integriert!!!
+
+// ToDo: Wie siehts mit Paralyse aus? Da kaempfen können, oder nicht?
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+use file;
+use vitals;
+use attributes;
+use cfgfile;
+use util;
+use math;
+use uo;
+use os;
+use polsys;
+
+
+/////////////
+// Includes
+/////////////
+
+
+Include "../magic/newmagic/spells/resistance";
+Include "include/thaumaturgy";
+Include "include/sysevent";
+Include "include/packets";
+Include "include/modifyskill";
+Include "include/npc";
+
+///////////////
+// Konstanten
+///////////////
+
+Const AUSWEICHEN_PVP_PUNKTE:=37;
+Const AUSWEICHEN_PVM_PUNKTE:=6;
+
+Const SHOW_FIGHTING_PERSONS:=1;    // Wer kaempft eigentlich mit wem?
+Const SHOW_ATTACKER_INFO   :=1;    // Was fuer eine Waffe hat der Angreifer?
+Const SHOW_DEFENDER_INFO   :=1;    // Was fuer eine Waffe hat der Verteidiger?
+Const SHOW_VALUES          :=1;    // Zeigt bestimmte berechnete Werte an
+Const SHOW_ITEMDAMAGE      :=1;    // Zeigt die Abnutzung der Gegenstaende an
+Const SHOW_ARMORZONES      :=1;    // Zeigt die Auswahl der ArmorZone an
+
+Const ND_MY                :=0;    // Parameter fuer die Funktion NormalDist
+Const ND_SIGMA             :=1;
+Const ND_MAX               :=2.75;
+
+Const CPROP_SPELL_FOG:="spell_fog"; // ToDo: Naja, die Prop muss nur noch gesetzt werden
+
+Var LogFileName;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Combat(params)
+  SysLog("Firing new combat code");
+
+  LogFileName:="Log/combat_"+Lower(Hex(params[1].serial))+".log";
+  CombatPergon(params[1], params[2]);
+EndProgram
+
+/////////////////////////////////////////////////////////////////////////////
+// CombatPergon - Eigenes Combat System (Testweise an Pseudocode angelehnt)
+/////////////////////////////////////////////////////////////////////////////
+
+Function CombatPergon(attacker, defender)
+  SysLogCombat("");
+  SysLogCombat("Combat: "+attacker.name+" -> "+defender.name+" ["+ReadMillisecondClock()+"]");
+
+  Var key;
+  If (GetObjProperty(attacker, "#INCOMBAT"))
+    key:=GetObjProperty(attacker, "#INCOMBAT");
+    SysLogCombat("WARNUNG: Ich kaempf doch noch! "+key+" "+ReadMillisecondClock()+". Nix da, keine Lust...");
+    Return;
+  Else
+    key:={attacker.serial+"."+defender.serial+"."+RandomFloat(1.0), ReadMillisecondClock()};
+    SetObjProperty(attacker, "#INCOMBAT", key);
+    SysLogCombat("Ich kaempfe... "+key);
+  EndIf
+
+  Var npc_att:=0;
+  If (attacker.isa(POLCLASS_NPC))
+    npc_att:=1;
+    SysLogCombat("NPC-Angreifer");
+  EndIf
+  Var npc_def:=0;
+  If (defender.isa(POLCLASS_NPC))
+    npc_def:=1;
+    SysLogCombat("NPC-Verteidiger");
+  EndIf
+
+  Var attweapon:=attacker.weapon;
+  If (attweapon) // Sollte immer eine Waffe haben!
+    Var defweapon:=defender.weapon;
+    If (defweapon) // Sollte immer eine Waffe haben!
+      Var itemdesc:=ReadConfigFile("::itemdesc");
+
+      If (itemdesc)
+        Var attweapondesc:=GetItemDescriptor(attweapon.objtype);
+        If (attweapondesc) // Auch dies sollte immer funktionieren!
+          Var attweapondesc2:=itemdesc[attweapon.objtype];
+
+          Var attackerdesc;
+          If (npc_att) // Pruegelt hier ein NPC durch die Kante?
+            attackerdesc:=GetNPCConfig(attacker.npctemplate);
+          EndIf
+
+          Var defweapondesc:=GetItemDescriptor(defweapon.objtype);
+          If (defweapondesc) // Auch dies sollte immer funktionieren!
+            Var defweapondesc2:=itemdesc[defweapon.objtype];
+
+            If (SHOW_FIGHTING_PERSONS And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+              SysLogCombat("  "+attacker.name+" ["+Lower(Hex(attacker.serial))+"] kaempft gegen "+defender.name+" ["+Lower(Hex(defender.serial))+"]");
+            EndIf
+
+            If (SHOW_ATTACKER_INFO And GetObjProperty(attacker, "TESTCOMBATLOG") And (!npc_att)) // Angreifer Infos anzeigen?
+              SysLogCombat("  Waffe von "+attacker.name+" ["+Lower(Hex(attacker.serial))+"]:");
+              SysLogCombat("    Bezeichnung     = "+attweapondesc.desc);                                                                     // [ ] benutzt
+              SysLogCombat("    Skill           = "+attweapondesc.attribute+" / Wert = "+GetSkillPergon(attacker, attweapondesc.attribute)); // [x] benutzt
+              SysLogCombat("    SkillRequired   = "+attweapondesc2.skillrequired);                                                           // [x] benutzt
+              SysLogCombat("    Schaden         = "+attweapondesc.damage);                                                                   // [ ] benutzt
+              SysLogCombat("    Geschwindigkeit = "+attweapondesc.speed);                                                                    // [ ] indirekt
+              SysLogCombat("    Pierce          = "+attweapondesc2.pierce);                                                                  // [x] benutzt
+              SysLogCombat("    Crush           = "+attweapondesc2.crush);                                                                   // [x] benutzt
+              SysLogCombat("    Dodge           = "+attweapondesc2.dodge);                                                                   // [ ]
+              SysLogCombat("    HP              = "+attweapon.hp+" von "+attweapondesc.maxhp);                                               // [ ] benutzt
+              SysLogCombat("    Intrinsic       = "+attweapondesc.intrinsic);                                                                // [x] benutzt
+              SysLogCombat("    Anim            = "+attweapondesc.anim);                                                                     // [x] benutzt
+              SysLogCombat("    MountedAnim     = "+attweapondesc.mountedanim);                                                              // [x] benutzt
+              SysLogCombat("    MinRange        = "+attweapondesc.minrange);                                                                 // [ ] indirekt
+              SysLogCombat("    MaxRange        = "+attweapondesc.maxrange);                                                                 // [ ] indirekt
+              SysLogCombat("    HitSound        = "+attweapondesc.hitsound);                                                                 // [x] benutzt
+              SysLogCombat("    MissSound       = "+attweapondesc.misssound);                                                                // [x] benutzt
+              SysLogCombat("    Projectile      = "+attweapondesc.projectile);                                                               // [x] benutzt
+              SysLogCombat("    ProjectileAnim  = "+attweapondesc.projectileanim);                                                           // [x] benutzt
+              SysLogCombat("    ProjectileSound = "+attweapondesc.projectilesound);                                                          // [x] benutzt
+              SysLogCombat("    ProjectileType  = "+attweapondesc.projectiletype);                                                           // [x] benutzt
+              SysLogCombat("    HitScript  = :combat:"+attweapondesc.hitscript);                                                             // [ ] benutzt
+            ElseIf (SHOW_ATTACKER_INFO And GetObjProperty(attacker, "TESTCOMBATLOG") And npc_att)
+              SysLogCombat("  NPC-Template ("+attacker.npctemplate+") von "+attacker.name+" ["+Lower(Hex(attacker.serial))+"]:");
+              SysLogCombat("    AttackChance    = "+attackerdesc.attackchance);                                                              // [x] benutzt
+              SysLogCombat("    AttackDamage    = "+attackerdesc.attackdamage);                                                              // [x] benutzt
+              SysLogCombat("    Pierce          = "+attackerdesc.pierce);                                                                    // [x] benutzt
+              SysLogCombat("    Crush           = "+attackerdesc.crush);                                                                     // [x] benutzt
+            EndIf
+
+            If (SHOW_DEFENDER_INFO And GetObjProperty(attacker, "TESTCOMBATLOG") And (!npc_def)) // Verteidiger Infos anzeigen?
+              SysLogCombat("  Waffe von "+defender.name+" ["+Lower(Hex(defender.serial))+"]:");
+              SysLogCombat("    Bezeichnung     = "+defweapondesc.desc);                                                                     // [ ]
+              SysLogCombat("    Skill           = "+defweapondesc.attribute+" / Wert = "+GetSkillPergon(defender, defweapondesc.attribute)); // [ ]
+              SysLogCombat("    SkillRequired   = "+defweapondesc2.skillrequired);                                                           // [ ]
+              SysLogCombat("    Schaden         = "+defweapondesc.damage);                                                                   // [ ]
+              SysLogCombat("    Geschwindigkeit = "+defweapondesc.speed);                                                                    // [ ]
+              SysLogCombat("    Pierce          = "+defweapondesc2.pierce);                                                                  // [ ]
+              SysLogCombat("    Crush           = "+defweapondesc2.crush);                                                                   // [ ]
+              SysLogCombat("    Dodge           = "+defweapondesc2.dodge);                                                                   // [ ]
+              SysLogCombat("    HP              = "+defweapon.hp+" von "+defweapondesc.maxhp);                                               // [ ]
+              SysLogCombat("    Intrinsic       = "+defweapondesc.intrinsic);                                                                // [ ]
+              SysLogCombat("    Anim            = "+defweapondesc.anim);                                                                     // [ ]
+              SysLogCombat("    MountedAnim     = "+defweapondesc.mountedanim);                                                              // [ ]
+              SysLogCombat("    MinRange        = "+defweapondesc.minrange);                                                                 // [ ]
+              SysLogCombat("    MaxRange        = "+defweapondesc.maxrange);                                                                 // [ ]
+              SysLogCombat("    HitSound        = "+defweapondesc.hitsound);                                                                 // [ ]
+              SysLogCombat("    MissSound       = "+defweapondesc.misssound);                                                                // [ ]
+              SysLogCombat("    Projectile      = "+defweapondesc.projectile);                                                               // [ ]
+              SysLogCombat("    ProjectileAnim  = "+defweapondesc.projectileanim);                                                           // [ ]
+              SysLogCombat("    ProjectileSound = "+defweapondesc.projectilesound);                                                          // [ ]
+              SysLogCombat("    ProjectileType  = "+defweapondesc.projectiletype);                                                           // [ ]
+              SysLogCombat("    HitScript  = :combat:"+defweapondesc.hitscript);                                                             // [ ]
+            EndIf
+
+            If (!attacker.frozen) // Nur aufgetaut kaempft es sich gut...
+              Var abbruch:=0; // Allgemeine Variable
+
+              If (attweapondesc.projectile) // Ist es eine Projektilwaffe?
+                Var projectile:=FindObjTypeInContainer(attacker.backpack, attweapondesc.projectiletype); // ToDo: NonInUseItems?
+                If (projectile)
+                  SubtractAmount(projectile, 1); // Einen Pfeil/Bolzen verbrauchen...
+                Else
+                  Var projectiledesc:=GetItemDescriptor(attweapondesc.projectiletype);
+                  If (projectiledesc)
+                    SendSysMessagePergon(attacker, "Euch fehlen "+projectiledesc.desc+".");
+                  Else
+                    SysLogCombat("FEHLER: Projektiltyp "+Lower(Hex(attweapondesc.projectiletype))+" ist nicht in der itemdesc.cfg definiert!");
+                  EndIf
+
+                  abbruch:=1; // Keine Munition, nix zu schiessen, tja, pech...
+                EndIf
+              EndIf
+
+              If (!abbruch) // Weiter?
+                If (GetStaminaPergon(attacker)>0) // Nur Angriffe, wenn Stamina vorhanden
+                  If ((attacker.graphic==0x190) Or (attacker.graphic==0x191)) // Menschen haben ausgefeiltere Animationen, die an die Waffe gebunden sind
+                    If (GetEquipmentByLayer(attacker, LAYER_MOUNT)) // Sitzt der Angreifer auf einem Tierchen?
+                      PerformAction(attacker, attweapondesc.mountedanim);
+                    Else
+                      PerformAction(attacker, attweapondesc.anim);
+                    EndIf
+                  Else
+                    PerformAction(attacker, RandomInt(3)+4); // Animation 4 bis 6 (sollte es immer geben, theoretisch)
+                  EndIf
+
+                  If (attweapondesc.projectile) // Ist es eine Projektilwaffe?
+                    PlaySoundEffect(attacker, attweapondesc.projectilesound);
+                    PlayMovingEffect(attacker, defender, attweapondesc.projectileanim, 9, 0, 0);
+                  EndIf
+
+                  // Errechnen der Angriffsschwierigkeit und SkillCheck Angriff
+                  Var attack;        // Erfolgreicher Angiff, und wenn ja, wie erfolgreich?
+                  Var attackdiff:=0; // Schwierigkeit des SkillChecks, sofern kein Fauskampf
+
+                  If (npc_att) // Pruegelt hier ein NPC durch die Kante?
+                    attack:=RandomInt(1000); // Angriff einfach auswuerfeln
+                    attackdiff:=attackerdesc.attackchance*10;
+                    If (attack<attackdiff)
+                      attack:=0;
+                    EndIf
+                  Else // Standardfall (Player)
+                    If (attweapondesc.intrinsic) // Haut er mit der Faust?
+                      attack:=CheckSkillPergon(attacker, SKILLID_FAUSTKAMPF, -1, WAFFENSKILL_PUNKTE, QUALIFIZIERT);
+                    Else
+                      attackdiff:=attweapondesc2.skillrequired-CInt((GetDexPergon(attacker)*3.0)/20);
+                      attack:=CheckSkillPergon(attacker, attweapondesc.attribute, attackdiff, WAFFENSKILL_PUNKTE, QUALIFIZIERT);
+                    EndIf
+                  EndIf
+
+                  If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                    SysLogCombat("    Attack           = "+attack);
+                    If (npc_att) // Pruegelt hier ein NPC durch die Kante?
+                      SysLogCombat("    AttackChance     = "+attackdiff);
+                    Else
+                      SysLogCombat("    AttackDiff       = "+attackdiff);
+                    EndIf
+                  EndIf
+
+                  If (attack) // War der Angriff erfolgreich?
+                    If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                      SysLogCombat("  Erfolgreicher Angriff");
+                    EndIf
+
+                    Var tactics:=NormalDist(400, CheckSkillPergon(attacker, SKILLID_TAKTIK,
+                      GetSkillPergon(defender, SKILLID_TAKTIK), TAKTIK_PUNKTE, QUALIFIZIERT));
+                    Var hitrune:=GetRunePower(attweapon, RUNE_WEAPON_HIT)*10;
+                    Var spellfog:=GetSpellPower(attacker, CPROP_SPELL_FOG)*10;
+
+                    If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                      SysLogCombat("    Tactics          = "+tactics);
+                      SysLogCombat("    HitRune          = "+hitrune);
+                      SysLogCombat("    SpellFog         = "+spellfog);
+                    EndIf
+
+                    If (RandomInt(1000)<400+tactics+hitrune-spellfog) // Angriff war erfolgreich, aber auch getroffen?
+                      If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                        SysLogCombat("  Treffer");
+                      EndIf
+
+                      PlaySoundEffect(attacker, attweapondesc.hitsound);
+
+                      If ((defender.graphic==0x190) Or (defender.graphic==0x191)) // Menschen haben andere Animationen
+                        PerformAction(defender, ANIM_HIT);
+                      Else
+                        PerformAction(defender, RandomInt(2)+15); // Animation 15 bis 16 (sollte es immer geben, theoretisch)
+                      EndIf
+
+                      // Waffengrundschaden ermitteln
+                      Var baseweapondamage:=0;
+                      Var pierce:=0;
+                      Var crush:=0;
+
+                      Var verbrauch:=100*attweapon.hp/attweapon.maxhp;
+                      If ((verbrauch<=5) Or (attweapon.hp<1)) // Kann man die Waffe gebrauchen?
+                        SendSysMessagePergon(attacker, "Eure Waffe ist zum Kämpfen nicht mehr zu gebrauchen!");
+                      Else // Die Waffe taugt sogar was...
+                        If (npc_att) // Pruegelt hier ein NPC durch die Kante?
+                          baseweapondamage:=RandomDiceRoll(attackerdesc.attackdamage)*NormalDist(1, attack);
+                        Else
+                          baseweapondamage:=(Condition(attweapon, RandomDiceRoll(attweapondesc.damage)*(1+attweapon.dmg_mod/100.0))+
+                            (GetStrPergon(attacker)*3.0/20))*NormalDist(1, attack);
+                        EndIf
+
+                        // Check auf 'Piercing Hit' // ToDo: Noch nicht geprueft, da keine Werte...
+                        If (npc_att) // Pruegelt hier ein NPC durch die Kante?
+                          pierce:=attackerdesc.pierce*10;
+                        Else
+                          pierce:=attweapondesc2.pierce*10+GetRunePower(attweapon, RUNE_WEAPON_PIERCE)*10+GetDexPergon(attacker)/4;
+                        EndIf
+
+                        If (pierce)
+                          If (RandomInt(1000)<pierce)
+                            pierce:=1;
+                          Else
+                            pierce:=0;
+                          EndIf
+                        Else
+                          pierce:=0;
+                        EndIf
+
+                        // Check auf 'Crushing Blow' // ToDo: Noch nicht geprueft, da keine Werte...
+                        If (npc_att) // Pruegelt hier ein NPC durch die Kante?
+                          crush:=attackerdesc.crush*10;
+                        Else
+                          crush:=attweapondesc2.crush*10+GetRunePower(attweapon, RUNE_WEAPON_CRUSH)*10+GetStrPergon(attacker)/4;
+                        EndIf
+
+                        If (crush)
+                          If (RandomInt(1000)<crush)
+                            crush:=1;
+                          Else
+                            crush:=0;
+                          EndIf
+                        Else
+                          crush:=0;
+                        EndIf
+                      EndIf
+
+                      If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                        SysLogCombat("    Abnutzung        = "+verbrauch+" ["+attweapon.hp+" von "+attweapon.maxhp+"]");
+                        SysLogCombat("    BaseWeaponDamage = "+baseweapondamage);
+                        SysLogCombat("    Pierce           = "+pierce+" ["+GetRunePower(attweapon, RUNE_WEAPON_PIERCE)+"]");
+                        SysLogCombat("    Crush            = "+crush+" ["+GetRunePower(attweapon, RUNE_WEAPON_CRUSH)+"]");
+                      EndIf
+
+                      // Verteidigungsstaerke ermitteln
+                      Var shield;
+                      Var defense:=0;
+                      Var absorbtion:=0;
+                      Var baserawdamage;
+
+                      If (!defender.frozen) // Nur aufgetaut verteidigt es sich gut...
+                        // Schild des Verteidigers suchen (eigentlich nur LAYER_HAND2, aber man weiss ja nie :)
+                        If (!npc_def) // Verteidigt hier ein Spieler?
+                          Var equipment:=GetEquipmentByLayer(defender, LAYER_HAND2);
+                          If (equipment.isa(POLCLASS_ARMOR))
+                            shield:=equipment;
+                          Else
+                            equipment:=GetEquipmentByLayer(defender, LAYER_HAND1);
+                            If (equipment.isa(POLCLASS_ARMOR))
+                              shield:=equipment;
+                            EndIf
+                          EndIf
+                        EndIf
+
+                        If (shield) // Hat der Verteidiger ein Schild? (Muss noch ueberarbeitet werden!)
+                          defense:= CheckSkillPergon(defender, SKILLID_SCHILDKAMPF, -1, SCHILDKAMPF_PUNKTE, QUALIFIZIERT);
+                        Else // ToDo: angelehnt an aktueller Punktevergabe
+                          If (!npc_att) // PvP-Kampf wird mehr belohnt
+                            defense:=CheckSkillPergon(defender, SKILLID_AUSWEICHEN, -1, AUSWEICHEN_PVP_PUNKTE, QUALIFIZIERT);
+                          Else
+                            defense:=CheckSkillPergon(defender, SKILLID_AUSWEICHEN, -1, AUSWEICHEN_PVM_PUNKTE, QUALIFIZIERT);
+                          EndIf
+                        EndIf
+                      EndIf
+
+                      If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                        SysLogCombat("  Verteidigung");
+                        If (shield)
+                          SysLogCombat("    Schild           = "+shield.desc+" / "+shield.ar);
+                        EndIf
+                        SysLogCombat("    Defense          = "+defense);
+                      EndIf
+
+                      If (defense) // Verteidigung erfolgreich, aber, wehre ich auch Schaden ab?
+                        Var dmgabsorbtion:=0;
+
+                        If (shield) // Hat der Verteidiger ein Schild?
+                          Var blockrune:=GetRunePower(shield, RUNE_SHIELD_BLOCK)*10;
+                          Var dodge:=GetSkillPergon(defender, SKILLID_AUSWEICHEN)*5/3;
+
+                          If (RandomInt(1000)<600+blockrune+dodge) // Schildkampf erfolgreich?
+                            dmgabsorbtion:=Condition(shield, shield.ar);
+                           // PlaySoundEffect(defender, BLOCK); // ToDo
+                          EndIf
+
+                          If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                            SysLogCombat("    DmgAbsorbtion    = "+dmgabsorbtion+" ["+GetRunePower(shield, RUNE_SHIELD_BLOCK)+"]");
+                          EndIf
+                        Else // Kein Schild...
+                          If (RandomInt(1000)<400+GetSkillPergon(defender, SKILLID_AUSWEICHEN)*10/3) // Ausweichen erfolgreich?
+                            dmgabsorbtion:=100;
+                           // PlaySoundEffect(defender, AUSWEICHEN); // ToDo
+                          EndIf
+
+                          If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                            SysLogCombat("    DmgAbsorbtion    = "+dmgabsorbtion+" ["+GetSkillPergon(defender, SKILLID_AUSWEICHEN)+"]");
+                          EndIf
+                        EndIf
+
+                        If (dmgabsorbtion)
+                          absorbtion:=dmgabsorbtion*NormalDist(1, defense)+15;
+                        EndIf
+                      EndIf
+
+                      // Grundwaffenschaden mindern
+                      If (baseweapondamage And absorbtion)
+                        baserawdamage:=baseweapondamage*(1.0-absorbtion/100);
+
+                        If (shield) // Etwaiger Schaden am Schild?
+                          ItemDamage(attacker, defender, shield, absorbtion, baseweapondamage-baserawdamage, crush);
+                        EndIf
+                      Else
+                        baserawdamage:=baseweapondamage;
+                      EndIf
+
+                      If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                        SysLogCombat("    Absorbtion       = "+absorbtion+" [Schildkampf oder Ausweichen]");
+                        SysLogCombat("    BaseRawDamage    = "+baserawdamage);
+                      EndIf
+
+                      If (baserawdamage>0) // Schaden dringt durch Verteidigung -> Ruestungseffekte
+                        Var rawdamage;
+
+                        If (pierce) // Piercing, Durchstoss?
+                         // PlaySoundEffect(attacker, PIERCE); // ToDo
+
+                          If (RandomInt(1000)<GetSkillPergon(attacker, SKILLID_ANATOMIE)/2.4) // Critical damage?
+                            rawdamage:=GetHPPergon(defender)/2; // ToDo: evtl. noch Blut
+                          Else
+                            rawdamage:=baserawdamage;
+                          EndIf
+                        Else // Schaden trifft auf Ruestung (Normalfall)
+                          If (shield) // Schild herausrechnen
+                            absorbtion:=(defender.ar-shield.ar)*NormalDist(1, RandomInt(1000))/2;
+                          Else
+                            absorbtion:=defender.ar*NormalDist(1, RandomInt(1000))/2;
+                          EndIf
+
+                          If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                            SysLogCombat("    Absorbtion       = "+absorbtion+" [Ruestung bzw. Schild]");
+                          EndIf
+
+                          If (absorbtion) // Wird Schaden absorbiert?
+                            rawdamage:=baserawdamage*(1.0-absorbtion/100);
+                            Var absorbed:=baserawdamage-rawdamage;
+
+                            If (npc_def And crush) // Wenn NPC verteidigt, is nur crush interessant
+                              defender.ar_mod:=defender.ar_mod-3;
+                              SysLogCombat("    Crushing Hit on NPC - AR "+defender.ar+" AR_Mod "+defender.ar_mod);
+                            Else
+                              Var armor:=ChooseArmorPiece(attacker, defender);
+                              If (armor[2]) // Gibts ueberhaupt was zum Kaputtgehen?
+                                If (RandomInt(100)==0) // 1% Chance, also irgendein Wert von 0 bis 99
+                                  ItemDamage(attacker, defender, armor[2], absorbtion, absorbed, crush);
+                                EndIf
+                              EndIf
+                            EndIf
+                          Else
+                            rawdamage:=baserawdamage;
+                          EndIf
+                        EndIf
+
+                        If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                          SysLogCombat("  Aua");
+                          SysLogCombat("    RawDamage        = "+rawdamage+" ["+GetHPPergon(defender)+"]");
+                        EndIf
+
+                        If (rawdamage>0) // Schaden ist durchgekommen
+                          // ToDo: hier erfolgt Berechnen und Aufaddieren von Elementarschaeden und sonstigen Effekten (Elementar-
+                          //       schaeden, Mana-/Lebenleecher, Heiliger Spiegel) sowie Anwendung des Schadens im finalen
+
+                          LogLastHit(defender, attacker, attweapon); // Den letzten erfolgreichen Schlag merken
+//                          ShowDamage(defender, attacker, rawdamage); // Schaden anzeigen
+                          ApplyRawDamagePergon(defender, rawdamage); // Schaden verursachen
+
+                          If (!npc_def) // Der Spieler könnte stark verletzt sein, also sogar bluten
+                            Var item:=defender.backpack;
+                            If (item)
+                              Var listener:=GetObjProperty(item, "#Statistik");
+                              If (listener)
+                                Var listenerev:=struct;
+                                listenerev.+type:=SYSEVENT_DAMAGED;
+                                listenerev.+source:=attacker;
+
+                                GetProcess(listener).sendevent(listenerev);
+                              EndIf
+                            EndIf
+                          EndIf
+                        EndIf
+                      EndIf
+                    Else // Nich getroffen...
+                      PlaySoundEffect(attacker, attweapondesc.misssound);
+                    EndIf
+                  Else // Angriff fehlgeschlagen... Chance auf Selbstverletzung
+                    If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                      SysLogCombat("  Angriff fehlgeschlagen");
+                    EndIf
+
+                    If ((!attweapondesc.intrinsic) And (!npc_att)) // Spieler könnte sich ja mit seiner eigenen Waffe verletzen...
+                      If (attackdiff-GetSkillPergon(attacker, attweapondesc.attribute)+20>=RandomInt(1000))
+                        SendSysMessagePergon(attacker, "Ihr verletzt Euch selbst.");
+
+                        LogLastHit(attacker, attacker, attweapon);    // Den letzten Schlag merken
+                       // ShowDamage(defender, attacker, FUMBLEDAMAGE); // Schaden anzeigen
+                       // ApplyRawDamagePergon(attacker, FUMBLEDAMAGE); // Schaden verursachen // ToDo
+
+                       // PlaySoundEffect(attacker, FUMBLESOUND);       // ToDo
+
+                        If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                          SysLogCombat("    Und auch noch selbst verletzt.");
+                        EndIf
+                      Else
+                        PlaySoundEffect(attacker, attweapondesc.misssound);
+                      EndIf
+                    Else
+                      PlaySoundEffect(attacker, attweapondesc.misssound);
+                    EndIf
+                  EndIf
+
+                  If (!attweapondesc.intrinsic) // Bei Intrinsic macht das keinen Sinn...
+                    If (CInt(RandomInt(1000+GetRunePower(attweapon, RUNE_ALL_DURABILITY))/10)==1) // ToDo: Urspruenglich wollte er 0.1% - bissl wenig
+                      attweapon.hp:=attweapon.hp-1;
+                      CheckWerkzeugSchaden(attacker, attweapon, 1); // Waffenbeschaedigung pruefen und selbige ggf. zerstoeren
+                    EndIf
+                  EndIf
+                Else // Stamina ein bissl alle...
+                  Case (RandomInt(3))
+                    0: PrintTextAbovePergon(attacker, attacker, "*Uff*");
+                    1: PrintTextAbovePergon(attacker, attacker, "*Arrg*");
+                    2: PrintTextAbovePergon(attacker, attacker, "*Ächz*");
+                  EndCase
+
+                  If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                    SysLogCombat("  Ohne Stamina kaempft es sich ein bissl schlecht...");
+                  EndIf
+                EndIf
+
+                // Berechnung und Abzug des Stamina-Verbrauchs
+                Var equipweigth:=0; // ToDo: Ist equipweigth:=mobile.weight-backpack.weight; ?
+                ForEach item in ListEquippedItems(attacker)
+                  equipweigth:=equipweigth+item.weight;
+                EndForEach
+
+                SetStaminaPergon(attacker, GetStaminaPergon(attacker)-equipweigth/30);
+
+                // Kampffrequenz muss woanders berechnet werden, da Core das Combat-Timing uebernimmt
+                //   => Umweg ueber weaponspeed - ToDo
+
+                // Berechnung der Kampfpause
+                Var weaponspeed:=attweapondesc.speed*100;
+                Var speedrune:=GetRunePower(attweapon, RUNE_WEAPON_SPEED);
+                Var handicap:=0; // attacker.ar_handicap*10; // ToDo: gibs noch nix
+
+                If (SHOW_VALUES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+                  SysLogCombat("  Genuch zugehauen (bzw. versucht)");
+                  SysLogCombat("    EquipWeigth      = "+equipweigth+" ["+GetStaminaPergon(attacker)+"]");
+                  SysLogCombat("    WeaponSpeed      = "+weaponspeed);
+                  SysLogCombat("    SpeedRune        = "+speedrune);
+                  SysLogCombat("    Handicap         = "+handicap);
+                  SysLogCombat("  Pausieren ["+(weaponspeed-speedrune+handicap)+" ms]");
+                EndIf
+
+               // SleepMS(weaponspeed-speedrune+handicap); // Pause zwischen Attacken
+              EndIf
+            Else // Gefrozen wird das nix mit dem kaempfen...
+              SendSysMessagePergon(attacker, "Ohne Euch zu bewegen, könnt Ihr nicht kämpfen!");
+            EndIf
+          Else
+            SysLogCombat("FEHLER: "+defweapon.desc+" ["+Lower(Hex(defweapon.objtype))+"] ist nicht in der itemdesc.cfg definiert!");
+          EndIf
+        Else
+          SysLogCombat("FEHLER: "+attweapon.desc+" ["+Lower(Hex(attweapon.objtype))+"] ist nicht in der itemdesc.cfg definiert!");
+        EndIf
+      Else
+        SysLogCombat("FEHLER: Konnte die itemdesc.cfg!");
+      EndIf
+    Else
+      SysLogCombat("FEHLER: Verteidiger "+defender.name+" ["+Lower(Hex(defender.serial))+"] hat keine Waffe!");
+    EndIf
+  Else
+    SysLogCombat("FEHLER: Angreifer "+attacker.name+" ["+Lower(Hex(attacker.serial))+"] hat keine Waffe!");
+  EndIf
+
+  If ((!defender) Or (defender.dead))
+    SysLogCombat("Fertsch nach "+(ReadMillisecondClock()-key[2])+" ms durch Tod... { "+key[1]+" }");
+  Else
+    SysLogCombat("Fertsch nach "+(ReadMillisecondClock()-key[2])+" ms... { "+key[1]+" }");
+  EndIf
+  EraseObjProperty(attacker, "#INCOMBAT");
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// NormalDist - Liefert zu Zufallszahl [0..999] normalverteilte Zufallswerte, skaliert auf ersten Parameter
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+Function NormalDist(scale, randnum)
+  Return (ND_MAX*(SQrt(-2.0*ND_SIGMA*ND_SIGMA*LogE(ND_SIGMA*(1.0-randnum/1000.0)))+ND_MY)*scale/10.0);
+EndFunction
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Condition - Skaliert Ausgangswert nach Zustand von Item nach logarithmischer Formel (nichtlineare Abnahme der Leistungsfaehigkeit)
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+Function Condition(item, base)
+ // Var maxhp_wo_quality:=item.maxhp/item.quality; // Quality rausrechnen
+
+ // Var verbrauch:=100*item.hp/maxhp_wo_quality;
+  Var verbrauch:=100*item.hp/item.maxhp;
+  If ((verbrauch<=5) Or (item.hp<1)) // Kann man die Waffe oder Rueste gebrauchen?
+    Return (0);
+  Else
+   // Return (base*LogE(100*item.hp/maxhp_wo_quality)/LogE(100));
+    Return (base*LogE(100*item.hp/item.maxhp)/LogE(100));
+  EndIf
+EndFunction
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// ItemDamage - Wendet Schaden auf Gegenstaende an, in Abhaengigkeit von crush(ing blows) und Wahrscheinlichkeiten
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+Function ItemDamage(attacker, defender, item, prob, absorbed, crush)
+  If (SHOW_ITEMDAMAGE And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+    SysLogCombat("  ItemDamage '"+item.desc+"'");
+  EndIf
+
+  Var revengerune:=GetRunePower(item, RUNE_SHIELD_REVENGE);
+  If (revengerune) // Check ob Rune "Rache" aktiv
+    Var reflected:=absorbed*revengerune/100.0;
+    Var resisted:=1.0-GetResistance(attacker, "magic"); // ToDo: Magieresi wird grad ein bissl anders gehandhabt, scheint auch eher Schutz zu sein...
+
+    If (SHOW_ITEMDAMAGE And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+      SysLogCombat("    Reflected        = "+reflected+" ["+revengerune+"]");
+      SysLogCombat("    Resisted         = "+resisted);
+    EndIf
+
+    ApplyRawDamagePergon(attacker, resisted*reflected);
+  EndIf
+
+  If (crush) // Check crushing blow
+   // PlaySoundEffect(defender, CRUSH); // ToDo
+    item.hp:=item.hp-5;
+  Else
+   // PlaySoundEffect(defender, ARMOR); // ToDo
+
+    Var durabilityrune:=GetRunePower(item, RUNE_ALL_DURABILITY)*10;
+    If (RandomInt(1000)<prob*10-durabilityrune) // Check ob Item Schaden nimmt
+      item.hp:=item.hp-1;
+    EndIf
+  EndIf
+  return;
+  defender := 1;
+EndFunction
+
+///////////////////////////////////////////////////
+// ChooseArmorPiece - Waehlt ein Armor-Stueck aus
+///////////////////////////////////////////////////
+
+Function ChooseArmorPiece(attacker, defender) // Attacker eigentlich nur wegens Logging
+  If (SHOW_ARMORZONES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+    SysLogCombat("  ChooseArmorPiece");
+  EndIf
+
+  Var armrzone:=ReadConfigFile("::armrzone");
+  If (armrzone)
+    Var armorzones:={};
+    Var zone;
+    Var maxchance:=0; // Sollte eigentlich 100 sein, zum Schluss... aber man weiss ja nie
+
+    ForEach zonename in GetConfigStringKeys(armrzone)
+      zone:=armrzone[zonename];
+      armorzones.append({zone.name, zone.chance, GetConfigStringArray(zone, "Layer")});
+
+      maxchance:=maxchance+zone.chance;
+    EndForEach
+
+    Var percantage:=RandomInt(maxchance);
+    Var zoneindex:=1;
+
+    If (SHOW_ARMORZONES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+      SysLogCombat("    ArmorChance      = "+percantage);
+    EndIf
+
+    While (percantage>=armorzones[zoneindex][2])
+      percantage:=percantage-armorzones[zoneindex][2];
+      zoneindex:=zoneindex+1;
+    EndWhile
+
+    If (SHOW_ARMORZONES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+      SysLogCombat("    ArmorZone        = "+armorzones[zoneindex][1]);
+    EndIf
+
+    Var zonearmor:=0;
+    Var damageequipment;
+    Var equipment;
+
+    ForEach layer in (armorzones[zoneindex][3]) // Alle Kleidungsstuecke abgrasen
+      equipment:=GetEquipmentByLayer(defender, CInt(layer)); // Ohne CInt mag der nich...
+      If (equipment) // Da hat er was an...
+        If (equipment.ar) // Und das schuetzt sogar ein bisschen
+          zonearmor:=zonearmor+equipment.ar;
+
+          If (!damageequipment) // Noch nix definiert, was kaputtgehen kann
+            damageequipment:=equipment;
+          EndIf
+        EndIf
+      EndIf
+    EndForEach
+
+    If (SHOW_ARMORZONES And GetObjProperty(attacker, "TESTCOMBATLOG")) // Infos anzeigen?
+      SysLogCombat("    Armor            = "+zonearmor);
+      If (damageequipment)
+        SysLogCombat("    Kaputtgeh        = "+damageequipment.desc);
+      EndIf
+    EndIf
+
+    Return ({zonearmor, damageequipment});
+
+    UnloadConfigFile("::armrzone");
+  Else
+    SysLogCombat("FEHLER: Konnte die Datei armrzone.cfg nicht oeffnen!");
+  EndIf
+EndFunction
+
+////////////////////////////////////////////////
+// GetRunePower - Liefert die Wirkung der Rune
+////////////////////////////////////////////////
+Function GetRunePower(weapon, runetype)
+ // Var rune:=GetObjProperty(weapon, "Runes")[runetype];
+ // If (rune)
+ //   Return (rune.power);
+ // Else
+    Return (0);
+ // EndIf
+  weapon   := 1;
+  runetype := 1;
+EndFunction
+
+/////////////////////////////////////////////////////
+// GetSpellPower - Liefert die Wirkung der Spruches
+/////////////////////////////////////////////////////
+
+Function GetSpellPower(who, spellcprop)
+  Var value:=GetObjProperty(who, spellcprop);
+  If (value)
+    Return (value[2]);
+  Else
+    Return (0);
+  EndIf
+EndFunction
+
+/////////////////////////////////////////////////////////
+// SysLogCombat - Schreibt eine Statuszeile ins LogFile
+/////////////////////////////////////////////////////////
+
+Function SysLogCombat(text)
+ // SysLog(text);
+  LogToFile(LogFileName, text);
+EndFunction

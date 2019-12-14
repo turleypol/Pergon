@@ -1,0 +1,739 @@
+/////////////////
+// mining.src
+//
+// By using a shovel or pickaxe on cave tile this script allows
+// the harvesting of ore. Special reagents or colored ore are
+// possible to find. You get more ore per dig the higher your
+// skill is.
+//
+// If a shovel is used on a swamp tile, clay is digged up and
+// can be used to make pots, jars, etc.
+//
+// Authors: DreamWeaver:
+//               original
+//          Racalac:
+//               5/8/99 colored ore, resource use
+
+use attributes;
+use os;
+use uo;
+use util;
+include "include/client";
+include "include/itemnpc";
+include "include/mobile";
+include "include/modifyskill";
+include "include/objtype";
+include "include/utility";
+
+var UOBJ_Edelsteine := {
+  0x0F0F, 0x0F10, 0x0F11, 0x0F13, 0x0F15, 0x0F16, 0x0F18, 0x0F25, 0x0F30
+};
+var axe_quality;
+var axe_skill;
+var axe_hp;
+var axe_maxhp;
+
+Program use_picktool(who, pickaxe)
+  If (IsFighting(who))
+    SendSysMessagePergon(who,
+      "Ihr könnt nicht gleichzeitig graben und kämpfen!"
+    );
+    return;
+  EndIf
+
+  If (!ReserveItem(pickaxe))
+    SendSysMessagePergon(who, "Euer Grabewerkzeug wird bereits benutzt!");
+    return;
+  EndIf
+
+  If (who.multi) // Shinigami
+    If (pickaxe.objtype == 0x0f39) // Schaufel
+      DigField(who);
+      return;
+    Else
+      SendSysMessagePergon(who,
+        "In Häusern könnt Ihr nicht schürfen!"
+      );
+      return;
+    EndIf
+  EndIf
+
+  SendSysMessagePergon(who, "Wählt einen Platz zum Schürfen aus.");
+  var use_on := TargetCoordinates(who);
+  If (!use_on or use_on.item.container)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  var distt := CoordinateDistance(who.x, who.y, use_on.x, use_on.y);
+
+  If (distt > 2)
+    SendSysMessagePergon(who, "Das ist zu weit weg.");
+    return;
+  EndIf
+
+  var info := GetMapInfo(use_on.x , use_on.y, use_on.realm);
+
+  var sx := who.x;
+  var sy := who.y;
+  var sz := who.z;
+
+  If (!IsPickAxeEquipped(who, pickaxe))
+    SendSysMessagePergon(who,
+      "Zum Schürfen müsst Ihr das in die Hand nehmen!"
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon (who, "Ihr beginnt zu graben.");
+
+  // Werkzeug-Eigenschaften auslesen
+  var werkzeug := GetPropertyItem(pickaxe);
+  axe_quality := werkzeug.quality;
+  axe_skill := werkzeug.quality;
+  axe_hp := werkzeug.hp;
+  axe_maxhp := werkzeug.maxhporig;
+
+  // das mindestens ein erz rauskommt, auch wenn die quali unter 1 ist
+  If (axe_skill<1) axe_skill := 1; axe_quality := 1; EndIf
+
+  var count := 1;
+  var i;
+
+  var num_chops_axt;
+  var num_chops_axt_100;
+  var dummy;
+  var num_chops;
+  var message_50 := 0;
+  var message_20 := 0;
+  var maxore;
+
+  maxore := 80;
+
+  Repeat
+    If (IsFighting(who))
+      SendSysMessagePergon(who,
+        "Ihr könnt nicht gleichzeitig graben und kämpfen!"
+      );
+      break;
+    EndIf
+
+    num_chops_axt := axe_hp; num_chops_axt_100 := axe_maxhp;
+    dummy := num_chops_axt*100.0/num_chops_axt_100;
+    // dummy gibt die %-punkte der Hacke an gegeueber 100% Maxhp -
+    // also praktisch ob die Hacke noch scharf ist
+    If ((dummy<20) and (message_20 == 0))
+      SendSysMessagePergon(who, "Euer Werkzeug ist kaum noch zu gebrauchen.");
+      message_20 := 1;
+    Else
+      If ((dummy<50) and (message_50 == 0))
+        SendSysMessagePergon(who, "Euer Werkzeug ist stumpf.");
+        message_50 := 1;
+      EndIf
+    EndIf
+
+
+    If (dummy<50)
+      // wenn die hitpoints unter 50% sind, dauerts laenger
+      // 100%-dummy%*0.1 von 10 durchlaeufen
+      dummy := cint((100.0-dummy)*(5.0/100.0));
+    Else
+      dummy := 0;
+    EndIf
+
+    num_chops := Max(1,dummy+1);
+
+    // If (who.cmdlevel >= CMDLEVEL_SEER)
+    //   print("axe_quality:"+axe_quality);
+    //   print("axe_hp:"+axe_hp);
+    //   print("axe_maxhp:"+axe_maxhp);
+    //   print("num_chops_axt:"+dummy);
+    //   print("num_chops:"+num_chops);
+    //   print("Maxore:"+maxore);
+    //   print("Count:"+count);
+    // EndIf
+    If (IsSwamp(info.landtile, use_on))
+      If (DigForClay(who, use_on, info, pickaxe))
+        // they're digging for clay
+        break;
+      EndIf
+    ElseIf (IsSnow(info.landtile, use_on))
+      If (DigForSnow(who, use_on, info, pickaxe))
+       break;
+      EndIf
+    ElseIf (IsSand(info.landtile, use_on))
+      If (DigForSand(who, use_on, info, pickaxe))
+        break;
+      EndIf
+    ElseIf(IsMinable(info.landtile, use_on))
+      If (MineForOre(who, use_on, info, pickaxe))
+        break;
+      EndIf
+    Else
+    SendSysMessagePergon(who, "Ihr hört auf zu graben.");
+    return;
+    EndIf
+
+    For(i := 1; i <= num_chops; i += 1)
+      PerformAction(who, UACTION_PICK);
+      PlaySoundEffect(who, SFX_PICK);
+      Sleep(1);
+      If (who.x != sx or who.y != sy or who.z != sz)
+        return;
+      EndIf
+    EndFor
+
+    count += 1;
+  Until (count > maxore);
+
+  SendSysMessagePergon(who, "Ihr hört auf zu graben.");
+EndProgram
+
+Function GetStuff(who, theroll, locationtile, info, pickaxe)
+
+  // var skill := (GetSkillPergon(who, SKILLID_ERZABBAU)+axe_skill);
+
+  If ((theroll+axe_quality >= 60) and (theroll <= 100)) // 40% Farb-Chance
+    return MakeColoredOre(who, locationtile, info.landtile, pickaxe);
+  Else
+    var amount := CInt(axe_quality * 19/10);  // Commander, neue werte
+
+    var diffi := IsMinable(info.landtile, locationtile);
+
+    If (CheckSkillPergon(who, SKILLID_ERZABBAU, diffi , cint(diffi*2+10)))
+
+      If (RandomInt(1000) >= 10)  // zu 99% normales Erzbuddeln
+
+        var num := CInt(HarvestResource("ore", locationtile.x, locationtile.y, 1, amount, locationtile.realm));
+        CreateItemInBackpackPergon(who, UOBJ_EISEN_ERZ, num);
+        SendSysMessagePergon(who, "Ihr legt " + num + " Eisenerz in Euren Rucksack.");
+
+      Else  // Rest: zufaelliges Finden von Reagenzie Blackrock
+        If (RandomInt(100) < 3)   // Blackrock
+          var ReagItem := CreateItemInBackpackPergon(who, UOBJ_BLACKROCK, 1);
+          If (ReagItem)
+            SendSysMessagePergon(who, "Ihr findet einen Blackrock und legt ihn in Euren Rucksack.");
+          Else
+            SendSysMessagePergon(who, "Scheinbar ist Euer Rucksack zu voll. Ihr könnt den Blackrock nicht darin ablegen!");
+          EndIf
+        Else
+          var Edelstein := CreateItemInBackpackPergon(who, UOBJ_Edelsteine[RandomInt(Len(UOBJ_Edelsteine)) + 1], 1);
+          If (Edelstein)
+            SendSysMessagePergon(who, "Ihr findet einen Edelstein und legt ihn in Euren Rucksack.");
+          Else
+            SendSysMessagePergon(who, "Scheinbar ist Euer Rucksack zu voll. Ihr könnt den Edelstein nicht darin ablegen!");
+          EndIf
+        EndIf
+      EndIf
+
+    ElseIf(!diffi)
+      SendSysMessagePergon(who, "Hier gibt es kein Erz mehr.");
+      return 1;
+    Else
+      SendSysMessagePergon(who, "Ihr findet absolut kein Erz.");
+      If (SetWerkzeugSchaden(who, pickaxe, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!"))
+        return(1);
+      EndIf
+    EndIf
+  EndIf
+
+  return 0;
+EndFunction
+
+
+Function IsSwamp(maptile, item)
+  var diff := GetHarvestDifficulty(
+    "clay", item.x, item.y, maptile, item.realm
+  );
+  If (diff)
+    return diff;
+  EndIf
+
+  return 0;
+EndFunction
+
+
+Function IsMinable(landtile, item)
+  // Tile
+  var diff := GetHarvestDifficulty(
+    "ore", item.x, item.y, item.objtype, item.realm
+  );
+  If (diff)
+    return diff;
+  EndIf
+
+  // Map
+  diff := GetHarvestDifficulty(
+    "ore", item.x, item.y, landtile, item.realm
+  );
+  If (diff)
+    return diff;
+  EndIf
+
+  return 0;
+EndFunction
+
+Function IsSand(theobj, othertype)
+  //Tile
+  var Diff_Mining := GetHarvestDifficulty("sand", othertype.x, othertype.y, othertype.objtype, othertype.realm);
+  If (Diff_Mining)
+    Return(Diff_Mining);
+  EndIf
+  //Map
+  Diff_Mining := GetHarvestDifficulty("sand", othertype.x, othertype.y, theobj, othertype.realm);
+  If (Diff_Mining)
+    Return(Diff_Mining);
+  EndIf
+  Return(0);
+EndFunction
+
+Function IsSnow(theobj, othertype)
+  //Tile
+  var Diff_Mining := GetHarvestDifficulty("snow", othertype.x, othertype.y, othertype.objtype, othertype.realm); 
+  If (Diff_Mining)
+    Return(Diff_Mining);
+  EndIf
+  //Map
+  Diff_Mining := GetHarvestDifficulty("snow", othertype.x, othertype.y, theobj, othertype.realm); 
+  If (Diff_Mining) 
+    Return(Diff_Mining);
+  EndIf
+  Return(0);
+EndFunction
+
+
+Function MakeColoredOre(who, digtile, landtiletype, pickaxe)
+  var chance := (randomint(100) + 1);
+  var amount := cint(axe_quality * 19/10);  // Commander, neue qualiwerte
+  var num;
+
+  var diffi := IsMinable(landtiletype, digtile);
+
+  var success := CheckSkillPergon(who, SKILLID_ERZABBAU, cint(diffi) , cint(diffi*2+10));
+
+  If((success) and (diffi))
+    // maybe make an array and use a loop?
+    If (chance <= 3)
+      If (CheckSkillPergon(who, SKILLID_ERZABBAU, cint(115-axe_quality) , cint(axe_quality*275)))
+        num := CInt(HarvestResource("ore", digtile.x, digtile.y, 1, amount, digtile.realm));
+        CreateItemInBackpackPergon(who, UOBJ_TITANIUM_ERZ, num);
+        SendSysMessagePergon(who, "Ihr legt " + num + " Titaniumerz in Euren Rucksack.");
+      EndIf
+    ElseIf (chance <= 10)
+      If (CheckSkillPergon(who, SKILLID_ERZABBAU, cint(110-axe_quality) , cint(axe_quality*250)))
+        num := CInt(HarvestResource("ore", digtile.x, digtile.y, 1, amount, digtile.realm));
+        CreateItemInBackpackPergon(who, UOBJ_CHROM_ERZ, num);
+        SendSysMessagePergon(who, "Ihr legt " + num + " Chromerz in Euren Rucksack.");
+      EndIf
+    ElseIf (chance <= 15)
+      If (CheckSkillPergon(who, SKILLID_ERZABBAU, cint(105-axe_quality) , cint(axe_quality*225)))
+        num := CInt(HarvestResource("ore", digtile.x, digtile.y, 1, amount, digtile.realm));
+        CreateItemInBackpackPergon(who, UOBJ_PLATIN_ERZ, num);
+        SendSysMessagePergon(who, "Ihr legt " + num + " Platinerz in Euren Rucksack.");
+      EndIf
+    ElseIf (chance <= 20)
+      If (CheckSkillPergon(who, SKILLID_ERZABBAU, cint(100-axe_quality) , cint(axe_quality*200)))
+        num := CInt(HarvestResource("ore", digtile.x, digtile.y, 1, amount, digtile.realm));
+        CreateItemInBackpackPergon(who, UOBJ_WOLFRAM_ERZ, num);
+        SendSysMessagePergon(who, "Ihr legt " + num + " Wolframerz in Euren Rucksack.");
+      EndIf
+    ElseIf (chance <= 25)
+      If (CheckSkillPergon(who, SKILLID_ERZABBAU, cint(95-axe_quality) , cint(axe_quality*175)))
+        num := CInt(HarvestResource("ore", digtile.x, digtile.y, 1, amount, digtile.realm));
+        CreateItemInBackpackPergon(who, UOBJ_LANTHAN_ERZ, num);
+        SendSysMessagePergon(who, "Ihr legt " + num + " Lanthanerz in Euren Rucksack.");
+      EndIf
+    ElseIf (chance <= 30)
+      If (CheckSkillPergon(who, SKILLID_ERZABBAU, cint(90-axe_quality) , cint(axe_quality*150)))
+        num := CInt(HarvestResource("ore", digtile.x, digtile.y, 1, amount, digtile.realm));
+        CreateItemInBackpackPergon(who, UOBJ_INDIUM_ERZ, num);
+        SendSysMessagePergon(who, "Ihr legt " + num + " Indiumerz in Euren Rucksack.");
+      EndIf
+    ElseIf (chance <= 45)
+      If (CheckSkillPergon(who, SKILLID_ERZABBAU, cint(85-axe_quality) , cint(axe_quality*125)))
+        num := CInt(HarvestResource("ore", digtile.x, digtile.y, 1, amount, digtile.realm));
+        CreateItemInBackpackPergon(who, UOBJ_TENERUM_ERZ, num);
+        SendSysMessagePergon(who, "Ihr legt " + num + " Tenerumerz in Euren Rucksack.");
+      EndIf
+    ElseIf (chance <= 59)
+      If (CheckSkillPergon(who, SKILLID_ERZABBAU, cint(80-axe_quality) , cint(axe_quality*100)))
+        num := CInt(HarvestResource("ore", digtile.x, digtile.y, 1, amount, digtile.realm));
+        CreateItemInBackpackPergon(who, UOBJ_IRIDIUM_ERZ, num);
+        SendSysMessagePergon(who, "Ihr legt " + num + " Iridiumerz in Euren Rucksack.");
+      EndIf
+    ElseIf (chance <= 80)
+      If (CheckSkillPergon(who, SKILLID_ERZABBAU, cint(75-axe_quality) , cint(axe_quality*75)))
+        num := CInt(HarvestResource("ore", digtile.x, digtile.y, 1, amount, digtile.realm));
+        CreateItemInBackpackPergon(who, UOBJ_MANGAN_ERZ, num);
+        SendSysMessagePergon(who, "Ihr legt " + num + " Manganerz in Euren Rucksack.");
+      EndIf
+    ElseIf(CheckSkillPergon(who, SKILLID_ERZABBAU, cint(70-axe_quality) , cint(axe_quality*50)))
+      num := CInt(HarvestResource("ore", digtile.x, digtile.y, 1, amount, digtile.realm));
+      CreateItemInBackpackPergon(who, UOBJ_MOLYBDAEN_ERZ, num);
+      SendSysMessagePergon(who, "Ihr legt " + num + " Molybdänerz in Euren Rucksack.");
+    Else
+      SendSysMessagePergon(who, "Ihr findet kein brauchbares Erz.");
+      If (RandomInt(100)<10) // mit 10% werden bei einem Fehlversuch 1 Erz an der Stelle abgezogen
+        HarvestResource("ore", digtile.x, digtile.y, 1, 1, digtile.realm);
+      EndIf
+      If (SetWerkzeugSchaden(who, pickaxe, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!"))
+        return(1);
+      EndIf
+      return 0;
+    EndIf
+  ElseIf(!diffi)
+    SendSysMessagePergon(who, "Die Vorkommen hier sind erschöpft.");
+    return 1;
+  Else
+    SendSysMessagePergon(who, "Ihr findet absolut kein Erz.");
+    return 0;
+  EndIf
+
+  return 0;
+
+EndFunction
+
+Function DigForClay(who, use_on, info, pickaxe)
+  var tdiff := GetHarvestDifficulty("clay", use_on.x, use_on.y, info.landtile, use_on.realm);
+  tdiff := Max(1,cint(tdiff-axe_quality));
+
+  If (CheckSkillPergon(who, SKILLID_ERZABBAU, tdiff, cint(tdiff*2)))
+    var clay_amount := HarvestResource("clay" , use_on.x , use_on.y , 1 , cint(axe_quality), use_on.realm);
+    If (clay_amount == 0)
+      SendSysMessagePergon(who, "Hier gibt es keinen Lehm.");
+      return 1;
+    EndIf
+
+    var thecntr;
+    For (thecntr := 1; thecntr <= clay_amount; thecntr += 1)
+      If (RandomInt (100) >= 10) // 90% Lehmausbeute
+      CreateItemInBackpackPergon(who, UOBJ_CLAY, 1);
+      
+      Else // Zufälliges finden von Torf und Humus
+        var ReagRandom := RandomInt(100);
+        var ReagType := 0;
+          If (ReagRandom >= 90) // Torf
+            ReagType := UOBJ_TORF;
+          ElseIf (ReagRandom >= 75) // Humus
+            ReagType := UOBJ_HUMUS;
+          EndIf
+       
+         If (ReagType > 0)
+           var ReagItem := CreateItemInBackpackPergon(who, reagtype, 1);
+           If (ReagItem)
+             SendSysMessagePergon(who, "Ihr findet eine Reagenzie und legt sie in euren Rucksack.");
+           Else
+             SendSysMessagePergon(who, "Scheinbar ist Euer Rucksack zu voll. Ihr könnt nichts mehr darin ablegen!");
+           EndIf
+         Else
+           SendSysMessagePergon(who, "Beim graben zerstört ihr etwas Torf mit eurem Werkzeug!");
+           SleepMS(5);
+         EndIf
+       EndIf
+    EndFor
+
+    SendSysMessagePergon(who, "Ihr stapelt einige Lehmbrocken in Euren Rucksack.");
+  Else
+    SendSysMessagePergon(who, "Ihr findet keinen Lehm.");
+    HarvestResource("clay", use_on.x, use_on.y, 1, 1, use_on.realm);
+    If (SetWerkzeugSchaden(who, pickaxe, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!"))
+      return(1);
+    EndIf
+  EndIf
+
+  return 0;
+
+EndFunction
+
+Function DigForSand(who, use_on, info, pickaxe)
+  If (IsSand(info.landtile, use_on))
+    var tdiff := GetHarvestDifficulty("sand", use_on.x, use_on.y, info.landtile, use_on.realm);
+    tdiff := Max(1,cint(tdiff-axe_quality));
+
+    If (CheckSkillPergon(who, SKILLID_ERZABBAU, tdiff, cint(tdiff*2)))
+      var sandamount := HarvestResource("sand", use_on.x, use_on.y, 1, cint(axe_quality), use_on.realm);
+
+      var thecntr;
+      For (thecntr := 1; thecntr <= sandamount; thecntr += 1)
+        If (RandomInt(100) >= 8)  // zu 92% normales Sandbuddeln
+          CreateItemInBackpackPergon(who, UOBJ_SAND, 5);
+
+        Else  // Rest: zufaelliges Finden von Schwarzen Perlen, Bimsstein und Feuerstein
+          // Das Verhaeltnis von Perlen/Bimsstein/Feuerstein ist abgestimmt. Also so lassen!
+          var ReagRandom := RandomInt(100);
+          var ReagType := 0;
+
+          If (ReagRandom >= 90)   // Feuerstein
+            ReagType := UOBJ_FEUERSTEIN;
+          ElseIf (ReagRandom >= 70) // Bimsstein
+            ReagType := UOBJ_BIMSSTEIN;
+          ElseIf (ReagRandom >= 20) // Schwarze Perle
+            ReagType := UOBJ_SCHWARZE_PERLE;
+          EndIf
+
+          If (ReagType > 0)
+            var ReagItem := CreateItemInBackpackPergon(who, reagtype, 1);
+            If (ReagItem)
+              SendSysMessagePergon(who, "Ihr findet eine Reagenzie und legt sie in Euren Rucksack.");
+            Else
+              SendSysMessagePergon(who, "Scheinbar ist Euer Rucksack zu voll. Ihr könnt nichts mehr darin ablegen!");
+            EndIf
+          Else
+            SendSysMessagePergon(who, "Beim Graben zerhackt Ihr eine schwarze Perle.");
+            SleepMS(500);
+          EndIf
+        EndIf
+      EndFor
+
+      return 0;
+    Else
+      SendSysMessagePergon(who, "Ihr findet absolut keinen Sand.");
+      HarvestResource("sand" , use_on.x , use_on.y , 1 , 1, use_on.realm);
+      If (SetWerkzeugSchaden(who, pickaxe, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!"))
+        return(1);
+      EndIf
+
+      return 0;
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Da könnt Ihr nicht graben.");
+    return 1;
+  EndIf
+EndFunction
+
+Function DigForSnow(who, use_on, info, pickaxe)
+  If (IsSnow(info.landtile, use_on))
+    var tdiff := GetHarvestDifficulty("snow", use_on.x, use_on.y, info.landtile, use_on.realm);
+    tdiff := Max(1,cint(tdiff-axe_quality));
+
+    If (CheckSkillPergon(who, SKILLID_ERZABBAU, tdiff, cint(tdiff*2)))
+      var snowamount := HarvestResource("snow", use_on.x, use_on.y, 1, cint(axe_quality), use_on.realm);
+
+      var thecntr;
+      For (thecntr := 1; thecntr <= snowamount; thecntr += 1)
+        If (RandomInt(100) >= 10)  // zu 90% Schneeschaufeln
+          CreateItemInBackpackPergon(who, UOBJ_SNOW, 5);
+        EndIf
+      EndFor
+
+      return 0;
+    Else
+      SendSysMessagePergon(who, "Der Schnee faellt von eurem Werkzeug.");
+      HarvestResource("snow" , use_on.x , use_on.y , 1 , 1, use_on.realm);
+      If (SetWerkzeugSchaden(who, pickaxe, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!"))
+        return(1);
+      EndIf
+
+      return 0;
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Da könnt Ihr nicht graben.");
+    return 1;
+  EndIf
+EndFunction
+
+Function MineForOre(who, use_on, info, pickaxe)
+  If (GetSkillPergon(who, SKILLID_ERZABBAU) >= 1)
+    return GetStuff(who, randomint(100) + 1, use_on, info, pickaxe);
+  Else
+    SendSysMessagePergon(who, "Ihr findet kein brauchbares Erz.");
+    If (SetWerkzeugSchaden(who, pickaxe, "Euer Werkzeug hat gelitten!", "Euer Werkzeug ist stark beschädigt!", "Euer Werkzeug ist zerbrochen!"))
+      return(1);
+    EndIf
+
+  EndIf
+
+EndFunction
+
+
+Function IsPickAxeEquipped(who, pickaxe)
+  var result := 0;
+
+  If (AccessiblePergon(who, pickaxe) And (Distance(who, pickaxe) <= 1))
+    If (pickaxe.objtype == 0x0f39) // Ist es eine Schaufel?
+      If (pickaxe.container == who.backpack)
+        result := 1;
+      Else
+        SendSysMessagePergon(who,
+          "Zum Schürfen muss sich die Schaufel im Rucksack befinden!"
+        );
+        exit;
+      EndIf
+    Else // Irgendwas, was man auch in die Hand nehmen kann
+      ForEach item in ListEquippedItems(who)
+        If (pickaxe.serial == item.serial)
+          result := 1;
+          break;
+        EndIf
+      EndForEach
+
+      If (!result) // Befindet sich nicht in der Hand
+        result := EquipItem(who, pickaxe);
+      EndIf
+
+      If (!result) // Befindet sich immernoch nicht in der Hand
+        SendSysMessagePergon(who, "Zum Schürfen müsst Ihr das in die Hand nehmen!");
+      EndIf
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr kommt dort nicht ran!");
+  EndIf
+
+  return (result);
+EndFunction
+
+//////////////////////////////////////////////////////////
+// DigField - MultiGrass umgraben ->Ackerboden erzeugen
+//////////////////////////////////////////////////////////
+Function DigField(who)
+  SendSysMessagePergon(who,
+    struct{
+      uc_text := CAscz("Wählt einen Platz zum Umgraben aus."), lang := "DEU"
+    }, struct{
+      uc_text := CAscz("Choose a place to dig up."), lang := "ENU"
+    }
+  );
+
+  var use_on := TargetCoordinates(who);
+  If (!use_on)
+    SendSysMessagePergon(who,
+      struct{uc_text := CAscz("Abbruch"), lang := "DEU"},
+      struct{uc_text := CAscz("Abort"), lang := "ENU"}
+    );
+    return;
+  EndIf
+
+  If (
+    CoordinateDistance(who.x, who.y, use_on.x, use_on.y) >= 2 or
+    Abs(who.z - use_on.z) > 10
+  )
+    SendSysMessagePergon(who,
+      struct{uc_text := CAscz("Das ist zu weit weg!"), lang := "DEU"},
+      struct{uc_text := CAscz("That's too far away!"), lang := "ENU"}
+    );
+    return;
+  EndIf
+
+  // Wie oft kann es genutzt werden
+  var uses := CInt(Max(
+      GetSkillPergon(who, SKILLID_ACKERBAU),
+      GetSkillPergon(who, SKILLID_FOERSTEREI)
+    )/10);
+  If (uses <= 0)
+    SendSysMessagePergon(who,
+      struct{
+        uc_text := CAscz("Euer Talent reicht nicht zum Umgraben."),
+        lang := "DEU"
+      }, struct{
+        uc_text := CAscz("You don't have enough skill to dig it up"),
+        lang := "ENU"
+      }
+    );
+    return;
+  EndIf
+
+  ForEach layer in (GetStandingLayers(
+      who.x, who.y, MAPDATA_FLAG_BLOCKSIGHT, who.realm
+  ))
+    SleepMs(2);
+    If (layer.z > use_on.z)
+      SendSysMessagePergon(who,
+        struct{
+          uc_text := CAscz(
+            "Keine freie Sicht zum Himmel. Acker lohnt hier nicht. Abbruch"
+          ), lang := "DEU"
+        }, struct{
+          uc_text := CAscz(
+            "No free sight to heaven. A field is useless here. Cancelled"
+          ), lang := "ENU"
+        }
+      );
+      return;
+    EndIf
+  EndForEach
+
+  If (
+    // Gras
+    (use_on.objtype >= 0x177d and use_on.objtype <= 0x1781) or
+    // Dreck
+    (use_on.objtype >= 0x31f4 and use_on.objtype <= 0x31fb)
+  )
+    // Ackerboden erzeugen {{{
+
+    // pruefen, ob nicht schon umgegraben ist
+    If (
+      ListItemsNearLocationOfType(
+        use_on.x, use_on.y, use_on.z, 0, UOBJ_ACKER, who.realm
+      ).size()
+    )
+      SendSysMessagePergon(who,
+        struct{
+          uc_text := CAscz("Dies ist bereits umgegraben."), lang := "DEU"
+        }, struct{
+          uc_text := CAscz("This is already dug."), lang := "ENU"
+        }
+      );
+      return;
+    EndIf
+
+    // Descriptor fuer Acker bauen
+    var fielddesc := struct{
+      Desc      := "Acker",
+      CProps    := dictionary{},
+      Invisible := 1,
+      Movable   := 0,
+      ObjClass  := "Item",
+      ObjType   := UOBJ_ACKER
+    };
+    fielddesc.cprops.insert("usable", uses);
+
+    // Acker erzeugen
+    var field := CreateItemAtLocationPergon(
+      use_on.x, use_on.y, use_on.z, fielddesc, 1, who.realm
+    );
+    If (!field)
+      SendSysMessagePergon(who,
+        struct{uc_text := CAscz("Es ging etwas schief."), lang := "DEU"},
+        struct{uc_text := CAscz("Something went wrong."), lang := "ENU"}
+      );
+      return;
+    EndIf
+
+    // ein letzter Check
+    If (!field.multi)
+      SendSysMessagePergon(who,
+        struct{
+          uc_text := CAscz("Dies befindet sich nicht in einem Haus."),
+          lang := "DEU"
+        }, struct{
+          uc_text := CAscz("This is not in a house."), lang := "ENU"
+        }
+      );
+      DestroyItem(field);
+      return;
+    EndIf
+
+    // alles ist gut, sichtbar machen
+    field.invisible := 0;
+    SendSysMessagePergon(who,
+      struct{uc_text := CAscz("Ihr grabt den Boden um."), lang := "DEU"},
+      struct{uc_text := CAscz("You dig the ground."), lang := "ENU"}
+    );
+    // }}}
+
+  ElseIf (use_on.item and use_on.item.objtype == UOBJ_ACKER)
+    // Ackerboden wieder entfernen
+    DestroyItem(use_on.item);
+    SendSysMessagePergon(who,
+      struct{uc_text := CAscz("Ihr grabt den Boden um."), lang := "DEU"},
+      struct{uc_text := CAscz("You dig up the ground."), lang := "ENU"}
+    );
+  Else
+    SendSysMessagePergon(who,
+      struct{uc_text := CAscz("Hier könnt ihr nicht umgraben."), lang := "DEU"},
+      struct{uc_text := CAscz("You cannot dig here."), lang := "ENU"}
+    );
+  EndIf
+EndFunction
+
+// vim: sw=2 sts=2

@@ -1,0 +1,75 @@
+//////////////////////////////////
+// Heaven Script v1.00
+//
+// Author: Shinigami
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use npc;
+use os;
+include "include/animal";
+include "include/eventid";
+include "include/logutil";
+
+Program Heaven()
+    var me := Self();
+
+    If (!CheckForMaster(me))
+        // kein Meister mehr
+
+        // Tarnung aufheben
+        me.concealed := 0;
+        me.cmdlevel  := CMDLEVEL_PLAYER;
+        If (me.hidden)
+            me.hidden := 0;
+        EndIf
+
+        If (me.x == 5384 and me.y == 1081 and me.realm == REALM_BRITANNIA)
+            // per Stallmeister auf GreenAcres gelagert
+            syslog(
+                "Stalltier "+CharInfoStr(me)+
+                " hat keinen Master mehr und stirbt"
+            );
+            KillNPCSilent(me, "No master");
+            exit;
+        EndIf
+
+        // sonst normal weglaufen
+        syslog(CharInfoStr(me)+" hat keinen Master mehr und rennt weg");
+
+        // frozen etc. aufheben
+        UnparkAnimal(me);
+        // normales Script setzen und starten
+        me.script := GetNPCConfig(me.npctemplate).script;
+        RestartScript(me);
+        // wird eigentlich schon nicht mehr ausgefuehrt
+        return;
+    EndIf
+
+    //syslog(CharInfoStr(me)+" schwebt im Himmel");
+EndProgram
+
+Function CheckForMaster(me) // {{{
+    var serial := me.getprop("master");
+    If (serial == error)
+        // ich habe gar keinen Master, alles ist gut
+        return 2;
+    EndIf
+
+    var master := SystemFindObjectBySerial(
+        serial, SYSFIND_SEARCH_OFFLINE_MOBILES
+    );
+    If (master)
+        // gibt meinen Meister noch
+        return 1;
+    EndIf
+
+    // mal durchrotieren
+    me.setprop("ExMaster", serial);
+    me.eraseprop("master");
+    me.setmaster(0);
+
+    // oh oh, mein Meister ist weg
+    return error{errortext := "No master"};
+EndFunction // }}}

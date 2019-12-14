@@ -1,0 +1,47 @@
+//
+//
+//  25.10.2005 Fraggulus: Erzeugung der Kanone per MakeSet()
+//
+
+Use os;
+Use uo;
+
+Include "include/itemnpc";
+Include "include/msgs";
+Include "include/set";
+
+Program TextCMD_CreateCannon(who, text)
+
+  If ((text == "") || (!text) || (text == "?"))
+    SendSysMessagePergon(who, "USAGE: .createcannon [nord|sued|ost|west]",
+                              "USAGE: .createcannon [north|south|east|west]");
+    Return;
+  EndIf
+
+  Var where := TargetCoordinates(who);
+  If (!where)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    Return;
+  EndIf
+
+  Var cannon;
+  Var location := struct{x := where.x, y := where.y, z := where.z, realm:=where.realm};
+  If (text == "nord"     || text == "north")  // Cannon (facing north)
+    cannon := MakeSet(location, "Kanone_nord");
+  ElseIf (text == "sued" || text == "south")  // Cannon (facing south)
+    cannon := MakeSet(location, "Kanone_sued");
+  ElseIf (text == "ost"  || text == "east")   // Cannon (facing east)
+    cannon := MakeSet(location, "Kanone_ost");
+  ElseIf (text == "west")                     // Cannon (facing west)
+    cannon := MakeSet(location, "Kanone_west");
+  Else
+    SendSysMessagePergon(who, "USAGE: .createcannon [nord|sued|ost|west]",
+                              "USAGE: .createcannon [north|south|east|west]");
+    Return;
+  EndIf
+
+  If (!cannon)
+    SendSysMessagePergon(who, "Erstellung der Kanone fehlgeschlagen!",
+                              "Creation of cannon failed!");
+  EndIf
+EndProgram

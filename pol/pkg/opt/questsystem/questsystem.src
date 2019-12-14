@@ -1,0 +1,736 @@
+/////////////////////////////////////////////////////////
+// questsystem - Von QuestKi gestartet Quest starten/abschließen
+//
+//     Author: Turley
+
+use cfgfile;
+use os;
+use uo;
+use util;
+include ":main_ai3:include_common/main_ai";
+include ":questsystem:questsystem";
+include "include/clock";
+include "include/experience";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/msgs";
+include "include/npc";
+include "include/objtype";
+
+Var npc, who, me, itemquest:=0, itemref;
+Var questcfg:=ReadConfigFile("quests");
+Var textcfg:=ReadConfigFile("questtext");
+Var npccfg:=ReadConfigFile("questnpc");
+
+Program questsystem(params)
+  npc:=params[1];
+  who:=params[2];
+  If (params[4])  // Itemquest
+    itemquest:=params[3];
+    itemref:=params[4];
+    If (!itemquest)
+      SendSysMessagePergon(who,"Ungültiges Item!","Illegal item!");
+      Return;
+    EndIf
+    If (!timeout(who, itemquest, TIME_REPEATABLE_CHECK, 0))
+      SendSysMessagePergon(who,"Nichts passiert","Nothing happends");
+      Return(0);
+    EndIf
+  EndIf
+  me:=npc; // Weil sonst die npc.inc meckert :(
+  params:=0; // nicht mehr benötigt
+  Var quest, questauswahl, cprop:=dictionary, todo, todoarray:={};
+  Var koords, z, escort, i, waypoint, item, items:={}, res, wanted;
+  Var nosound:=0;
+
+  quest:=QuestChoose(); // Quest wählen
+  If (!quest.q)
+    If (quest) // offenes Quest
+      If (timeout(who, npc, TIME_COMPLETE, questcfg[quest]))  //Timeoutcheck
+        cprop:=who.getprop("quest");
+        cprop.erase(CStr(quest));
+        who.setprop("quest",cprop);
+        Return;
+      EndIf
+      OffenesQuest(quest);
+      Return;
+    EndIf
+    PrintTextAbovePergon(who, npc,
+        Answering(
+            {"seid_gegruesst", "hallo"}[randomint(2)+1], PlaceName(npc), npc
+    ));
+    Return; // Irgendwas war nicht erfüllt, deswegen erst zufälligen Standarttext und dann wech
+  EndIf
+
+  If (!itemquest)
+    If (!(quest.q.type in {"transport","carry"})) // Gnaa selber nen Eigentor geschossen
+      If (timeout(who, npc, TIME_CHECK, quest.q)) //Timeoutcheck
+        Return;
+      EndIf
+    EndIf
+    PrintTextAbovePergon(who,npc,"Schön, dass Ihr da seid.");
+  EndIf
+  questauswahl:=Auswahl(quest);  // AuswahlGump öffnen
+  If (!questauswahl)
+    If (!itemquest)
+      If (!timeout(who, npc, TIME_DECLINE, quest.q))
+        PrintTextAbovePergon(who,npc,quest.q.decline);
+        PlaySoundEffectPrivate(who,SFX_5B4,who);
+      EndIf
+    EndIf
+    Return;
+  EndIf
+
+  // Quest speichern
+  cprop:=who.getprop("quest");
+  If (!cprop)
+    cprop:=dictionary;
+  EndIf
+  If (cprop[CStr(quest.id)])
+    // Da lief aber was schief
+    Return;
+  EndIf
+
+  Case (quest.q.type)
+    "kill":
+              todo:=GetConfigStringArray(quest.q, "monster");
+              ForEach m in (todo)
+                m:=SplitWords(m);
+                todoarray.append({m[1],CInt(m[2]), m[3], m[4], CInt(m[5])});
+              EndForEach
+
+              cprop[CStr(quest.id)]:={quest.q.type,todoarray};
+
+              If (quest.q.mostwanted)  // MostwantedQuest?
+                wanted:=who.getprop("quest_mostwanted");
+                If (!wanted)
+                  wanted:=0;
+                EndIf
+                who.setprop("quest_mostwanted",wanted+1);
+              EndIf
+              If (!itemquest)
+                timeout(who, npc, TIME_ACCEPT, quest.q);
+              EndIf
+
+    "collectitem":
+              todo:=GetConfigStringArray(quest.q, "item");
+              ForEach i in (todo)
+                i:=SplitWords(i);
+                todoarray.append({CInt(i[1]),CInt(i[2])});
+              EndForEach
+              cprop[CStr(quest.id)]:={quest.q.type,todoarray};
+              If (quest.q.mostwanted)  // MostwantedQuest?
+                wanted:=who.getprop("quest_mostwanted");
+                If (!wanted)
+                  wanted:=0;
+                EndIf
+                who.setprop("quest_mostwanted",wanted+1);
+              EndIf
+              If (!itemquest)
+                timeout(who, npc, TIME_ACCEPT, quest.q);
+              EndIf
+
+    "npcitem":
+              todo:=GetConfigStringArray(quest.q, "item");
+              ForEach i in (todo)
+                i:=SplitWords(i);
+                todoarray.append({i[1],CInt(i[2]),i[3],CInt(i[4]),CInt(i[5]),CInt(i[6])});
+              EndForEach
+              cprop[CStr(quest.id)]:={quest.q.type,todoarray};
+              If (quest.q.mostwanted)  // MostwantedQuest?
+                wanted:=who.getprop("quest_mostwanted");
+                If (!wanted)
+                  wanted:=0;
+                EndIf
+                who.setprop("quest_mostwanted",wanted+1);
+              EndIf
+              If (!itemquest)
+                timeout(who, npc, TIME_ACCEPT, quest.q);
+              EndIf
+
+    "escort":
+              If(CStr(quest.q.questnpc)=="0")  // Er ist es selber
+                escort:=npc;
+              Else  // Neuen NPC Createn
+                koords:=SplitWords(quest.q.npckoords);
+                escort:=CreateNPCFromTemplate(quest.q.questnpc,CInt(koords[1]),CInt(koords[2]),CInt(koords[3]),0,who.realm);
+                If (!escort)
+                  SysLog("FEHLER Quest "+quest.id+" konnte NPC "+quest.q.questnpc+" bei "+koords[1]+" "+koords[2]+" "+koords[3]+" nicht erstellen");
+                  Return(0);
+                EndIf
+                npc.setprop("escort",{escort.serial,ReadGameClock()+(3*60*60)});
+                escort.setprop("questnpc_",npc.getprop("questnpc"));
+              EndIf
+              escort.setprop(PROP_MASTER,who.serial);
+              escort.setprop("quest",quest.id);
+              escort.setprop("giver",npc.serial);
+              todo:=GetConfigStringArray(quest.q, "place");
+              For (i:=1;i<=todo.size();i+=1)
+                koords:=SplitWords(todo[i]);
+                waypoint:=CreateNPCFromTemplate( "questwaypointki", 0,0,0,0,who.realm);
+                todoarray.append(waypoint.serial);
+                waypoint.concealed:=4;
+                waypoint.saveonexit:=0;
+                MoveObjectToLocation(waypoint,CInt(koords[1]),CInt(koords[2]), CInt(koords[3]), who.realm, MOVEOBJECT_FORCELOCATION);
+                waypoint.setprop("pos",i);
+                waypoint.setprop("npcserial",escort.serial);
+                If (i==todo.size())
+                  waypoint.setprop("endspot",1);
+                Else
+                  waypoint.setprop("endspot",0);
+                EndIf
+              EndFor
+              cprop[CStr(quest.id)]:={quest.q.type,todoarray,escort.serial};
+              npc.setprop("waypoints",todoarray);
+              If (quest.q.mostwanted)  // MostwantedQuest?
+                wanted:=who.getprop("quest_mostwanted");
+                If (!wanted)
+                  wanted:=0;
+                EndIf
+                who.setprop("quest_mostwanted",wanted+1);
+              EndIf
+              timeout(who, npc, TIME_ACCEPT, quest.q);
+
+    "transport":
+              If (!quest.q.slave)  // Masterquest
+                If (timeout(who, npc, TIME_CHECK, quest.q))  //Timeoutcheck
+                  Return;
+                EndIf
+                todoarray:=GetConfigStringArray(quest.q, "item");
+                ForEach i in (todoarray)
+                  i:=SplitWords(i);
+                  For (z:=1;z<=CInt(i[3]);z+=1)
+                    item:=CreateItemInBackpackPergon(who, QUEST_DUMMY, 1, 0);  // DummyQuestItem
+                    item.graphic:=CInt(i[2]);
+                    item.name:=StrReplace(i[1],"_"," ");;
+                    item.setprop("transport",quest.id);
+                    item.setprop("ctquest",ReadGameClock()); //Sinnlos CProp damit nicht mehr Stackbar
+                  EndFor
+                EndForEach
+                cprop[CStr(quest.id)]:={quest.q.type};  // Masterquest auf offen setzen
+                If (quest.q.mostwanted)  // MostwantedQuest?
+                  wanted:=who.getprop("quest_mostwanted");
+                  If (!wanted)
+                    wanted:=0;
+                  EndIf
+                  who.setprop("quest_mostwanted",wanted+1);
+                EndIf
+                timeout(who, npc, TIME_ACCEPT, quest.q);
+
+              Else  // Slave Quest
+                If (timeout(who, npc, TIME_COMPLETE, quest.q))  //Timeoutcheck
+                  cprop:=who.getprop("quest");
+                  cprop.erase(CStr(quest));
+                  who.setprop("quest",cprop);
+                  Return;
+                EndIf
+                ForEach item in (FindSubstance(who.backpack,QUEST_DUMMY,1,0,FINDSUBSTANCE_FIND_ALL))
+                  If (item.getprop("transport")==quest.q.slave)
+                    todoarray.append(item);
+                  EndIf
+                  SleepMS(2);
+                EndForEach
+                items:=GetConfigStringArray(quest.q,"item");
+                ForEach m in items
+                  m:=SplitWords(m);
+                  i+=CInt(m[3]);
+                EndForEach
+                If (todoarray.size()>=i)
+                  ForEach item in todoarray
+                    DestroyItem(item);
+                  EndForEach
+                Else
+                  PrintTextAbovePergon(who,npc,"Ich habe aber mehr erwartet.");
+                  Return (0);
+                EndIf
+                PrintTextAbovePergon(who,npc,quest.q.succed);
+
+                cprop.erase(CStr(quest.q.slave));  // MasterQuest löschen
+                If (!cprop["completedquests"])  // Master und Slave Quest
+                  cprop["completedquests"]:={quest.id};
+                  cprop["completedquests"].append(quest.q.slave);
+                  cprop["completedquests"].sort();
+                Else
+                  cprop["completedquests"].append(quest.id);
+                  cprop["completedquests"].append(quest.q.slave);
+                  cprop["completedquests"].sort();
+                EndIf
+                If (quest.q.mostwanted)  // MostwantedQuest?
+                  wanted:=who.getprop("quest_mostwanted");
+                  If (wanted)
+                    If (wanted<1)
+                      wanted:=1;
+                    EndIf
+                    who.setprop("quest_mostwanted",CInt(wanted)-1);
+                  EndIf
+                EndIf
+                // reward mal hier rein
+                todoarray:=GetConfigStringArray(quest.q,"reward");
+                ForEach reward in (todoarray)
+                  reward:=SplitWords(reward);
+                  res:=CreateItemInBackpackPergon(who,CInt(reward[1]),CInt(reward[2]));
+                  If ((!res) && (CInt(reward[2])>1)) //Vielleicht nicht stackbar, dann mal einzeln Probieren
+                    For (i:=1;i<=CInt(reward[2]);i+=1)
+                      CreateItemInBackpackPergon(who,CInt(reward[1]),1);
+                    EndFor
+                  EndIf
+                EndForEach
+                PlaySoundEffectPrivate(who,SFX_5B6,who);
+                nosound:=1;
+              EndIf
+
+    "carry":
+              If (!quest.q.slave)
+                If (timeout(who, npc, TIME_CHECK, quest.q))  //Timeoutcheck
+                  Return;
+                EndIf
+                cprop[CStr(quest.id)]:={quest.q.type};  // Masterquest auf offen setzen
+                If (quest.q.mostwanted)  // MostwantedQuest?
+                  wanted:=who.getprop("quest_mostwanted");
+                  If (!wanted)
+                    wanted:=0;
+                  EndIf
+                  who.setprop("quest_mostwanted",wanted+1);
+                EndIf
+                //cprop[CStr(quest.q.master)]:={quest.q.type,quest.id}; // Slavequest auf offen setzen
+              Else
+                If (timeout(who, npc, TIME_COMPLETE, quest.q))  //Timeoutcheck
+                  cprop:=who.getprop("quest");
+                  cprop.erase(CStr(quest));
+                  who.setprop("quest",cprop);
+                  Return;
+                EndIf
+                items:=GetConfigStringArray(quest.q, "item");
+                ForEach i in (items)
+                  i:=SplitWords(i);
+                  For (z:=1;z<=CInt(i[3]);z+=1)
+                    item:=CreateItemInBackpackPergon(who, QUEST_DUMMY, 1, 0);  // DummyQuestItem
+                    item.graphic:=CInt(i[2]);
+                    item.name:=StrReplace(i[1],"_"," ");
+                    item.setprop("carry",quest.q.slave);
+                    item.setprop("ctquest",ReadGameClock()); //Sinnlos CProp damit nicht mehr Stackbar
+                  EndFor
+                EndForEach
+
+                If (!cprop["completedquests"])  // Slave Quest
+                  cprop["completedquests"]:={quest.id};
+                Else
+                  cprop["completedquests"].append(quest.id);
+                  cprop["completedquests"].sort();
+                EndIf
+                PlaySoundEffectPrivate(who,SFX_5B7,who);
+                nosound:=1;
+              EndIf
+
+    default:
+              PrintTextAbovePergon(who,npc,"Unbekannter Questtyp "+quest.q.type);
+              Return;
+  EndCase
+  who.setprop("quest",cprop);
+  If (!itemquest)
+    PrintTextAbovePergon(who,npc, quest.q.accept);
+  Else
+    SubtractAmount(itemref,1); // Item zerstören
+    PrintTextAbovePergon(who,who, quest.q.accept);
+  EndIf
+  If (!nosound)
+    PlaySoundEffectPrivate(who,SFX_5B5,who);
+  EndIf
+EndProgram
+
+/////////////////////////////////////////////////
+// QuestChoose - Zufällige Auswahl eines Quests
+/////////////////////////////////////////////////
+
+Function QuestChoose()
+  Var questIDs:={}, whoquest:=dictionary, condition:={}, breakfor:=0, questarray:={}, questID, quest:=struct;
+  Var i, offenquest:=0, slave:=0, escort_ip:=0, escort, conditionitem, item:=1;
+
+  If (itemquest)  // Itemquest
+    quest.+id:=itemquest;
+    quest.+q:=questcfg[itemquest];
+    Return (quest);
+  EndIf
+
+  questIDs:=GetObjProperty(npc,"questnpc");
+  If (!questIDs) // Kein QuestNPC
+    Return (0);
+  EndIf
+  questIDs:=GetConfigStringArray(npccfg[CInt(questIDs)],"quest");
+
+  If (!questIDs)
+    Return (0);
+  EndIf
+
+  whoquest:=who.getprop("quest");
+
+  ForEach q in (questIDs)
+    q:=CInt(q);
+    If (!(q in whoquest["completedquests"])) // Quest schon gemacht
+      If (whoquest[CStr(q)])  // Offenes Quest -> möp nur ein offenes pro NPC
+        offenquest:=q;
+        Break;
+      EndIf
+      If (questcfg[q].type=="escort")  // Ist ein escortquest noch aktiv?
+        If (npc.getprop("escort"))
+          escort:=SystemFindObjectBySerial(npc.getprop("escort")[1]);
+          If (escort)
+            If (escort.getprop("quest")==q)
+              If (npc.getprop("escort")[2]<=ReadGameClock()) // Timeout abgelaufen
+                KillNPC(escort, "questsystem", KILLNPC_NOCORPSE);
+                ForEach waypoint in (npc.getprop("waypoints"))
+                  waypoint := SystemFindObjectBySerial(waypoint);
+                  If (waypoint)
+                    KillNPC(waypoint, "questsystem", KILLNPC_NOCORPSE);
+                  EndIf
+                EndForEach
+              Else
+                escort_ip:=1;
+              EndIf
+            EndIf
+          EndIf
+        EndIf
+      EndIf
+      If (questcfg[q].conditionitem)  // Muß ein Item getragen werden?
+        conditionitem:=SplitWords(questcfg[q].conditionitem);
+        If (GetEquipmentByLayer(who, CInt(conditionitem[2])).objtype!=CInt(conditionitem[1]))
+          item:=0;
+        EndIf
+      EndIf
+      If (questcfg[q].condition)  // Es gibt Vorbedingungen
+        condition:=SplitWords(questcfg[q].condition);
+        If (CInt(condition[1])<>0)
+          For (i:=1;i<=condition.size();i+=1)
+            If ((questcfg[q].slave) && (whoquest[CStr(questcfg[q].slave)])) // Slave von Transport/Carry Quest Priorität
+              slave:=1;
+            ElseIf (!(CInt(condition[i]) in whoquest["completedquests"]))  //Vorbedingung abgeschlossen?
+              breakfor:=1;
+              Break;
+            EndIf
+          EndFor
+        EndIf
+        If (slave) //Wenn passendes Slavequest dann dies auf jedenfall anbieten
+          quest.+id:=q;
+          quest.+q:=questcfg[q];
+          Return (quest);
+        EndIf
+        If ((!breakfor) && (!escort_ip) && (item))
+          questarray.append(q);
+        EndIf
+        breakfor:=0;
+      ElseIf ((!escort_ip) && (item))
+        questarray.append(q);
+      EndIf
+      escort_ip:=0;
+      item:=1;
+    EndIf
+  EndForEach
+  If (offenquest)
+    Return (offenquest);
+  EndIf
+  // auf offenes Itemquest checken
+  Foreach quest in whoquest
+    quest := quest; // Compilerwarnung unterdruecken
+    If (_quest_iter=="completedquests")
+      Continue;
+    EndIf
+    // Dieser NPC nimmt das offene ItemQuest an
+    If (CInt(questcfg[CInt(_quest_iter)].NPCTarget)==questIDs)
+      Return(CInt(_quest_iter));
+    EndIf
+  EndForEach
+  If (questarray.size()<1)
+    Return (0);
+  EndIf
+
+  questID:=questarray[RandomInt(questarray.size())+1]; // Zufälliges Quest auswählen
+  quest.+id:=questID;
+  quest.+q:=questcfg[questID];
+
+  Return (quest);
+EndFunction
+
+/////////////////////////////////////////////////
+// Auswahl - AuswahlGump mit Beschreibung
+/////////////////////////////////////////////////
+
+Function Auswahl(quest)
+  Var questgump;
+  Var layout, data:={}, htmltext, i, text:="";
+
+  layout:={"nodispose",
+           "page 0",
+           "resizepic 0 0 9270 390 420",       //Hintergrund links
+           "gumppictiled 0 395 108 31 10462",  // unten links
+           "gumppic 108 395 10452",            // mitte
+           "gumppictiled 286 395 108 31 10462",// unten rechts
+           "gumppictiled 0 17 31 378 10464",   // linke seite
+           "gumppic 0 0 10301",                // oben links
+           "gumppictiled 17 0 362 17 10251",   // mitte oben
+           "gumppic 377 0 10303",              // oben rechts
+           "gumppictiled 363 17 31 378 10464", // rechte seite
+           "htmlgump 48 20 300 30 0 0 0",      // Überschrift
+           "htmlgump 48 50 300 300 1 1 1",     // Beschreibung
+           "Button 97 360 1154 1155 1 0 1",    // OK
+           "Button 272 360 1151 1152 1 0 0"};  // Cancel
+
+  questgump:=textcfg[quest.id];
+  data.append("<basefont color=#FFFFFF size=5><center>"+questgump.title+"<center>");
+  htmltext:=GetConfigStringArray(questgump, "text");
+  For (i:=1;i<=htmltext.size();i+=1)
+    If (text[Len(text)-2,Len(text)]=="<p>") // Html Cmd am Ende dann kein Leerzeichen (<p>)
+      text+=htmltext[i];
+    Else
+      text+=" "+htmltext[i];
+    EndIf
+  EndFor
+  If (text[1]==" ")
+    text[1]:="";
+  EndIf
+  data.append(text);
+  Return(SendDialogGump(who,layout,data,50,50).keys[2]);
+EndFunction
+
+
+/////////////////////////////////////////////////
+// OffenesQuest - Offenes Quest abschließen
+/////////////////////////////////////////////////
+
+Function OffenesQuest(quest)
+  Var layout, data:={}, prop, marray:={}, manzarray:={};
+  Var i, j:=0, items:={}, rewards:={}, itemres:={}, res, wanted;
+  layout:={"nodispose",
+           "page 0",
+           "resizepic 0 0 9270 390 200",       //Hintergrund links
+           "gumppictiled 0 179 108 31 10462",  // unten links
+           "gumppic 108 179 10452",            // mitte
+           "gumppictiled 286 179 108 31 10462",// unten rechts
+           "gumppictiled 0 17 31 162 10464",   // linke seite
+           "gumppic 0 0 10301",                // oben links
+           "gumppictiled 17 0 362 17 10251",   // mitte oben
+           "gumppic 377 0 10303",              // oben rechts
+           "gumppictiled 363 17 31 162 10464", // rechte seite
+           "htmlgump 48 20 300 30 0 0 0",      // Überschrift
+           "htmlgump 48 60 300 30 1 0 0",      // Questtitel
+           "htmlgump 135 120 100 30 2 0 0",    // Abschließen
+           "Button 97 120 1154 1155 1 0 1",    // OK
+           "Button 272 120 1151 1152 1 0 0"};  // Cancel
+
+  data.append("<basefont size=10 color=#FFFFFF><center><u>Quest abschließen</u></center>");
+  data.append("<basefont color=#FFFFFF size=5><center>"+textcfg[quest].title+"<center>");
+  data.append("<basefont size=10 color=#FFFFFF>Abschliessen");
+
+  If (SendDialogGump(who,layout,data,100,100).keys[2]) // OK gedrückt?
+    prop:=who.getprop("quest");
+    Case (prop[CStr(quest)][1])  // Questtyp rausfinden
+
+      "kill":
+                ForEach monster in (prop[CStr(quest)][2])  //Monstertemplate und benötigte Anzahl rausfinden
+                  marray.append(monster[1]);
+                  manzarray.append(monster[2]);
+                EndForEach
+                ForEach item in (FindSubstance(who.backpack,QUEST_DUMMY,1,0,FINDSUBSTANCE_FIND_ALL))  // Beweise suchen
+                  For (i:=1;i<=marray.size();i+=1)
+                    If (lower(item.getprop("template"))==lower(marray[i]))  // passender Beweis?
+                      If (!items[i])  // Serial speichern
+                        items[i]:={item};
+                      Else
+                        items[i].append(item);
+                      EndIf
+                    EndIf
+                  EndFor
+                  SleepMS(2);
+                EndForEach
+                For (i:=1;i<=manzarray.size();i+=1)  // genug gesammelt?
+                  If (items[i])
+                    If (manzarray[i]<=items[i].size())
+                      j:=j+1;
+                    EndIf
+                  EndIf
+                EndFor
+                If (j==manzarray.size())
+                  For (j:=1;j<=manzarray.size();j+=1)  // Beweise löschen
+                    For (i:=1;i<=manzarray[j];i+=1)
+                      DestroyItem(items[j][i]);
+                    EndFor
+                  EndFor
+                  PrintTextAbovePergon(who,npc,questcfg[quest].succed);
+                  prop.erase(CStr(quest));  // Quest löschen und in completed einfügen
+                  If (!questcfg[quest].Repeatable)
+                    If (!prop["completedquests"])
+                      prop["completedquests"]:={quest};
+                    Else
+                      prop["completedquests"].append(quest);
+                      prop["completedquests"].sort();
+                    EndIf
+                  EndIf
+                  who.setprop("quest",prop);
+                Else
+                  PrintTextAbovePergon(who,npc,"Da müsst ihr aber noch etwas sammeln.");
+                  Return;
+                EndIf
+
+
+      "collectitem":
+                ForEach item in (FindSubstance(who.backpack,QUEST_DUMMY,1,0,FINDSUBSTANCE_FIND_ALL))
+                  If (item.getprop("obj"))
+                    items.append({item,item.getprop("obj")});
+                  EndIf
+                  SleepMS(2);
+                EndForEach
+                ForEach item in (prop[CStr(quest)][2])
+                  ForEach itemwho in (items)
+                    If (item[1]==itemwho[2])
+                      itemres.append(itemwho[1]);
+                      j:=1;
+                      Break;
+                    EndIf
+                  EndForEach
+                    If (!j)
+                      PrintTextAbovePergon(who,npc,"Da müsst ihr aber noch etwas sammeln.");
+                      Return;
+                    EndIf
+                    j:=0;
+                EndForEach
+                ForEach item in (itemres)
+                  If (!DestroyItem(item))
+                    SendSysMessagePergon(who,"Irgendetwas ist schief gelaufen.");
+                    Return;
+                  EndIf
+                EndForEach
+                PrintTextAbovePergon(who,npc,questcfg[quest].succed);
+                prop.erase(CStr(quest));  // Quest löschen und in completed einfügen
+                If (!questcfg[quest].Repeatable)
+                  If (!prop["completedquests"])
+                    prop["completedquests"]:={quest};
+                  Else
+                    prop["completedquests"].append(quest);
+                    prop["completedquests"].sort();
+                  EndIf
+                EndIf
+                who.setprop("quest",prop);
+
+      "npcitem":
+                ForEach monster in (prop[CStr(quest)][2])  //Monstertemplate und benötigte Anzahl rausfinden
+                  marray.append(monster[1]);
+                  manzarray.append(monster[2]);
+                EndForEach
+
+                ForEach item in (FindSubstance(who.backpack,QUEST_DUMMY,1,0,FINDSUBSTANCE_FIND_ALL))  // Item suchen
+                  For (i:=1;i<=marray.size();i+=1)
+                    If (Lower(item.getprop("npcitemtemplate"))==Lower(marray[i]))  // passendes Item?
+                      If (!items[i])  // Serial speichern
+                        items[i]:={item};
+                      Else
+                        items[i].append(item);
+                      EndIf
+                    EndIf
+                  EndFor
+                  SleepMS(2);
+                EndForEach
+                For (i:=1;i<=manzarray.size();i+=1)  // genug gesammelt?
+                  If ((manzarray[i]<=items[i].size()) && (items[i][1]))
+                    j:=j+1;
+                  EndIf
+                EndFor
+                If (j==manzarray.size())
+                  For (j:=1;j<=manzarray.size();j+=1)  // Items löschen
+                    For (i:=1;i<=manzarray[j];i+=1)
+                      DestroyItem(items[j][i]);
+                    EndFor
+                  EndFor
+                  PrintTextAbovePergon(who,npc,questcfg[quest].succed);
+                  prop.erase(CStr(quest));  // Quest löschen und in completed einfügen
+                  If (!questcfg[quest].Repeatable)
+                    If (!prop["completedquests"])
+                      prop["completedquests"]:={quest};
+                    Else
+                      prop["completedquests"].append(quest);
+                      prop["completedquests"].sort();
+                    EndIf
+                  EndIf
+                  who.setprop("quest",prop);
+                Else
+                  PrintTextAbovePergon(who,npc,"Da müsst ihr aber noch etwas sammeln.");
+                  Return;
+                EndIf
+
+      "escort": Return(0); // Nix is
+
+      "transport":
+                Return(0); // Nix is
+
+      "carry":
+                If (!questcfg[quest].slave)  // Masterquest
+                  ForEach item in (FindSubstance(who.backpack,QUEST_DUMMY,1,0,FINDSUBSTANCE_FIND_ALL))
+                    If (item.getprop("carry")==quest)
+                      manzarray.append(item);
+                    EndIf
+                    SleepMS(2);
+                  EndForeach
+                  marray:=GetConfigStringArray(questcfg[quest],"item");
+                  ForEach m in marray
+                    m:=SplitWords(m);
+                    j:=j+CInt(m[3]);
+                  EndForEach
+                  If (manzarray.size()>=j)
+                    ForEach item in manzarray
+                      DestroyItem(item);
+                    EndForEach
+                  Else
+                    PrintTextAbovePergon(who,npc,"Ihr stört mich mit leeren Händen?");
+                    Return (0);
+                  EndIf
+
+                  PrintTextAbovePergon(who,npc,questcfg[quest].succed);
+                  prop.erase(CStr(quest));  // Quest löschen und in completed einfügen
+                  If (!prop["completedquests"])
+                    prop["completedquests"]:={quest};
+                  Else
+                    prop["completedquests"].append(quest);
+                    prop["completedquests"].sort();
+                  EndIf
+                  who.setprop("quest",prop);
+                Else
+                  Return (0); // Nix is
+                EndIf
+      default:  PrintTextAbovePergon(who,npc,"Unbekannter Questtyp "+prop[CStr(quest)][1]);
+                Return;
+    EndCase
+    If (questcfg[quest].mostwanted)  // MostwantedQuest?
+      wanted:=who.getprop("quest_mostwanted");
+      If (wanted)
+        If (wanted<1)
+          wanted:=1;
+        EndIf
+        who.setprop("quest_mostwanted",CInt(wanted)-1);
+      EndIf
+    EndIf
+    rewards:=GetConfigStringArray(questcfg[quest],"reward");
+    ForEach reward in (rewards)
+      reward:=SplitWords(reward);
+      If (reward[1]=="Rx")  // Rangpunkte Zahl
+        reward:=CInt(reward[2]);
+        AddExperience(who, reward, GetRank(who));  // Direkte Exp vergabe da Maximum an Exp pro Rang ignoriert wird
+      ElseIf (reward[1]=="R%")  // Rangpunkte % von Maxamount
+        reward:=CInt(reward[2]);
+        res:=GetRank(who)*EXPERIENCE_PER_RANK;
+        res:=Max(EXPERIENCE_PER_RANK,res);
+        res*=reward;
+        res/=100;
+        AddExperience(who, CInt(res), GetRank(who));
+      Else
+        res:=CreateItemInBackpackPergon(who,CInt(reward[1]),CInt(reward[2]));
+        If ((!res) && (CInt(reward[2])>1)) //Vielleicht nicht stackbar, dann mal einzeln Probieren
+          For (i:=1;i<=CInt(reward[2]);i+=1)
+            CreateItemInBackpackPergon(who,CInt(reward[1]),1);
+          EndFor
+        EndIf
+      EndIf
+    EndForEach
+    If (questcfg[quest].RepeatableTimeout) // Timeout für Repeatablequests setzen
+      timeout(who, quest, TIME_REPEATABLE_SET, questcfg[quest]);
+    EndIf
+    PlaySoundEffectPrivate(who,SFX_5B6,who);
+  EndIf
+EndFunction

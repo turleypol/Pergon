@@ -1,0 +1,137 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD Create  - Erzeugt ein Item an der aktuellen Position
+//
+// Author: Shinigami
+
+///////////////////////////////////////////////////////////////////////////
+// Die hiermit erzeugten Items verschwinden nicht (kein decay).
+//
+// Als Parameter sind zulaessig (TextCMD Create):
+//   objtype  - Name oder Nummer
+//   [amount] - Anzahl           (Standard = 1)
+//   [color]  - Farbe            (Standard = 0)
+//
+// Ohne Angabe von Parametern oeffnet sich ein Menue.
+
+use file;
+use uo;
+include "include/itemnpc";
+include "include/logutil";
+include "include/msgs";
+include "include/objtype";
+include "include/quests";
+include "include/server";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program TextCMD_Create(who, text)
+  If (
+    // Heilertore sind Ausnahme
+    (!(Lower(text) in (array{"gateoflife", "seppelgate"}))) and
+    // wegen Missbrauch
+    (who.cmdlevel < CMDLEVEL_SEER)
+  )
+    SendSysMessagePergon(who,
+      "Ihr seid nicht befugt, diesen Befehl zu benutzen!",
+      "You are not authorized to use this command!"
+    );
+    return;
+  EndIf
+
+  // Parameterbasierte Erzeugung
+  If (text)
+    var params := SplitWords(text);
+
+    var objtype := CInt(params[1]);
+    If (!objtype)
+      objtype := GetObjtypeByName(params[1]);
+    EndIf
+
+    If (!objtype)
+      SendSysMessagePergon(who,
+        "'"+params[1]+"' ist kein gültiger Objektname!",
+        "'"+params[1]+"' is not an valid object name!"
+      );
+      return;
+    EndIf
+
+    If ((objtype == UOBJ_SPAWNRUNE) Or (Lower(objtype) == "spawnrune"))
+      // SpawnRune darf nur ueber .CreateSpawnrune createt werden
+      SendSysMessagePergon(who,
+        "Benutzt bitte .createspawnrune!", "Please use .createspawnrune!"
+      );
+      return;
+    EndIf
+
+    var color := CInt(params[3]);
+    var amount := CInt(params[2]);
+    If (!amount)
+      amount := 1;
+    ElseIf (amount > 100)
+      SendSysMessagePergon(who,
+        "Mehr als 100 Items sollten nicht auf einmal erzeugt werden!",
+        "You should not create more than 100 items at same time!"
+      );
+      return;
+    EndIf
+
+    For i := 1 To amount
+      If (!CreateOneItem(who, objtype, color))
+        break;
+      EndIf
+    EndFor
+    return;
+  EndIf
+
+  // menügestützte Erzeugung
+  var selection := SelectMenuItem2(who, "ItemCreation");
+  If (!selection)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (
+    (selection.objtype == UOBJ_SPAWNRUNE) or
+    (Lower(selection.objtype) == "spawnrune")
+  )
+    // SpawnRune darf nur ueber .CreateSpawnrune createt werden
+    SendSysMessagePergon(who,
+      "Benutzt bitte .createspawnrune!", "Please use .createspawnrune!"
+    );
+    return;
+  EndIf
+
+  CreateOneItem(who, selection.objtype, selection.color);
+EndProgram
+
+Function CreateOneItem(who, objtype, color := "")
+  // FIXME: Farbe und Questchar-CProp gleich per Itemdescriptor setzen
+  var item := CreateItemAtLocationPergon(
+    who.x, who.y, who.z, objtype, 1, who.realm
+  );
+  If (!item)
+    SendSysMessagePergon(who,
+      "Create gescheitert: "+item.errortext+"; Abbruch",
+      "Create failed: "+item.errortext+"; Cancelled"
+    );
+    return 0;
+  EndIf
+
+  item.decayat := 0;
+  If (color)
+    item.color := color;
+  EndIf
+
+  If (who.cmdlevel == CMDLEVEL_QUESTCHAR)
+    // Item gesondert markieren
+    SetObjProperty(item, TYPQUESTCHAR, who.serial);
+  EndIf
+  QuestCharLog(
+    who, "TextCMD Create: '"+ItemInfoStr(item, COORDS_REALM)
+  );
+
+  return 1;
+EndFunction
+
+// vim: sw=2 sts=2

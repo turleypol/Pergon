@@ -1,0 +1,90 @@
+//
+// NOTES: someone with 10 int, and 10 mana, will be shown with
+//        "notable reserves of mana".  Is this desired?
+//
+
+use attributes;
+use uo;
+
+include "include/client";
+include "include/modifyskill";
+
+program evalint( character )
+
+    Var thepoints:=GetSkillDefaultPoints(SKILLID_SPRUCHZAUBEREI);
+    SendSysMessagePergon( character, "Von wem wollt ihr die Intelligenz beurteilen?" );
+    Var subject := Target(character);
+
+    if (!subject) // targetting cancelled
+        return;
+    endif
+
+    if (!GetIntPergon(subject))
+        SendSysMessagePergon(character, "Dieses ist nicht sehr helle, und Ihr anscheinend auch nicht, weil Ihr es probiert habt!");
+        return;
+    endif
+
+    if (CheckSkillPergon(character,SKILLID_SPRUCHZAUBEREI, -1, thepoints))
+        Var intel:=GetIntPergon(subject);
+        if (intel > 0)
+            Var intdesc := GetIntDesc( intel );
+
+            Var percentmana:=100*GetManaPergon(subject)/GetMaxManaPergon(subject);
+            Var manadesc:=GetManaDesc(percentmana);
+
+            PrintTextAbovePrivatePergon(subject, "Das Subjekt ist " + intdesc + " und hat " + manadesc + ".", "", character);
+        else
+            PrintTextAbovePrivatePergon(subject, "Ihr könnt nichts erkennen!", "", character);
+        endif
+    else
+        PrintTextAbovePrivatePergon(subject, "Ihr seid Euch nicht sicher . . .", "", character);
+    endif
+
+endprogram
+
+//
+// these could be converted to CASE statements
+//   case ((intel+9)/10)
+//          1:
+//          2:
+//          3: 4:
+// probably more readable this way, though.
+// a ranged case would be nice.
+//          21 .. 40:
+//          21 to 40: return "not very bright";
+//
+
+function GetIntDesc( intel )
+    if (intel <= 10)
+            return "ungefähr so schlau wie ein Kürbis";
+    elseif (intel <= 20)
+            return "dumm";
+    elseif (intel <= 40 )
+            return "nicht sehr schlau";
+    elseif (intel <= 60 )
+            return "von durchschnittlicher Intelligenz";
+    elseif (intel <= 80 )
+            return "ziemlich clever";
+    elseif (intel <= 100 )
+            return "sehr intelligent";
+    else
+            return "von unerreichbarer Weisheit";
+    endif
+endfunction
+
+function GetManaDesc( percentmana )
+    if (percentmana <= 10)
+            return "kein Mana";
+    elseif (percentmana <= 20)
+            return "wenig Mana";
+    elseif (percentmana <= 40 )
+            return "durchschnittlich viel Mana";
+    elseif (percentmana <= 60 )
+            return "hohe Manareserven";
+    elseif (percentmana <= 80 )
+            return "riesige Manareserven";
+    else
+            return "bemerkenswerte Manareserven";
+    endif
+endfunction
+

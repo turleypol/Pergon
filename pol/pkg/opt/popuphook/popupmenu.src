@@ -1,0 +1,69 @@
+/////////////////////////////////////////////////////////
+//
+// popupmenu - Eigentliches Script von popuphook
+//             UOFeatureEnable _muß_ auf 0x08 gesetzt werden
+//             Gepatchte cliloc00.deu nötig!
+//
+//     Author: Turley
+//
+//   Modifications:
+//     07.08.05 Turley: Check auf Geist eingefügt
+//     29.08.05 Turley: CheckLOS und Distance<3 eingefügt
+//     30.11.06 Turley: Gesplittet um zeitkritischen Ablauf loszuwerden
+//
+/////////////////////////////////////////////////////////
+
+use uo;
+use polsys;
+
+Include "include/pergonutil";
+Include "include/eventid";
+Include "include/modifyskill";
+Include "popupmenu";
+
+Const REQUEST:=1;
+Const SELECT:=2;
+
+Program popupmenu(params)
+	Case (params[3])
+		REQUEST: MenuRequest(params[1],params[2]);
+		         params[1].eraseprop("#Context");  //AntiSpam CProp löschen
+		SELECT:  MenuSelect(params[1],params[2]);
+	EndCase
+EndProgram
+
+///////////////////////////////////////////////
+//  MenuRequest - Popupfenster zusammenbasteln
+///////////////////////////////////////////////
+
+Function MenuRequest(character, packet)
+  var clicked := SystemFindObjectBySerial(packet.getint32(5));  //Serial des "Targets"
+  If (clicked and clicked.haspopup() and !character.dead and CheckLineOfSight(character, clicked))
+  	If (character.cmdlevel <= CMDLEVEL_QUESTCHAR and Distance(character, clicked) >= 3)
+  		return;
+  	EndIf
+  	
+  	var popupinfo := clicked.popupinfo(character);
+  	If (popupinfo)
+  		
+  		var n_packet := CreatePacket(0xBF, MSGLEN_VARIABLE);
+      n_packet.SetInt16( 3, 0x14);                // SubCommand 14 (Display Popupmenu)
+      n_packet.SetInt16( 5, 0x1);                 // Unbekannter, konstanter Teil
+      n_packet.SetInt32( 7, clicked.serial);      // Serial vom "Target"
+      
+      n_packet.SetInt8( 11, popupinfo.size());    // Wie viele Einträge?
+      
+      var nr := 12;
+      ForEach elem in popupinfo
+      	n_packet.SetInt16(nr, elem[1]);           // ID
+      	nr += 2;
+      	n_packet.SetInt16(nr, elem[2]);           // Cliloc-Eintrag
+      	nr += 2;
+      	n_packet.SetInt16(nr,0x0);                // flag
+      	nr += 2;
+      EndForEach
+      
+      n_packet.SendPacket(character);             // Und Tschüß
+    EndIf
+  EndIf
+EndFunction

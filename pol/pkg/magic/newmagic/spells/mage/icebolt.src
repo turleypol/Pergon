@@ -1,0 +1,74 @@
+//**************************************************************************************************
+// Script file icebolt.src
+//
+//    implements spell 102 <Ice Bolt> - "Eiszapfen"
+//
+//	fires icebolt on spelltarget - deals water(ice) damage
+//		 [ Reflected / Resisted (Elemental - Water) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 30.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use vitals;
+
+Include "../magicpergon";
+Include "../resistance";
+Include "../spellattack";
+Include "include/packets";
+
+program cast_icebolt (params)
+
+   Var caster;
+   Var caston;
+   Var spelltarget;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_MAGE_ICEBOLT);
+   Var resist;
+   Var dmg:=    spell.primary;
+   Var mindmg:= spell.primarymin;
+   Var maxdmg:= spell.primarymax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+      send_attack(caston, caster, 102);
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_MAGE_ICEBOLT);
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+																		// get spelltarget -> possible spell reflection
+   spelltarget:= ReflectSpell(caster, caston, dmg, 0, 0x36A0, 10, 0, 0, SFX_1D6);
+
+   if (spelltarget)
+      resist:= 1 - CDbl(GetResistance(spelltarget, "water"));	// get water resistance of spelltarget
+      dmg:= CInt(power*resist*dmg/100.0);								// calc and alter spell damage
+      if (mindmg and mindmg > dmg)
+         dmg:= mindmg;
+      elseif (maxdmg and maxdmg < dmg)
+         dmg:= maxdmg;
+      endif
+      ApplyRawDamagePergon(spelltarget, dmg);								// apply damage to spelltarget
+   endif
+
+endprogram

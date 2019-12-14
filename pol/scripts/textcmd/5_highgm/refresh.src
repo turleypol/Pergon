@@ -1,0 +1,27 @@
+/////////////////////////////////////////////////////////////
+//
+//  ".refresh" - Restore Hits, Mana, Stamina of a Target mobile
+//
+//
+//  08.02.2003 - Fraggulus
+//
+/////////////////////////////////////////////////////////////
+
+Use uo;
+
+Include "include/modifyskill";
+
+Program TextCMD_Refresh(who)
+
+	SendSysMessagePergon(who, "Wen refreshen?");
+	Var tgt := Target(who);
+
+	If ((!tgt) || (!tgt.isa(POLCLASS_MOBILE)))
+		SendSysMessagePergon(who, "Abbruch", "Abort");
+		Return;
+	EndIf
+
+	SetHPPergon(tgt, GetMaxHPPergon(tgt));
+	SetManaPergon(tgt, GetMaxManaPergon(tgt));
+	SetStaminaPergon(tgt, GetMaxStaminaPergon(tgt));
+EndProgram

@@ -1,0 +1,46 @@
+//
+// 01.11.2005 Fraggulus: aufgeraeumt und USAGE-Msg korrigiert
+//
+
+use os;
+use uo;
+
+include "include/eventid";
+Include "include/msgs";
+
+program TextCmd_AttackRange(who, range)
+
+  if (!range)
+    SendSysMessagePergon(who, "USAGE: .attackrange <radius>.", "USAGE: .attackrange <radius>.");
+    SendSysMessagePergon(who, "Benutzt, um mehrere Kreaturen auf einen Spieler zu provozieren.");
+    Return;
+  endif
+
+  SendSysMessagePergon(who, "Wählt eine Kreatur zum Provozieren aus.", "Choose a creature to provoke");
+
+  Var thetargs := targetcoordinates(who);
+
+  if (!thetargs)
+    SendSysMessagePergon(who, "Zielen abgebrochen", "Cancel");
+    Return;
+  endif
+
+
+
+  Var ev := struct;
+  ev.+ type;
+  ev.+ source;
+  ev.type := EVID_PEACEMADE;
+
+  SendSysMessagePergon(who, "Wählt das Ziel", "Choose a target");
+  Var newtarg := target(who);
+  ev.source   := newtarg;
+
+  foreach thetarg in  listmobilesnearlocation(thetargs.x, thetargs.y, thetargs.z, cint(range),thetargs.realm)
+    sendevent(thetarg, ev);
+    ev.type := SYSEVENT_ENGAGED;
+    sendevent(thetarg, ev);
+    //LOGGING
+    SysLog( "GMCMD: " + who.acctname +":" + who.name + "(" + who.x + " " + who.y + " " + who.z + ")" + " hetzt " + thetarg.name + " auf " + newtarg.name );
+  endforeach
+endprogram

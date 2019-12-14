@@ -1,0 +1,7 @@
+<h3 id="walkto">walkto</h3>
+
+<h4>Parameter: keiner oder <kbd>&lt;Schritte&gt; (0/1)</kbd></h4>
+
+<p>Laßt einen wählbaren NPC die angegebene Anzahl von Schritten
+auf eine wählbare Position zugehen. Falls zusätzlich als zweiter
+Parameter eine 1 angegeben wurde, rennt der NPC stattdessen.</p>

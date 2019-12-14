@@ -1,0 +1,1 @@
+Mit .resource kannst du dir eine Uebersicht diverser wichtiger Materialien anzeigen lassen, die du gerade mit dir herumtraegst. Der Punkt gibt an, ob du entsprechende Dinge bei .grab mitnimmst (gruen) oder nicht (rot).

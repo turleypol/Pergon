@@ -1,0 +1,60 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Knaller
+//
+// macht Bumm (sonst nix!)
+
+//////////////////////////////////////////////////////////////////////////
+// Modifcation:
+// $Log: not supported by cvs2svn $
+// 2006-02-05 Seppel
+// erzeugt
+
+include ":newspells:magicpergon";
+include "common";
+include "include/msgs";
+use cfgfile;
+use os;
+use uo;
+
+Program Clacker(who, item)
+  If (!ArtefactUsable(who, item))
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var sound := artefact.sound;
+
+  SendSysMessagePergon(who,
+    "Wohin wollt ihr den Knaller werfen?",
+    "Where do you want to throw the clacker?"
+  );
+  var where := TargetCoordinates(who);
+
+  If (!where)
+    SendSysMessagePergon(who, "Zielen abgebrochen");
+    return;
+  ElseIf (!CheckLosAt(who, where.x, where.y, where.z))
+    SendSysMessagePergon(who, "Ihr könnt das nicht sehen.");
+    return;
+  EndIf
+
+  Detach();
+
+  TurnCharTo(who, where);
+  PerformAction(who, ANIM_CAST_DIR);
+  SubtractAmount(item, 1);
+  SleepMS(800);
+
+  var cloud := CreateItemAtLocationPergon(
+    where.x, where.y, where.z, 0x11a6, 1, who.realm
+  );
+  cloud.movable := 0;
+  cloud.color   := 891;
+
+  PlaySoundEffect(cloud, sound);
+
+  Sleep(2);
+  DestroyItem(cloud);
+EndProgram
+// vim: sw=2 sts=2

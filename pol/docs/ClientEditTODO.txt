@@ -1,0 +1,224 @@
+Cliloc add deu:
+
+600128 Todesstoss
+600129 Fleisch Wunde
+600130 Defensive
+600131 Finte
+600132 Wirbel Attacke
+600133 Schock Angriff
+600134 Furcht verbreiten
+600135 Rückzug
+600136 Rausch des Krieges
+600137 Blutiger Zweikampf
+600138 Schatten Sprung
+600139 Sturm Angriff
+600140 Fokus
+600141 Abstieg
+600142 Schildwall
+600143 Gezielter Schlag
+600144 Ausweichen
+600145 Parthisches Manöver
+600146 Hinterhalt
+600147 Doppelter Schlag
+3000587 Fold
+3000588 Call/Check
+3000589 Raise
+
+Tiledata stacking:
+TODO:
+0x0f06 Flasche
+0x0f07 Flasche
+0x0f08 Flasche
+0x0f09 Flasche
+0x0f0a Flasche
+0x0f0b Flasche
+0x0f0c Flasche
+0x0f0d Flasche
+0x0f0e Flasche
+0x1362 Felsen (Magischer Asteroid)
+0x1363 Felsen (Magischer Komet)
+0x1364 Felsen (Magischer Meteor)
+
+Done:
+0x0972 Eierkuchen
+0x09e9 Torte gar
+0x0c7d Ungeputzer Mais
+0x0cb6 Nachtkraut
+0x0d0c Pilz
+0x0d0d Pilz
+0x0d0e Pilz
+0x0d0f Pilz
+0x0d10 Pilz
+0x0d11 Pilz
+0x0d12 Pilz
+0x0d13 Pilz
+0x0d14 Pilz
+0x0d15 Pilz
+0x0d17 Pilz
+0x0d18 Pilz
+0x0d19 Pilz
+0x0dba Seegras (fuer Sushi)
+0x0dbb Seegras (fuer Sushi)
+0x0dc5 Ungeputze Hanf
+0x0dd6 Fisch
+0x0dd7 Fisch
+0x0dd8 Fisch
+0x0dd9 Fisch
+0x0dea Asche
+0x0efb Flaschen
+0x0efc Flaschen
+0x0efd Flaschen
+0x0efe Flaschen
+0x0eff Flaschen
+0x0f01 Flaschen
+0x0f02 Flaschen
+0x0f03 Flaschen
+0x0f04 Flaschen
+0x103d Teig roh
+0x103f Torte roh
+0x1040 Pizza roh
+0x1041 Pastete gar
+0x1042 Pastete roh
+0x1083 Pizza
+0x1421 Bogensehne
+0x14eb Karte
+0x14ec Karte
+0x14ed Karte
+0x14ee Karte
+0x15f8 Salatschuessel
+0x15f9 Salat
+0x15fa Salat
+0x15fb Salat
+0x15fc Salat
+0x15fd Salatschuessel
+0x15fe Salat
+0x15ff Salat
+0x1600 Salat
+0x1601 Salat
+0x1602 Salat
+0x160b Kekse roh
+0x160c Kekse gar
+0x1847 Flaschen
+0x1848 Flaschen
+0x18dd Ungeputze Alraune
+0x18e0 Steinkraut
+0x18e3 Sumpfraut/ungeputzer Knoblauch
+0x18e7 Ungeputze Tollkirsche
+0x18eb Ungeputze Ginseng
+0x1a9b Ungeputzer Flachs
+0x1aa2 Hopfen
+0x1ae2 Schädel
+0x1ced Herz
+0x1cee Leber
+0x1cef Innereien
+0x1cf0 Gehirn
+0x227a scrolls
+0x227b Artefaktrolle
+0x234b Schwarzer Lotus
+0x2830 scrolls
+0x2831 scrolls
+0x283e Sushi
+0x283f Sushi
+0x2840 Sushi
+0x2841 Sushi
+0x3afd magischer Fisch
+0x3afe magischer Fisch
+0x3b01 magischer Fisch
+0x3b02 magischer Fisch
+0x3b03 magischer Fisch
+0x3b04 magischer Fisch
+0x3b06 magischer Fisch
+0x3b0a magischer Fisch
+
+
+equipconv.def alle Elfen spezifischen Sachen entfernen
+bereinigte Version:
+[equipconv.def]
+401     866     867     60867   0       # Helm of swiftness M to F
+401     679     684     60684   0       # Dragon Pauldrons M to F
+401     680     685     60685   0       # Dragon Torso  M to F
+401     682     686     60687   0       # Dragon Helm M to F
+401     683     687     60688   0       # Dragon Legs M to F
+401     681     688     60686   0       # Dragon Gauntlets M to F
+
+# female elf
+606     866     867     60867   0       # Helm of Swiftness M to F
+606     679     684     60684   0       # Dragon Pauldrons M to F
+606     680     685     60685   0       # Dragon Torso  M to F
+606     683     687     60688   0       # Dragon Legs M to F
+606     681     688     60686   0       # Dragon Gauntlets M to F
+606     682     686     60687   0       # Dragon Helm M to F
+
+# 8th Anniversary edition conversion for the Breastplate of Justice
+401     871     868     60889   0
+
+#human female
+401     538     986     0       0       # female chain substitution
+401     457     812     0       0       # leather mogami-do
+401     458     813     0       0       # studded mogami-do
+401     459     814     0       0       # platemail mogami-do
+401     425     839     0       0       # leather ninja hood
+401     513     818     0       0       # cloth ninja hood
+401     514     819     0       0       # leather ninja belt
+401     423     842     0       0       # leather ninja pants
+401     426     840     0       0       # leather ninja jacket
+401     571     822     0       0       # cloth ninja jacket
+401     517     833     0       0       # kamishimo
+401     518     834     0       0       # hakama
+401     552     835     0       0       # tattsuke-hakama
+401     553     836     0       0       # hakama-shita
+401     567     837     0       0       # obi
+401     568     838     0       0       # battle surcoat
+401     942     948     0       0       # elven plate
+
+
+# vampire female
+745     538     986     0       0       # female chain substitution
+745     457     812     0       0       # leather mogami-do
+745     458     813     0       0       # studded mogami-do
+745     459     814     0       0       # platemail mogami-do
+745     425     839     0       0       # leather ninja hood
+745     513     818     0       0       # cloth ninja hood
+745     514     819     0       0       # leather ninja belt
+745     423     842     0       0       # leather ninja pants
+745     426     840     0       0       # leather ninja jacket
+745     571     822     0       0       # cloth ninja jacket
+745     517     833     0       0       # kamishimo
+745     518     834     0       0       # hakama
+745     552     835     0       0       # tattsuke-hakama
+745     553     836     0       0       # hakama-shita
+745     567     837     0       0       # obi
+745     568     838     0       0       # battle surcoat
+745     942     948     0       0       # elven plate
+
+
+#elven female
+606     538     986     0       0       # female chain substitution
+606     457     812     0       0       # leather mogami-do
+606     458     813     0       0       # studded mogami-do
+606     459     814     0       0       # platemail mogami-do
+606     514     819     0       0       # leather ninja belt
+606     423     842     0       0       # leather ninja pants
+606     426     840     0       0       # leather ninja jacket
+606     571     822     0       0       # cloth ninja jacket
+606     517     833     0       0       # kamishimo
+606     518     834     0       0       # hakama
+606     552     835     0       0       # tattsuke-hakama
+606     553     836     0       0       # hakama-shita
+606     567     837     0       0       # obi
+606     568     838     0       0       # battle surcoat
+
+#elven male tunic swaping (change any female stuff to male)
+605     977     968     -1      0       # hide chest
+605     948     942     -1      0       # plate chest
+605     914     907     -1      0       # elven shirt 1
+605     915     908     -1      0       # elven shirt 2
+605     997     978     -1      0       # light armor
+
+#human male tunic swaping (change any female stuff to male)
+400     977     968     -1      0       # hide chest
+400     948     942     -1      0       # plate chest
+400     914     907     -1      0       # elven shirt 1
+400     915     908     -1      0       # elven shirt 2
+400     997     978     -1      0       # light armor
+[/equipconv]

@@ -1,0 +1,147 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file findcorpse.src
+//
+// implements spell 323 <Find Corpse> - "Leichenschaendung"
+//
+// Leiche explodiert und macht Magieschaden in Umfeld
+
+include "../magicpergon";
+include "../resistance";
+include "include/effects";
+include "include/packets";
+
+Program cast_findcorpse (params)
+  var caster;
+  var caston;
+
+  var spells := ReadConfigFile("::spells");                   // load spelldata
+  var spell := FindConfigElem(spells, SPELLID_NECRO_FINDCORPSE);
+  var difficulty := spell.skill;
+  var basedmg := spell.primary;
+  var range := spell.range;
+  var resist := spell.resist;
+  var minrange := spell.rangemin;
+  var maxrange := spell.rangemax;
+  var power;
+
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power := params[3];
+    caston := params[4];
+    caston := ListItemsNearLocationOfType(
+      params[4].x, params[4].y, params[4].z, 5, UOBJ_CORPSE, params[4].realm
+    );
+    If (caston)
+      // Um unnötige Checks zu sparen sucht der Spell bei NPCs selber ne Leiche
+      caston := caston[1];
+    Else
+      return;
+    EndIf
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power := params[3];
+    caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+
+    power := GetCastPowerPergon(caster, SPELLID_NECRO_FINDCORPSE);
+    caston := TargetThing(caster, TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  If (caston.objtype <> UOBJ_CORPSE) // check If spelltarget is a corpse
+    SendSysMessagePergon(caster, "Das ist keine Leiche", "This is no corpse");
+    return;
+  EndIf
+
+  If (GetObjProperty(caston, "undead")) // check If spelltarget is undead
+    SendSysMessagePergon(caster,
+      "Untote könnt Ihr nicht schänden", "You cannot rape undead"
+    );
+    return;
+  EndIf
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_DIR);
+
+  basedmg := CDbl(power*basedmg/100.0); // calc spell range and spell damage
+  var maxdmg := CInt(
+    // Maximalschaden ist 2/5 der NPC-Hitpoints
+    CInt(GetNPCConfig(caston.getprop("npctemplate")).hits)*2.0/5.0
+  );
+
+  If (maxdmg < basedmg)
+    basedmg := maxdmg;
+  EndIf
+
+  range := CInt(power*range/100.0); // according to casting power
+  If (minrange and minrange > range)
+    range := minrange;
+  ElseIf (maxrange and maxrange < range)
+    range := maxrange;
+  EndIf
+
+  var victims := ListMobilesNearLocationEx(
+    caston.x, caston.y, caston.z, range,
+    LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN, caston.realm
+  );
+
+  PlaySoundEffectXYZ(caston.x, caston.y, caston.z, 0x4d0);
+  ExplodeInCircle(
+    caston.x, caston.y, caston.z,caston.realm, range, 60, 50, 20,
+    array{FX_CURSE_EFFECT, FX_CURSE_EFFECT, FX_SMOKE}
+  );
+
+  ForEach victim in victims
+    var dmg;
+    If (resist)
+      // calc spell damage according to spelltargets magic resistance and
+      // casting power
+      dmg := CInt(MagicResistance(victim, difficulty, resist, basedmg, 1));
+    Else
+      dmg := CInt(power*dmg/100.0);
+    EndIf
+    ApplyRawDamagePergon(victim, dmg);
+  EndForEach
+
+  var blood := {};
+
+  PlayStationaryEffect(
+    caston.x, caston.y, caston.z, FX_MARK_EFFECT, 7, 10, 0,caston.realm
+  );
+
+  // create blood stains
+  blood[1] := CreateItemAtLocationPergon(
+    caston.x, caston.y, caston.z, 0x122f, 1, caston.realm
+  );
+  blood[2] := CreateItemAtLocationPergon(
+    caston.x, caston.y - 1, caston.z, 0x122d, 1, caston.realm
+  );
+  blood[1].movable    := 0;
+  blood[2].movable    := 0;
+  blood[1].saveonexit := 0;
+  blood[2].saveonexit := 0;
+
+  // Taeter markieren für Forensic
+  SetObjProperty(caston, EV_CHOPPER, caster.name);
+  // destroy corpse
+  DestroyItem(caston);
+
+  // set final values
+  SetHPPergon(caster,      GetMaxHPPergon(caster));
+  SetManaPergon(caster,    GetMaxManaPergon(caster));
+  SetStaminaPergon(caster, GetMaxStaminaPergon(caster));
+
+  // nach zufälliger Zeit Blut zerstören
+  Detach();
+  Sleep(CInt(RandomInt(30) + 30));
+  DestroyItem(blood[1]);
+  DestroyItem(blood[2]);
+EndProgram

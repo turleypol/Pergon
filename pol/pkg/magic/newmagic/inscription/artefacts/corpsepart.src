@@ -1,0 +1,105 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Artefakt-Leichenteil
+//
+// Leichenteil wird aktiviert und beamt zum letzten Sterbeort zurück
+
+//////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.7  2008/08/31 20:29:10  mehdorn
+// - leicht ueberarbeitet
+// - Tippfehler raus
+// - teilweise Uebersetzungen vervollstaendigt/verbessert
+// - diverse unnoetige Includes entfernt
+//
+// 2007-02-27 Seppel
+// erbaut
+
+include ":newspells:magicpergon";
+include "common";
+include "include/effects";
+include "include/msgs";
+use cfgfile;
+use os;
+use uo;
+
+Program CorpsePart(who, item)
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  var deathLocations := GetObjProperty(who, "LastDeathLocation");
+  var lastDeathLocation := deathLocations[1];
+  var tgt := struct{
+    x     := lastDeathLocation[1],
+    y     := lastDeathLocation[2],
+    z     := lastDeathLocation[3],
+    realm := lastDeathLocation[4]
+  };
+  var deathTime := lastDeathLocation[6];
+
+  If (tgt.realm <> who.realm)  // Realmwechsel dadurch verboten
+    SendSysMessagePergon(who,
+      "Ihr könnt eure Leiche nicht finden!", "You cannot find your corpse!"
+    );
+    return 0;
+  EndIf
+
+  If (!GetObjProperty(who, "LastDeathLocation"))
+    SendSysMessagePergon(who,
+      "Seid ihr etwa unsterblich?", "Are you invulnerable?"
+    );
+    return 0;
+  EndIf
+
+  // letzter Tod länger als 12h her?
+  If ((deathTime + 43200) < polcore().systime)
+    SendSysMessagePergon(who,
+      "Eure Leiche ist schon kalt", "Your corpse is already cold"
+    );
+    return 0;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var delay := artefact.delay;
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", (ReadGameClock() + delay));
+
+  PerformAction(who, ANIM_EAT);
+  SubtractAmount(item, 1);
+
+  If (RandomInt(2) == 1)
+      PlaySoundEffect(who, SFX_31);
+  Else
+      PlaySoundEffect(who, SFX_32);
+  EndIf
+
+  Detach();
+
+  SendSysMessagePergon(who,
+    "Ihr esst das Leichenteil", "You eat the corpse part"
+  );
+
+  Sleep(2);
+
+  // 1. Effekt am Zielpunkt
+  ExplodeInCircle(
+    tgt.x, tgt.y, tgt.z+5, tgt.realm, 3, 100, 1, 1, array{0x3728}
+  );
+  // Effekt beim Benutzer
+  ExplodeInCircle(
+    who.x, who.y, who.z+5, who.realm, 3, 1000, 50, 20, array{0x3728}
+  );
+
+  // beamen
+  MoveObjectToLocation(who, tgt.x, tgt.y, tgt.z, tgt.realm);
+
+  // 2. Effekt am Zielpunkt
+  ExplodeInCircle(
+    tgt.x, tgt.y, tgt.z+5, tgt.realm, 3, 100, 1, 1, array{0x3728}
+  );
+EndProgram
+
+// vim: sw=2 sts=2

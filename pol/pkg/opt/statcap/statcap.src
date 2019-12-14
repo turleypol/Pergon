@@ -1,0 +1,152 @@
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   StatCapper v1.0 (2000/12/11)
+//
+//     based on StatCap Applier (1999/30/11)
+//       Author: Zulu
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2000/11/12 Shinigami: Complete ReWrite
+//     2000/12/07 Shinigami: Anpassung an neues System
+//     2001/09/11 Shinigami: Anpassung Pol094
+//     2004/06/06 Fox:       Einfuehren von MaxStat und Auswahl fuer zu senkenden Stat
+//     2004/06/16 Shinigami: StatCapMenu eingefuehrt, da sonst Blockierung des Cappers moeglich
+//     2004/06/21 Shinigami: StatCapMenu wieder entfernt, Umstieg auf die Alternatividee SkillWin
+//     2004/06/21 Fox:       Senken wird jetzt nach Property ATTRIBUTECAP getaetigt, Einstellung im SkillWin
+//                           Einfuehrung ATTRIBUTELIMIT_MIN, QuestChars nicht mehr betroffen
+//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/////////////
+// Includes
+/////////////
+use attributes;
+use os;
+use uo;
+
+Include "include/modifyskill";
+
+///////////////
+// Konstanten
+///////////////
+
+Const STATCAP:=300;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program StatCap()
+  BroadcastPergon("StatCapper wird aktiviert...", "StatCapper activated...");
+  SysLog("StatCapper wird aktiviert...");
+
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  Var stats;
+
+  While (1)
+    ForEach chr in (EnumerateOnlineCharacters())
+      If (chr.cmdlevel<CMDLEVEL_QUESTCHAR)
+        Set_Critical(1);
+
+       // Case (GetObjProperty(chr, SKKLASSE))
+       //   KLASSE_HANDWERKER:
+       //     stats:=GetStrBasePergon(chr)+GetDexBasePergon(chr)+GetIntBasePergon(chr);
+       //     If (stats>STATCAP)
+       //       Var points:=CInt((stats-STATCAP)/2);
+       //       If (points<1)
+       //         points:=1;
+       //       EndIf
+       //
+       //       SetStrPergon(chr, GetStrBasePergon(chr)-points);
+       //       SetIntPergon(chr, GetIntBasePergon(chr)-points);
+       //     EndIf
+       //
+       //   KLASSE_KRIEGER:
+       //     stats:=GetStrBasePergon(chr)+GetDexBasePergon(chr)+GetIntBasePergon(chr);
+       //     If (stats>STATCAP)
+       //       Var points:=CInt((stats-STATCAP)/2);
+       //       If (points<1)
+       //         points:=1;
+       //       EndIf
+       //
+       //       SetDexPergon(chr, GetDexBasePergon(chr)-points);
+       //       SetIntPergon(chr, GetIntBasePergon(chr)-points);
+       //     EndIf
+       //
+       //   KLASSE_MAGIER:
+       //     stats:=GetStrBasePergon(chr)+GetDexBasePergon(chr)+GetIntBasePergon(chr);
+       //     If (stats>STATCAP)
+       //       Var points:=CInt((stats-STATCAP)/2);
+       //       If (points<1)
+       //         points:=1;
+       //       EndIf
+       //
+       //       SetStrPergon(chr, GetStrBasePergon(chr)-points);
+       //       SetDexPergon(chr, GetDexBasePergon(chr)-points);
+       //     EndIf
+       //
+       //   default: SysLog("FEHLER: Der Character "+chr.name+" ["+chr.acctname+"] hat keine Klasse!");
+       // EndCase
+
+        stats:=GetStrBasePergon(chr)+GetDexBasePergon(chr)+GetIntBasePergon(chr);
+        If (stats>STATCAP)
+          Var points:=stats-STATCAP;
+          Var pointsremain:=0;
+          If (GetAttributeLock(chr,ATTRIBUTEID_STRENGTH)==ATTRIBUTE_LOCK_DOWN)
+            SetStrPergon(chr, GetAttributeCutLimit(GetStrBasePergon(chr), points, pointsremain));
+            If (pointsremain)
+              SetDexPergon(chr, GetDexBasePergon(chr)-pointsremain);
+              SetIntPergon(chr, GetIntBasePergon(chr)-pointsremain);
+            EndIf
+          ElseIf (GetAttributeLock(chr,ATTRIBUTEID_DEXTERITY)==ATTRIBUTE_LOCK_DOWN)
+            SetDexPergon(chr, GetAttributeCutLimit(GetDexBasePergon(chr), points, pointsremain));
+            If (pointsremain)
+              SetStrPergon(chr, GetStrBasePergon(chr)-pointsremain);
+              SetIntPergon(chr, GetIntBasePergon(chr)-pointsremain);
+            EndIf
+          ElseIf (GetAttributeLock(chr,ATTRIBUTEID_INTELLIGENCE)==ATTRIBUTE_LOCK_DOWN)
+            SetIntPergon(chr, GetAttributeCutLimit(GetIntBasePergon(chr), points, pointsremain));
+            If (pointsremain)
+              SetStrPergon(chr, GetStrBasePergon(chr)-pointsremain);
+              SetDexPergon(chr, GetDexBasePergon(chr)-pointsremain);
+            EndIf
+          Else // Dex als Standard
+            SetAttributeLock(chr,ATTRIBUTEID_DEXTERITY,ATTRIBUTE_LOCK_DOWN);
+            SetAttributeLock(chr,ATTRIBUTEID_STRENGTH,ATTRIBUTE_LOCK_UP);
+            SetAttributeLock(chr,ATTRIBUTEID_INTELLIGENCE,ATTRIBUTE_LOCK_UP);
+            SetDexPergon(chr, GetAttributeCutLimit(GetDexBasePergon(chr), points, pointsremain));
+            If (pointsremain)
+              SetStrPergon(chr, GetStrBasePergon(chr)-pointsremain);
+              SetIntPergon(chr, GetIntBasePergon(chr)-pointsremain);
+            EndIf
+          EndIf
+        EndIf
+
+        Set_Critical(0);
+      EndIf
+    EndForEach
+
+    Sleep(900);
+  EndWhile
+EndProgram
+
+/////////////////////////////////////////////////////////////////////
+// GetAttributeCutLimit - Wieviele Punkte muessen abgezogen werden?
+/////////////////////////////////////////////////////////////////////
+
+Function GetAttributeCutLimit(pointsbase, pointscut, ByRef pointsremain)
+  Var result:=pointsbase-pointscut;
+  If (result<ATTRIBUTELIMIT_MIN) // Weniger als das MinLimit kann nicht abgezogen werden, also ...
+    result:=ATTRIBUTELIMIT_MIN;
+
+    pointsremain:=CInt((pointscut-(pointsbase-result))/2); // ... den verbleibenden Rest gleichmaessig auf die anderen Attribute verteilen
+    If (pointsremain<1)
+      pointsremain:=1;
+    EndIf
+  EndIf
+
+  Return (result);
+EndFunction

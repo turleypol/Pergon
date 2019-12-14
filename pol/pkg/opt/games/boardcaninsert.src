@@ -1,0 +1,27 @@
+// Chess+BackgammonBoardCanInsert.src
+// Version: r1y2002
+// © 2002 Maximilian Scherr
+//
+//  modified by Fraggulus
+//
+//  13.08.2003 Fraggulus: Programmparameter korrigiert
+//
+
+use uo;
+
+
+Program BoardCanInsert(who, container, movetype, insert_type, item)
+  var bserial := CInt(GetObjProperty(item, "bserial"));
+
+  If (!bserial)
+    If (item.objtype == 0x669b)
+      SetObjProperty(item, "bserial", container.serial);
+      return 1;
+    EndIf
+  ElseIf (bserial == container.serial)
+    return 1;
+  EndIf
+  return 0;
+  // Compilerwarnugen verhindern
+  who := who; movetype := movetype; insert_type := insert_type;
+EndProgram

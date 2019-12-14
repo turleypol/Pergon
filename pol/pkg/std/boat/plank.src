@@ -1,0 +1,85 @@
+///////////////////////////////////////////////////////////////////////////
+// plank - Planke aus- und einklappen
+//
+
+///////////////////////////////////////////////////////////////////////////
+// Notizen:
+// - Abfrage auf stationaer, sonst ist die Planke nicht aufklappbar
+// - wer auf dem Boot ist, kann sie auch ohne Schluessel benutzen
+
+use os;
+use storage;
+use uo;
+include ":doorsnew:common";
+include "boat";
+include "include/msgs";
+include "include/objtype";
+include "plankutil";
+
+Program useplank(mob, plank)
+  If (plank.getprop(PROP_FERRY_CONTROLS_PLANK))
+    SendSysMessagePergon(mob,
+      "Die Planke wird vom Fährmann geöffnet und geschlossen. "+
+      "Also Finger weg!",
+      "This plank is opened or closed by the tillerman. "+
+      "Keep your hands off!"
+    );
+    return;
+  EndIf
+
+  var boatid := plank.multi.serial;
+  var boatplank := SystemFindObjectBySerial(boatid);
+  var statestatus := getobjproperty(boatplank,  "state");
+  If (statestatus == STATE_MOVING || statestatus == STATE_DRIFTING)
+    SendSysMessagePergon(mob,
+      "Ihr traut Euch nicht, die Planke auszufahren, bevor der "+
+      "Anker gesetzt ist.",
+      "You fear to open the plank while the boat is unanchored."
+    );
+    return;
+  EndIf
+
+  If (mob.multi.serial == plank.multi.serial)
+    TimedOpenClose(plank);
+  ElseIf ((HasKeyFor(mob, plank) == 1) || (!plank.locked))
+    If (!IsExtended(plank)) // plank is closed, so open it.
+      TimedOpenClose(plank);
+    Else
+      YankOntoBoat(mob,plank);// plank is open, so grab 'em
+    EndIf
+  Else
+    PrintTextAbovePrivatePergon(plank,
+      "Dies ist verschlossen.", "That is locked.", mob
+  );
+  EndIf
+EndProgram
+
+Function TimedOpenClose(plank)
+  If (IsExtended(plank))
+    If (!IsPlankOccupied(plank))
+      Retract(plank);
+      EraseObjProperty(plank, "#WhenOpened");
+    EndIf
+  Else
+    var whenopened := ReadGameClock();
+    SetObjProperty(plank, "#WhenOpened", whenopened);
+    Extend(plank);
+    Repeat
+    Sleep(6);
+    Until (! (plank && IsPlankOccupied(plank)));
+    If (GetObjProperty(plank, "#WhenOpened") == whenopened)
+      Retract(plank);
+      EraseObjProperty(plank, "#WhenOpened");
+    EndIf
+  EndIf
+EndFunction
+
+Function YankOntoBoat(mob, plank)
+  var sh := GetStandingHeight(plank.x, plank.y, plank.z,plank.realm);
+  If (sh)
+    var nx := CInt((plank.x + plank.multi.x) / 2.0);
+    var ny := CInt((plank.y + plank.multi.y) / 2.0);
+    MoveObjectToLocation(mob, nx, ny, plank.z, plank.realm);
+    return;
+  EndIf
+EndFunction

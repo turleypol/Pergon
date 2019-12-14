@@ -1,0 +1,63 @@
+////////////////////////////////////////////////////////////////////
+//
+//    TextCMD MultiBuild - Baut ein Multi aus den Einzelteilen auf
+//
+//      Author: Shinigami
+//
+//    Modification:
+//
+////////////////////////////////////////////////////////////////////
+
+/////////////
+// Includes
+/////////////
+use uo;
+use cfgfile;
+use os;
+
+Include "include/itemnpc";
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_MultiBuild(who, params)
+  params:=SplitWords(params);
+
+  Var sleeptime:=CInt(params[2]);
+  If (!sleeptime)
+    sleeptime:=2;
+  EndIf
+
+  Var multinumber:=CInt(params[1]);
+  If ((multinumber==0) Or multinumber)
+    Var multicfg:=ReadConfigFile("multis");
+    If (multicfg)
+      Var multi:=multicfg[multinumber];
+      If (multi)
+        ForEach itemtype in {"static", "dynamic"};
+          ForEach item in GetConfigStringArray(multi, itemtype)
+            Var splitted:=SplitWords(item);
+
+            Var item:=CreateItemAtLocationPergon(who.x+CInt(splitted[2]), who.y+CInt(splitted[3]), who.z+CInt(splitted[4]), CInt(splitted[1]), 1,who.realm);
+            If (item)
+              item.movable:=0;
+            Else
+              SendSysMessagePergon(who, "Folgender Eintrag konnte nicht ausgeführt werden: "+item+" !",
+                "Was impossible to execute following Entry: "+item+" !");
+            EndIf
+
+            SleepMS(sleeptime);
+          EndForEach
+        EndForEach
+      Else
+        SendSysMessagePergon(who, "Es gibt kein Multi "+Lower(Hex(multinumber))+" !", "Multi "+Lower(Hex(multinumber))+" doesn't exist!");
+      EndIf
+    Else
+      SysLog("FEHLER: Konnte die Datei 'multis.cfg' nicht oeffnen!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr müsst eine Nummer angeben!", "You've to enter a number!");
+  EndIf
+EndProgram

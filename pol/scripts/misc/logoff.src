@@ -1,0 +1,89 @@
+////////////////////////////////////////////////////////////////////////////
+//
+//   Logoff Script
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2000/06/26 Shinigami: Message of the Day eingebaut
+//     2007/06/15 Shinigami: GlobalProperty("#Mute") schaltet Meldungen ab
+//     2007/06/16 Shinigami: AccountProp("lastused") eingefuehrt
+//
+////////////////////////////////////////////////////////////////////////////
+
+use os;
+use uo;
+include "include/animal";
+include "include/client";
+include "include/clock";
+include "include/modifyskill";
+include "include/msgs";
+include "include/onlinesearch";
+include "include/pergonstatistik";
+include ":sqlmanager:sqlmanager";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program OnLogoff(who)
+  Var gameclock:=ReadGameClock();
+  Var account:=who.acct;
+
+  // Alle Counter richtig setzen
+  Var playtime:="";
+  Var lifetime_session:=GetObjProperty(who, "lifetime_session");
+  Var lifetime_counter:=GetObjProperty(who, "lifetime_counter");
+  If (lifetime_session And lifetime_counter) // Ein vorschnelles LogOff (bevor LogOn fertig ist) wuerde Datenmuell produzieren
+    playtime:=" ["+Format_Time(gameclock-lifetime_session)+"]";               // Zeit seit dem Einloggen
+    Var counter:=gameclock-lifetime_counter;                                  // Zeit seit dem letzten WorldSave
+    SetObjProperty(who, "lifetime", GetObjProperty(who, "lifetime")+counter); // Onlinezeit-Zaehler des Characters erhoehen
+    account.setprop("lifetime", account.getprop("lifetime")+counter);         // Onlinezeit-Zaehler des Accounts erhoehen
+  EndIf
+  EraseObjProperty(who, "lifetime_session");
+  EraseObjProperty(who, "lifetime_counter");
+
+  Var logontime:=GetObjProperty(who, "logontime"); // Wird irgendwie von 'Murderer' benutzt... (ToDo: mal checken)
+  If (logontime) // Ein vorschnelles LogOff (bevor LogOn fertig ist) wuerde Datenmuell produzieren
+    SetObjProperty(who, "onlinetimer", GetObjProperty(who, "onlinetimer")+gameclock-logontime);
+  EndIf
+  SetObjProperty(who, "logontime", gameclock);
+
+  // Wann wurde der Account zuletzt benutzt?
+  account.setprop("lastused", gameclock);
+
+  // Heaven... getamed Viechers werden deaktiviert
+  PetMasterLogOff(who);
+
+  // Den GMs eine Meldung ueber das Ausloggen zukommen lassen
+  If (!GetGlobalProperty("#Mute")) // Ruhe?
+    ForEach player in EnumerateOnlineCharactersCanSeeMe(who) // Liste mit {char.name, char}
+      If (player[2].cmdlevel >= CMDLEVEL_SEER)
+        If (who.cmdlevel == CMDLEVEL_COUNSELOR)
+          SendSysMessagePergon(player[2], who.name+" hat sich ausgeloggt"+playtime, who.name+" has logged off"+playtime, _DEFAULT_TEXT_FONT, FONTCOLOR_GREEN-1);
+        ElseIf (who.cmdlevel >= CMDLEVEL_SEER)
+          SendSysMessagePergon(player[2], who.name+" hat sich ausgeloggt"+playtime, who.name+" has logged off"+playtime, _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+        Else
+          SendSysMessagePergon(player[2], who.name+" hat sich ausgeloggt"+playtime, who.name+" has logged off"+playtime, _DEFAULT_TEXT_FONT, FONTCOLOR_GREEN);
+        EndIf
+      EndIf
+    EndForEach
+  EndIf
+
+  // Den Spectator ueber das Ausloggen informieren
+  Var Spectator:=GetGlobalProperty("#Spectator");
+  If (Spectator)
+    Var spectatorev:=struct;
+    spectatorev.+type:="logoff";
+    spectatorev.+value:={who.acctname, who.name, who.name+" hat sich ausgeloggt"+playtime};
+
+    GetProcess(Spectator).sendevent(spectatorev);
+  EndIf
+
+  // Spieler hat sich fertig ausgeloggt
+  Var logofftext:=who.name+" (Account: "+who.acctname+" / IP: "+who.ip+") hat sich um "+gameclock+" ausgeloggt.";
+  SysLog(logofftext);
+  StatistikLogOnOff(who, logofftext);
+  
+  SendSQLManager(who,SQLStatus_LogOff);
+EndProgram

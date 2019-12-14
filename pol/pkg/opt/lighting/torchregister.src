@@ -1,0 +1,86 @@
+// Fackelregistrierscript --
+// Fackel traegt sich in GProp ein, die von Kontrollstein benutzt wird
+
+// $Log: not supported by cvs2svn $
+// Revision 1.2  2008/06/29 13:23:36  mehdorn
+// auf Eventsystem umgestellt
+//
+// Revision 1.1  2008/06/25 10:28:12  mehdorn
+// funktioniert nun halbwegs
+//
+
+use os;
+use uo;
+use util;
+include "include/eventid";
+include "torchcommons";
+
+Const DEBUG := 0;
+
+Program Register(torch)
+    If (PolCore().uptime<60)
+        // beim Serverstart nicht alle gleichzeitig initialisieren
+        Sleep(RandomInt(300) + 1);
+    EndIf
+
+    // auf Controlscript am Fackelstein warten
+    var pid;
+    While (1)
+        Sleep(RandomInt(5) + 1);
+        If (!torch)
+            // falls Fackel inzwischen vernichtet wurde
+            return;
+        EndIf
+
+        // PID besorgen
+        var pidprop := GetGlobalProperty(TORCHCTL_PID_PROP);
+        If (!pidprop)
+            If (DEBUG)
+                syslog(
+                    "FEHLER: GProp "+TORCHCTL_PID_PROP+" nicht gefunden."
+                );
+            EndIf
+            continue;
+        EndIf
+        // Prozesshandle holen
+        pid := GetProcess(pidprop);
+        If (pid)
+            break;
+        EndIf
+        If (DEBUG)
+            syslog(
+                "FEHLER: Fackelstein-PID nicht verfuegbar: "+pid.errortext
+            );
+        EndIf
+    EndWhile
+
+    // registrieren
+    While (1)
+        If (!torch)
+            // falls Fackel inzwischen vernichtet wurde
+            return;
+        EndIf
+
+        var result := pid.sendevent(struct{
+            type    := EVID_MASTER_HELLO,
+            serial  := torch.serial
+        });
+        If (result)
+            // solange probieren bis Erfolg
+            break;
+        EndIf
+        If (DEBUG)
+            syslog(
+                "FEHLER: Registrierung fehlgeschlagen: "+result.errortext
+            );
+        EndIf
+        Sleep(RandomInt(10) + 1);
+    EndWhile
+
+    If (DEBUG)
+        syslog(
+            "HINWEIS: Habe mich ["+Hex(torch.serial)+
+            "] erfolgreich registiert"
+        );
+    EndIf
+EndProgram

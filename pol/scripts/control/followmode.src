@@ -1,0 +1,57 @@
+///////////////////////////////////////////////////////////////////////////
+// followmode -- verfolgt das eingestellte Mobile
+use math;
+use os;
+use uo;
+include "include/server";
+
+Program FollowMode(who)
+    var tofollow;
+    var tofollowserial := 0;
+
+    While (who and who.connected)
+        // noch jemanden verfolgen?
+        var settings := who.getprop(PROP_FOLLOWMODE);
+        If (!settings)
+            // Abbruch
+            who.eraseprop(PROP_FOLLOWMODE);
+            return;
+        EndIf
+
+        // undefinierte Werte durch Standardwerte ersetzen
+        If (!settings["dist"])
+            settings["dist"] := 10;
+        EndIf
+        If (!settings["wait"])
+            settings["wait"] := 2;
+        EndIf
+
+        // gucken, ob man inzwischen jemand anderem folgen soll
+        If (tofollowserial <> settings.serial)
+            tofollowserial := settings.serial;
+            tofollow := SystemFindObjectBySerial(tofollowserial);
+        EndIf
+
+        If (
+            // ausgeloggt oder
+            !tofollow or !tofollow.connected or
+            // zu gut getarnt
+            tofollow.concealed > who.cmdlevel
+        )
+            // Abbruch, wenn Verfolgter weg ist
+            who.eraseprop(PROP_FOLLOWMODE);
+            return;
+        EndIf
+
+        // Abstand pruefen
+        If (Distance(who, tofollow) > settings.dist)
+            // folgen
+            MoveObjectToLocation(
+                who, tofollow.x, tofollow.y, tofollow.z, tofollow.realm,
+                MOVEOBJECT_FORCELOCATION
+            );
+        EndIf
+
+        Sleep(settings.wait);
+    EndWhile
+EndProgram

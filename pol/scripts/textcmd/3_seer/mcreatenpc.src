@@ -1,0 +1,65 @@
+///////////////////////////////////////////////////////////////////////////
+// mcreatenpc - mehrere gleiche NPCs nacheinander erstellen bis Abbruch
+//
+// 24.02.2003 by Fraggulus
+
+use os;
+use uo;
+include "include/msgs";
+include "include/npc";
+include "include/permissions";
+include "include/quests";
+
+Program TextCMD_NPCSpawn(who, template)
+  If (!AllowedToCreateNPC(who))
+    SendSysMessagePergon(who,
+      "Ihr seid nicht befugt, diesen Befehl zu benutzen!",
+      "You are not authorizied to use this command!"
+    );
+    return;
+  EndIf
+
+  If (!template)
+    SendSysMessagePergon(who, "Aufruf: .npcspawn <npctemplate>");
+    return;
+  EndIf
+
+  SendSysMessagePergon(who, "Bitte einen Zielpunkt auswählen!");
+
+  var loc;
+  var zoneopts := QuestZoneIsIn(who, QZ_ISIN_OPT);
+
+  Repeat
+    loc := TargetCoordinates(who);
+    If (!loc or loc.item.container)
+      break;
+    EndIf
+
+    var props := struct;
+    props.+facing := who.facing;
+    var npc := CreateNpcFromTemplatePergon(
+      template, loc.x, loc.y, loc.z, 2, props, 1, loc.realm
+    );
+    If (!npc)
+      SendSysMessagePergon(who, "CreateNPC gescheitert: "+npc.errortext);
+      continue;
+    EndIf
+
+    If (zoneopts.size() >= 1)
+      // Restriktionen aus der Questzone setzen
+      QuestZoneApplyRestrictions(npc, zoneopts);
+      // speichern, dass er in Questzone gebaut wurde
+      npc.setprop(PROP_QUESTBUILT, who.serial);
+    EndIf
+
+    // Erzeuger festhalten
+    SignNPCCreation(who, npc);
+
+    // Logging
+    syslog(
+      "MCreateNPC: "+CharInfoStr(npc, COORDS_REALM)+" durch "+CharInfoStr(who)
+    );
+  Until (!loc);
+
+  SendSysMessagePergon(who, "Abbruch", "Abort");
+EndProgram

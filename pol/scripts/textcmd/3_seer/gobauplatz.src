@@ -1,0 +1,126 @@
+//////////////////////////////////////////////////////////////////
+//
+//   TextCMD GoBauplatz - Zu einem freien Bauplatz teleportieren
+//
+//     Author: Shinigami
+//
+//   Modification
+//     2004/12/07 Shinigami: Is nimmer zum Bauplatz gehuepft...
+//
+//////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+Use uo;
+Include "include/msgs";
+Include "include/place";
+Include "include/string";
+
+///////////////
+// Konstanten
+///////////////
+
+Const HOEHE_HOUSES:=25; // Wieviel Zeilen passen in den Bauplatz-Gump?
+Const BUTTON_HOUSE:=10; // Bauplatzauswahl
+
+Var OBJTYPE_BAUPLATZ:={0x6133, 0x6172}; // leere Bauplaetze
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program GoBauplatz(who)
+  Var houseinfo:=GetHouseInfo();
+  If (houseinfo.size())
+    Var housedata:=FillInHouseInfo(houseinfo);
+
+    Var nummer:=SendDialogGump(who, housedata[1], housedata[2])[0]; // Bauplatz auswaehlen
+    If (nummer)
+      Var house:=housedata[3][nummer-BUTTON_HOUSE+1][2];
+      JumpLocationAdd(who);
+      MoveObjectToLocation(
+        who, house.x, house.y, house.z, house.realm, MOVEOBJECT_FORCELOCATION
+      );
+    Else
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Es gibt keine freien Bauplaetze für Spieler.");
+  EndIf
+EndProgram
+
+/////////////////////////////////////////////////////////
+// GetHouseInfo - Liefert die Informationen der Haeuser
+/////////////////////////////////////////////////////////
+
+Function GetHouseInfo()
+  Var houseinfo:={};
+
+  ForEach houseserial in GetGlobalProperty("#houselist")
+    Var house:=SystemFindObjectBySerial(houseserial);
+    If (house)
+      If (house.objtype in OBJTYPE_BAUPLATZ) // Nur freie Bauplaetze anzeigen...
+        houseinfo.append({house.x, house});
+      EndIf
+    EndIf
+  EndForEach
+
+  Return (SortMultiArrayByIndexNotCase(houseinfo, 1));
+EndFunction
+
+////////////////////////////////////////////////////
+// FillInHouseInfo - Haus-Daten ins Gump eintragen
+////////////////////////////////////////////////////
+
+Function FillInHouseInfo(houseinfo)
+  Var layout:={                                         // Gump-Layout
+    "page 0",                                           //   Seite 0 (Basisseite)
+    "nodispose",
+    "resizepic 10 10 2620 360 "+(70+HOEHE_HOUSES*20),
+    "gumppic 30 40 2621",
+    "gumppic 80 40 2621",
+    "checkertrans 15 16 350 "+(58+HOEHE_HOUSES*20)
+  };
+  Var data:={};                                         // Gump-Data
+
+  Var housecount:=0;           // Zahl des einzutragenden Hauses
+  Var pagecount:=1;            // Akt. Seitenzahl
+  Var nextpageswap:=0;         // Wann erfolgt ein Seitenwechsel?
+  Var msgbutton:=BUTTON_HOUSE; // Nummer des Buttons
+  Var pos_y;                   // Akt. Y-Koordinate
+
+  ForEach house in houseinfo // Alle Haeuser eintragen
+    If (housecount==nextpageswap)  // Seitenwechsel-Buttons einfuegen?
+      layout.append("page "+pagecount);
+      layout.append("text 30 19 40 "+data.size());
+
+      If (housecount>0)
+        layout.append("button 333 19 2650 2651 0 "+(pagecount-1));
+      EndIf
+      If (houseinfo.size()>housecount+HOEHE_HOUSES)
+        layout.append("button 313 19 2648 2647 0 "+(pagecount+1));
+        data.append("Bauplatz auswaehlen ("+(housecount+1)+" bis "+(housecount+HOEHE_HOUSES)+")");
+      Else
+        data.append("Bauplatz auswaehlen ("+(housecount+1)+" bis "+houseinfo.size()+")");
+      EndIf
+
+      pagecount:=pagecount+1;
+      nextpageswap:=nextpageswap+HOEHE_HOUSES;
+      pos_y:=60;
+    EndIf
+
+    layout.append("button 30 "+(pos_y-3)+" 2640 2641 1 0 "+msgbutton);
+
+    layout.append("text 65 "+pos_y+" 68 "+data.size());
+    data.append(PlaceName(house[2]));
+    layout.append("text 265 "+pos_y+" 68 "+data.size());
+    data.append(house[2].x+" "+house[2].y+" "+house[2].z);
+
+    housecount+=1;
+    msgbutton+=1;
+    pos_y+=20;
+  EndForEach
+
+  Return ({layout, data, houseinfo});
+EndFunction

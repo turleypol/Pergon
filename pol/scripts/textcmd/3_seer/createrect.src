@@ -1,0 +1,115 @@
+///////////////////////////////////////////////////////////////////////////////////////
+//
+// .createrect command - create items in a targetted rectangle
+//
+// Authors: Gazworld and MuadDib.
+//
+// usage: .createrect [objtype] [z height] [color]
+// Items created with this command will not decay from normal decay cycler.
+//
+// Notes: Gaz wrote the majority of this. I added several tilestypes and some prop entries.
+//        I also added the mods in for specifying the Color on the cmdline also.
+//
+//
+///////////////////////////////////////////////////////////////////////////////////////
+
+use util;
+use uo;
+
+Include "include/itemnpc";
+Include "include/msgs";
+
+program textcmd_create(who, params)
+    var objtype, zheight, thecolor;
+
+    params := SplitWords(params);
+
+    objtype := params[1];
+
+    if (len(params)>=3)
+        zheight  := CInt(params[2]);
+        thecolor := CInt(params[3]);
+    elseif (len(params)==2)
+        zheight  := CInt(params[2]);
+        thecolor := 0;
+    else
+        zheight  := 0;
+        thecolor := 0;
+    endif
+
+    SendSysMessagePergon(who, "NW-Ecke");
+    var topleft := TargetCoordinates(who);
+    if (!topleft)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      Return;
+    endif
+
+    SendSysMessagePergon(who, "SO-Ecke");
+    var botright := TargetCoordinates(who);
+    if (!botright)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      Return;
+    endif
+
+    if (topleft.x <= botright.x and topleft.y <= botright.y)
+      var x, y, z;
+      for(x := topleft.x; x <= botright.x; x += 1)
+        for (y := topleft.y; y <= botright.y; y += 1)
+          z := GetMapInfo(x,y,who.realm).z;
+          createtiles(x,y,zheight, objtype, thecolor,who.realm);
+        endfor
+      endfor
+    else
+      SendSysMessagePergon(who, "Bitte NW-Ecke und dann SO-Ecke wählen!");
+    endif
+
+
+endprogram
+
+function createtiles(x,y,z, objtype, thecolor,realm)
+  var types := 0;
+  var starting := 0;
+  var item, object;
+  case (objtype)
+    "grass":           starting:=6013; types:=5; placetiles(x, y, z, starting, types, thecolor,realm);
+    "cavefloor":       starting:=1339; types:=5; placetiles(x, y, z, starting, types, thecolor,realm);
+    "cobblestone":     starting:=1301; types:=4; placetiles(x, y, z, starting, types, thecolor,realm);
+    "darkpavers":      starting:=1313; types:=4; placetiles(x, y, z, starting, types, thecolor,realm);
+    "dirt":            starting:=12788; types:=7; placetiles(x, y, z, starting, types, thecolor,realm);
+    "flagstones":      starting:=1276; types:=4; placetiles(x, y, z, starting, types, thecolor,realm);
+    "lava1":           starting:=13410; types:=5; placetiles(x, y, z, starting, types, thecolor,realm);
+    "lava2":           starting:=13416; types:=5; placetiles(x, y, z, starting, types, thecolor,realm);
+    "lavaedgens1":     starting:=4927; types:=15; placetiles(x, y, z, starting, types, thecolor,realm);
+    "lavaedgeew1":     starting:=4921; types:=5; placetiles(x, y, z, starting, types, thecolor,realm);
+    "lavaedgeew2":     starting:=4912; types:=9; placetiles(x, y, z, starting, types, thecolor,realm);
+    "lightpavers":     starting:=1305; types:=4; placetiles(x, y, z, starting, types, thecolor,realm);
+    "mediumpavers":    starting:=1309; types:=4; placetiles(x, y, z, starting, types, thecolor,realm);
+    "sandstonepaver":  starting:=1181; types:=4; placetiles(x, y, z, starting, types, thecolor,realm);
+    "sstonedarke":     starting:=1331; types:=4; placetiles(x, y, z, starting, types, thecolor,realm);
+    "sstonedarks":     starting:=1327; types:=4; placetiles(x, y, z, starting, types, thecolor,realm);
+    "sstonelighte":    starting:=1321; types:=4; placetiles(x, y, z, starting, types, thecolor,realm);
+    "sstonelights":    starting:=1317; types:=4; placetiles(x, y, z, starting, types, thecolor,realm);
+    "stars":           starting:=8511; types:=6; placetiles(x, y, z, starting, types, thecolor,realm);
+    "water1":          starting:=6039; types:=6; placetiles(x, y, z, starting, types, thecolor,realm);
+    default:           object := CInt(objtype); 
+                       item   := CreateItemAtLocationPergon(x, y, z, object, 1,realm);
+                       item.decayat := 0; 
+                       item.movable := 0; 
+                       item.color   := thecolor;
+  endcase
+
+endfunction
+
+function placetiles(x, y, z, starting, types, thecolor,realm)
+  var item;
+  item := CreateItemAtLocationPergon(x, y, z, randomtile(starting, types), 1,realm);
+  item.decayat := 0;
+  item.movable := 0;
+  item.color   := thecolor;
+endfunction
+
+//starting is the item group's starting number
+//number is how many tiles in that group
+function randomtile(starting, number)
+  Return CInt(randomint(number)+starting);
+endfunction

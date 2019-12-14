@@ -1,0 +1,52 @@
+/////////////////////////////////////////////////////////
+// banditreset - set up bandit on first use, and reset it later
+
+use os;
+use polsys;
+use uo;
+include "::include/logutil";
+include ":dyndungeon:bandit";
+
+Program BanditReset(item)
+    // reset movement
+    // wheel:
+    If (item.graphic == WHEEL_TURNING)
+        item.graphic := WHEEL_STILL;
+    EndIf
+    // lever:
+    If (item.graphic == LEVER_DOWN)
+        item.graphic := LEVER_UP;
+    EndIf
+
+    If (item.graphic <> WHEEL_STILL)
+        // not the wheel? done here
+        return;
+    EndIf
+
+    // the wheel creates the lever (if not already done)
+    var lever := SystemFindObjectBySerial(CInt(item.getprop(PROP_OTHER)));
+    If (lever)
+        // lever is there
+        return;
+    EndIf
+
+    var desc := GetItemDescriptor(item.objtype);
+    desc.graphic := 0x108d;
+    lever := CreateItemAtLocation(
+        item.x, item.y-1, item.z+6, desc, 1, item.realm
+    );
+    If (!lever)
+        syslog(
+            "FEHLER: "+ItemInfoStr(item)+" konnte Hebel nicht erzeugen: "+
+            lever.errortext
+        );
+        return;
+    EndIf
+
+    If (lever)
+        lever.setprop(PROP_OTHER, item.serial);
+        item.setprop(PROP_OTHER, lever.serial);
+    EndIf
+
+    return;
+EndProgram

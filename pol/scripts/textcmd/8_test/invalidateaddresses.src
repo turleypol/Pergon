@@ -1,0 +1,39 @@
+///////////////////////////////////////////////////////////////////////////
+// invalidateaddresses -- kaputte E-Mailadressen markieren
+
+use os;
+use uo;
+include ":mail:broken-addresses";
+include "include/msgs";
+include "include/server";
+
+Program InvalidateAddresses(who)
+    var count_invalid := 0;
+    var count_missing := 0;
+    ForEach acctname in (ListAccounts())
+        SleepMs(2);
+        var account := FindAccount(acctname);
+        If (!account)
+            continue;
+        EndIf
+
+        var addr := account.getprop(PLAYEREMAIL);
+
+        If (!addr)
+            // Account hat gar keine Adresse bisher?
+            count_missing   += 1;
+            account.setprop(PLAYEREMAIL, addr);
+            continue;
+        EndIf
+
+        If (IsBrokenAddress(Lower(addr)))
+            // Adresse als unzustellbar markieren
+            count_invalid   += 1;
+            addr            += ".invalid";
+            account.setprop(PLAYEREMAIL, addr);
+        EndIf
+    EndForEach
+
+    SendSysMessagePergon(who, "Fehlende Adressen: "+count_missing);
+    SendSysMessagePergon(who, "Ungültige Adressen: "+count_invalid);
+EndProgram

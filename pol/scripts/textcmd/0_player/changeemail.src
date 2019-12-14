@@ -1,0 +1,292 @@
+///////////////////////////////////////////////////////////////
+// TextCMD ChangeeMail - eMail-Adresse von Spielern aendern
+//
+// Author: Shinigami
+
+use os;
+use uo;
+include ":mail:common";
+include "include/msgs";
+include "include/pergonutil";
+include "include/permissions";
+include "include/server";
+include "include/varutil";
+
+Program TextCMD_ChangeeMail(who, params)
+  // Account waehlen {{{
+  // jeder darf an seinen Account
+  var account := who.acct;
+  // authorisiert fuer alle Accounts?
+  var auth    := 0;
+
+  If (AllowedToAccessMail(who))
+    // freigeschaltete Leute duerfen zusaetzlich an andere Accounts
+    account := SelectAccount(who, params);
+    If (!account)
+      return;
+    EndIf
+    auth := 1;
+  EndIf
+  // }}}
+
+  // alte Adresse behandeln {{{
+  var addr_old := account.getprop(PLAYEREMAIL);
+  // neue Adresse
+  var addr_new := "";
+  If (auth)
+    // GM darf einfach neue Adresse setzen
+    addr_new := GetNewAddress(who, addr_old);
+    If (!addr_new)
+      // bei Fehleingabe kommt ein Error zurueck
+      return;
+    EndIf
+
+  Else
+    // Spieler muessen sich per Mail-Codes freischalten
+    // ungueltige Adresse kann nur der Staff aendern {{{
+    If (IsInvalidMailAddress(addr_old))
+      // die Code-Mail kommt nicht an, wenn die alte Adresse kaputt ist
+      SendSysMessagePergon(who,
+        "Deine alte E-Mail-Adresse ist ungültig. Für einen Adresswechsel "+
+        "wende dich bitte an den Staff (<"+MADDR_STAFF+">).",
+        "Your old e-mail address is invalid. Please contact the staff "+
+        "(<"+MADDR_STAFF+">) to change it."
+      );
+      return;
+    EndIf
+    // }}}
+
+    // aktuellen Freischaltstand holen und Alter pruefen {{{
+    var status := account.getprop(MAIL_CHANGE_STATUS);
+    If (status.time + 7 * 24 * 3600 < ReadGameClock())
+      // nach 7 Tagen wird es ungueltig
+      status := 0;
+      account.eraseprop(MAIL_CHANGE_STATUS);
+    EndIf
+    // }}}
+
+    If (!status) // keine Aenderung wartet, von vorn beginnen
+      addr_new := GetNewAddress(who, addr_old);
+      If (!addr_new)
+        // bei Fehleingabe kommt ein Error zurueck
+        return;
+      EndIf
+
+      // neue Statusaenderung vorbereiten {{{
+      status := struct;
+      status.+time     := ReadGameClock();
+      status.+addr     := addr_new;
+      status.+code_new := GenRandomCode();
+      status.+code_old := GenRandomCode(status.code_new);
+      status.+ok_new   := 0;
+      status.+ok_old   := 0;
+      account.setprop(MAIL_CHANGE_STATUS, status);
+      // }}}
+
+      // Mails an beide Adressen senden // {{{
+      var body := array{
+        "Seid gegruesst!",
+        "",
+        "Diese E-Mail dient zur Bestaetigung, dass Eure Pergon-Adresse auf",
+        status.addr+" geaendert werden soll.",
+        "",
+        "Um die Aenderung zu bestaetigen, ruft folgenden Befehl auf:",
+        ".changeemail Code",
+        "",
+        "Wenn es sich um ein Versehen handelt oder die E-Mail irrtuemlich",
+        "zugestellt wurde, ignoriert sie einfach. Die Aenderung wird dann",
+        "nicht durchgefuehrt.",
+        "",
+        "Gehabt Euch wohl!"
+      };
+
+      // an alte Adresse
+      body[7] := ".changeemail "+status.code_old;
+      SendMail(
+        // Absender, Empfaenger
+        MADDR_STAFF, who,
+        // Betreff, Mailtext
+        "Pergon: Code alte Adresse", body
+      );
+      // neue Adresse
+      body[7] := ".changeemail "+status.code_new;
+      SendMail(
+        // Absender, Empfaenger
+        MADDR_STAFF, addr_new,
+        // Betreff, Mailtext
+        "Pergon: Code neue Adresse", body
+      );
+      // }}}
+
+      // Erlaeuterung fuer Spieler {{{
+      SendSysMessagePergon(who,
+        "An Eure alte und neue Adresse wurde jeweils eine E-Mail verschickt. "+
+        "Folgt den Anweisungen aus der E-Mail, um die neue Adresse zu "+
+        "aktivieren.",
+        "You will receive e-mails sent to your old and new address. "+
+        "Those e-mails contain instruction to activate your new address."
+      );
+      // }}}
+      return;
+    EndIf
+
+    If (params)
+      // Codeeingabe auswerten {{{
+      var code_wrong := 1;
+      If (params == status.code_new)
+        status.ok_new := 1;
+        account.setprop(MAIL_CHANGE_STATUS, status);
+        SendSysMessagePergon(who, "Neuer Code korrekt", "New code accepted");
+        code_wrong := 0;
+      EndIf
+      If (params == status.code_old)
+        status.ok_old := 1;
+        account.setprop(MAIL_CHANGE_STATUS, status);
+        SendSysMessagePergon(who, "Alter Code korrekt", "Old code accepted");
+        code_wrong := 0;
+      EndIf
+
+      If (code_wrong)
+        SendSysMessagePergon(who, "Code inkorrekt", "Code rejected");
+        return;
+      EndIf
+      // }}}
+    EndIf
+
+    // Statusbericht, was denn noch fehlt // {{{
+    If (!status.ok_new)
+      SendSysMessagePergon(who, "Neuer Code fehlt noch", "New code missing");
+      return;
+    EndIf
+    If (!status.ok_old)
+      SendSysMessagePergon(who, "Alter Code fehlt noch", "Old code missing");
+      return;
+    EndIf
+    // }}}
+
+    // alles da, Aenderung freigeben
+    addr_new := status.addr;
+  EndIf
+  // }}}
+
+  // gleich auf alle Accounts anwenden? {{{
+  var accountlog := account.name;
+  account.setprop(PLAYEREMAIL, addr_new);
+  // laufende Adresswechsel ggf. beenden
+  account.eraseprop(MAIL_CHANGE_STATUS);
+  If (addr_old)
+    // nur bei gesetzter alter Adresse, sonst klaut man sich
+    // ggf. fremde Accounts ohne Adresse
+    If (SendYesNoGump(who,
+        "Sollen alle Accounts mit der alten Adresse auf die neue Adresse "+
+        "umgestellt werden?", 10, 10, TE_CANCEL_DISABLE
+    ))
+      accountlog += ChangeEmailGlobal(addr_old, addr_new);
+    EndIf
+  EndIf
+  // }}}
+
+  // Adresse aendern und Logging {{{
+  If (!addr_old)
+    addr_old := "(nicht gesetzt)";
+  EndIf
+  SendSysMessagePergon(who,
+    "'"+addr_new+"' wurde als E-Mail-Adresse gesetzt fuer folgende Accounts: "+
+    accountlog,
+    "Set '"+addr_new+"' as e-mail address for the following accounts: "+
+    accountlog
+  );
+  syslog(
+    CharInfoStr(who)+" aenderte die E-Mail-Adresse von '"+addr_old+
+    "' auf '"+addr_new+"' fuer die Accounts: "+accountlog
+  );
+  // }}}
+EndProgram
+
+// GMs duerfen einen Account auswaehlen
+Function SelectAccount(who, accountname) // {{{
+  If (!accountname)
+    Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+    // Einen Anfangsbuchstaben auswaehlen
+    var buchstabe := ChooseAccountBuchstabe(who, FillInAccountBuchstaben());
+    If (buchstabe == -1)
+      // nix gewählt
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+
+    // Einen Account auswaehlen
+    accountname := ChooseAccountName(who, FillInAccountNames(buchstabe));
+    If (!accountname)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+  EndIf
+
+  var account := FindAccount(accountname);
+  If (!account)
+    SendSysMessagePergon(who,
+      "Account "+accountname+" existiert nicht",
+      "Account "+accountname+" does not exist"
+    );
+    return error{errortext := "No such account"};
+  EndIf
+
+  return account;
+EndFunction // }}}
+
+// neue Mailadresse eingeben lassen
+Function GetNewAddress(who, addr_old) // {{{
+  var addr_new := "";
+  If (addr_old)
+    addr_new := SendTextEntryGump(
+      who, "Gebt bitte die neue E-Mail-Adresse ein ("+addr_old+")!", 80
+    );
+  Else
+    addr_new := SendTextEntryGump(
+      who, "Gebt bitte die E-Mail-Adresse ein!", 80
+    );
+  EndIf
+  If (!addr_new)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return error{errortext := "Cancelled"};
+  EndIf
+  If (IsInvalidMailAddress(addr_new))
+    If (AllowedToAccessMail(who))
+      SendSysMessagePergon(who,
+        "Hinweis: Neue Adresse ungültig",
+        "Note: New address invalid"
+      );
+    Else
+      SendSysMessagePergon(who,
+        "Neue Adresse ungültig, Abbruch",
+        "New address invalid, cancelled"
+      );
+      return error{errortext := "Address invalid"};
+    EndIf
+  EndIf
+
+  return addr_new;
+EndFunction // }}}
+
+// alle Accounts mit der alten Adresse auf die neue Adresse umstellen
+Function ChangeEmailGlobal(addr_old, addr_new) // {{{
+  var collectnames := "";
+  ForEach accountname in (ListAccounts())
+    SleepMs(5);
+    var account := FindAccount(accountname);
+    If (!account)
+      continue;
+    EndIf
+
+    var addr_acc := account.getprop(PLAYEREMAIL);
+    If (addr_acc == addr_old)
+      account.setprop(PLAYEREMAIL, addr_new);
+      collectnames += ", "+accountname;
+    EndIf
+  EndForEach
+
+  return collectnames;
+EndFunction // }}}
+
+// vim: sw=2 sts=2

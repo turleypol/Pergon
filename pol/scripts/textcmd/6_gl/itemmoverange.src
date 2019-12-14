@@ -1,0 +1,135 @@
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//   StaticsMove - Move all Objects from Source to Dest Location
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2004/08/24 Shinigami: Ueber den 5. Param kann man steuern, ob nur alle Items ueber dem Quellbezug uebertragen werden
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/errormsg";
+Include "include/msgs";
+
+///////////////
+// Konstanten
+///////////////
+
+Const ERRORMSGS_GERMAN:=
+  "{}StaticsMove: MoveArea aktiviert..."+
+  "{}StaticsMove: MoveArea beendet."+
+  "{}X1 muss kleiner-gleich X2 bzw. Y1 muss kleiner-gleich Y2 sein!"+
+  "{}%% darf nur 0 bis 4095 sein!"+
+  "{}%% darf nur 0 bis 6143 sein!"+
+  "{}Sie muessen 4 Paramter angeben: X1 Y1 X2 Y2"+
+  "{}Die Objekte wurden verschoben."+
+  "{}Waehlt bitte einen Quell-Bezugspunkt !"+
+  "{}Waehlt bitte einen Ziel-Bezugspunkt !"+
+  "{}Abbruch";
+Const ERRORMSGS_ENGLISH:=
+  "{}StaticsMove: MoveArea started..."+
+  "{}StaticsMove: MoveArea done."+
+  "{}X1 must be lower/equal X2 and Y1 must be lower/equal Y2!"+
+  "{}%% must be between 0 and 4095!"+
+  "{}%% must be between 0 and 6143!"+
+  "{}U've to enter 4 Paramters: X1 Y1 X2 Y2"+
+  "{}Objects have been moved."+
+  "{}Choose Source Point !"+
+  "{}Choose Destination Point !"+
+  "{}Cancel";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_StaticsMove(who, params)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  params:=SplitWords(params);
+  If ((params.size()==4) Or (params.size()==5))
+    If ((0<=CInt(params[1])) And (CInt(params[1])<6144))
+      If ((0<=CInt(params[2])) And (CInt(params[2])<4096))
+        If ((0<=CInt(params[3])) And (CInt(params[3])<6144))
+          If ((0<=CInt(params[4])) And (CInt(params[4])<4096))
+            If ((CInt(params[1])<=CInt(params[3])) And (CInt(params[2])<=CInt(params[4])))
+              PrintErrorMessage(8, {}, who);
+
+              Var quellbezug:=Target(who);
+              If (quellbezug)
+                quellbezug:={quellbezug.x, quellbezug.y, quellbezug.z};
+
+                PrintErrorMessage(9, {}, who);
+
+                Var zielbezug:=Target(who);
+                If (zielbezug)
+                  zielbezug:={zielbezug.x, zielbezug.y, zielbezug.z};
+
+                  PrintErrorMessage(1);
+                  MoveArea(who, quellbezug, zielbezug, CInt(params[1]), CInt(params[2]), CInt(params[3]), CInt(params[4]), params[5]);
+                  PrintErrorMessage(2);
+                Else
+                  PrintErrorMessage(10, {}, who);
+                EndIf
+              Else
+                PrintErrorMessage(10, {}, who);
+              EndIf
+            Else
+              PrintErrorMessage(3, {}, who);
+            EndIf
+          Else
+            PrintErrorMessage(4, {"Y2"}, who);
+          EndIf
+        Else
+          PrintErrorMessage(5, {"X2"}, who);
+        EndIf
+      Else
+        PrintErrorMessage(4, {"Y1"}, who);
+      EndIf
+    Else
+      PrintErrorMessage(5, {"X1"}, who);
+    EndIf
+  Else
+    PrintErrorMessage(6, {}, who);
+  EndIf
+EndProgram
+
+////////////////////////////////////
+// MoveArea - Verschiebt die Items
+////////////////////////////////////
+
+Function MoveArea(who, quellbezug, zielbezug, x1, y1, x2, y2, above)
+  Var deltax:=zielbezug[1]-quellbezug[1];
+  Var deltay:=zielbezug[2]-quellbezug[2];
+  Var deltaz:=zielbezug[3]-quellbezug[3];
+  Var movable;
+
+  Var z1:=-128;
+  If (above)
+    z1:=quellbezug[3];
+  EndIf
+
+  ForEach object in ListObjectsInBox(x1, y1, z1, x2, y2, 127,who.realm)
+    If (object.isa(POLCLASS_ITEM))
+      MoveObjectToLocation(object, object.x+deltax, object.y+deltay, object.z+deltaz, object.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+    ElseIf (object.isa(POLCLASS_MOBILE))
+      movable:=object.frozen;
+      object.frozen:=0;
+      MoveObjectToLocation(object, object.x+deltax, object.y+deltay, object.z+deltaz, object.realm, MOVEOBJECT_FORCELOCATION);
+      object.frozen:=movable;
+    EndIf
+  EndForEach
+
+  PrintErrorMessage(7, {}, who);
+EndFunction

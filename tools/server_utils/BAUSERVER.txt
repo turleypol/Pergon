@@ -1,0 +1,36 @@
+﻿Pergon Centred Server runterfahren lassen (nicht das jemand rumspielt)!
+
+lokaler centred kram einspielen
+- aktuellen bauclient
+- map0, staidx0 statics0 von centred besorgen
+- CompareMap in UOFiddler bauclient mit den 3 Dateien vergleichen
+
+-Koordinaten raussuchen die sich unterscheiden
+--(Undock Tab im Kontextmenu der Reiter)
+
+-Map tab -> Misc -> Map And Statics Copy..
+-- Replace From der Ordner mit den 3 neuen files
+-- Copy Map & Copy Statics aktivieren
+-- Remove Duplicates durchsucht nochmal die neuen Statics nach duplikaten
+-- X1,Y1 sollten im regelfall genau das selbe sein bei "From"/"To Region"
+-- da dies direkt neue files schreibt bei mehreren Regionen erst die exportieren 3 Files in den bauclient kopieren (Fiddler neustarten)
+
+
+
+Bauserver items statisieren
+- backup machen lassen
+
+- ".staticsexport nodestroy"
+-- lieber erstmal machen für die weicheier oder direkt ".staticsexport destroy"
+
+-- die zwei files heißen config/statics/statics.cfg und config/statics/items.cfg
+-- files ziehen
+
+-- Abkotzen
+-- mit staticsSplitter.py bissle was fummeln
+
+- UOFiddler ->Map ->Freeze Statics
+- cfg auswählen
+- zum speichern auf e.g. "Defrag Statics"
+
+- dynamische Items wieder per .staticsimport "prefix" importieren (natürlich brauch der auch ne leere prefix-statics.cfg... wasn schwachfug)

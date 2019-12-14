@@ -1,0 +1,4 @@
+<h3 id="buzz">buzz</h3>
+
+<p>Entfernt Haare. Seer dürfen auch Player und NPCs der Haare
+berauben.</p>

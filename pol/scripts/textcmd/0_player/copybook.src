@@ -1,0 +1,122 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD CopyBook - Dupliziert ein Buch (wahlweise schreibbar)
+//
+//     Author: Shinigami
+//
+// Params:
+//   w - Buch ist schreibbar
+
+///////////////////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use cfgfile;
+use datafile;
+use os;
+use uo;
+Include "include/client";
+Include "include/itemnpc";
+Include "include/msgs";
+Include "include/server";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_CopyBook(who, cmd)
+  If ((!cmd) Or (cmd=="w"))
+    Var itemdesc:=ReadConfigFile("::itemdesc");
+    If (itemdesc)
+      SendSysMessagePergon(who, "Bitte das zu duplizierende Buch auswählen!", "Please choose book to duplicate!");
+
+      Var origbook:=Target(who);
+      If (origbook.isa(POLCLASS_ITEM))
+        If (origbook.objtype in {0x0fef, 0x0ff0, 0x0ff1, 0x0ff2, 0x0ff3, 0x0ff4, 0xff85})
+          Var price:=itemdesc[origbook.objtype].vendorsellsfor; // Preis ermitteln
+          If (!price)
+            price:=10;
+          EndIf
+
+          Var copybook:=0;
+          If (GetObjProperty(who, TYPBIBLIOTHEKAR) Or (who.cmdlevel >= CMDLEVEL_SEER))
+            copybook:=1;
+          Else
+            copybook:=who.spendgold(price); // Gold abziehen...
+          EndIf
+
+          If (copybook) // Versagt nur dann, wenn Spieler und nicht genug Geld dabei...
+            Var book;
+            If (origbook.objtype==0xff85) // Globalisiertes Buch aus der Datenbank
+              book:=CreateItemInBackpackPergon(who, origbook.graphic, 1); // Buch-Kopie erzeugen
+            Else
+              book:=CreateItemInBackpackPergon(who, origbook.objtype, 1); // Buch-Kopie erzeugen
+            EndIf
+
+            If (book)
+              If (origbook.objtype==0xff85) // Globalisiertes Buch aus der Datenbank
+                Var bookid:=GetObjProperty(origbook, "bookid");
+                If (bookid)
+                  Var staticbooks:=OpenDataFile(":sysbook:staticbooks");
+                  If (staticbooks)
+                    Var bookdata:=staticbooks.findelement(bookid);
+
+                    SetObjProperty(book, "author", bookdata.getprop("author"));
+                    SetObjProperty(book, "contents", bookdata.getprop("contents"));
+                    SetObjProperty(book, "title", bookdata.getprop("title"));
+                  Else
+                    SysLog("FEHLER: DataFile 'staticsbooks' konnte nicht geoeffnet werden!");
+                  EndIf
+                Else
+                  SendSysMessagePergon(who, "Dieses Buch scheint leer zu sein!", "This book doesn't contain anything!");
+                EndIf
+              Else // Selbstgeschriebenes Buch
+                ForEach cpropname in GetObjPropertyNames(origbook)
+                  SetObjProperty(book, cpropname, GetObjProperty(origbook, cpropname));
+                EndForEach
+              EndIf
+
+              If (cmd<>"w") // Soll das Buch unbeschreibbar sein?
+                SetObjProperty(book, "nowrite", 1);
+
+                Var title:=book.getprop("title");
+                Var author:=book.getprop("author");
+                If (title And author)
+                  book.name:=title+" von "+author;
+                ElseIf (title)
+                  book.name:=title;
+                ElseIf (author)
+                  book.name:="Verfasst von "+author;
+                Else
+                  book.name:="ein Buch";
+                EndIf
+              Else
+                book.name:=origbook.name;
+              EndIf
+
+              SetObjProperty(book, "casecity", 1); // Buch darf nicht aus dem Regal entfernt werden
+
+              PlaySoundEffect(who, SFX_24A);
+              SendSysMessagePergon(who, "Ihr legt eine Kopie eures Buches in Euren Rucksack.", "You create a copy of your book in your backpack.");
+            Else
+              SendSysMessagePergon(who, "Irgendwas ging schief.", "Something is broken.");
+            EndIf
+          Else
+            SendSysMessagePergon(who, "Ihr habt nicht genug Gold. Ihr braucht "+price+" Goldstücke!",
+              "You have not enough gold. You needs "+price+" goldcoins!");
+          EndIf
+        Else
+          SendSysMessagePergon(who, "Ihr müssz ein Buch auswählen!", "You have to choose a book!");
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Ihr müsst einen Gegenstand auswählen!", "You have to choose an item!");
+      EndIf
+    Else
+      SysLog("FEHLER: Konnte die itemdesc.cfg nicht oeffnen!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Lediglich 'w' fuer schreibbar ist zulässig!", "You can set 'w' - writeable only!");
+  EndIf
+EndProgram

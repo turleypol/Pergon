@@ -1,0 +1,131 @@
+/////////////////////////////////////////////////////////////////////////////
+// Gate of Life -- resurrect dead players
+//
+
+include "include/msgs";
+include "include/modifyskill";
+
+Program GateOfLife(who, gate)
+  
+  // man sollte schon tot sein
+  If (!who.dead)
+    return;
+  EndIf
+
+  If (gate.invisible)
+    SendSysMessagePergon(who,
+      "Die Energien des Tores sind noch nicht wieder vollkommen regeneriert.",
+      "The energies of the gate have not been fully regenerated yet."
+    );
+    return;
+  EndIf
+
+  If (GetObjProperty(who, "spell_doomed"))
+    SendsysMessagePergon(who,
+      "Ihr seid dazu verdammt, unter den Toten zu wandeln.",
+      "You are doomed to dwell amongst the dead."
+    );
+    return;
+  EndIf
+  
+  who.frozen := 1;
+  gate.invisible := 1;
+  
+  // Wer oft stirbt, muss laenger auf seine Wiederbelebung warten
+  var restimes := GetObjProperty(who, "restimes");
+  If (restimes)
+    While (restimes.size())
+      If (PolCore().SysTime - restimes[1] > 3600)
+        restimes.erase(1);
+      Else
+        restimes.append(PolCore().SysTime);
+        SetObjProperty(who, "restimes", restimes);
+        break;
+      EndIf
+    EndWhile
+    If (!restimes.size())
+      restimes.append(PolCore().SysTime);
+      SetObjProperty(who, "restimes", restimes);
+    EndIf
+  Else
+    restimes := {PolCore().SysTime};
+    SetObjProperty(who, "restimes", restimes);
+  EndIf
+   
+  var items := reseffects(who, gate, restimes.size());
+  
+  If (!who.connected or !items)
+    who.frozen := 0;
+    
+    ForEach item in (items)
+      DestroyItem(item);
+    EndForEach
+    
+    return;
+  EndIf
+  
+  // Wiederbeleben
+  SendSysMessagePergon(who, "Lebe wieder!", "Live again!");
+  PlaySoundEffect(who, SFX_SPELL_RESSURECTION);
+  ResurrectPergon(who);
+  ResPenalties(who);
+  Sleep(1);
+  PlayObjectCenteredEffect(who, FX_HEAL_EFFECT, 7, 14);
+  SendSysMessagePergon(who,
+    "Euer Körper fühlt sich wieder wärmer an.",
+    "Your body feels warmer."
+  );
+
+  ForEach item in (items)
+    DestroyItem(item);
+  EndForEach
+  
+  var regen_time := GetObjProperty(gate, "regen_seconds");
+  If (!regen_time)
+    regen_time := 300;
+    SetObjProperty(gate, "regen_seconds", regen_time);
+  EndIf
+
+  Sleep(regen_time);
+  gate.invisible := 0;
+EndProgram
+
+// Effektfeuerwerk um Zeit bis zur Wiederbelebung zu überbrücken
+Function reseffects(who, gate, times)
+  
+  var i, j, k;
+  For (i := 0; i < times; i += 1)
+    SendSysMessagePergon(who, "Die benötigte Energie wird gebündelt...");
+    For (j := 5; j > 0; j-=1)
+      For(k := 0; k < 8; k+=1)
+        PlayStationaryEffect(gate.x+MovementVectorX(k)*j, gate.y+MovementVectorY(k)*j, gate.z, 0x37B9, 0);
+      EndFor
+      PlaySoundEffectXYZ(gate.x, gate.y, gate.z, 0x5CA);
+      Sleep(1);
+    EndFor
+    If (times-1 > i)
+      If (!who.connected)
+        return;
+      EndIf
+      PlaySoundEffectXYZ(gate.x, gate.y, gate.z, SFX_SPELL_ENERGY_FIELD);
+      SendSysMessagePergon(who, "Die gebündelte Energie reicht noch nicht aus!");
+      Sleep(11);
+    EndIf
+  EndFor
+  
+  PlaySoundEffectXYZ(gate.x, gate.y, gate.z, SFX_SPELL_PARALYZE_FIELD);
+  var sparkle := CreateItemAtLocationPergon(gate.x, gate.y, gate.z, 0x375A, 1);
+  
+  Sleep(11);
+  
+  PlaySoundEffectXYZ(gate.x, gate.y, gate.z, SFX_SPELL_GATE_TRAVEL);
+  PlayStationaryEffect(gate.x, gate.y, gate.z, FX_SUMMON_GATE, 0, 30);
+  
+  SendSysMessagePergon(who, "Das Tor zur Welt der Lebenden öffnet sich!");
+  SleepMS(1400);
+  
+  var bluegate := CreateItemAtLocationPergon(gate.x, gate.y, gate.z, 0x0F6C, 1);
+  PlaySoundEffectXYZ(gate.x, gate.y, gate.z, 0x5CF);
+  
+  return {sparkle, bluegate};
+EndFunction

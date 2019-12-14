@@ -1,0 +1,37 @@
+////////////////////////////////////////////////////
+//
+//   TextCMD Throw - Einen Gegenstand wohin werfen
+//
+//     Author: Mai
+//
+//   Modifications:
+//     16.10.2005 Fraggulus: Loop-Effekt bei PlayMovingEffect() entfernt
+//
+////////////////////////////////////////////////////
+
+use file;
+use uo;
+include "include/clock";
+include "include/quests";
+include "include/modifyskill";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Throw(character, graphic)
+
+ if (!graphic)
+   SendSysMessagePergon(character, "USAGE: .Throw <graphic-id>", "USAGE: .Throw <graphic-id>");
+ else
+   var where := Target(character);
+   if (where)
+     PlayMovingEffect(character, where, cint(graphic), 5, 0, 0);
+
+     QuestCharLog(character, "TextCMD Throw: " + Lower(Hex(graphic)));
+   Else
+    SendSysMessagePergon(character, "Abbruch", "Abort");
+   endif
+ endif
+
+EndProgram

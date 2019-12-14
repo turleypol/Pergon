@@ -1,0 +1,31 @@
+use cfgfile;
+use os;
+use uo;
+
+Include "include/mrcspawn";
+Include "include/msgs";
+
+Program TextCMD_Price(who)
+  If (who.acctname=="Shinigami")
+    SendSysMessagePergon(who, "Bitte ein Item auswaehlen!");
+
+    Var item:=Target(who);
+    If (item.isa(POLCLASS_ITEM))
+     // item.buyprice:=CInt(text);
+     // item.sellprice:=CInt(text);
+     // SysLog("Preis gesetzt auf "+CInt(text));
+
+      item.buyprice:=BUY_ITEM; // NPC kauft das Item vom Player an
+      SetItemPrice(who, {item});    // Preis des Gegenstandes setzen
+
+      If (!item.buyprice) // Unveraenderter ItemDesc-Preis?
+        Var itemdesc:=ReadConfigFile("::itemdesc");
+        SendSysMessagePergon(who, "NPC-Ankaufspreis = "+itemdesc[item.objtype].vendorbuysfor);
+      Else
+        SendSysMessagePergon(who, "NPC-Ankaufspreis = "+item.buyprice);
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+  EndIf
+EndProgram

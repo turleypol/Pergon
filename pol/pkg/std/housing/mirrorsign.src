@@ -1,0 +1,58 @@
+/*
+ *  Mirrorsign
+ *  konfiguriert Spiegelschild, manuelle Updates moeglich
+ */
+
+include "mirror";
+
+Program Mirror(who, mirror)
+  If (!GetObjProperty(mirror, PROP_MIRROR_WHAT))
+    // noch nicht konfiguriert
+    Setup(who, mirror);
+  EndIf
+
+  UpdateSign(mirror);
+EndProgram
+
+Function Setup(who, mirror)
+  SendSysMessagePergon(who,
+    "Bitte Schild zum Spiegeln auswählen.",
+    "Select a sign to be mirrored."
+  );
+  var sign := Target(who, TGTOPT_NOCHECK_LOS+TGTOPT_NEUTRAL);
+  If (!sign)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  var file := ReadConfigFile(":housing:itemdesc");
+  If (!file)
+    SendSysMessagePergon(who,
+      "Itemdesc für Schilder nicht gefunden!",
+      "Sign itemdesc file not found!"
+    );
+    return;
+  EndIf
+
+  var elem := FindConfigElem(file, sign.objtype);
+  If (!elem)
+    SendSysMessagePergon(who,
+      "Eintrag für Schild nicht gefunden!",
+      "Sign's itemdesc entry not found!"
+    );
+    return;
+  EndIf
+
+  If (!GetConfigString(elem, "ControlScript")["signcontrol"])
+    SendSysMessagePergon(who,
+      "Das scheint kein Hausschild zu sein!",
+      "That does not appear to be a house sign!"
+    );
+    return;
+  EndIf
+
+  SetObjProperty(mirror, PROP_MIRROR_WHAT, sign.serial);
+  SendSysMessagePergon(who,
+    "Spiegelschild aktiviert.", "Mirror sign activated."
+  );
+EndFunction

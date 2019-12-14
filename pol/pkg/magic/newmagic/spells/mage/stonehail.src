@@ -1,0 +1,138 @@
+//**************************************************************************************************
+// Script file stonehail.src
+//
+//    implements spell 116 <Stone Hail> - "Steinhagel"
+//
+//  creates a stonehail which deals earth damage
+//     [ Resisted (Elemental - Earth) ]
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 28.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//              03.08.2005 Seppel - Effekte überarbeitet
+//
+//**************************************************************************************************
+
+use os;
+use vitals;
+use util;
+
+Include "../magicpergon";
+Include "../resistance";
+Include "../spellattack";
+Include "include/packets";
+
+program cast_stonehail (params)
+
+   Var caster;
+   Var where;
+   Var victims;
+
+   Var spells:= ReadConfigFile("::spells");                 // load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_MAGE_STONEHAIL);
+   Var resist;
+   Var dmg;
+   Var basedmg:=  spell.primary;
+   Var mindmg:=   spell.primarymin;
+   Var maxdmg:=   spell.primarymax;
+   Var range:=    spell.range;
+   Var minrange:= spell.rangemin;
+   Var maxrange:= spell.rangemax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      where:=struct{x,y,z,realm};
+      where.x:=params[4].x;
+      where.y:=params[4].y;
+      where.z:=params[4].z;
+      where.realm:=params[4].realm;
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      where:=  TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_MAGE_STONEHAIL);
+      where:= TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, where);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   basedmg:= CDbl(power*basedmg/100.0);       // calc spell range and spell damage
+   range:=   CInt(power*range/100.0);         // according to casters intelligence
+   if (minrange and minrange > range)
+      range:= minrange;
+   elseif (maxrange and maxrange < range)
+      range:= maxrange;
+   endif
+                                  // get victims in spell range
+   victims:= ListMobilesNearLocationEX(where.x, where.y, where.z, range, LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN,where.realm);
+
+   Var effect;
+   Var hail:=array;
+   Var hailpart:=struct;   
+   hailpart.+x;
+   hailpart.+y;
+   hailpart.+z;
+   Var hvar:= 2 * range + 1;
+   Var wx:= where.x - range;
+   Var wy:= where.y - range;
+   Var i;
+
+   for (i:= 1; i <= (hvar*3); i+= 1)          // initialise stonehail graphics randomly
+      hailpart.x:= RandomInt(hvar) + wx;          // three stone for each range point
+      hailpart.y:= RandomInt(hvar) + wy;
+      hailpart.z:= (RandomInt(10) + 1) * 3 + where.z;    
+      hail[i]:= hailpart;
+   endfor
+
+   if (victims.size())
+      foreach victim in victims               // play sound and apply damage
+         if (victim <> caster && !victim.dead)      // preserve caster and exclude ghosts
+            PlaySoundEffect(victim, SFX_17);
+            if (victim.isa(POLCLASS_NPC))
+               send_attack(victim, caster, 116);
+            endif
+            resist:= 1 - CDbl(GetResistance(victim, "earth"));    // get earth resistance of victim
+            dmg:= CInt(basedmg * resist);                 // alter spell damage
+            if (mindmg and mindmg > dmg)
+               dmg:= mindmg;
+            elseif (maxdmg and maxdmg < dmg)
+               dmg:= maxdmg;
+            endif
+
+            ApplyRawDamagePergon(victim, dmg);          // apply spell damage to victim
+         endif
+         SleepMS(2);
+      endforeach
+   endif
+
+   PlaySoundEffect(caster, SFX_17);
+
+   foreach hailstone in hail                        // let stones rain down so everybody gets something to see    
+      case (RandomInt(7))
+          0: effect:= 0x1364;
+          1: effect:= 0x1365;
+          2: effect:= 0x1366;
+          3: effect:= 0x1368;
+          4: effect:= 0x1369;
+          5: effect:= 0x136b;
+          6: effect:= 0x136c;
+      endcase     
+      PlayMovingEffectXYZ(hailstone.x, hailstone.y, hailstone.z, hailstone.x, hailstone.y, hailstone.z - 20, effect, 1,0,0, where.realm);
+      SleepMS(25);
+      PlaySoundEffect(caster, SFX_F3);
+   endforeach
+   
+endprogram

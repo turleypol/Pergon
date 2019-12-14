@@ -1,0 +1,396 @@
+/////////////////////////////////////////////////////////
+//
+//   combatbook - mit Spellpanel 
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     03.07.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+
+Use uo;
+Use os;
+Use cfgfile;
+
+Include "include/modifyskill";
+Include ":combatabilities:combatabilities";
+
+Var cfg:=ReadConfigFile(":combatabilities:abilities");
+
+Const PANEL_GUMP_WIDTH:=   44;   // Ausmass eines Symbols auf dem Panel
+Const PANEL_GUMP_HEIGHT:=  44;
+Const GUMP_EMPTY_EDIT:=  2152;
+
+Program Weaponbook(who,book)
+  If (who.getprop("Combatbook"))  // Ich habe eigentlich ein Buch
+    If (!SystemFindObjectBySerial(who.getprop("Combatbook")))  // das ist aber weg
+      If (!book.getprop("Besitzer")) // und das hat noch keinen
+        If (YesNo(who,"<br>Wollt ihr wirklich dieses Buch fuer euch reservieren?"))
+          book.setprop("Besitzer",who.serial);
+          who.setprop("Combatbook",book.serial);
+        Else
+          Return;
+        EndIf
+      EndIf
+    EndIf
+  Else  // ich hab noch keins
+    If (!book.getprop("Besitzer"))  // das auch noch keinen
+      If (YesNo(who,"<br>Wollt ihr wirklich dieses Buch fuer euch reservieren?"))
+        book.setprop("Besitzer",who.serial);
+        who.setprop("Combatbook",book.serial);
+      Else
+        Return;
+      EndIf
+    EndIf
+  EndIf
+  
+  // gehört es mir?
+  If ((book.getprop("Besitzer")<>who.serial) && (who.cmdlevel<CMDLEVEL_HIGHGM))
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Dieses Buch gehört euch nicht."),lang:="DEU"},
+                             struct{uc_text:=CAscz("This book does not belong to you."),lang:="ENU"});
+    Return;
+  EndIf
+  If (!book.getprop("abilities"))  // Init
+    book.setprop("abilities",{});
+  EndIf
+  If (!book.getprop("GumpProps")) // Init
+    book.setprop("GumpProps",struct{mask:={{0}},zeilen:=1,spalten:=1,transparent:=0,x:=50,y:=50});
+  EndIf
+  
+  // Ist das WeaponBook bereits geoeffnet?
+  Var open:=book.getprop("#Open");
+  If (open) // Ja. Falls doch nicht, wird das Flag nach 5 Sekunden entfernt
+    Var errorclock:=book.getprop("#ErrorClock");
+    If (errorclock)
+      If (errorclock>ReadGameClock())
+        book.eraseprop("#Open");
+        open:=0; // Buch ist wohl doch nicht geoeffnet...
+      EndIf
+    EndIf
+  EndIf
+
+  If (open) // Ja
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Buch ist bereits geöffnet!"),lang:="DEU"},
+                             struct{uc_text:=CAscz("Book has been already opened!"),lang:="ENU"});
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Falls doch nicht, versucht es erneut..."),lang:="DEU"},
+                             struct{uc_text:=CAscz("If not, try again..."),lang:="ENU"});
+    book.setprop("#ErrorClock", ReadGameClock()+5);
+  Else // Nein
+    book.eraseprop("#ErrorClock");
+    book.setprop("#Open", 1);
+    SendSysMessagePergon(who, struct{uc_text:=CAscz("Buch wird geöffnet."),lang:="DEU"},
+                              struct{uc_text:=CAscz("Book is opened."),lang:="ENU"});
+    ShowBook(who,book);
+    book.eraseprop("#Open");
+  EndIf
+EndProgram
+
+//////////////////////////////////
+// Erster Schritt, Fähigkeiten auch hierrüber anwendbar
+//////////////////////////////////
+Function ShowBook(who,book,edit:=0)
+  Var layout:={"nodispose",
+               "page 0",
+               "gumppic 100 100 11010",
+               "page 1"};
+  Var data:={};
+  Var abilities:=book.getprop("abilities");
+  
+  Var i:=1;
+  Var page:=1;
+  ForEach ability in abilities
+    If (cfg[ability])
+      If (i%2==1)  // Ungerade links
+        layout.append("button 162 138 "+cfg[ability].pic+" "+cfg[ability].pic+" 1 0 "+(ability+100));
+        layout.append("tooltip "+CInt(cfg[ability].cliloc)); //Tooltip anzeigen
+        layout.append("htmlgump 210 138 78 44 "+data.size()+" 0 0");
+        data.append("<basefont size=8>"+cfg[ability].name+"</basefont>");
+        layout.append("htmlgump 162 186 126 109 "+data.size()+" 0 0");
+        data.append(cfg[ability].text);
+      Else // Gerade rechts
+        layout.append("button 400 138 "+cfg[ability].pic+" "+cfg[ability].pic+" 1 0 "+(ability+100));
+        layout.append("tooltip "+CInt(cfg[ability].cliloc)); //Tooltip anzeigen
+        layout.append("htmlgump 316 138 78 44 "+data.size()+" 0 0");
+        data.append("<basefont size=8>"+cfg[ability].name+"</basefont>");
+        layout.append("htmlgump 316 186 126 109 "+data.size()+" 0 0");
+        data.append(cfg[ability].text);
+        If (abilities.size()>_ability_iter) // kommt noch mehr
+          page+=1;
+          layout.append("button 421 108 2206 2206 0 "+page+" 0");
+          layout.append("page "+page);
+          layout.append("button 150 108 2205 2205 0 "+(page-1)+" 0");
+        EndIf
+      EndIf
+      i+=1;
+    EndIf
+    SleepMS(2);
+  EndForEach
+  
+  Var ret:=SendDialogGump(who,layout,data,0,0);
+  If (edit)  // Wurde aufgerufen um das Spellpanel zu belegen
+    Return(ret.keys[ret.keys.size()]);
+  EndIf
+  If (!ret) // Abbruch
+    ShowAbilityPanel(who,book);
+  Else  // Fähigkeit anwenden
+    Var bttn:=ret.keys[ret.keys.size()];
+    bttn-=100;
+    If (bttn in abilities)
+      UseAbility(who,bttn);
+    EndIf
+  Endif
+EndFunction
+
+////////////////////////////////////////////
+// Panel wird geöffnet wenn Buch geschlossen
+////////////////////////////////////////////
+Function ShowAbilityPanel(who,book)
+  Enum Buttons
+    BTTN_EDIT:=2,
+    BTTN_X_POS,
+    BTTN_Y_POS,
+    BTTN_ZEILEN,
+    BTTN_SPALTEN,
+    BTTN_TRANSPARENT
+  EndEnum
+  Var layout:={};
+  Var data:={};
+  Var abilities:=book.getprop("abilities");
+  Var gumpProps:=book.getprop("GumpProps");
+  Var ret,zeile,spalte,ability;
+  Var edit:=0;
+  While(1) // Panel bleibt immer auf
+    layout:={"nodispose",
+             "nomove",
+             "page 0"
+             };
+    data:={};
+    If (gumpProps.transparent==1) // Panel transparent anzeigen?
+      layout.append("resizepic "+gumpProps.x+" "+gumpProps.y+" 5054 "+(gumpProps.spalten*PANEL_GUMP_WIDTH+8)+" "+(gumpProps.zeilen*PANEL_GUMP_HEIGHT+8));
+      layout.append("checkertrans "+(gumpProps.x+4)+" "+(gumpProps.y+4)+" "+(gumpProps.spalten*PANEL_GUMP_WIDTH)+" "+(gumpProps.zeilen*PANEL_GUMP_HEIGHT));
+    ElseIf (gumpProps.transparent<>2)
+      layout.append("resizepic "+gumpProps.x+" "+gumpProps.y+" 5054 "+(gumpProps.spalten*PANEL_GUMP_WIDTH+8)+" "+(gumpProps.zeilen*PANEL_GUMP_HEIGHT+8));
+    EndIf
+    
+    If (!edit)
+      layout.append("button "+(gumpProps.x+gumpProps.spalten*PANEL_GUMP_WIDTH-19)+" "+
+                   (gumpProps.y+gumpProps.zeilen*PANEL_GUMP_HEIGHT-19)+" 2703 2703 1 0 "+BTTN_EDIT);
+      For (zeile:=1;zeile<=gumpProps.zeilen;zeile+=1)
+        For (spalte:=1;spalte<=gumpProps.spalten;spalte+=1)
+          ability:=gumpProps.mask[zeile][spalte];
+          If (ability)
+            If ((cfg[ability]) && (ability in abilities))
+              layout.append("button "+(gumpProps.x+(spalte-1)*PANEL_GUMP_WIDTH+4)+" "+(gumpProps.y+(zeile-1)*PANEL_GUMP_HEIGHT+4)
+                            +" "+cfg[ability].pic+" "+cfg[ability].pic+" 1 0 "+(100+ability));
+              layout.append("tooltip "+CInt(cfg[ability].cliloc)); //Tooltip anzeigen
+            EndIf
+          EndIf
+        EndFor
+      EndFor
+      // muß doppelt, unterster Button zählt immer, ganz zum schluß nochmal damit optisch oben
+      layout.append("button "+(gumpProps.x+gumpProps.spalten*PANEL_GUMP_WIDTH-19)+" "+
+                   (gumpProps.y+gumpProps.zeilen*PANEL_GUMP_HEIGHT-19)+" 2703 2703 1 0 "+BTTN_EDIT);
+    Else
+      // Position des Parameterfeldes bestimmen
+      Var basis_x;
+      If (gumpProps.x<220)
+        basis_x:=gumpProps.x+(gumpProps.spalten*PANEL_GUMP_WIDTH+8)+10;
+      Else
+        basis_x:=30;
+      EndIf
+      // Layoutfeld zusammenbasteln
+      layout.append("resizepic "+basis_x+" 30 2620 210 172");
+      layout.append("checkertrans "+(basis_x+5)+" 35 200 162");
+      layout.append("text "+(basis_x+10)+" 40 5 0");
+      layout.append("text "+(basis_x+10)+" 68 40 1");
+      layout.append("text "+(basis_x+130)+" 68 5 2");
+      layout.append("button "+(basis_x+175)+" 65 2640 2641 1 0 "+BTTN_X_POS);
+      layout.append("text "+(basis_x+10)+" 88 40 3");
+      layout.append("text "+(basis_x+130)+" 88 5 4");
+      layout.append("button "+(basis_x+175)+" 85 2640 2641 1 0 "+BTTN_Y_POS);
+      layout.append("text "+(basis_x+10)+" 108 40 5");
+      layout.append("text "+(basis_x+130)+" 108 5 6");
+      layout.append("button "+(basis_x+175)+" 105 2640 2641 1 0 "+BTTN_ZEILEN);
+      layout.append("text "+(basis_x+10)+" 128 40 7");
+      layout.append("text "+(basis_x+130)+" 128 5 8");
+      layout.append("button "+(basis_x+175)+" 125 2640 2641 1 0 "+BTTN_SPALTEN);
+      layout.append("text "+(basis_x+10)+" 168 40 9");
+      layout.append("text "+(basis_x+130)+" 168 5 10");
+      layout.append("button "+(basis_x+175)+" 165 2640 2641 1 0 "+BTTN_TRANSPARENT);
+
+      // Datenfeld zusammenbasteln
+      data:={"Abilitypanel", "X-Position", CStr(gumpProps.x), "Y-Position", CStr(gumpProps.y),
+        "Zeilen", CStr(gumpProps.zeilen), "Spalten", CStr(gumpProps.spalten), "Transparent?"};
+      If (gumpProps.transparent==1) // Panel transparent anzeigen?
+        data.append("ja");
+      ElseIf (gumpProps.transparent==2)
+        data.append("total");
+      Else
+        data.append("nein");
+      EndIf
+      For (zeile:=1;zeile<=gumpProps.zeilen;zeile+=1)
+        For (spalte:=1;spalte<=gumpProps.spalten;spalte+=1)
+          ability:=gumpProps.mask[zeile][spalte];
+          If (ability)
+            If ((cfg[ability]) && (ability in abilities))
+              layout.append("button "+(gumpProps.x+(spalte-1)*PANEL_GUMP_WIDTH+4)+" "+(gumpProps.y+(zeile-1)*PANEL_GUMP_HEIGHT+4)
+                            +" "+cfg[ability].pic+" "+cfg[ability].pic+" 1 0 "+(100+spalte+(zeile-1)*gumpProps.spalten));
+            Else
+              layout.append("button "+(gumpProps.x+(spalte-1)*PANEL_GUMP_WIDTH+12)+" "
+                            +(gumpProps.y+(zeile-1)*PANEL_GUMP_HEIGHT+12)+" "+GUMP_EMPTY_EDIT+" "+GUMP_EMPTY_EDIT+" 1 0 "+
+                            (100+spalte+(zeile-1)*gumpProps.spalten));
+            EndIf
+          Else
+            layout.append("button "+(gumpProps.x+(spalte-1)*PANEL_GUMP_WIDTH+12)+" "
+                          +(gumpProps.y+(zeile-1)*PANEL_GUMP_HEIGHT+12)+" "+GUMP_EMPTY_EDIT+" "+GUMP_EMPTY_EDIT+" 1 0 "+
+                          (100+spalte+(zeile-1)*gumpProps.spalten));
+          EndIf
+        EndFor
+      EndFor
+    EndIf
+               
+    ret:=SendDialogGump(who,layout,data,0,0);
+    If (!ret)
+      If (edit)
+        edit:=0; // Editiermodus verlassen
+      Else
+        Break;  // Komplett schließen
+      EndIf
+    ElseIf (ret[BTTN_EDIT])
+      edit:=1;
+    Else
+      var bttn:=ret.keys[ret.keys.size()];
+      If (edit)
+        If (bttn>=100)
+          Var zeile:=(bttn-100+gumpProps.spalten-1)/gumpProps.spalten;
+          Var spalte:=(bttn-100)-(zeile-1)*gumpProps.spalten;
+          ability:=ShowBook(who,book,1); // Buch neuöffnen und Fähigkeit holen
+          If (ability)
+            gumpProps.mask[zeile][spalte]:=ability-100;
+          Else
+            gumpProps.mask[zeile][spalte]:=0;
+          EndIf
+        Else // Parameterändern
+          If (ret[BTTN_TRANSPARENT])
+            gumpProps.transparent+=1;
+            If (gumpProps.transparent>2)
+              gumpProps.transparent:=0;
+            EndIf
+          Else
+            Var description,maxval;
+            Case (bttn)
+              BTTN_X_POS:   description:="X-Position";maxval:=2048;
+              BTTN_Y_POS:   description:="Y-Position";maxval:=2048;
+              BTTN_ZEILEN:  description:="Zeilen";    maxval:=10;
+              BTTN_SPALTEN: description:="Spalten";   maxval:=10;
+            EndCase
+
+            Var val:=CInt(SendTextEntryGump(who, "Bitte den neuen Wert für '"+
+                description+"' eingeben!", TE_CANCEL_ENABLE, TE_STYLE_NUMERICAL, maxval));
+            If (val)
+              Case (bttn)
+                BTTN_X_POS:   gumpProps.x:=val;
+                BTTN_Y_POS:   gumpProps.y:=val;
+                BTTN_ZEILEN:  ChangeSize(gumpProps,gumpProps.spalten,val);
+                BTTN_SPALTEN: ChangeSize(gumpProps,val,gumpProps.zeilen);
+              EndCase
+            EndIf
+          EndIf
+        EndIf
+        book.setprop("GumpProps",gumpProps);
+      Else  // Fähigkeitanwenden
+        bttn-=100;
+        If (bttn in abilities)
+          UseAbility(who,bttn);
+        EndIf
+        edit:=0;
+      EndIf
+    EndIf
+  EndWhile
+EndFunction
+
+/////////////////////////////////////////////////////////////
+// Erste Checks und über die Inc den Speziellen Kram starten
+/////////////////////////////////////////////////////////////
+Function UseAbility(who,ability)
+  If (cfg[ability].Mount==2)
+    If (!GetEquipmentByLayer(who, 25))
+      SendSysMessagePergon(who, struct{uc_text:=CAscz("Ohne Pferd könnt ihr dies nicht anwenden."),lang:="DEU"},
+                                struct{uc_text:=CAscz("You cannot use this without a horse."),lang:="ENU"});
+      Return;
+    EndIf
+  ElseIf (cfg[ability].Mount==1)
+    If (GetEquipmentByLayer(who, 25))
+      SendSysMessagePergon(who, struct{uc_text:=CAscz("Reitend könnt ihr dies nicht anwenden."),lang:="DEU"},
+                                struct{uc_text:=CAscz("While riding you cant use this."),lang:="ENU"});
+      Return;
+    EndIf
+  EndIf
+  If (who.getprop(AB_CPROP))
+    SendSysMessagePergon(who, struct{uc_text:=CAscz("Ihr nutzt bereits eine Kriegskunst."),lang:="DEU"},
+                              struct{uc_text:=CAscz("You already performing an art of warfare."),lang:="ENU"});
+    Return;
+  EndIf
+  If (who.getprop(AB_DELAY))
+    If (who.getprop(AB_DELAY)>ReadGameClock())
+      SendSysMessagePergon(who, struct{uc_text:=CAscz("Ihr müsst euch erst wieder sammeln."),lang:="DEU"},
+                                struct{uc_text:=CAscz("You have to concentrate yourself."),lang:="ENU"});
+      Return;
+    EndIf
+  EndIf
+  
+  who.setprop(AB_DELAY,ReadGameClock()+cfg[ability].delay);
+  
+  Start_Ability(who,ability,cfg[ability]);
+EndFunction
+
+/////////////////////////////////
+// Spellpanel Maske größe ändern
+/////////////////////////////////
+Function ChangeSize(byref gumpProps,spalten,zeilen)
+  var mask:={};
+  var ability;
+  // Neue Matrix initialisieren
+  For zeile:=1 To zeilen
+    Var abilityzeile:={}; // Eine komplette abilityZeile
+
+    // SpellZeile fuellen
+    For spalte:=1 To spalten
+      ability:=gumpProps.mask[zeile][spalte];
+      If (ability)
+        abilityzeile.append(ability); // Wert aus der alten Matrix uebernehmen
+      Else
+        abilityzeile.append(0);
+      EndIf
+    EndFor
+
+    mask.append(abilityzeile);
+  EndFor
+  gumpProps.spalten:=spalten;
+  gumpProps.zeilen:=zeilen;
+  gumpProps.mask:=mask;
+EndFunction
+
+// Yes/No Gump
+Function YesNo(who,prompt)
+  var layoutyn := {"nodispose",
+                   "page 0",
+                   "gumppic 0 0 1140",
+                   "button 115 200 2130 2129 1 0 1",
+                   "button 205 200 2119 2120 1 0 0",
+                   "htmlgump 57 40 278 135 0 0 0"
+                  };
+
+  var datayn := {"<center>"+prompt+"</center>"};
+  var res := SendDialogGump( who, layoutyn, datayn,100,100 );
+
+  if (res)
+    return 1;
+  else
+    return 0;
+  endif
+EndFunction

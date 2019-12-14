@@ -1,0 +1,26 @@
+///////////////////////////////////////////////////////////////////////////
+// ticketdestroy - Bei Tierscheinvernichtung Tier mit beseitigen
+
+use uo;
+include "include/npc";
+
+Const ALLOW_DESTROY := 1;
+
+Program TicketDestroy(ticket)
+    var serial := CInt(ticket.getprop("serial"));
+    If (!serial)
+        // kein Tier verknuepft, nix zu tun
+        return ALLOW_DESTROY;
+    EndIf
+
+    var pet := SystemFindObjectBySerial(serial);
+    If (!pet)
+        // Tier ist nicht mehr
+        return;
+    EndIf
+
+    If (pet.isa(POLCLASS_NPC))
+        // auf GreenAcres braucht man keine Leiche
+        KillNPC(pet, "Ticket destroyed", KILLNPC_NOCORPSE);
+    EndIf
+EndProgram

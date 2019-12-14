@@ -1,0 +1,45 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD Tele - Bewegt den eigenen Char zum angeklickten Punkt
+//
+//     Author: Shinigami
+
+use uo;
+include "include/modifyskill";
+include "include/msgs";
+
+Program TextCMD_Tele(who, param)
+    SendSysMessagePergon(who, "Wohin teleportieren?", "Teleport to?");
+
+    If (param["?"] or param["h"])
+        SendSysMessagePergon(who, "Parameter: .tele [f][m]");
+        SendSysMessagePergon(who,
+            "f - Position erzwingen, m - mehrfach teleportieren",
+            "f - force position, m - teleport multiple times"
+        );
+        return;
+    EndIf
+
+    var mtype := MOVEOBJECT_NORMAL;
+    If (param["f"])
+        mtype := MOVEOBJECT_FORCELOCATION;
+    EndIf
+
+    While (who)
+        var pos := TargetCoordinates(who);
+        If (!who or !pos or pos.item.container)
+            SendSysMessagePergon(who, "Abbruch", "Cancelled");
+            return;
+        EndIf
+
+        var result := MoveObjectToLocation(
+            who, pos.x, pos.y, pos.z, pos.realm, mtype
+        );
+        If (!result)
+            SendSysMessagePergon(who, "Fehler: "+result.errortext);
+        EndIf
+
+        If (!param["m"])
+            return;
+        EndIf
+    EndWhile
+EndProgram

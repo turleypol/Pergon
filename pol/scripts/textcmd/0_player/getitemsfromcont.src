@@ -1,0 +1,84 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD GetItemsFromCont - Holt verschollene Gegenstaende hervor (aus
+// dem Zauberbuch...)
+//
+//     Author: Shinigami
+
+//////////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// 2003/05/06 Shinigami:
+// BugFix bei CMDLevel-Chars (haben das Panel verschoben)
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use uo;
+include "include/itemnpc";
+include "include/msgs";
+include "include/objtype";
+include "include/server";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_GetItemsFromCont(who)
+  If (who.cmdlevel>CMDLEVEL_COUNSELOR) // CommandLevel>Counselor können alles hervorholen
+    SendSysMessagePergon(who, "Wählt den Container, aus welchem ihr Gegenstände herausholen wollt!");
+
+    var container := Target(who);
+    If (container.isa(POLCLASS_CONTAINER))
+      var zielcontainer := CreateItemInBackpackPergon(who, 0xe75);
+      If (zielcontainer)
+        zielcontainer.name := "Verschobenes";
+
+        If (container.objtype in {UOBJ_SPELLBOOK_MAGE, UOBJ_SPELLBOOK_CLERIC, UOBJ_SPELLBOOK_NECRO}) // Buecher... Panel auslassen
+          ForEach item in EnumerateItemsInContainer(container,ENUMERATE_ROOT_ONLY)
+            If (item.objtype<>UOBJ_SPELLPANEL) // SpellPanel bleibt drinne
+              If (!MoveItemToContainer(item, zielcontainer))
+                SendSysMessagePergon(who, "Euer Rucksack ist zu voll!");
+              EndIf
+            EndIf
+            SleepMS(2);
+          EndForEach
+        Else // ...anderer Container
+          ForEach item in EnumerateItemsInContainer(container,ENUMERATE_ROOT_ONLY)
+            If (!MoveItemToContainer(item, zielcontainer))
+              SendSysMessagePergon(who, "Euer Rucksack ist zu voll!");
+            EndIf
+            SleepMS(2);
+          EndForEach
+        EndIf
+
+        SendSysMessagePergon(who, "Es wurde alle Gegenstände in Euren Rucksack verschoben!");
+      Else
+        SendSysMessagePergon(who, "Euer Rucksack ist zu voll!");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Dies ist kein Container!");
+    EndIf
+  Else // ...Spieler nur Kram aus ihrem Zauberbuch
+    SendSysMessagePergon(who, "Wählt das Zauberbuch, aus welchem ihr Gegenstände herausholen wollt!");
+
+    var container := Target(who);
+    If (container.isa(POLCLASS_CONTAINER))
+      If (container.objtype in {UOBJ_SPELLBOOK_MAGE, UOBJ_SPELLBOOK_CLERIC, UOBJ_SPELLBOOK_NECRO})
+        ForEach item in EnumerateItemsInContainer(container,ENUMERATE_ROOT_ONLY)
+          If (item.objtype<>UOBJ_SPELLPANEL) // SpellPanel bleibt drinne
+            If (!MoveItemToContainer(item, who.backpack))
+              SendSysMessagePergon(who, "Euer Rucksack ist zu voll!");
+            EndIf
+          EndIf
+          SleepMS(2);
+        EndForEach
+
+        SendSysMessagePergon(who, "Es wurde alle Gegenstände in Euren Rucksack verschoben!");
+      Else
+        SendSysMessagePergon(who, "Dies ist kein Zauberbuch!");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Dies ist kein Container!");
+    EndIf
+  EndIf
+EndProgram

@@ -1,0 +1,86 @@
+///////////////////////////////////////////////////////////////////////////
+// Wandelt einen Besitzschein in ein Item
+// speziell für Tierzucht, wegen Haus und GehegeAbfragen ...
+//
+// Autor: Paukerli
+
+use cfgfile;
+use os;
+use uo;
+include "include/modifyskill";
+
+Program Place_Deed(Who, Deed)
+    var itemcfg := readconfigfile("itemdesc");
+    var x, y, z;
+
+    If (!AccessiblePergon(who, deed))
+        SendSysMessagePergon(who, "Ihr kommt da nicht ran!");
+        return;
+    EndIf
+    ReserveItem(deed);
+
+    // Sicherheitsabfrage bitte nicht wieder deaktivieren!
+    // (sonst kommt Pauker mit der dicken Kriegskeule)
+    If (who.cmdlevel < CMDLEVEL_SEER)
+        If (!who.multi)
+            SendSysMessagePergon(who,
+                "Ihr müsst Euch im Haus befinden, um das Item aufzustellen."
+            );
+            return;
+        ElseIf (GetObjProperty((who.multi), PROP_HS_C_OWNER) != who.serial)
+            SendSysMessagePergon(who,
+                "Ihr könnt das Item nur in Eurem eigenen Haus aufstellen!"
+            );
+            return;
+        EndIf
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Wählt den Werkzeugkasten, mit dem Ihr arbeiten wollt!"
+    );
+    var use_on := target(who);
+    If (use_on.objtype <> 0x1eba) // gr. Werkzeugkasten
+        SendSysMessagePergon(who, "Das ist nicht das richtige Werkzeug!");
+        return;
+    EndIf
+
+    // item-deed-eigenschaften weden ausgelesen
+    var bauanleitung := itemcfg[deed.objtype];
+    x := who.x; y := who.y; z := who.z;
+    var item1_1;
+    Case (who.facing)
+    2: 6:
+        If (bauanleitung.itemtype2)
+            item1_1 := bauanleitung.itemtype2; // O-W Richtung wenn vorhanden
+        Else
+            item1_1 := bauanleitung.itemtype1;
+        EndIf
+    default:
+        item1_1 := bauanleitung.itemtype1;
+    EndCase
+
+    ForEach Item in ListItemsNearLocation(x, y, z, 1, who.realm)
+        If (
+            (Item.objtype >= UOBJECT_DOORS_START) &&
+            (Item.objtype <= UOBJECT_DOORS_END)
+        )
+            SendSysMessagePergon(who, "Das ist zu nah an einer Tür!");
+            return;
+        EndIf
+    EndForEach
+
+    var item1 := CreateItemAtLocationPergon(x, y, z, item1_1, 1, who.realm);
+    If (!item1)
+        SendSysMessagePergon(who,
+            "An dieser Stelle kann man das nicht aufstellen!"
+        );
+        return;
+    Else
+        SubtractAmount(deed, 1);
+        PlaySoundEffect(who, SFX_HAMMER);
+        Sleep (1);
+        PlaySoundEffect(who, SFX_HAMMER);
+        Sleep (1);
+        return;
+    EndIf
+EndProgram

@@ -1,0 +1,77 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD MoveAccount - Verschiebt den Char eines Accounts auf einen anderen
+//
+// Author: Shinigami
+
+use uo;
+include "include/msgs";
+include "include/pergoninfos";
+
+Program TextCMD_MoveAccount(who, params)
+  params := SplitWords(params);
+  If (params.size() <> 3)
+    SendSysMessagePergon(who, "Params: oldaccount charname newaccount");
+    return;
+  EndIf
+
+  var oldaccountname := params[1];
+  var charname       := params[2];
+  var newaccountname := params[3];
+
+  var oldaccount := FindAccount(oldaccountname);
+  If (!oldaccount)
+    SendSysMessagePergon(who, "Es gibt keinen Account '"+oldaccountname+"'!");
+    return;
+  EndIf
+
+  // Character im Account suchen
+  var oldcharacter;
+  var oldslot := 0;
+  For slot := 1 To 6
+    oldcharacter := oldaccount.getcharacter(slot);
+    If (oldcharacter and oldcharacter.name[charname])
+      oldslot := slot;
+      break;
+    EndIf
+    SleepMs(2);
+  EndFor
+
+  If (!oldslot)
+    SendSysMessagePergon(who,
+      "Es gibt keinen Character '"+charname+"' im Account '"+
+      oldaccountname+"'!"
+    );
+    return;
+  EndIf
+
+  var newaccount := FindAccount(newaccountname);
+  var result := 0;
+  If (!newaccount)
+    // erst Account erzeugen
+    result := oldaccount.split(newaccountname, oldslot);
+    newaccount := FindAccount(newaccountname);
+    SendSysMessagePergon(who,
+      "Hinweis: Account '"+newaccountname+"' wurde angelegt"
+    );
+  Else
+    // einfach verschieben
+    result := oldaccount.move_char(newaccountname, oldslot);
+  EndIf
+  If (!result)
+    SendSysMessagePergon(who,
+      "Der Char '"+oldcharacter.name+"' konnte nicht auf den Account '"+
+      newaccountname+"' verschoben werden: "+result.errortext
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Character '"+oldcharacter.name+"' wurde auf den Account '"+
+    newaccountname+"' verschoben."
+  );
+  syslog(
+    CharInfoStr(who)+" hat Character '"+oldcharacter.name+
+    "' von Account '"+ oldaccountname+"' auf den Account '"+
+    newaccountname+"' verschoben"
+  );
+EndProgram

@@ -1,0 +1,260 @@
+/////////////////////////////////////////////////////////
+// generator -
+//
+// Author: Turley
+
+use os;
+use uo;
+use util;
+include ":treasuremap:treasurechest";
+include "include/client";
+include "include/eventid";
+include "include/logutil";
+include "include/msgs";
+include "include/poison";
+include "include/server";
+include "include/starteqp";
+
+Enum Buttons
+  BTN_LEFT := 100,
+  BTN_UP,
+  BTN_RIGHT,
+  BTN_DOWN
+EndEnum
+
+Enum FieldColor
+  FIELDGRAY := 9720,
+  FIELDBLUE := 2152,
+  FIELDRED := 2472
+EndEnum
+
+
+// TODO:
+// 30s 3 neue monster schwerer je näher ziel
+
+Program Chutriel(who, item)
+  If (!ReserveItem(item))
+    SendSysMessagePergon(who, "Chutriel scheint beschäftigt zu sein.");
+    return;
+  EndIf
+
+  // Konfiguration grob pruefen {{{
+  var path   := item.getprop("path");
+  var laenge := item.getprop("laenge");
+  var items  := item.getprop("items");
+  If ((!path) || (!laenge) || (!items))
+    SendSysMessagePergon(who, "Chutriel scheint keine gute Laune zu haben.");
+    syslog("FEHLER: "+ItemInfoStr(item)+" nicht richtig initialisiert!");
+    return;
+  EndIf
+  // }}}
+
+  var fireball := SystemFindObjectBySerial(items[items.size()]);
+
+  var pid := Start_ScriptPergon(
+    ":games:generatorcontrol", {who, item, fireball}
+  ).pid;
+
+  // Gump vorbereiten {{{
+  var data := {
+    "<basefont size=6><center>Komm zu mir mein Freund, "+
+    "die Verdammnis heißt dich Willkommen.</center>"
+  };
+  var layout := {
+    "nodispose",
+    "page 0",
+    "resizepic 50 0 2600 530 410",
+    "resizepic 95 20 2600 442 90",
+    "htmlgump 213 40 207 60 0 0 0",
+    "resizepic 95 20 2600 442 90",
+    "gumppic 140 40 10451",
+    "gumppic 420 40 10451",
+    "resizepic 365 120 5120 178 210",
+    "gumppic 365 115 10452",
+    "gumppic 365 288 10452",
+    "gumppic 414 189 1417",
+    "gumppic 435 210 2642",
+    "button 408 222 10730 70732 1 0 "+BTN_LEFT,
+    "button 448 185 10700 70702 1 0 "+BTN_UP,
+    "button 473 222 10710 70712 1 0 "+BTN_RIGHT,
+    "button 448 243 10720 70722 1 0 "+BTN_DOWN,
+    "resizepic 90 115 2600 "+(30+40*laenge)+" "+(30+40*laenge),
+    "resizepic 100 125 5120 "+(10+40*laenge)+" "+(10+40*laenge)
+  };
+
+  // Striche
+  var i, j;
+  For (i := 0;i<laenge;i += 1)  // senkrecht
+    For (j := 0;j<laenge-1;j += 1)
+      layout.append("gumppic "+(120+40*i)+" "+(162+40*j)+" 5113");
+    EndFor
+  EndFor
+
+  For (i := 0;i<laenge-1;i += 1) // waagrecht
+    For (j := 0;j<laenge;j += 1)
+      layout.append("gumppic "+(138+40*i)+" "+(147+40*j)+" 5117");
+    EndFor
+  EndFor
+
+  // Felder
+  var first := layout.size()+1;
+  For (i := 0;i<laenge;i += 1)
+    For (j := 0;j<laenge;j += 1)
+      layout.append("gumppic "+(110+40*i)+" "+(135+40*j)+" "+FIELDGRAY);
+    EndFor
+  EndFor
+
+  layout[first] := layout[first][1, 16]+FIELDBLUE;  // Startpos
+  layout[layout.size()] := layout[layout.size()][1, 16]+FIELDRED;  // Ziel
+
+  // Aktuelle Pos
+  layout.append("gumppic 118 143 5032");
+  // }}}
+
+  var whox := who.x;
+  var whoy := who.y;
+  var iter := 1;
+
+  While (who.connected)
+    If (whox <> who.x or whoy <> who.y)
+      return;
+    EndIf
+    var ret := SendDialogGump(who, layout, data, 50, 50);
+
+    // Richtungsbuttons auswerten {{{
+    If (ret[BTN_LEFT])
+      If (path[iter+1] == {path[iter][1]-1, path[iter][2]})
+        iter += 1;
+        var temp := first+(path[iter][1]-1)*laenge+path[iter][2]-1;
+        layout[temp] := layout[temp][1, 16]+FIELDBLUE;
+        // Aktuelle Pos
+        layout[layout.size()] :=
+          "gumppic "+(78+40*path[iter][1])+" "+(103+40*path[iter][2])+" 5032";
+        PlaySoundEffect(who, 0x1F5);
+      Else
+        Punish(who, item, fireball, pid);
+        Break;
+      EndIf
+    ElseIf (ret[BTN_UP])
+      If (path[iter+1] == {path[iter][1], path[iter][2]-1})
+        iter += 1;
+        var temp := first+(path[iter][1]-1)*laenge+path[iter][2]-1;
+        layout[temp] := layout[temp][1, 16]+FIELDBLUE;
+        // Aktuelle Pos
+        layout[layout.size()] :=
+          "gumppic "+(78+40*path[iter][1])+" "+(103+40*path[iter][2])+" 5032";
+        PlaySoundEffect(who, 0x1F5);
+      Else
+        Punish(who, item, fireball, pid);
+        Break;
+      EndIf
+    ElseIf (ret[BTN_RIGHT])
+      If (path[iter+1] == {path[iter][1]+1, path[iter][2]})
+        iter += 1;
+        var temp := first+(path[iter][1]-1)*laenge+path[iter][2]-1;
+        layout[temp] := layout[temp][1, 16]+FIELDBLUE;
+        // Aktuelle Pos
+        layout[layout.size()] :=
+          "gumppic "+(78+40*path[iter][1])+" "+(103+40*path[iter][2])+" 5032";
+        PlaySoundEffect(who, 0x1F5);
+      Else
+        Punish(who, item, fireball, pid);
+        Break;
+      EndIf
+    ElseIf (ret[BTN_DOWN])
+      If (path[iter+1] == {path[iter][1], path[iter][2]+1})
+        iter += 1;
+        var temp := first+(path[iter][1]-1)*laenge+path[iter][2]-1;
+        layout[temp] := layout[temp][1, 16]+FIELDBLUE;
+        // Aktuelle Pos
+        layout[layout.size()] :=
+          "gumppic "+(78+40*path[iter][1])+" "+(103+40*path[iter][2])+" 5032";
+        PlaySoundEffect(who, 0x1F5);
+      Else
+        Punish(who, item, fireball, pid);
+        Break;
+      EndIf
+    Else
+      Break;
+    EndIf
+    // }}}
+
+    If (path[iter] == {laenge, laenge})
+      // es ist geschafft
+
+      If (!item.getprop("noloot"))
+        CreateReward(item);
+      EndIf
+
+      // bisschen Schall und Rauch, nebenbei abreissen {{{
+      PlaySoundEffect(who, 0x212);
+      PlaySoundEffect(who, 0x1f4);
+      PlayStationaryEffect(
+        item.x-1, item.y, item.z+2, 0x36b0, 10, 10, 10, item.realm
+      );
+      PlayStationaryEffect(
+        item.x-1, item.y-1, item.z, 0x36b0, 10, 10, 10, item.realm
+      );
+      PlayStationaryEffect(
+        item.x-2, item.y-1, item.z, 0x36b0, 10, 10, 10, item.realm
+      );
+      SleepMS(600);
+      // }}}
+
+      // Steinlord abreissen
+      ForEach item in items
+        SleepMs(2);
+        DestroyItem(SystemFindObjectBySerial(item));
+      EndForEach
+      Break;
+    EndIf
+  EndWhile
+EndProgram
+
+// Belohnung erzeugen
+Function CreateReward(pos) // {{{
+  // TODO:
+  // - chimera oder hairiyo 10% wahrscheinlichkeit statt kiste (wild)
+
+  // Level-10-Kiste ohne Monster erzeugen
+  var chest := CreateTreasureChest(10, pos.x, pos.y, pos.z-1, pos.realm);
+  chest.usescript := "";
+  // wegen der Namensanzeige im PrintTextAbove temporaer umbenennen
+  chest.name := "Chutriel";
+  PrintTextAbovePergon(chest, "Das Rätsel ist gelöst - ich bin besiegt!", "The riddle is solved - I have been beaten!");
+  chest.name := "Chutriels Hinterlassenschaften";
+EndFunction // }}}
+
+Function Punish(who, item, fireball, pid) // {{{
+  If (fireball.graphic == 1)
+    // Controllscript macht gerade Schaden, kurz warten
+    SleepMS(700);
+  EndIf
+
+  If (who.hidden)
+    who.hidden := 0;
+  EndIf
+
+  PrintTextAbovePergon(fireball, "Stirb!", "Die!");
+  fireball.graphic := 1; // Ball oben für die Zeit verschwinden lassen
+  PlayMovingEffectXYZ(
+    item.x, item.y, item.z+37, who.x, who.y, who.z+10,
+    0x36fe, 5, 0, 0, who.realm
+  );
+  // PlaySoundEffect(who, 0x35A);// flame05, 0x44C magic_fyrbal01
+  PlaySoundEffect(who, 0x44C);
+  PrintTextAbovePrivatePergon(who,
+    "Deine Haut wird von sengender Hitze verbrannt.",
+    "Searing heat scorches thy skin.", who, FONT_NORMAL, 238
+  );
+  var dmg := CInt((1 - CDbl(GetResistance(who, "fire")))*(RandomInt(11)+6));
+  ApplyRawDamagePergon(who, dmg);
+  SleepMS(700);
+  // GetProcess(pid).sendevent(struct{type := EVID_GENERATOR_DMG});
+  fireball.graphic := 0x36fe;
+
+  return;
+
+  // Compiler ruhigstellen
+  pid := 0;
+EndFunction // }}}

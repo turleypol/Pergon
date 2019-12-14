@@ -1,0 +1,31 @@
+// 20.10.05 Turley - Mit Sinn gefüllt
+
+use uo;
+
+Include "include/objtype";
+Include "include/itemnpc";
+Include "include/msgs";
+
+Program textcmd_makeshipdeed( who, shiptype )
+  shiptype := CInt(shiptype);
+  Var objtype:=validate_shiptype(shiptype);
+  If (objtype)
+    CreateItemInBackpackPergon( who, objtype );
+    PrintTextAbovePrivatePergon( who, "Ah, eine schöne neue Bauanleitung für ein Schiff im Rucksack!", "", who );
+  Else
+    SendSysMessagePergon( who, "Sorry, das ist kein gültiger Schiffstyp zZ." );
+  EndIf
+EndProgram
+
+Function validate_shiptype( shiptype )
+  Case (shiptype)
+    0x4000:  Return (0x6027);  // SmallBoat
+    0x4004:  Return (0x6028);  // SmallDragonBoat
+    0x4008:  Return (0x6029);  // MediumBoat
+    0x400c:  Return (0x602A);  // MediumDragonBoat
+    0x4010:  Return (0x602B);  // LargeBoat
+    0x4014:  Return (0x602C);  // LargeDragonBoat
+    0x5000:  Return (0x602D);  // KleineFähre
+    default: Return (0);
+  EndCase
+EndFunction

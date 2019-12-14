@@ -1,0 +1,5 @@
+Das aktuelle MagicSystem muss sich im Verzeichnis "magic" befinden,
+damit alle "externen" Compiler-Verknuepfungen funktionieren.
+Des weiteren sind die Namen der Packages (pkg.cfg) ggf. auszutauschen.
+
+Jason

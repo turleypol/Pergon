@@ -1,0 +1,113 @@
+///////////////////////////////////////////////
+// Eat (Hungry - System)
+//
+// Author: Shinigami
+
+//////////////
+// Libraries&Includes
+//////////////
+use cfgfile;
+use os;
+use uo;
+include "include/pergonutil";
+include "include/poison";
+
+//////////////
+// Constants
+//////////////
+
+Const SOUND_EFFECT_EAT1 := 0x3b;
+Const SOUND_EFFECT_EAT2 := 0x3c;
+Const SOUND_EFFECT_EAT3 := 0x3d;
+Const ACTION_EAT        := 0x22;
+// Const POISON_SOUND := 0x247;
+// Const EFFECT_SPARKLE := 0x374a;
+
+Program EatFood(who, food)
+  If (!food.movable)
+    SendSysMessagePergon(who,
+      "Das sieht lecker aus, ist aber nicht zum Verzehr geeignet."
+    );
+    return;
+  EndIf
+
+  var hungrylevel := CDbl(GetObjProperty(who, "hungrylevel"));
+  If (!hungrylevel)
+    hungrylevel := 10.0;
+  EndIf
+
+  PerformAction(who, ACTION_EAT);
+
+  var poison := GetPoisonLevel(food);
+  If (poison > 0)
+    PrintTextAbovePrivatePergon(who, "Ihr wurdet vergiftet!", "", who);
+
+    // Vergifter weitergeben an Opfer fuer Beweise
+    var poisoner := food.getprop(EV_POISONER);
+    If (poisoner)
+      who.setprop(EV_POISONER, poisoner);
+    EndIf
+
+    AddPoisonLevel(who, poison); // Vergiftung durchfuehren
+
+    SubtractAmount(food, 1);
+    return;
+  EndIf
+
+  var eatmsg;
+  Case (RandomInt(4)+1)
+    1: PlaySoundEffect(who, SOUND_EFFECT_EAT1);
+        eatmsg := "Köstlich!";
+    2: PlaySoundEffect(who, SOUND_EFFECT_EAT2);
+        eatmsg := "Hmmm!";
+    3: PlaySoundEffect(who, SOUND_EFFECT_EAT3);
+        eatmsg := "Echt lecker!";
+    4: PlaySoundEffect(who, SOUND_EFFECT_EAT3);
+        eatmsg := "Deliziös!";
+  EndCase
+  SendSysMessagePergon(who, eatmsg);
+
+  var itemdesc := ReadConfigFile("::itemdesc");
+  // cooking- bzw. farming-itemdesc definierte Property 'Eat'
+  var sattmachend := CDbl(itemdesc[food.objtype].eat);
+  If (!sattmachend)
+    sattmachend := 1.0;
+    syslog("HINWEIS: "+ItemInfoStr(food)+" hat keinen Saettigungswert.");
+  EndIf
+
+  // SendSysMessagePergon(who, "sattmach: "+sattmachend);
+
+  hungrylevel := Min(22.0, hungrylevel + sattmachend);
+
+  SubtractAmount(food, 1);
+
+  SetObjProperty(who, "hungrylevel", hungrylevel);
+
+  var hungrymsg;
+  Case (CInt(hungrylevel))
+    1:  hungrymsg := "Ihr sterbt fast vor Hunger!";
+    2:  hungrymsg := "Ihr seid am Verhungern!";
+    3:  hungrymsg := "Euer Magen knurrt und Ihr fühlt Euch schwummrig!";
+    4:  hungrymsg := "Euer Magen schmerzt!";
+    5:  hungrymsg := "Ihr seid verdammt hungrig!";
+    6:  hungrymsg := "Ihr seid hungrig.";
+    7:  hungrymsg := "Euer Magen knurrt.";
+    8:  hungrymsg := "Ihr seid nicht hungrig.";
+    9:  hungrymsg := "Ihr seid voll.";
+    10: hungrymsg := "Ihr seid voll und habt Euch beinahe überfressen.";
+    11: hungrymsg := "Wenn Ihr weiterso esst, werdet Ihr krank.";
+    12: hungrymsg := "Ihr habt Euch überfressen!";
+    13: hungrymsg := "Ihr bekommt Krämpfe vom vielen Essen!";
+    14: hungrymsg := "Euer Magen verträgt kein ganzes Schwein!";
+    15: hungrymsg := "Ihr könnt die Schmerzen kaum noch aushalten!";
+    16: hungrymsg := "Ihr haltet es kaum noch aus vor Übelkeit!";
+    17: hungrymsg := "Ihr habt Euch kurz vor Euren Tod gefressen!";
+    18: hungrymsg := "Neuerdings könnt Ihr nicht mehr sinnlos essen!";
+    19: hungrymsg := "Ihr könnt Euch keinen Wochenvorrat anfressen!";
+    20: hungrymsg := "Ihr seid dem Tode schon sehr nahe!";
+    default: hungrymsg := "Mit aller Macht stopft Ihr die letzten Bissen rein.";
+  EndCase
+  SendSysMessagePergon(who, hungrymsg);
+EndProgram
+
+// vim: sw=2 sts=2

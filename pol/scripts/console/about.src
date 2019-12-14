@@ -1,0 +1,12 @@
+
+Include "include/clock";
+
+program about()
+    var system := polcore();
+
+    print  ("System Message:    About" );
+    print  ("    POL:           " + system.verstr );
+    print  ("    Designer:      Syzygy" );
+    print  ("    Last Updated:  " + system.compiledate + " " + system.compiletime );
+
+endprogram

@@ -1,0 +1,77 @@
+//**************************************************************************************************
+// Script file greaterheal.src
+//
+//    implements spell 205 <Greater Heal> - "Grosse Heilung"
+//
+//	heals more HP on spelltarget
+//		 [ Resisted (Magic) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 02.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//              20.12.2005 Turley - #partyheal für :partysystem:partyheal_cure
+//
+//**************************************************************************************************
+use vitals;
+
+Include "../magicpergon";
+Include "../resistance";
+
+program cast_greaterheal (params)
+
+   Var caster;
+   Var caston;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_GREATERHEAL);
+   Var difficulty:= spell.skill;
+   Var resist:=  spell.resist;
+   Var amnt:=    spell.primary;
+   Var minamnt:= spell.primarymin;
+   Var maxamnt:= spell.primarymax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+      
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_GREATERHEAL);
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+   								// calc spelleffect according to spelltargets magic resistance
+   if (resist)					// and casting power
+      amnt:= CInt(MagicResistance(caston, difficulty, resist, power*amnt/100.0, 1));
+   else
+      amnt:= CInt(power*amnt/100.0);
+   endif
+
+   if (minamnt and minamnt > amnt)
+      amnt:= minamnt;
+   elseif (maxamnt and maxamnt < amnt)
+      amnt:= maxamnt;
+   endif
+
+   PlayObjectCenteredEffect(caston, FX_HEAL_EFFECT, 5, 25);
+   PlaySoundEffect(caston , SFX_SPELL_HEAL);
+
+   HealDamage(caston, amnt);						// heal HP
+
+   SendSysMessagePergon(caster, "Ihr heilt " + amnt + " Lebenspunkte", "You heal " + amnt + " hitpoints");
+endprogram

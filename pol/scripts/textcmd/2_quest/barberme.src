@@ -1,0 +1,56 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD BarberMe - Veraendert mein Ausseres (Haare, Bart und Farbe)
+//
+// Author: Shinigami
+
+use uo;
+include "include/msgs";
+include "include/objtype";
+include "include/quests";
+
+Program BarberMe(who)
+  If (who.cmdlevel >= CMDLEVEL_SEER)
+    SendSysMessagePergon(who,
+      "Ihr könnt nun jemand anderen auswählen, "+
+      "oder abbrechen um euch selbst zu frisieren."
+    );
+    var mobile := Target(who);
+    If (mobile.isa(POLCLASS_MOBILE) And (!mobile.isa(POLCLASS_NPC)))
+      SendSysMessagePergon(who,
+        mobile.name+" darf sich nun frisieren."
+      );
+      SendSysMessagePergon(mobile,
+        who.name+" wünscht, dass Ihr Euch frisiert."
+      );
+      who := mobile;
+    Else
+      SendSysMessagePergon(who, "Frisiert Euch selbst ...");
+    EndIf
+  EndIf
+
+  If (who.gender)
+    If (who.race == RACE_HUMAN)
+      who.graphic := UOBJ_HUMAN_FEMALE;
+      who.trueobjtype := UOBJ_HUMAN_FEMALE;
+    ElseIf (who.race == RACE_GARGOYLE)
+      who.graphic := 0x029B;
+      who.trueobjtype := 0x029B;
+    Else
+      who.graphic := UOBJ_ELF_FEMALE;
+      who.trueobjtype := UOBJ_ELF_FEMALE;
+    EndIf
+  Else
+    If (who.race == RACE_HUMAN)
+      who.graphic := UOBJ_HUMAN_MALE;
+      who.trueobjtype := UOBJ_HUMAN_MALE;
+    ElseIf (who.race == RACE_GARGOYLE)
+      who.graphic := 0x029A;
+      who.trueobjtype := 0x029A;
+    Else
+      who.graphic := UOBJ_ELF_MALE;
+      who.trueobjtype := UOBJ_ELF_MALE;
+    EndIf
+  EndIf
+
+  SendCharacterRaceChanger(who);
+EndProgram

@@ -1,0 +1,181 @@
+/////////////////////////////////////////////////////////
+// vet.src -- Tier heilen und eventuell wiederbeleben
+
+include "include/modifyskill";
+
+Const SKILL_DELAY := 8;
+
+Program UseBandages(parms)
+  var patient := parms[1];
+  var who     := parms[2];
+  var bandage := parms[3];
+
+  If (CInt(who.getprop(PROP_NEXTSKILLUSE)) > ReadGameClock())
+    SendSysMessagePergon(who,
+      "Ihr müsst noch warten, bevor Ihr wieder etwas heilen könnt."
+    );
+    return;
+  EndIf
+
+  If (patient.isa(POLCLASS_CORPSE))
+    var template := patient.getprop("npctemplate");
+    If (!template)
+      SendSysMessagePergon(who, "Das könnt Ihr nicht heilen!");
+      return;
+    EndIf
+
+    var config := GetNPCConfig(template);
+    // Ueber dem Mittelwert, damit es nicht leichter als normales Zaehmen ist
+    var skill := CInt(0.75 * (config.AbrichtSkill + config.ZaehmSkill));
+    If (!skill)
+      // bei fehlerhaften Npcdesc-Eintrag Ursache verschleiern
+      SendSysMessagePergon(who,
+        "Eure Erfahrungen mit dieser Tierart sind unzureichend."
+      );
+      return;
+    EndIf
+    If (patient.getprop("master") or patient.getprop("ExMaster"))
+      // wenn es mal zahm war, geht es viel leichter
+      // (mit 40% schafft man geradeso ein zahmes Pferd)
+      skill := Max(10, skill - 35);
+    EndIf
+
+    If (patient.getprop(EV_CHOPPER))
+      // TODO: eventuell mit Rippchen fuellen?
+      SendSysMessagePergon(who,
+        "Diesem Tier scheinen schon ein paar Teile zu fehlen. "+
+        "Ihr könnt es daher nicht wiederbeleben."
+      );
+      return;
+    EndIf
+
+    who.setprop(PROP_NEXTSKILLUSE, ReadGameClock() + SKILL_DELAY);
+    SendSysMessagePergon(who, "Ihr beginnt mit Euren Künsten ...");
+    Sleep(4);
+    ReviveAnimal(who, patient, bandage, skill, template);
+    return;
+  EndIf
+
+  If (
+    (patient.graphic == CID_HUMAN_MALE) ||
+    (patient.graphic == CID_HUMAN_FEMALE) ||
+    (patient.graphic == CID_ELF_MALE) ||
+    (patient.graphic == CID_ELF_FEMALE) ||
+    (patient.acctname)
+  )
+    SendSysMessagePergon(who, "Ihr könnt damit nur Tiere heilen!");
+    return;
+  EndIf
+
+  who.setprop(PROP_NEXTSKILLUSE, ReadGameClock() + SKILL_DELAY);
+  SendSysMessagePergon(who, "Ihr beginnt mit Euren Künsten ...");
+  Sleep(4);
+  Heal(who, patient, bandage);
+EndProgram
+
+Function Heal(who, patient, bandage)
+  var skill_lvl := Min(
+    13,
+    CInt(GetSkillPergon(who, SKILLID_TIERE_VERARZTEN)/10.0)
+  );
+
+  var config := ReadConfigFile(":healing:healing");
+  var elem   := FindConfigElem(config, skill_lvl);
+
+  var max_heal := CInt(GetElemProperty(elem, "max"));
+  var points   := GetSkillDefaultPoints(SKILLID_TIERE_VERARZTEN);
+
+  If (CheckSkillPergon(who, SKILLID_TIERE_VERARZTEN, -1, points))
+    var points_healed := RandomInt(max_heal) + 1;
+    HealDamage(patient, points_healed);
+    SendSysMessagePergon(who, "Ihr heilt " + points_healed + " Lebenspunkte.");
+    BloodyBandages(who);
+  Else
+    SendSysMessagePergon(who, "Eure Verbände zeigen keine Wirkung.");
+  EndIf
+
+  SubtractAmount(bandage, 1);
+EndFunction
+
+Function ReviveAnimal(who, corpse, bandage, skill, template)
+  If (CheckSkillPergon(who, SKILLID_TIERE_VERARZTEN, skill, 2*skill))
+    // der Wiederbeleber bekommt ein abgerichtetes Tier
+    // (kann er zurueckgeben oder fuer Eigenbedarf nutzen)
+    var parms := struct;
+    parms["color"]     := corpse.color;
+    parms["truecolor"] := corpse.color;
+    parms["master"]    := who.serial;
+    parms["script"]    := "enticedanimal";
+    parms["CProps"]    := dictionary;
+    parms["CProps"]["master"] := who.serial;
+    var animal := CreateNpcFromTemplate(
+      template, corpse.x, corpse.y, corpse.z, parms, corpse.realm
+    );
+    If (animal)
+      // nur einmal wiederbeleben, Knochen entfernen, wenn Master wiederbelebt
+      var exmaster := corpse.getprop("master");
+      If (exmaster)
+        If (who.serial == exmaster)
+           corpse.setprop("guardkill", 1);
+        Else
+          exmaster := SystemFindObjectBySerial(exmaster, SYSFIND_SEARCH_OFFLINE_MOBILES);
+          corpse.setprop("vet", who.serial);
+          syslog(
+            "INFO: "+CharInfoStr(who)+" hat "+ItemInfoStr(corpse, COORDS_REALM)+
+            " von "+CharInfoStr(exmaster)+" wiederbelebt")
+          ;
+        EndIf
+      EndIf
+      
+      var oldname := corpse.getprop("myname");
+      If (oldname)
+        SetNamePergon(animal, oldname);
+      EndIf
+      DestroyItem(corpse);
+
+      // lebt geradeso
+      SetHPPergon(animal, 1);
+      SendSysMessagePergon(who, "Ihr belebt das Tier wieder!");
+      SubtractAmount(bandage, 1);
+      BloodyBandages(who);
+    Else
+      SendSysMessagePergon(who, "Ein Fehler ist aufgetreten.");
+      syslog(
+        "FEHLER: "+ItemInfoStr(corpse, COORDS_REALM)+" konnte nicht "+
+        "wiederbelebt werden: "+animal.errortext
+      );
+    EndIf
+    return;
+  EndIf
+
+  // Fehlerfall -- manchmal etwas mehr Strafe
+  If (RandomInt(100) < 10)
+    SendSysMessagePergon(who, "Das ging gründlich schief!");
+    // in 10% der Faelle geht die Leiche kaputt
+    If (RandomInt(100) < 10)
+      // und noch seltener gibt es einen Schleim
+      If (CreateNpcFromTemplate(
+          "Slime", corpse.x, corpse.y, corpse.z, 0, corpse.realm
+      ))
+        SendSysMessagePergon(who, "Aber was ist das?");
+      Else
+        SendSysMessagePergon(who, "Das Tier ist nun unheilbar tot.");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Das Tier ist nun unheilbar tot.");
+    EndIf
+    corpse.setprop(EV_CHOPPER, who.name);
+    DestroyItem(corpse);
+  Else
+    SendSysMessagePergon(who, "Eure Verbände zeigen keine Wirkung.");
+  EndIf
+
+  SubtractAmount(bandage, 1);
+EndFunction
+
+Function BloodyBandages(who)
+  If (RandomInt(100) > 80)
+    // mit 80%er Wahrscheinlichkeit noch zu gebrauchen
+    CreateItemInBackpackPergon(who, 0x0e20);
+  EndIf
+EndFunction

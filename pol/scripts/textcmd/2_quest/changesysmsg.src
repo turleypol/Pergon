@@ -1,0 +1,21 @@
+////////////////////////////////////////////////////////////////
+// TextCMD ChangeSysMsg - Schaltet die Meldungen an oder aus
+//
+// Author: Shinigami
+
+use file;
+use uo;
+include "include/msgs";
+include "include/quests";
+
+Program TextCMD_ChangeSysMsg(who)
+  If (GetObjProperty(who, NOSYSMSG)) // Meldungen ausgeschaltet?
+    EraseObjProperty(who, NOSYSMSG);
+    SendSysMessagePergon(who, "Meldungen werden wieder angezeigt!", "");
+    QuestCharLog(who, "TextCMD ChangeSysMsg on");
+  Else
+    SendSysMessagePergon(who, "Meldungen werden nicht mehr angezeigt!", "");
+    SetObjProperty(who, NOSYSMSG, 1);
+    QuestCharLog(who, "TextCMD ChangeSysMsg off");
+  EndIf
+EndProgram

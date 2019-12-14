@@ -1,0 +1,77 @@
+///////////////////////////////////////////////////////////////////////////
+// killrange
+// killt alle Npcs im Umkreis der angegebenen Koordinate oder
+// im Umkreis des Nutzers (falls nur Range angegeben)
+//
+// (c) 2000, exelon
+
+use os;
+use uo;
+include "include/logutil";
+include "include/modifyskill";
+include "include/msgs";
+
+Program killrange(who, eingabe)
+  eingabe := SplitWords(eingabe);
+
+  var x;
+  var y;
+  var range;
+
+  If (eingabe.size() == 1)
+    x := who.x;
+    y := who.y;
+    range := CInt(eingabe[1]);
+    If (range > 20)
+        If (SendTextEntryGump(who,
+            range+" ist recht gross. Sicher?  ('JA' um zu bestaetigen)",
+            TE_CANCEL_ENABLE, TE_STYLE_NORMAL, 10
+          ) != "JA"
+        )
+        return;
+      EndIf
+    EndIf
+  Else
+    x     := CInt(eingabe[1]);
+    y     := CInt(eingabe[2]);
+    range := CInt(eingabe[3]);
+  EndIf
+
+  If ((x <= 0) && (y <= 0) && (range <= 0))
+    SendSysMessagePergon(who, "USAGE: .killrange [<x> <y>] <range>");
+    return;
+  EndIf
+
+  var count := 0;
+  ForEach mobile in (ListMobilesNearLocationEx(
+      x, y, LIST_IGNORE_Z, range,
+      LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN+LISTEX_FLAG_GHOST, who.realm
+  ))
+    SleepMS(2);
+    If (!mobile.isa(POLCLASS_NPC))
+      continue;
+    EndIf
+
+    If (Lower(mobile.npctemplate) == "playervendor")
+      If (SendTextEntryGump(who,
+          "Wollt Ihr wirklich Playerhaendler "+mobile.name+" entfernen? "+
+          "('JA' um zu bestaetigen)",
+          TE_CANCEL_ENABLE, TE_STYLE_NORMAL, 10
+        ) != "JA"
+      )
+        continue;
+      EndIf
+    EndIf
+
+    SendSysMessagePergon(who,
+      CharInfoStr(mobile, COORDS_REALM)+" wird gekillt..."
+    );
+    syslog(CharInfoStr(who)+" toetet "+CharInfoStr(mobile, COORDS_REALM));
+    RevokePrivilege(mobile, "invul");
+    SetObjProperty(mobile, "guardkill", 1);
+    KillMobile(mobile, "TextCMD KillRange");
+    count += 1;
+  EndForEach
+
+  SendSysMessagePergon(who, "Fertig, "+count+" Todesopfer.");
+EndProgram

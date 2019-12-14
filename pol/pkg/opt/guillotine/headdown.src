@@ -1,0 +1,163 @@
+////////////////////////////////////////////////
+// Pacmakers Guillotine Package v 1.0
+//
+// Usage: DoubleClick on Guillotine (0xff11) to kill one Pc
+//
+// Author: Pacmaker
+
+use os;
+use uo;
+use util;
+include "include/client";
+include "include/msgs";
+include "include/npc";
+include "include/objtype";
+include "include/server";
+
+Program HeadDown(executioner, guillotine)
+  var victim;
+  If (TypeOfInt(executioner) == OT_STRUCT)
+    // externer Selbstmordaufruf
+    guillotine  := executioner.item;
+    victim      := executioner.who;
+    executioner := 0;
+  EndIf
+
+  If (executioner)
+    If (executioner.cmdlevel < CMDLEVEL_HIGHGM)
+      SendSysMessagePergon(executioner,
+        "Ihr seid kein Henker.", "You aren't an executioner. "
+      );
+      return;
+    EndIf
+
+    victim := Target(executioner, TGTOPT_NOCHECK_LOS);
+    If (!victim.isa(POLCLASS_MOBILE))
+      SendSysMessagePergon(executioner,
+        "Ungültiges Ziel!", "No legal target!"
+      );
+      return;
+    EndIf
+
+    // passend stellen
+    Case (guillotine.graphic)
+    0x125e:
+      MoveObjectToLocation(
+        victim, guillotine.x+2, guillotine.y, guillotine.z, victim.realm
+      );
+    0x1230:
+      MoveObjectToLocation(
+        victim, guillotine.x, guillotine.y+2, guillotine.z, victim.realm
+      );
+    EndCase
+  EndIf
+
+  // zurechtdrehen
+  Case (guillotine.graphic)
+  0x125e:
+    victim.setfacing(6, FACING_FORCE);
+  0x1230:
+    victim.setfacing(0, FACING_FORCE);
+  EndCase
+
+  Sleep(1);
+
+  // ein Schritt nach vorn
+  Case (guillotine.graphic)
+  0x125e:
+    MoveObjectToLocation(
+      victim, guillotine.x+1, guillotine.y, guillotine.z, victim.realm
+    );
+  0x1230:
+    MoveObjectToLocation(
+      victim, guillotine.x, guillotine.y+1, guillotine.z, victim.realm
+    );
+  EndCase
+  Sleep(3);
+
+  // Buecken
+  PerformAction(victim, ANIM_BOW);
+  SleepMS(550);
+
+  // Animation basteln
+  Case (guillotine.graphic)
+  0x125e:
+    guillotine.graphic := 0x1260;
+  0x1230:
+    guillotine.graphic := 0x1245;
+  EndCase
+
+  // Axtsound
+  PlaySoundEffect(guillotine, 0x233);
+
+  Case (guillotine.graphic)
+  0x1260:
+    SleepMS(5);
+    guillotine.graphic := 0x1268;
+  0x1245:
+    SleepMS(600);
+    guillotine.graphic := 0x1230;
+  EndCase
+
+  // etwas Blut erzeugen
+  var blood;
+  Case (guillotine.graphic)
+  0x1268:
+    blood := CreateItemAtLocationPergon(
+      guillotine.x+1, guillotine.y, guillotine.z, 0x1cf3, 1, guillotine.realm
+    );
+  0x1230:
+    blood := CreateItemAtLocationPergon(
+      guillotine.x, guillotine.y+1, guillotine.z, 0x1cf3, 1, guillotine.realm
+    );
+  EndCase
+  blood.name       := "noch warmes Blut";
+  blood.movable    := 0;
+  blood.saveonexit := 0;
+  // und spaeter wieder entfernen
+  Start_ScriptPergon("::items/itemdestroy", {blood, 900});
+
+  // Name holen, damit es nicht "Leiche von" heisst
+  var name := victim.name;
+  If (executioner)
+    // Logging
+    syslog(
+      "STRAFE: "+CharInfoStr(name, COORDS_REALM)+" wird von "+
+      CharInfoStr(executioner)+" gerichtet"
+    );
+  EndIf
+  // und abmurksen
+  KillMobile(victim, "guillotine");
+
+  // der Kopf ist ab, also mal passend erzeugen
+  var head;
+  Case (guillotine.graphic)
+  0x1268:
+    head := CreateItemAtLocationPergon(
+      guillotine.x-1, guillotine.y-1+RandomInt(3), guillotine.z,
+      UOBJ_HEAD_NEW, 1, guillotine.realm
+    );
+  0x1230:
+    head := CreateItemAtLocationPergon(
+      guillotine.x-1+RandomInt(3), guillotine.y-1, guillotine.z,
+      UOBJ_HEAD_NEW, 1, guillotine.realm
+    );
+  EndCase
+
+  // Kopf betiteln
+  If (victim.gender)
+    head.desc := "Der Kopf der verbrecherischen "+name;
+  Else
+    head.desc := "Der Kopf des verbrecherischen "+name;
+  EndIf
+
+  // Grafik zurueckstellen
+  SleepMS(5);
+  If (guillotine.graphic == 0x1268)
+    guillotine.graphic := 0x1269;
+  EndIf
+  Sleep(1);
+  If (guillotine.graphic == 0x1269)
+    guillotine.graphic := 0x125e;
+  EndIf
+EndProgram

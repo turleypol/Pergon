@@ -1,0 +1,47 @@
+use os;
+use uo;
+use util;
+use vitals;
+include "../../opt/daymoonweather/daymoonweather";
+include "../newmagic/spells/light";
+include "../newmagic/spells/magicpergon";
+include "drinkpotion";
+
+Program drink_black (who, potion)
+  If (!checkifcandrink(who))
+    return;
+  EndIf
+
+  If (is_poison(potion))
+    do_poison(who, potion);
+  Else
+    // kein Trinkgeraeusch, einfach nur die Flasche leeren
+    CreateItemInBackpackPergon(who, UOBJ_EMPTY_BOTTLE, 1);
+    SubtractAmount(potion, 1);
+
+    // check If spelltarget is blind
+    If (GetObjProperty(who, "blinded"))
+      SendSysMessagePergon(who,
+        "Ihr seid blind - da helfen auch Lichtzauber nicht mehr."
+      );
+    Else
+      PlaySoundEffect(who, SFX_SPELL_NIGHT_SIGHT);
+      // Das Magische Licht benutzen?
+      If (UseMagilite(who, who))
+        PlayObjectCenteredEffect(who, FX_MARK_EFFECT, 7, 7);
+        // wisp erzeugen
+        CreateMagicLight(who, who, CInt(RandomInt(1000) + 800));
+      Else
+        PlayObjectCenteredEffect(who, FX_BLESS_EFFECT, 10,10);
+        // orig.: 1800
+        SetLightLevelPergon(
+          who, MINDAYLIGHT, CInt(RandomInt(1000)+800), CHECK_NOLIGHT
+        );
+      EndIf
+    EndIf
+
+    detach();
+    Sleep(10);
+    candrink(who);
+  EndIf
+EndProgram

@@ -1,0 +1,87 @@
+////////////////////////////////////////////////////////////////////////
+// TextCMD CreateLoc  - Erzeugt ein Item an bestimmten Koordinaten
+//
+// basiert auf CreateAt, Items werden festgemacht, wenn erfolgreich plaziert
+// Parameter: objtype x y [color = 0]
+
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.1  2008/05/12 21:35:27  mehdorn
+// erste Version des tollen "Wir packen ein Item nach x, y"-Scripts
+//
+
+///////////////////////////
+// Bibliotheken&Includes //
+///////////////////////////
+Use uo;
+Include "include/objtype";
+Include "include/itemnpc";
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program TextCMD_CreateLoc(who, text)
+    If (!text)
+        SendSysMessagePergon(who,
+            "Aufruf: objtype x y [color = 0]", "Call: objtype x y [color = 0]"
+        );
+        return;
+    EndIf
+
+    var params  := SplitWords(text);
+    var objtype;
+    If (CInt(params[1]))
+        objtype := CInt(params[1]);
+    Else
+        objtype := params[1];
+    EndIf
+    var xpos    := CInt(params[2]);
+    var ypos    := CInt(params[3]);
+    var color   := CInt(params[4]);
+
+    // SpawnRune darf nur ueber .CreateSpawnrune createt werden
+    If ((objtype == UOBJ_SPAWNRUNE) or (lower(objtype) == "spawnrune"))
+        SendSysMessagePergon(who,
+            "Spawnrunen mit .createspawnrune erzeugen!",
+            "Create spawn runes via .createspawnrune!"
+        );
+        return;
+    EndIf
+
+    If (!color)
+        color := 0;
+    EndIf
+
+    // lokal erzeugen
+    var item := CreateItemAtLocationPergon(
+        who.x, who.y, who.z, objtype, 1, who.realm
+    );
+
+    If (!item)
+        SendSysMessagePergon(who,
+            "Item konnte nicht erzeugt werden. "+
+            "Geht mal an eine sichere Position.",
+            "Could not create item. Try to go to a safe position first."
+        );
+        return;
+    EndIf
+
+    If (
+        MoveObjectToLocation(
+            item,
+            xpos, ypos, GetMapInfo(xpos, ypos, who.realm).z, who.realm,
+            MOVEOBJECT_FORCELOCATION
+        )
+    )
+        item.color := color;
+        item.movable := 0;
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Plazierung von "+objtype+" bei ("+xpos+", "+ypos+") gescheitert.",
+        "Placement of "+objtype+" at ("+xpos+", "+ypos+") failed."
+    );
+    DestroyItem(item);
+EndProgram

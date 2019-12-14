@@ -1,0 +1,22 @@
+use uo;
+
+Include ":popuphook:popupmenu";
+
+Program Install()
+	return 1;
+EndProgram
+
+Exported Function haspopup(mobile)
+	return 1;
+	mobile := mobile;
+EndFunction
+
+Exported Function popupinfo(mobile, who)
+	return {
+	  {ID_VENDOR_BUY, CLILOC_VENDOR_BUY},
+	  {ID_VENDOR_SELL, CLILOC_VENDOR_SELL},
+	  {ID_VENDOR_TRAIN, CLILOC_VENDOR_TRAIN}
+	};
+	mobile := mobile;
+	who := who;
+EndFunction

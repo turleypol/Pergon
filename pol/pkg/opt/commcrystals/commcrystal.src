@@ -1,0 +1,174 @@
+///////////////////////////////////////////////////////////////////////////
+// CommCrystal -- Kommunikationskristalle verwalten
+
+use math;
+use os;
+use uo;
+include "common";
+include "include/msgs";
+
+Program UseCommCrystal(who, crystal) // {{{
+  SendSysMessagePergon(who, "Wählt ein Objekt!", "Choose an object!");
+  var tgt := target(who);
+  If (!tgt)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (tgt.objtype == 0x0f30)
+    // Diamant gewaehlt, Aufladen
+    Recharge(who, crystal, tgt);
+    return;
+  EndIf
+
+  If (tgt.serial == crystal.serial)
+    // Kristall selbst gewaehlt, Ein- oder Ausschalten
+    SwitchOnOff(who, crystal);
+    return;
+  EndIf
+
+  If (tgt.objtype == RECEIVEROBJ)
+    // Sender mit Empfaenger verknuepfen
+    TryToConnect(who, crystal, tgt);
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Das ist kein Kommunikationskristall.",
+    "That is no communication crystal."
+  );
+EndProgram // }}}
+
+// Kristall aufladen
+Function Recharge(who, crystal, diamond) // {{{
+  var charges := CInt(crystal.getprop(PROP_CHARGES));
+  If (charges >= CHARGE_MAX)
+    SendSysMessagePergon(who,
+      "Euer Kristall ist bereits voll aufgeladen.",
+      "Your crystal is fully charged already."
+    );
+    return;
+  EndIf
+
+  SubtractAmount(diamond, 1);
+  charges := Min(CHARGE_MAX, 100+charges);
+  SendSysMessagePergon(who,
+    "Lade Kristall auf. Ihr habt nun "+charges+" von "+CHARGE_MAX+
+    " Ladungen übrig.",
+    "Crystal recharged. You've now "+charges+" of "+CHARGE_MAX+
+    " charges left."
+  );
+  crystal.setprop(PROP_CHARGES, charges);
+EndFunction // }}}
+
+// Zustand umschalten zwischen an und aus
+Function SwitchOnOff(who, crystal) // {{{
+  If (!crystal.getprop(PROP_STATUS))
+    // Einschalten
+    var links := crystal.getprop(PROP_LINKS);
+    If (!links)
+      links := array{};
+    EndIf
+
+    If (links.size() <= 0)
+      SendSysMessagePergon(who,
+        "Keine Empfänger vorhanden. Kristall bleibt deaktiviert.",
+        "No receivers found. Crystal stays inactive."
+      );
+      return;
+    EndIf
+    crystal.setprop(PROP_STATUS, STATUS_ON);
+
+    SendSysMessagePergon(who,
+      "Kristall aktiviert. Ihr seid mit "+links.size()+
+      " Empfängern verbunden.",
+      "Crystal activated. You're connected with "+links.size()+
+      " receivers."
+    );
+
+    var charges := crystal.getprop(PROP_CHARGES);
+    SendSysMessagePergon(who,
+      "Ihr habt "+charges+" Ladungen übrig.",
+      "You've "+charges+" charges left."
+    );
+    return;
+  Else
+    // Abschalten
+    crystal.eraseprop(PROP_STATUS);
+
+    SendSysMessagePergon(who,
+      "Kristall deaktiviert.", "Crystal deactivated."
+    );
+    return;
+  EndIf
+EndFunction // }}}
+
+// zwei Kristalle verbinden/trennen
+Function TryToConnect(who, sender, receiver) // {{{
+  var master := CInt(receiver.getprop(PROP_MASTER));
+
+  If (master <> sender.serial)
+    // pruefen, ob Kristall noch benutzt wird, ggf. Freigabe {{{
+    If (master <> 0)
+      var found := SystemFindObjectBySerial(
+        master, SYSFIND_SEARCH_OFFLINE_MOBILES
+      );
+      If (found)
+        SendSysMessagePergon(who,
+          "Dieser Empfänger ist in Benutzung.",
+          "This receiver is already in use."
+        );
+        return;
+      Else
+        // existiert nicht mehr, Verbinden erlauben
+        master := 0;
+      EndIf
+    EndIf
+    // }}}
+  EndIf
+
+  If (master == 0)
+    // bisher nicht verbunden, Verbindungsversuch {{{
+    var links := sender.getprop(PROP_LINKS);
+    If (!links)
+      links := array{};
+    EndIf
+    If (links.size() > LINKS_MAX)
+      SendSysMessagePergon(who,
+        "Zu viele Empfänger. Abbruch.",
+        "Too many receivers. Cancelled."
+      );
+      return;
+    EndIf
+
+    links.append(receiver.serial);
+    sender.setprop(PROP_LINKS, links);
+    receiver.setprop(PROP_MASTER, sender.serial);
+
+    SendSysMessagePergon(who, "Verbunden.", "Connected.");
+    // }}}
+    return;
+  EndIf
+
+  // master == sender.serial
+  // Verbindung trennen {{{
+  var links := sender.getprop(PROP_LINKS);
+  If (!links)
+    links := array{};
+  EndIf
+  var i;
+  For (i := 1; i <= links.size(); i += 1)
+    SleepMs(2);
+    If (links[i] == receiver.serial)
+      // aktuellen Empfaenger aus Linkliste entfernen
+      links.erase(i);
+      break;
+    EndIf
+  EndFor
+  sender.setprop(PROP_LINKS, links);
+  receiver.eraseprop(PROP_MASTER);
+
+  SendSysMessagePergon(who, "Getrennt.", "Disconnected.");
+  // }}}
+  return;
+EndFunction // }}}

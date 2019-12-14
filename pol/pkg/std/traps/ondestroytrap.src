@@ -1,0 +1,42 @@
+//  Autor: 		Peter -pJOTTR- Straube
+//  Date: 		12.01.2004
+//
+//  ondestroytrap:	erledigt alles was beim Abbau einer Falle noetig ist
+//
+//  Modifikation:
+//
+
+use cfgfile;
+use uo;
+include "include/modifyskill";
+include "include/poison";
+include "traps";
+
+Program ondestroytrap(trapon)
+	// Var cfg:=ReadConfigFile("create");
+	// Var buildersdex:=GetObjProperty(trapon, "buildersdex");
+	Var buildersserial:=GetObjProperty(trapon, "buildersserial");
+	// Var buildersskill:=GetObjProperty(trapon, "buildersskill");
+	// Var trap_strength:=GetObjProperty(trapon, "trap_strength");
+	// Var trapid:=GetObjProperty(trapon, "trap");
+	Var wascreatetbythistrap:=0;
+
+	Var mobiles:=ListMobilesNearLocationEx(trapon.x, trapon.y, trapon.z, 3, LISTEX_FLAG_NORMAL,trapon.realm);
+	Foreach vieh in mobiles
+		wascreatetbythistrap:=GetObjProperty(vieh,"creatingtrap");
+		If(wascreatetbythistrap == trapon.serial)
+			KillMobile(vieh, "destroytrap");
+		EndIf
+	EndForEach
+
+
+	Var Owner := SystemFindObjectBySerial(buildersserial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+	If (Owner)
+		If (!Owner.ip)           // Fallensteller ist Offline
+			Return;
+		EndIf
+	Else                             // Fallensteller ist Online
+		SendSysMessagePergon(Owner, "Eine Eurer Fallen wurde abgebaut oder ist zerfallen!", "One of your traps was removed!");
+	EndIf
+
+EndProgram

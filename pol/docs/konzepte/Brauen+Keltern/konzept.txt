@@ -1,0 +1,207 @@
+Brauen - Neuer Versuch
+
+Das sich beim Brauen nicht viel getan hat und mir das alte
+Konzept nicht gefällt, da es viele Vorgänge vermischt, habe
+ich mir ein neues Konzept ausgedacht. Das basiert zu weiten
+Teilen auf dem RL, was den Vorgang an sich betrifft, und
+auch einige Spielerideen sind eingeflossen. Vom alten
+Konzept habe ich aber zumindest einige Rezeptideen
+übernommen, ansonsten erinnert es -- zugegebenermaßen --
+ans Kochen. Allerdings habe ich es es etwas flexibler
+ausgelegt (mehr als zwei Zutaten möglich, Abhängigkeit[0]
+von beliebig vielen Items möglich).
+
+Es gibt folgende Hauptschritte: Mälzen, Maischen, Gären,
+Brennen, Verschneiden und Abfüllen. Bis auf den letzten
+Vorgang sollen diese nur von Leuten mit Brauskill ausführbar
+sein. Abfüllen ist einfach das Umfüllen des fertigen
+Produkts in Flaschen bzw. Gläser und sollte, wie auch beim
+Umfüllen von Wasser, von jedermann erledigt werden können.
+(Eventuell einfach Wasserumfüllcode erweitern.)
+
+Wie in der Grafik ersichtlich ist, kommen verschiedene
+Gegenstände (rote Kästen) an verschiedenen Teilprozessen
+(blaue Sechsecke) zum Einsatz. Sie werden gehen dabei zwar
+ggf. kaputt, werden aber nicht wie Zutaten verbraucht.
+Alles in grünen Kringeln wird verbraucht, türkise Kringel
+sind End- oder Zwischenprodukte.
+
+Da man natürlich nicht für jedes Produkt alle Zutaten
+braucht, gibt es dann noch eine Tabelle (per Configfile),
+die die möglichen Kombinationen festlegt.
+
+Beispiel:
+    Wenn man Weintrauben vermostet, braucht man nur die
+    Trauben und ein Zielfaß. Trauben sind wasserreich,
+    daher muß man nichts zusetzen. Entstehen tut dann ein
+    entsprechendes Item als Zwischenprodukt, im Beispiel
+    Traubensaft. Die Menge des Endproduktes richtet sich
+    nach den Anzahl der Trauben.
+
+    Will Malz einmaischen, so braucht man zusätzlich zum
+    Zielfaß auch (abhängig von der Malzmenge entsprechend
+    viel) Wasser.
+
+
+    Limitiert wird das ganze natürlich außerdem durch die
+    maximale Faßgröße, die wohl bei 300 Litern liegt.
+
+
+Diese Tabelle enthält den Auslöser, zusätzlich nötige Items,
+Zutaten (und deren Verhältnisse) pro Zwischen-/Endprodukt.
+Nach Doppelklick auf den Auslöser darf man ein Ziel auswählen.
+Wenn das Ziel der ersten Zutat eines Produktes entspricht und
+der Auslöser zum Produkt paßt, wird das jeweilige Produkt
+ge-herstelltyp-t.
+
+Unvollständige Tabellen für die Vorgänge könnten so
+aussehen, der Einfachheit halber wird auf 1 (ggf. Liter)
+Endprodukt normiert:
+
+Produkt:        Maismalz
+Herstelltyp:    Mälzen
+Auslöser:       ???[0]
+Zutaten:        Maiskolben, Wasser
+Verhaeltnis:             1,     10
+
+Produkt:        Weizenmalz
+Herstelltyp:    Mälzen
+Auslöser:       ???[1]
+Zutaten:        Weizenkorn, Wasser
+Verhaeltnis:             5,     10
+
+Produkt:        Traubensaft
+Herstelltyp:    Mosten
+Auslöser:       Presse
+Zutaten:        Trauben
+Verhaeltnis:          3
+
+Produkt:        Weizenmaische
+Herstelltyp:    Maischen
+Auslöser:       Rührpaddel
+Zutaten:        Weizenmalz, Wasser
+Verhaeltnis:           1/5,      1
+
+Produkt:        Weizenbier
+Herstelltyp:    Gaeren
+Auslöser:       Kessel
+Zusatzitems:    Feuer/Brenner
+Zutaten:        Weizenmaische, Hefe
+Verhaeltnis:                1, 1/300
+
+Produkt:        Bier (gehopft)
+Herstelltyp:    Gaeren
+Auslöser:       Kessel
+Zusatzitems:    Feuer/Brenner
+Zutaten:        Malzmaische, Hopfen, Hefe
+Verhaeltnis:              1,    1/5, 1/300
+
+Produkt:        Wein
+Herstelltyp:    Gaeren
+Auslöser:       Hefe
+Zutaten:        Traubensaft, Hefe
+Verhaeltnis:              1, 1/300
+
+Produkt:        Weinbrand
+Herstelltyp:    Brennen
+Auslöser:       Destille
+Zusatzitems:    Feuer/Brenner
+Zutaten:        Wein
+Verhaeltnis:      10
+
+Produkt:        Bananenweizen
+Herstelltyp:    Verschneiden
+Auslöser:       ???[2]
+Zutaten:        Bananensaft, Weizenbier
+Verhaeltnis:              1,          1
+
+Abhängig vom Herstelltyp wird entschieden, ob man ein
+(leeres) Zielfaß benötigt. Daher, und weil es sich
+"verbraucht", ist das nicht als Zusatzitem angegeben.
+
+Eventuell "Except"-Ersatz in der Form, daß man besonders
+gelungene "Jahrgänge" benennen kann. Sprich: Statt daß
+beispielsweise einfach "Wein" entsteht, öffnet sich ein
+Benamsungsgump zur Namenseingabe und das Produkt heißt
+dann "Akilanos[3] Rebenfreude (Wein)". Nahrhafter wird
+das Produkt davon nicht, es heißt nur anders. Hat dann
+vielleicht Sammlerwert. Und damit klar ist, worum es
+sich handelt, bleibt der Produktname in Klammern dran.
+
+Wenn man das nun noch in Code gießt, sollte man damit
+bereits Brauen können. Damit das aber auch ab und an
+schiefgeht und nicht so langweilig ist, müßte man noch
+Schwierigkeitsgrad und Skillanstieg irgendwie dazudichten.
+
+Für alle abgefüllten Produkte müßte man natürlich noch
+Preise, Trinkbarkeit und Sättigungsgrad sowie ggf.
+Alkoholpegel festlegen. Aber das gehört dann wohl in die
+itemdesc.cfg und nicht ins Script selbst bzw. in die
+Was-braue-ich-womit-Tabelle. Ich weiß nicht, ob momentan
+leere Flaschen und Gläser hergestellt werden können. Müßte
+man ggf. noch zulassen.
+
+
+Um die Leute zu animieren, auch verschiedene Produkte zu
+konsumieren, sollte man das Trinksystem mit History
+ausstatten. Darin könnte man die letzten fünf Getränke
+speichern, und bei einseitiger Ernährung vielleicht
+irgendwelche Einschränkungen bei den HP machen oder die
+Leute schneller wieder durstig werden lassen. Und die NPCs
+dürften dann auch nicht mehr so viele verschiedene Getränke
+verkaufen.
+
+Wobei mir das eigentlich egal ist. Mir geht es ums
+Brausystem und nicht ums Eß-&Trink-System. Das kann
+man auch später reformieren, falls es nötig erscheint.
+
+
+[0] Beim Kochen kann man nur sagen, daß man Feuer braucht,
+    aber kann beispielsweise nicht einfach definieren, daß
+    man für Pizza zum Ausrollen noch ein Nudelholz haben
+    sollte.
+
+[1] Mal sehen, worauf man zum Mälzen doppelklicken soll.
+    Entweder Weizenkörner/Mais ungenießbar machen oder
+    Mälzboden-/Keimbehälter-Grafik suchen.
+
+[2] Sicherheitshalber will ich nicht automatisch mischen,
+    wenn man zwei (nicht ganz volle) Fässer mit
+    verschiedenen Getränken zusammenkippt, wenn die
+    Kombination vorgesehen ist. Daher überlege ich mir
+    da auch noch ein Item. Mischbottich?
+
+[3] Akilano hatte die Idee.
+
+Bisher geplante Produkte:
+    Säfte:
+        Apfelsaft
+        Bananensaft
+        Birnensaft
+        Möhrensaft
+        Pfirsichsaft
+        Rübensaft
+        Traubensaft
+
+    Biere:
+        Bier (gehopft)
+        Malzbier
+       Weizenbier
+
+    Weine:
+        Apfelwein
+        Birnenwein
+        Pfirsichwein
+        Traubenwein
+
+    Schnäpse:
+        Apfelschnaps
+        Birnengeist
+        Korn/Whisky (aus ungehopftem Bier)
+        Pfirsichlikör
+        Weinbrand (nur Traubenwein)
+
+    Verschnitte:
+        Bananenweizen
+        Obstler (aus Apfelschaps und Birnengeist)
+

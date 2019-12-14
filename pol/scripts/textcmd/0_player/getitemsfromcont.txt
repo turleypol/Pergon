@@ -1,0 +1,6 @@
+<h3 id="getitemsfromcont">getitemsfromcont</h3>
+
+<p>Alle Gegenstände aus einem Container holen. Sie werden in einen
+neuen Rucksack names &bdquo;Verschobenes&rdquo; getan. Für Spieler ist
+der Befehl auf Zauberbücher beschränkt, Questchars und höher
+können damit jeden Container leeren.</p>

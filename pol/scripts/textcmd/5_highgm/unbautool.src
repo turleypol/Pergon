@@ -1,0 +1,46 @@
+///////////////////////////////////////////////////////////////////////////
+// unbautool --
+// loescht allen Items im Bereich die Bautool-CProps
+
+use math;
+use os;
+use uo;
+include "include/msgs";
+include "include/server";
+
+Program Fasten(who, range)
+    range := Max(1, Min(100, CInt(range)));
+
+    SendSysMessagePergon(who,
+        "Entbautoole Items in Umkreis "+range,
+        "De-bautool-ing all items in range "+range
+    );
+
+    var count := 0;
+    ForEach item in (ListItemsNearLocation(
+        who.x, who.y, LIST_IGNORE_Z, range, who.realm
+    ))
+        SleepMs(2);
+        var erased := 0;
+        If (item.getprop("bautoolinit"))
+            item.eraseprop("bautoolinit");
+            erased := 1;
+        EndIf
+        If (item.getprop("bautoolitems"))
+            item.eraseprop("bautoolitems");
+            erased := 1;
+        EndIf
+        If (item.getprop("bautoolorigcol"))
+            item.eraseprop("bautoolorigcol");
+            erased := 1;
+        EndIf
+        If (erased)
+            count += 1;
+        EndIf
+    EndForEach
+
+    SendSysMessagePergon(who,
+        count+" Items sind nun entbautoolt",
+        count+" items are de-bautool-ed now"
+    );
+EndProgram

@@ -1,0 +1,24 @@
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use cfgfile;
+Use polsys;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/teleporters";
+Include "include/itemnpc";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_MakeDungTele()
+  DestroyTeleporters(); // Erstmal alles zerstoeren,
+  CreateTeleporters();  // um es neu aufzubauen
+EndProgram

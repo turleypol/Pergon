@@ -1,0 +1,45 @@
+//////////////////////////////////////////////////////////////////////////////
+// TextCMD CreateSpellBooks - Erzeugt vollgefuellte SpellBooks im Rucksack
+//
+// Author: Shinigami
+
+use file;
+use uo;
+include ":newmagic:spellbook";
+include "include/msgs";
+include "include/quests";
+
+Program TextCMD_CreateSpellBooks(who)
+  // QuestChars und ab GM
+  If (who.cmdlevel <> CMDLEVEL_QUESTCHAR and who.cmdlevel < CMDLEVEL_HIGHGM)
+    SendSysMessagePergon(who,
+      "Ihr seid nicht befugt, diesen Befehl zu benutzen!",
+      "You are not authorized to use this command!"
+    );
+    return;
+  EndIf
+
+  Var bookm:=CreateSpellBookInBackpack(who, UOBJ_SPELLBOOK_MAGE);
+  For spellitem:=MIN_MAGE_SPELL_ITEM To MAX_MAGE_SPELL_ITEM
+    CreateSpellInBook(bookm, spellitem);
+  EndFor
+  SleepMS(5);
+  Var bookc:=CreateSpellBookInBackpack(who, UOBJ_SPELLBOOK_CLERIC);
+  For spellitem:=MIN_CLERIC_SPELL_ITEM To MAX_CLERIC_SPELL_ITEM
+    CreateSpellInBook(bookc, spellitem);
+  EndFor
+  SleepMS(5);
+  Var bookn:=CreateSpellBookInBackpack(who, UOBJ_SPELLBOOK_NECRO);
+  For spellitem:=MIN_NECRO_SPELL_ITEM To MAX_NECRO_SPELL_ITEM
+    CreateSpellInBook(bookn, spellitem);
+  EndFor
+  SleepMS(5);
+  If (who.cmdlevel == CMDLEVEL_QUESTCHAR)
+    // Items gesondert markieren
+    SetObjProperty(bookm, TYPQUESTCHAR, who.serial);
+    SetObjProperty(bookc, TYPQUESTCHAR, who.serial);
+    SetObjProperty(bookn, TYPQUESTCHAR, who.serial);
+  EndIf
+
+  QuestCharLog(who, "TextCMD CreateSpellBooks");
+EndProgram

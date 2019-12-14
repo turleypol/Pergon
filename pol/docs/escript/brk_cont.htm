@@ -1,0 +1,130 @@
+<html>
+
+<head>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+<title>BREAK and CONTINUE Statements</title>
+</head>
+
+<body>
+
+<h1>BREAK and CONTINUE Statements</h1>
+
+<p>BREAK and CONTINUE operate only within <a href="for_c.htm">FOR</a>, <a href="while.htm">WHILE</a>,
+and <a href="dowhile.htm">DO..WHILE</a> loop statements.</p>
+
+<p>The BREAK statement exits its loop.</p>
+
+<p>The CONTINUE statement causes control to continue at the evaluation portion of its
+loop.</p>
+
+<h2>General Form</h2>
+
+<table border="1" width="100%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="50%"><pre>BREAK label<sub>opt</sub>;</pre>
+    </td>
+    <td width="50%" rowspan="2">If no label is specified, implicitly refers to the innermost
+    applicable loop.</td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>CONTINUE label<sub>opt</sub>;</pre>
+    </td>
+  </tr>
+</table>
+
+<h2>Examples</h2>
+
+<table border="1" width="100%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="50%"><pre>i := 0;
+while (1)
+begin
+    i := i + 1;
+    print &quot;i=&quot; + i;
+    if (i &gt;= 10) 
+        break;
+    endif
+end</pre>
+    </td>
+    <td width="50%">Output: <pre>1
+2
+3
+4
+5
+6
+7
+8
+9
+10</pre>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>i := 0;
+while (1)
+begin
+    i := i + 1;
+    if (i &lt;= 5)
+        continue;
+    elseif (i &gt;= 10) 
+        break;
+    endif
+    print &quot;i=&quot; + i;
+end
+</pre>
+    </td>
+    <td width="50%">Output:<pre>
+6
+7
+8
+9
+</pre>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>
+do
+    begin
+        i := i + 1;
+        if (i &lt;= 5)
+            continue;
+        endif
+        print &quot;i=&quot; + i;
+    end
+while (i &lt; 10);
+</pre>
+    </td>
+    <td width="50%">&nbsp;</td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>
+j := 0;
+
+outer:
+while ( 1 )
+begin
+    print &quot;in outer loop&quot;;
+
+    local i;
+    for(i := 0; i &lt; 5; i++ )
+    begin
+        print &quot;i: &quot; + i + &quot;, j: &quot; + j;
+        if (j &gt;= 8)
+            break outer;
+        endif
+    end
+end
+</pre>
+    </td>
+    <td width="50%">&nbsp; Output:</td>
+  </tr>
+  <tr>
+    <td width="50%">&nbsp;</td>
+    <td width="50%">&nbsp;</td>
+  </tr>
+  <tr>
+    <td width="50%">&nbsp;</td>
+    <td width="50%">&nbsp;</td>
+  </tr>
+</table>
+</body>
+</html>

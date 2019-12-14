@@ -1,0 +1,409 @@
+/////////////////////////////////////////////////////////////
+//
+//   puzzlechest - kleines Mastermindspiel bei Erfolg wird
+//                 der Container geöffnet
+//                 Schloßknackskill sorgt für Anfangstips
+//                 Schaden bei falscher Lösung
+//
+//     Author: Turley
+//
+//   Modification:
+//     24.01.07 Turley - Kleiner Bugfix bei Fehlermeldungen
+//     31.01.07 Turley - Aufdecken bei Schaden+Mehrfachnutzung verhindern
+//     04.02.07 Turley - Bei Bewegung Abbruch
+//     26.02.07 Turley - Fix bei ColorCheck
+//
+/////////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+Use util;
+
+Include "include/client";
+Include "include/msgs";
+Include "include/modifyskill";
+Include "include/poison";
+
+Enum Buttons
+	OK:=1,
+	BTN_DARKBLUE:=1001,
+	BTN_BLUE,
+  BTN_GREEN,
+  BTN_ORANGE,
+  BTN_PURPLE,
+  BTN_RED,
+  BTN_LIGHTBLUE,
+	BTN_YELLOW,
+	CHECK_NR1:=2001,
+	CHECK_NR2,
+	CHECK_NR3,
+	CHECK_NR4,
+	CHECK_NR5
+EndEnum
+
+Enum Stones
+  DARKBLUE:=6249,
+  BLUE,
+  GREEN,
+  ORANGE,
+  PURPLE,
+  RED,
+  LIGHTBLUE,
+	YELLOW
+EndEnum
+
+Enum StoneDisplay
+	PODEST_1:=35,  // Layout Position Podeststeine
+	PODEST_2:=42,
+	PODEST_3:=49,
+	PODEST_4:=56,
+	PODEST_5:=63,
+	PODEST_1_DISPLAY:="tilepic 108 315 ", // Podestlayout
+	PODEST_2_DISPLAY:="tilepic 158 315 ",
+	PODEST_3_DISPLAY:="tilepic 208 315 ",
+	PODEST_4_DISPLAY:="tilepic 258 315 ",
+	PODEST_5_DISPLAY:="tilepic 308 315 ",
+	TRY_1:=67, // Layout Position LastTry
+	TRY_2,
+	TRY_3,
+	TRY_4,
+	TRY_5,
+	TRY_1_DISPLAY:="tilepic 168 265 ", // LastTrylayout
+  TRY_2_DISPLAY:="tilepic 188 265 ",
+  TRY_3_DISPLAY:="tilepic 208 265 ",
+  TRY_4_DISPLAY:="tilepic 228 265 ",
+  TRY_5_DISPLAY:="tilepic 248 265 ",
+EndEnum
+
+Var layout:={"nodispose",
+             "page 0",
+             "gumppic 0 0 30500", // Hintergrund
+             "htmlgump 0 15 460 20 0 0 0", // Überschrift
+             "htmlgump 30 35 400 70 1 0 0", // Erklärungstext
+             //Buttons links
+             "tilepic 30 120 1305",
+             "tilepic 29 136 "+DARKBLUE,
+             "button 80 132 1896 1895 1 0 "+BTN_DARKBLUE,
+             "tilepic 30 170 1305",
+             "tilepic 29 186 "+BLUE,
+             "button 80 182 1896 1895 1 0 "+BTN_BLUE,
+             "tilepic 30 220 1305",
+             "tilepic 29 236 "+GREEN,
+             "button 80 232 1896 1895 1 0 "+BTN_GREEN,
+             "tilepic 30 270 1305",
+             "tilepic 29 286 "+ORANGE,
+             "button 80 282 1896 1895 1 0 "+BTN_ORANGE,
+             //Buttons rechts
+             "tilepic 390 120 1305",
+             "tilepic 389 136 "+PURPLE,
+             "button 365 132 1896 1895 1 0 "+BTN_PURPLE,
+             "tilepic 390 170 1305",
+             "tilepic 389 186 "+RED,
+             "button 365 182 1896 1895 1 0 "+BTN_RED,
+             "tilepic 390 220 1305",
+             "tilepic 389 236 "+LIGHTBLUE,
+             "button 365 232 1896 1895 1 0 "+BTN_LIGHTBLUE,
+             "tilepic 390 270 1305",
+             "tilepic 389 286 "+YELLOW,
+             "button 365 282 1896 1895 1 0 "+BTN_YELLOW,
+             //Podeste
+             "tilepic 109 297 2832",  //Nr 1
+             "tilepic 86 309 2834",
+             "tilepic 132 309 2835",
+             "tilepic 109 320 2833",
+             "tilepic 109 299 1305",
+             "",  // SteinNR1
+             "radio 116 362 2151 2154 0 "+CHECK_NR1,
+             "tilepic 159 297 2832",  //Nr 2
+             "tilepic 136 309 2834",
+             "tilepic 182 309 2835",
+             "tilepic 159 320 2833",
+             "tilepic 159 299 1305",
+             "",  // SteinNR2
+             "radio 166 362 2151 2154 0 "+CHECK_NR2,
+             "tilepic 209 297 2832",  //Nr 3
+             "tilepic 186 309 2834",
+             "tilepic 232 309 2835",
+             "tilepic 209 320 2833",
+             "tilepic 209 299 1305",
+             "",  // SteinNR3
+             "radio 216 362 2151 2154 0 "+CHECK_NR3,
+             "tilepic 259 297 2832",  //Nr 4
+             "tilepic 236 309 2834",
+             "tilepic 282 309 2835",
+             "tilepic 259 320 2833",
+             "tilepic 259 299 1305",
+             "",  // SteinNR4
+             "radio 266 362 2151 2154 0 "+CHECK_NR4,
+             "tilepic 309 297 2832",  //Nr 5
+             "tilepic 286 309 2834",
+             "tilepic 332 309 2835",
+             "tilepic 309 320 2833",
+             "tilepic 309 299 1305",
+             "",  // SteinNR5
+             "radio 316 362 2151 2154 0 "+CHECK_NR5,
+             // LastTry
+             "htmlgump 100 230 260 20 2 0 0",
+             "resizepic 178 260 9200 105 20",
+             "", //LastTry SteinNr1
+             "", //LastTry SteinNr2
+             "", //LastTry SteinNr3
+             "", //LastTry SteinNr4
+             "", //LastTry SteinNr5
+             //OK
+             "button 203 420 2311 2312 1 0 "+OK
+            };
+Var data:={"<center><basefont size=6 color="+HTML_DARKYELLOW+">Eine Puzzlekiste</center>",
+           "<basefont size=6 color="+HTML_GRAY+">Waehle die richtige Reihenfolge der Zylinder, um das Schloss zu öffnen. "
+           +"Moeglicherweise koennen die Zylinder mehrfach nutzbar sein. Vorsicht! "
+           +"Ein Fehlversuch kann toedlich enden!",
+           "<center><basefont size=6 color="+HTML_GRAY+">Vorheriger Versuch:</center>"
+          };
+
+Program puzzlechest(who, container)
+	Var puzzle:={}, hints:={}, hint, i, ret;
+	Var solution:={0,0,0,0,0}, slot;
+	Var result;
+	Var whox, whoy, whoz;
+	
+	If ((container.getprop("lastsolved")+5*60)>=ReadGameClock())  // Nur alle 5 Minuten Puzzle
+		SendViewContainer(who, container);
+		Return;
+	EndIf
+	
+	If (!ReserveItem(container))
+	  SendSysMessagePergon(who,"Dies wird bereits benutzt.","This is already in use.");
+	  Return;
+	EndIf
+	
+	whox:=who.x;  // Sicherung der Pos für Abbruch
+	whoy:=who.y;
+	whoz:=who.z;
+	
+	For (i:=1;i<=5;i+=1)  // Puzzle erstellen
+		Case (RandomInt(8))
+			0: puzzle.append(DARKBLUE);
+      1: puzzle.append(BLUE);
+      2: puzzle.append(GREEN);
+      3: puzzle.append(ORANGE);
+      4: puzzle.append(PURPLE);
+      5: puzzle.append(RED);
+      6: puzzle.append(LIGHTBLUE);
+	    7: puzzle.append(YELLOW);
+	  EndCase
+	EndFor
+	
+	If (GetSkillPergon(who,SKILLID_SCHLOESSER_KNACK)>=40) // DiebCheck
+		hints:=puzzle;
+		layout.append("htmlgump 0 120 460 20 "+data.size()+" 0 0");
+		data.append("<center><basefont size=6 color="+HTML_GRAY+">Tipp zum Schloesserknacken:</center>");
+		
+		If (GetSkillPergon(who,SKILLID_SCHLOESSER_KNACK)<=100) // <=X Nur unknownPos
+			layout.append("resizepic 130 150 9200 200 45");
+			layout.append("htmlgump 135 155 200 40 "+data.size()+" 0 0");
+			data.append("<basefont size=6 color="+HTML_DARKGRAY+">Im unbekannten Platz verwendet:");
+			
+			If (GetSkillPergon(who,SKILLID_SCHLOESSER_KNACK)>=40) // Nur 1
+				hint:=RandomInt(hints.size())+1;  // Zufällig ein Stein auswählen
+				layout.append("tilepic 290 175 "+hints[hint]);  // Anzeigen
+				hints.erase(hint);  // ..löschen damit er nicht doppelt erscheint
+			EndIf
+			If (GetSkillPergon(who,SKILLID_SCHLOESSER_KNACK)>=60) // 2
+				hint:=RandomInt(hints.size())+1;
+				layout.append("tilepic 270 175 "+hints[hint]);
+				hints.erase(hint);
+			EndIf
+			If (GetSkillPergon(who,SKILLID_SCHLOESSER_KNACK)>=80) // 3
+				hint:=RandomInt(hints.size())+1;
+				layout.append("tilepic 250 175 "+hints[hint]);
+				hints.erase(hint);
+			EndIf
+			
+		Else // genaue Posangabe
+			layout.append("resizepic 130 150 9200 200 65");
+			layout.append("htmlgump 135 155 200 20 "+data.size()+" 0 0");
+			data.append("<basefont size=6 color="+HTML_DARKGRAY+">Auf dem ersten Platz:");
+			layout.append("tilepic 290 157 "+hints[1]);
+			hints.erase(1);
+      layout.append("htmlgump 135 175 200 40 "+data.size()+" 0 0");
+      data.append("<basefont size=6 color="+HTML_DARKGRAY+">Im unbekannten Platz verwendet:");
+      
+      If (GetSkillPergon(who,SKILLID_SCHLOESSER_KNACK)>=110) // Nur 1
+      	hint:=RandomInt(hints.size())+1;
+				layout.append("tilepic 290 195 "+hints[hint]);
+				hints.erase(hint);
+			EndIf
+			If (GetSkillPergon(who,SKILLID_SCHLOESSER_KNACK)>=120) // 2
+				hint:=RandomInt(hints.size())+1;
+				layout.append("tilepic 270 195 "+hints[hint]);
+				hints.erase(hint);
+			EndIf
+			If (GetSkillPergon(who,SKILLID_SCHLOESSER_KNACK)>=129) // 3
+				hint:=RandomInt(hints.size())+1;
+				layout.append("tilepic 250 195 "+hints[hint]);
+				hints.erase(hint);
+			EndIf
+		EndIf
+	EndIf
+  
+  While (who.connected)
+  	
+    ret:=SendDialogGump(who,layout,data,50,50);
+    
+    If ((whox<>who.x) || (whoy<>who.y) || (whoz<>who.z))
+  		SendSysMessagePergon(who,"Abbruch","Abort");
+  		Return;
+  	EndIf
+
+    If ((ret.keys[2]>=BTN_DARKBLUE) && (ret.keys[3]>=CHECK_NR1)) // Neuer Stein
+    	slot:=ret.keys[3]-2000;
+    	Case (ret.keys[2]) //Welcher Stein wohin
+  	    1001: solution[slot]:=DARKBLUE;
+        1002: solution[slot]:=BLUE;
+        1003: solution[slot]:=GREEN;
+        1004: solution[slot]:=ORANGE;
+        1005: solution[slot]:=PURPLE;
+        1006: solution[slot]:=RED;
+        1007: solution[slot]:=LIGHTBLUE;
+	      1008: solution[slot]:=YELLOW;
+	    EndCase
+	    Case (slot)  // Anzeige Aktualisieren
+	    	1: layout[PODEST_1]:=PODEST_1_DISPLAY+CStr(solution[1]);
+	      2: layout[PODEST_2]:=PODEST_2_DISPLAY+CStr(solution[2]);
+	      3: layout[PODEST_3]:=PODEST_3_DISPLAY+CStr(solution[3]);
+	      4: layout[PODEST_4]:=PODEST_4_DISPLAY+CStr(solution[4]);
+	      5: layout[PODEST_5]:=PODEST_5_DISPLAY+CStr(solution[5]);
+	    EndCase
+    ElseIf (ret[OK]);  // Ok - Lösung prüfen
+      // Anzeige letzter Version aktualisieren
+  	  If (solution[1]) 
+  	  	layout[TRY_1]:=TRY_1_DISPLAY+CStr(solution[1]);
+  	  EndIf
+  	  If (solution[2]) 
+  	  	layout[TRY_2]:=TRY_2_DISPLAY+CStr(solution[2]);
+  	  EndIf
+  	  If (solution[3]) 
+  	  	layout[TRY_3]:=TRY_3_DISPLAY+CStr(solution[3]);
+  	  EndIf
+  	  If (solution[4]) 
+  	  	layout[TRY_4]:=TRY_4_DISPLAY+CStr(solution[4]);
+  	  EndIf
+  	  If (solution[5]) 
+  	  	layout[TRY_5]:=TRY_5_DISPLAY+CStr(solution[5]);
+  	  EndIf
+ 
+      result:=Test(puzzle,solution);
+	    If (TypeOfInt(result)==OT_STRING)
+	    	data[2]:="<br><center><basefont size=6 color="+HTML_RED+">"+result;  // Fehlermeldung
+    	  Punish(who);
+	    Else  // Erfolgreich
+	    	SendSysMessagePergon(who,"Ihr knackt das Schloss!");
+	    	container.setprop("lastsolved",ReadGameClock());
+	    	SendViewContainer(who, container);
+	    	Return;
+	    EndIf
+    ElseIf (!ret)
+  	  SendSysMessagePergon(who,"Ihr beendet das Puzzle.");
+  	  Return;
+    EndIf
+  EndWhile
+EndProgram
+
+/////////////////////////////////////////////////////////////
+// Test - Überprüfen ob richtige Lösung und passende Meldung übergeben
+/////////////////////////////////////////////////////////////
+
+Function Test(byref puzzle, byref solution)
+  Var i, j, pos:=0, color:=0, matchesPos:={0,0,0,0,0}, fehler:="",matchesCol;
+
+  // PositionCheck
+  For (i:=1;i<=5;i+=1)
+  	If (puzzle[i]==solution[i])
+  		pos+=1;
+  		matchesPos[i]:=1;
+  	EndIf
+  EndFor
+  matchesCol:=matchesPos;
+  // ColorCheck
+  For (i:=1;i<=5;i+=1)
+  	If (!matchesPos[i]) // nur wenn nicht schon passende Position
+  		For (j:=1;j<=5;j+=1)
+  			If ((puzzle[i]==solution[j]) && (!matchesCol[j]))  // Gleiche Farbe aber noch nicht verwendet
+  				color+=1;
+  				matchesCol[j]:=1;
+  				Break;
+  			EndIf
+  		EndFor
+  	EndIf
+  EndFor
+
+  If (pos==5) // Geschaft
+  	Return(1);
+  ElseIf ((!pos) && (!color))
+  	Return("Es befinden sich keine an der korrekten Position und keine besitzen die korrekte Farbe.");
+  ElseIf ((!pos) && (color))
+  	If (color>1)
+  	  Return("Es befinden sich keine an der korrekten Position, aber "+color+" korrekte Farben existieren.");
+  	Else
+  		Return("Es befinden sich keine an der korrekten Position, aber 1 korrekte Farbe existiert.");
+  	EndIf
+  ElseIf ((pos) && (!color))
+  	If (pos>1)
+  		Return("Es befinden sich "+pos+" Zylinder an der korrekten Position.");
+  	Else
+  		Return("Es befindet sich 1 Zylinder an der korrekten Position.");
+  	EndIf
+  Else
+  	If (pos>1)
+  		fehler:="Es befinden sich "+pos+" Zylinder an der korrekten Position, ";
+  	Else
+  		fehler:="Es befindet sich 1 Zylinder an der korrekten Position, ";
+  	EndIf
+  	If (color>1)
+  		fehler+="weiterhin besitzten "+color+" Zylinder die korrekte Farbe.";
+  	Else
+  		fehler+="weiterhin besitzt 1 Zylinder die korrekte Farbe.";
+  	EndIf
+  	Return(fehler);
+  EndIf
+EndFunction
+
+/////////////////////////////////////////////////////////////
+// Punish - Zufällig Gift/Feuer/Blitz/Direkt-Schaden machen
+/////////////////////////////////////////////////////////////
+
+Function Punish(who)
+	Var dmg;
+	
+	If (who.hidden)
+		who.hidden:=0;
+	EndIf
+	
+	Case (RandomInt(4))
+		0: PlayStationaryEffect(who.x,who.y,who.z,0x113A,10,25,0,who.realm);
+		   PlaySoundEffect(who,SFX_231);
+		   PrintTextAbovePrivatePergon(who,"Ein giftiges Gas umhüllt euch.",
+		                                   "A toxic vapor envelops thee.",who,FONT_NORMAL,0x44);
+		   AddPoisonLevel(who, 3);
+		
+		1: PlaySoundEffect(who,SFX_227);
+		   PlayStationaryEffect(who.x,who.y,who.z,FX_FLAMESTRIKE,5,30,0,who.realm);
+		   PrintTextAbovePrivatePergon(who,"Deine Haut wird von sengender Hitze verbrannt.",
+		                                   "Searing heat scorches thy skin.",who,FONT_NORMAL,0xEE);
+		   dmg:=CInt((1 - CDbl(GetResistance(who, "fire")))*(RandomInt(30)+11));
+		   ApplyRawDamagePergon(who, dmg);
+		   
+		2: PlaySoundEffect(who,SFX_224);
+		   PrintTextAbovePrivatePergon(who,"Du wirst schmerzhaft von einem Schwert durchdrungen.",
+		                                   "Pain lances through thee from a sharp metal blade.",who,FONT_NORMAL,0x62);
+		   dmg:=RandomInt(30)+11;
+		   ApplyDamagePergon(who, dmg);
+		   
+		3: PlayLightningBoltEffect(who);
+		   PlaySoundEffect(who, SFX_2A);
+		   PrintTextAbovePrivatePergon(who,"Ein Blitz durchzuckt euren Körper.",
+		                                   "Lightning arcs through thy body.",who,FONT_NORMAL,0xDA);
+		   dmg:=CInt((1 - CDbl(GetResistance(who, "air")))*(RandomInt(30)+11));
+		   ApplyRawDamagePergon(who, dmg);
+	EndCase
+EndFunction

@@ -1,0 +1,91 @@
+//
+//
+//  25.10.2005 Fraggulus: Torzerstoerung korrigiert; Angabe einer Zeitdauer moeglich
+//  02.07.2006 Fox: Zeitdauer von 10min auf 12h verlängert und die Teleporter initial sichtbar gemacht
+//
+
+use os;
+use uo;
+
+Include "include/client";
+Include "include/objtype";
+Include "include/itemnpc";
+Include "include/msgs";
+
+program make_a_tele(who, time)
+
+  If (time)
+    time := CInt(time);
+    If ((!time) || (time <= 0))
+      time := 30;  // Untergrenze
+    ElseIf (time > 43200) //12h Maximum
+      time := 43200; // Obergrenze
+    EndIf
+  Else
+    time := 30;
+  EndIf
+
+  SendSysMessagePergon(who, "Wählt eine Rune, mit der ein Tor geöffnet werden soll.",
+                             "Choose a rune to open a travel gate.");
+
+  Var rune := Target(who, TGTOPT_NOCHECK_LOS);
+
+  If (!rune)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    Return;
+  EndIf
+
+  If (rune.objtype != UOBJ_RUNE)
+    SendSysMessagePergon(who, "Ihr könnt das nur auf eine Rune anwenden!",
+                              "You have to choose a recall rune!");
+    Return;
+  EndIf
+
+  Var tox := Cint(GetObjProperty(rune, "x"));
+  Var toy := Cint(GetObjProperty(rune, "y"));
+  Var toz := Cint(GetObjProperty(rune, "z"));
+  Var torealm := GetObjProperty(rune, "realm");
+
+  If (!torealm)
+    torealm:=_DEFAULT_REALM;
+  EndIf
+
+  If (tox || toy || toz)
+    Var gate1 := CreateItemAtLocationPergon(who.x, who.y, who.z, 0x6203, 1, who.realm);
+    Var gate2 := CreateItemAtLocationPergon(tox, toy, toz, 0x6203, 1, torealm);
+    If (gate1 && gate2)
+      SetObjProperty(gate1, "DestX", gate2.x);
+      SetObjProperty(gate1, "DestY", gate2.y);
+      SetObjProperty(gate1, "DestZ", gate2.z);
+      SetObjProperty(gate1, "DestRealm", gate2.realm);
+      SetObjProperty(gate2, "DestX", gate1.x);
+      SetObjProperty(gate2, "DestY", gate1.y);
+      SetObjProperty(gate2, "DestZ", gate1.z);
+      SetObjProperty(gate2, "DestRealm", gate1.realm);
+
+      gate1.facing := 29;
+      gate2.facing := 29;
+      
+      gate1.graphic := 0x1FD4;
+      gate2.graphic := 0x1FD4;
+      gate1.invisible:=0; 
+      gate2.invisible:=0; 
+      
+      SendSysMessagePergon(who, "Tore erstellt.");
+
+      Detach();
+
+      Sleep(time);
+
+      DestroyItem(gate1);
+      DestroyItem(gate2);
+    Else
+      SendSysMessagePergon(who, "Konnte Tore nicht erstellen!", "Unable to creat gates!");
+      Return;
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ungültige Rune!", "bad rune!");
+    Return;
+  EndIf
+
+endprogram

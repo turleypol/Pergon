@@ -1,0 +1,35 @@
+///////////////////////////////////////////////////////////////////////////
+// Wetter TextCMD --
+//
+// Schaltet die Wettereffekte fuer den einzelnen Spieler an oder aus
+//
+// Author: Shinigami
+
+//////////////
+// Libraries&Includes
+//////////////
+use uo;
+include "include/msgs";
+include "include/npc";
+include ":daymoonweather:daymoonweather";
+
+Program TextCMD_Time(who)
+  If (GetObjProperty(who, "Wetter"))
+    EraseObjProperty(who, "Wetter");
+    DisableWeatherLevelPergon(who);
+    DisableSeasonPergon(who);
+
+    SendSysMessagePergon(who,
+      "Die Wettereffekte wurden abgeschaltet.",
+      "The weather effects were switched off."
+    );
+  Else
+    SetObjProperty(who, "Wetter", 1);
+    SetSeasonSpecialLogonPergon(who);
+
+    SendSysMessagePergon(who,
+      "Die Wettereffekte sind angeschaltet.",
+      "The weather effects are turned on."
+    );
+  EndIf
+EndProgram

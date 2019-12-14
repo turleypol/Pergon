@@ -1,0 +1,97 @@
+////////////////////////////////////////////////////////////
+// hiding.src                                             //
+//                                                        //
+// Hides the player If:                                   //
+//                                                        //
+// * He is not in war mode                                //
+// * There are no mobiles targetting him in range and LOS //
+// * He passes a skill check                              //
+//                                                        //
+// Author: Racalac, modIfied 4/16/99                      //
+//                                                        //
+////////////////////////////////////////////////////////////
+//
+//  15.10.2003 Fraggulus: Versteckskill wird vermerkt (wg.: Abgleichung magisches/skill Verstecken/Verstecktes Finden)
+//  01.12.2003 Fraggulus: Verstecken und tot sein bringt keine Punkte
+//  22.01.2006 Seppel:    Delay eingebaut
+//  20.11.2006 Seppel:    Man kann sich gefreezed nicht mehr verstecken
+//
+
+use attributes;
+use uo;
+
+include "include/client";
+include "include/modifyskill";
+
+program skill_hide(hider)
+
+  Var thepoints := GetSkillDefaultPoints(SKILLID_VERSTECKEN);
+  If (hider.dead)  // Im Tode zwar verstecken können, aber es hat keinen Nutzen
+    thepoints := 0;
+  EndIf
+
+
+  If (hider.warmode)
+    PrintTextAbovePrivatePergon(hider, "Ihr könnt Euch im Kampfmodus nicht verstecken.", "", hider);
+    Return 0;
+  EndIf
+
+  If (hider.paralyzed || hider.frozen)
+    PrintTextAbovePrivatePergon(hider, "Ihr könnt euch paralysiert nicht verstecken.", "", hider);
+    Return 0;
+  EndIf
+
+  Var range := getHideRange(GetSkillPergon(hider, SKILLID_VERSTECKEN));
+  Var bystanders := ListHostiles(hider, range, LH_FLAG_LOS);
+
+  If (len(bystanders) > 0)
+    PrintTextAbovePrivatePergon(hider, "Ihr könnt Euch nicht verstecken, solange Feinde in der Nähe sind.!" , "", hider);
+    Return 0;
+  EndIf
+
+  If (GetObjProperty(hider, "#UsesSkill") > ReadGameClock())
+    SendSysMessagePergon(hider, "Ihr müsst noch ein wenig warten bevor ihr euch wieder verstecken könnt");
+    Return(0);
+  EndIf
+
+  SetObjProperty(hider, "#UsesSkill", ReadGameClock() + 2);           // Delay bis zur nächsten Nutzung eines Skills 2 Sekunden
+
+  If (CheckSkillPergon(hider, SKILLID_VERSTECKEN, -1 , thepoints))
+    hider.hidden := 1;
+    SetObjProperty(hider, "hiding_diff", CInt(GetSkillPergon(hider, SKILLID_VERSTECKEN)*2/5));
+    PrintTextAbovePrivatePergon(hider, "Ihr habt Euch gut versteckt." , "", hider);
+  Else
+    PrintTextAbovePrivatePergon(hider, "Euch ist es unmöglich, ein gutes Versteck zu finden." , "", hider);
+    hider.hidden := 0;
+  EndIf
+  
+  // Falls noch mit Spellversteckt löschen, damit man nicht dadurch aufgedeckt wird
+  If (hider.getprop("spell_invis"))
+    hider.eraseprop("spell_invis");
+  EndIf
+
+endprogram
+
+
+function getHideRange(skill)
+  If (skill >= 100)
+    Return 1;
+  ElseIf (skill >= 90)
+    Return 2;
+  ElseIf (skill >= 80)
+    Return 3;
+  ElseIf (skill >= 70)
+    Return 4;
+  ElseIf (skill >= 60)
+    Return 5;
+  ElseIf (skill >= 50)
+    Return 6;
+  ElseIf (skill >= 30)
+    Return 8;
+  ElseIf (skill >= 10)
+    Return 9;
+  Else
+    Return 10;
+  EndIf
+
+endfunction

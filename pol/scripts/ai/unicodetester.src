@@ -1,0 +1,39 @@
+use npc;
+Use unicode;
+use os;
+use uo;
+
+
+Include "include/eventid";
+Include "include/animal";
+Include "include/msgs";
+
+Var me:=Self();
+
+Program UniCodeTester()
+  EnableEvents(SYSEVENT_SPEECH, 5);
+
+  Var ev;
+  While (1)
+    ev:=Wait_for_EventLogging(120);
+    If (ev)
+      If (!ev.source.isa(POLCLASS_NPC) And !ev.source.dead)
+        TurnToward(ev.source);
+
+        Case (ev.type)
+          SYSEVENT_SPEECH:
+            PrintTextAbovePrivatePergon(me, "Du sagtest...", "", ev.source);
+            If (ev.uc_text)
+              PrintTextAbovePrivatePergon(me, ev, "", ev.source);
+              PrintTextAbovePrivatePergon(me, "...in UniCode ["+ev.langcode+"]", "", ev.source);
+              SysLog(me.name+" benutzte UniCode ["+ev.langcode+"]");
+            Else
+              PrintTextAbovePrivatePergon(me, ev.text, "", ev.source);
+              PrintTextAbovePrivatePergon(me, "...in ASCII", "", ev.source);
+              SysLog(me.name+" benutzte ASCII");
+            EndIf
+        EndCase
+      EndIf
+    EndIf
+  EndWhile
+EndProgram

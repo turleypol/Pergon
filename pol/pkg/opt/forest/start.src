@@ -1,0 +1,13 @@
+use os;
+use uo;
+include "include/pergonutil";
+include "include/server";
+
+Program forestscript_Start()
+    If (GetGlobalProperty(BAUSERVER))
+        return;
+    EndIf
+
+    Start_ScriptPergon("forestscript");
+    syslog("forestscript gestartet");
+EndProgram

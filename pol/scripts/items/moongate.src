@@ -1,0 +1,119 @@
+///////////////////////////////////////////////////////////////////////////
+//  Moongate script - fires when someone walks onto a casted moongate
+//  PLEASE NOTE: THIS SCRIPT IS USED FOR 'GATE' SPELL MOONGATES
+
+//  The "JustGated" flag is to keep you from bouncing between gates.
+//  MoveObjectToLocation checks the destination location for gates,
+//      (and traps and whatever)
+//
+//  So, when someone steps into a moongate, the following will happen:
+//    1.  An instance of MOONGATE.src is started.  It sets their JustGated,
+//        and transports the mobile.
+//    1a. This causes the mobile to "walk on" to the destination gate!
+//    2.  Another instance of MOONGATE.src is started.  It sees JustGated is
+//        set, and so clears it and exits.
+//
+//  It is assumed that gate-pairs are deleted atomically (see GATE.src),
+//  hence the test for "!gate" below, after going critical - if the gates
+//  were just destroyed, no transportation takes place.
+
+use os;
+use uo;
+include "include/msgs";
+include "include/server";
+
+Program Walk_on_Moongate(mobile, gate)
+  // NPCs gehen nicht durch Tore
+  If (mobile.isa(POLCLASS_NPC) or (GetObjProperty(mobile, "nomoonwalk")))
+    return;
+  EndIf
+
+  Set_Critical(1);
+  If (gate && !GetObjProperty(mobile, "#JustGated"))
+    If (
+      (GetObjProperty(gate, "GateDestX").errortext) or
+      (GetObjProperty(gate, "GateDestY").errortext) or
+      (GetObjProperty(gate, "GateDestZ").errortext)
+    )
+      // Tor ist nicht korrekt eingestellt
+      Set_Critical(0);
+      return;
+    EndIf
+
+    // If (
+    //   // man geht nicht durch sein eigenes Tor
+    //   // daher Zweicharsupport-Check
+    //   mobile.serial <> GetObjProperty(gate, "caster") and
+    //   // bei Stafflern keine Warnung
+    //   mobile.cmdlevel <= CMDLEVEL_SEER
+    // )
+    //   var strongness := 0;
+    //   var gateinfo := GetObjProperty(gate, SELF_SUPPORT1);
+    //   If (gateinfo)
+    //     // Punktewertung
+    //     If (gateinfo.addr == mobile.ip)
+    //       strongness += 1;
+    //     EndIf
+    //     If (gateinfo.mail == Lower(mobile.acct.getprop(PLAYEREMAIL)))
+    //       strongness += 2;
+    //     EndIf
+
+    //     If (strongness)
+    //       var strongtext := "Undefinierter ("+strongness+")";
+    //       Case (strongness)
+    //         1: strongtext := "Geringer";
+    //         2: strongtext := "Mittlerer";
+    //         3: strongtext := "Starker";
+    //       EndCase
+    //       syslog(
+    //         "SUPPORT: "+strongtext+" Verdacht bei "+CharInfoStr(mobile)+
+    //         " (Tor von "+gateinfo.name+
+    //         " ("+gateinfo.acct+"/"+LHex(gateinfo.id)+"))"
+    //       );
+    //     EndIf
+    //   EndIf
+    // EndIf
+
+    var realm := GetObjProperty(gate, "GateDestRealm");
+    If (!realm)
+      realm := _DEFAULT_REALM;
+    EndIf
+    var res := MoveObjectToLocation(mobile,
+      GetObjProperty(gate, "GateDestX"),
+      GetObjProperty(gate, "GateDestY"),
+      GetObjProperty(gate, "GateDestZ"), realm
+    );
+    If (res)
+      SetObjProperty(mobile, "#JustGated", 1);
+      // Logging
+      If (mobile.cmdlevel < CMDLEVEL_SEER)
+        var caster := GetObjProperty(gate, "caster");
+        If (mobile.serial != caster)
+          var dest := SystemFindObjectBySerial(GetObjProperty(gate, "GateDestItem"));
+          SysLog(CharInfoStr(mobile)+" geht durch "+ItemInfoStr(gate, COORDS_REALM)+" nach "+ItemInfoStr(dest, COORDS_REALM));
+        EndIf
+      EndIf
+    ElseIf (res.errortext == "Can't go there")
+      SendSysMessagePergon(mobile,
+        "Das andere Ende des Tores ist blockiert.",
+        "The other side of the gate is blocked."
+      );
+    EndIf
+    Set_Critical(0);
+  Else
+    EraseObjProperty(mobile, "#JustGated");
+    var oldfrozen := mobile.frozen;
+    // Direkt auf Tor teleport, da ist freeze schon vorhanden
+    If (mobile.getprop("#Teleportfrozen"))
+      oldfrozen := 0;
+    EndIf
+    // Anscheinend bedingt durch die Verzögerung bis der Client ein Paket
+    // bekommt, kann man durch Zäune laufen
+    mobile.frozen := 1;
+    Set_Critical(0);
+    // kann ich leider nicht lokal testen, deswegen mal geraten das 10ms
+    // frozen reichen
+    SleepMS(10);
+    mobile.frozen := oldfrozen;
+  EndIf
+EndProgram

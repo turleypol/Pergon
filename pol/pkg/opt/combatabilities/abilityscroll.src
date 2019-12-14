@@ -1,0 +1,67 @@
+/////////////////////////////////////////////////////////
+//
+//   abilityscroll - Eintragen der Fähigkeit
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     16.07.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+
+Use uo;
+Use os;
+
+Include "include/modifyskill";
+Include ":combatabilities:combatabilities";
+
+Program abilityscroll(who,scroll)
+
+  If (!AccessiblePergon(who,scroll))
+      return;
+  EndIf
+  Var ability:=scroll.getprop("ability");
+  If (!ability)
+    Return;
+  EndIf
+  If (!ReserveItem(scroll))
+    Return;
+  EndIf
+  var bookserial:=who.getprop("Combatbook");
+  If (!bookserial)
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr besitzt kein Buch der Kriegskünste."),lang:="DEU"},
+                             struct{uc_text:=CAscz("You dont own a book of war."),lang:="ENU"});
+    Return;
+  EndIf
+  var book:=SystemFindObjectBySerial(bookserial);
+  If (!book)
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr besitzt kein Buch der Kriegskünste."),lang:="DEU"},
+                             struct{uc_text:=CAscz("You dont own a book of war."),lang:="ENU"});
+    Return;
+  EndIf
+
+  var abilities:=book.getprop("abilities");
+  If (!abilities)
+    abilities:={};
+  EndIf
+  If (ability in abilities)
+    SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr beherrscht diese Kunst bereits."),lang:="DEU"},
+                             struct{uc_text:=CAscz("You already master this art."),lang:="ENU"});
+    Return;
+  EndIf
+  Set_Critical(1);
+  abilities:=book.getprop("abilities");  // Zur sicherheit nochmal holen
+  If (!abilities)
+    abilities:={};
+  EndIf
+  abilities.append(ability);
+  abilities.sort();
+  book.setprop("abilities",abilities);
+  Set_Critical(0);
+  SendSysMessagePergon(who,struct{uc_text:=CAscz("Ihr tragt die Kampfkunst in Euer Buch ein."),lang:="DEU"},
+                           struct{uc_text:=CAscz("You write the combatart in your book."),lang:="ENU"});
+  SubtractAmount(scroll,1);
+EndProgram

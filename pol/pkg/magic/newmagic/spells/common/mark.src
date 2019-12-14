@@ -1,0 +1,80 @@
+//**************************************************************************************************
+// Script file mark.src
+//
+//    implements spell 28 <Mark> - "Merken"
+//
+//	casted on rune, caster recalls
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//
+//  2002/02/19 Shinigami: ReWrite & NoRune-Region eingebaut
+//  2003/06/25 Fraggulus: Runenmarkieren im Haus (ausser fuer den Eigentuemer) verboten
+//
+//	Vers. 1.1	- 27.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//  2003/07/16 Shinigami: Hausfreunde duerfen nun auch markieren
+//  //2003/08/03 Bihinos:   Runenmarkieren im Haus generell verboten
+//
+//**************************************************************************************************
+
+/////////////
+// Includes
+/////////////
+
+Include "../magicpergon";
+Include ":runebook:rune";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Cast_Mark(params)
+
+  Var caster;
+  Var caston;
+
+  If (params[1] == "#SCROLL")
+    caster:= params[2];
+  Else
+    caster:= params[1];
+  EndIf
+
+  SendSysMessagePergon(caster, "Wählt eine Rune zum Markieren aus",
+                               "Choose a rune to mark");
+
+  caston:= TargetThing(caster, TGTOPT_CHECK_LOS); 							// choose rune
+  If (!caston) 																		// nothing chosen
+    SendSysMessagePergon(caster, "Kein Ziel", "No target");
+    Return;
+  EndIf
+
+  If (!AccessiblePergon(caster, caston)) 												// target is inaccessible
+    SendSysMessagePergon(caster, "Ihr kommt da nicht ran", "You cannot reach this");
+    Return;
+  EndIf
+
+  If (caston.objtype <> UOBJ_RUNE) 												// target is no rune
+    SendSysMessagePergon(caster, "Diesen Zauber könnt Ihr nur auf Runen anwenden",
+                                 "This spell can only be cast on runes");
+    Return;
+  EndIf
+
+ // if (caster.multi) 																	// caster in multi
+ //    SendsysMessagePergon(caster, "Das Runenmarkieren ist Euch hier nicht gestattet",
+ //                                 "You are not allowed to mark runes here");
+ //    return;
+ // endif
+
+  PerformAction(caster, ANIM_CAST_AREA);
+  ReserveItem(caston);
+
+  PlayObjectCenteredEffect(caster, FX_MARK_EFFECT, 10, 10);
+  PlaySoundEffect(caster, SFX_SPELL_MARK);
+
+  If (MarkRune(caster, caston)) // Rune am Standort des Casters setzen
+    SendSysMessagePergon(caster, "Die Rune wurde markiert.");
+  Else
+    SendSysMessagePergon(caster, "Die Rune konnte nicht markiert werden",
+                                 "The rune could not be marked");
+  EndIf
+EndProgram

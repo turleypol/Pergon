@@ -1,0 +1,3 @@
+Einige Skills lassen sich bequem per Makro benutzen. Lege dir "UseSkill" auf eine Taste und waehle beispielsweise den Skill "Verstecken", um dich auf Tastendruck schnell verstecken zu koennen. Das ist gerade auf der Flucht hilfreich.
+
+Natuerlich muss man dazu den Skill "Verstecken" auch beherrschen.

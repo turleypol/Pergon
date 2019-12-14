@@ -1,0 +1,246 @@
+///////////////////////////////////////////////////////////////////////////
+// Mais leere Noten für die engagierte Musikerin und Komponistin
+
+Const DATAINDEX   := 30;
+Const LAYOUTINDEX := 4;
+
+Const MAXNAME  := 25;
+// nicht über 100 angeben, sonst neue Seitenzahlen einfügen
+// bei ueber 70 -> runaway script
+Const MAXNOTES := 70;
+Const PAGELEN  := 10;
+
+// an der Stelle steht der Musicname im Returnarray
+Const RETNAME := 200;
+
+use os;
+use polsys;
+use uo;
+include "common";
+include "include/client";
+include "include/modifyskill";
+include "include/msgs";
+include "include/objtype";
+
+///////////////
+// Gump-Daten
+///////////////
+
+var layout := {
+    "nodispose",
+    "page 0",
+    //"gumppic 30 30 39", // eine offene Rolle
+    "gumppic 30 30 1228", // eine offene Rolle
+    "page 1",
+    // hier werden später die Notendaten eingefügt
+    "text 140 260 0 15",
+    // Button, um die Rolle fertigzustellen
+    "button 250 260 22150 22151 1 0 1000",
+    "text 290 260 0 16",
+    // Button zum Probieren
+    "button 350 260 22150 22151 1 0 2000",
+    "text 104 80 0 17",
+    "text 184 80 0 18",
+    // Hilfe
+    "text 80 260 0 19",
+    "button 110 260 22150 22151 1 0 1500"
+};
+
+var data := {
+    "c","c#","d","d#","e","f","f#","g","g#","a","a#","h", //jetzt uebrig :)
+    "1", "2", "3",
+    "Rolle fertigstellen",
+    "Probieren",
+    "Note:",
+    "Laenge:",
+    "Hilfe",
+    // hier neuen nicht so dynamischen Layouttext einfügen :)
+    "Seite 1", "Seite 2", "Seite 3", "Seite 4", "Seite 5", "Seite 6",
+    "Seite 7", "Seite 8", "Seite 9", "Seite 10"
+};
+
+var helplayout := {
+    "nodispose",
+    "page 0",
+    "gumppic 30 30 1228", // eine offene Rolle
+    "page 1",
+    "text 60 60 0 0",
+    "text 60 75 0 1",
+    "text 60 90 0 2",
+    "text 60 105 0 3",
+    "text 60 120 0 4",
+    "text 60 135 0 5",
+    "text 60 150 0 6",
+    "text 60 165 0 7",
+    "text 60 180 0 8",
+    "text 60 195 0 9",
+    "text 60 210 0 10",
+    "text 60 225 0 11",
+    "text 60 240 0 12",
+    "text 60 255 0 13"
+};
+
+var helpdata := {
+    "Hilfe zum Komponieren",
+    "Den Namen der Komposition links oben eintragen",
+    "Die Noten sind:",
+    "c1 c#1 d1 d#1 e1 f1 f#1 g1 g#1 a1 a#1 h1",
+    "c2 c#2 d2 d#2 e2 f2 f#2 g2 g#2 a2 a#2 h2",
+    "c3",
+    "Die Längen sind:",
+    "g - fuer eine ganze Note",
+    "h - fuer eine halbe Note",
+    "v / v. - fuer eine viertel Note (punktiert)",
+    "a / a. - fuer eine achtel Note (punktiert)",
+    "s / s. - fuer eine sechzehntel Note (punktiert)",
+    "p - fuer eine Pause",
+    "Einfach in die leeren Felder eintragen",
+    "Probieren - laesst Euch Eure Komposition probehalber spielen",
+    "Fertigstellen - beendet die Komposition",
+    "Ihr erhaltet ein abspielbares Musikstueck"
+};
+
+
+Program NotenLeer(who, item)
+    // jetzt mit Bild und interaktiv
+    FillScroll(item);
+    // Rolle anzeigen
+    var result := SendDialogGump(who, layout, data);
+    // auf jeden Fall die Noten sichern
+    var itemnew := SaveScroll(who, item, result);
+    If (result[0]) // Button gedrueckt
+        If (result[0]==1000)
+            MakeMusicScroll(who,itemnew);
+        ElseIf (result[0]==2000)
+            var noten := GetObjProperty(itemnew, "noteslist");
+            var musicname := GetObjProperty(itemnew, "musicname");
+            PlayMelody(who, musicname, noten);
+        ElseIf (result[0]==1500)
+            // Hilfe-Rolle anzeigen
+            SendDialogGump(who, helplayout, helpdata);
+        EndIf
+    EndIf
+EndProgram
+
+Function MakeMusicScroll(who, item)
+    var noten := GetObjProperty(item, "noteslist");
+    var musicname := GetObjProperty(item, "musicname");
+    var itemdef := GetItemDescriptor(UOBJ_MUSICSCROLL);
+
+    If (itemdef && musicname && noten)
+        itemdef.cprops.insert("noteslist", noten);
+        itemdef.cprops.insert("musicname", musicname);
+        var musikrolle := CreateItemInBackpackPergon(who,itemdef,1);
+        If (musikrolle)
+            musikrolle.name := "Musikstueck: " +musicname;
+            SubtractAmount(item,1);//die Notenrolle nun zerstören
+            SendSysMessagePergon(who,
+                "Ihr habt eure Komposition endlich fertiggestellt!"
+            );
+        EndIf
+    EndIf
+EndFunction
+
+Function SaveScroll(who, item, result)
+    var i;
+    var itemnew := array;
+    var itemdef := GetItemDescriptor(UOBJ_BLANKMUSICSCROLL);
+
+    If (!itemdef)
+        return(0);
+    EndIf
+
+    var noteslist := GetObjProperty(item, "noteslist");
+    If (noteslist)
+        noteslist.shrink(0);
+    Else
+        noteslist := {}; // leer
+    EndIf
+
+    For (i := 1; i <= MAXNOTES; i += 1)
+        var note := {};
+        var startlen := find(result[2*i], " ", 1);
+        var startname := find(result[2*i-1], " ", 1);
+        note[1] := ConvertNoteNameToNumber(
+            (result[2*i-1][startname+1, len(result[2*i-1])])
+        );
+        note[2] := ConvertNoteLenToNumber(
+            (result[2*i][startlen+1, len(result[2*i])])
+        );
+        noteslist.append(note);
+    EndFor
+
+    // und den Musiknamen noch sichern
+    var musicname := result[RETNAME][6, len(result[RETNAME])];
+    If(len(musicname) > MAXNAME)
+        musicname := "-unbenannt-";
+        SendSysMessagePergon(who,
+            "Der Name für Eure Komposition ist zu lang!"
+        );
+    EndIf
+
+    If (item.amount > 1)
+        // falls jemand den ganzen Stack doppelgeklickt hatte
+        itemdef.cprops.insert("noteslist", noteslist);
+        itemdef.cprops.insert("musicname", musicname);
+        // neue rolle einzeln legen
+        itemnew := CreateItemInBackpackPergon(who,itemdef,1);
+        If (itemnew)
+            SubtractAmount(item,1); //eins vom stack
+        EndIf
+    Else
+        itemnew := item;
+        SetObjProperty(itemnew, "musicname", musicname);
+        SetObjProperty(itemnew, "noteslist", noteslist);
+    EndIf
+
+    itemnew.name := "Notenrolle: " +musicname;
+
+    return (itemnew);
+EndFunction
+
+Function FillScroll(item)
+    // erstmal den Namen
+    var musicname := GetObjProperty(item, "musicname");
+    If (musicname)
+        data.append(musicname);
+        layout.append(
+            "textentry 80 60 300 20 40 " + RETNAME + " " + DATAINDEX
+        );
+    Else //noch unbenannt
+        data.append("-unbenannt-");
+        layout.append(
+            "textentry 80 60 300 20 40 " + RETNAME + " " + DATAINDEX
+        );
+    EndIf
+
+    // dann die Noten
+    var noteslist := GetObjProperty(item, "noteslist");
+    If (!noteslist)
+        noteslist := {}; // leer
+    EndIf
+
+    var i;
+    var j;
+    For (j := 0; j < (MAXNOTES/PAGELEN); j+=1)
+        For (i := 1; i <= PAGELEN; i+=1)
+            // Textentries fuer alle vorhandenen und nichtvorhandenen
+            // Noten basteln
+            var note := noteslist[(j*PAGELEN+i)];
+            data.append(ConvertNoteNumberToString(note[1]));
+            data.append(ConvertNoteLenToString(note[2]));
+            layout.append("textentry 104 "+(80+i*15) +" 200 20 0 " + (2*(j*PAGELEN+i)-1) + " " + (DATAINDEX + (2*(j*PAGELEN+i)-1)));
+            layout.append("textentry 184 "+(80+i*15) +" 200 20 0 " + (2*(j*PAGELEN+i)) + " " + (DATAINDEX + (2*(j*PAGELEN+i))));
+        EndFor
+        // Seitenzahl angeben
+        layout.append("text 300 80 0 " + (DATAINDEX - 10 + j));
+        If (j!=0) // Button für auf
+            layout.append("button 386 37 9772 9770 0 " + j + " 3001");
+        EndIf
+        If (j!=((MAXNOTES/PAGELEN)-1))
+            // Button für ab
+            layout.append("button 382 298 9773 9771 0 " + (j+2) + " 3000");
+            layout.append("page " + (j+2));
+        EndIf
+    EndFor
+EndFunction

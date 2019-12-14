@@ -1,0 +1,62 @@
+//////////////////////////////////////////////////////////
+// Clipping AI - Detect Clipping Problems using an NPC
+//
+// Author: Shinigami
+
+//////////////
+// Libraries&Includes
+//////////////
+use npc;
+use os;
+use uo;
+include "include/animal";
+include "include/eventid";
+include "include/msgs";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program Clipping_Tester()
+  var me := Self();
+  var do_run := 0;
+  var do_go := 0;
+
+  EnableEvents(SYSEVENT_SPEECH, 10);
+
+  While (1)
+    If ((!do_run) And (!do_go) Or Events_Waiting())
+      var ev := Wait_for_EventLogging(120);
+      If (ev)
+        If (ev.type == SYSEVENT_SPEECH)
+          If (ev.source.serial == me.master.serial)
+            Case (ev.text)
+              "tame": SayPergon(ev.source, "Ihr seit nun mein Meister.", "You are my master now.");
+                      me.setmaster(ev.source);
+              "stop": SayPergon(ev.source, "Ich bleib stehen.", "I will stop.");
+                      do_run := 0;do_go := 0;
+              "run":  SayPergon(ev.source, "Run Run Run...", "Run Run Run...");
+                      do_run := 1;
+              "go":   SayPergon(ev.source, "Go Go Go...", "Go Go Go...");
+                      do_go := 1;
+            EndCase
+          Else
+            SayPergon(ev.source, "Ihr seit nicht mein Meister.", "You are not my master.");
+          EndIf
+        EndIf
+      EndIf
+    EndIf
+
+    If (me.master)
+      If ((me.x<>me.master.x) And (me.y<>me.master.y))
+        If (do_run)
+          RunTowardLocation(me.master.x, me.master.y);
+        ElseIf (do_go)
+          WalkTowardLocation(me.master.x, me.master.y);
+        EndIf
+      EndIf
+    EndIf
+
+    SleepMS(200);
+  EndWhile
+EndProgram

@@ -1,0 +1,397 @@
+///////////////////////////////////////////////////////////////////////////
+// smelting.src
+//
+// Turns normal or colored ore into its respective ingot.
+// Some ores are harder to work with than others.
+//
+// Author: Racalac, 5/8/99
+
+use attributes;
+use cfgfile;
+use os;
+use polsys;
+use uo;
+use util;
+use vitals;
+include "include/client";
+include "include/itemnpc";
+include "include/logutil";
+include "include/modifyskill";
+include "include/objtype";
+include "include/packets";
+include "include/server";
+
+// Fehlerkonstanten
+Const ENOPOT   := "That is not a smelting pot";
+Const ETOOMUCH := "Too much ore for your skill value";
+Const ENOFORGE := "You need a forge to smelt";
+
+// Schmelztiegeltypen
+Const POT_SMALL              := 0x7051;
+Const POT_LARGE              := 0x09e2;
+
+Const EFFECT_EXPLOSION       := 0x36b0;
+Const SOUND_EFFECT_BELLOWS   := 0x2c;
+Const SOUND_EFFECT_BUBBLE    := 0x22;
+Const SOUND_EFFECT_EXPLOSION := 0x208;
+
+Program SmeltOre(who, ore)
+  // FIXME: vielleicht aus der Itemdesc auslesen?
+  If (!(ore.objtype in (array{
+      // normale Erze
+      UOBJ_EISEN_ERZ, UOBJ_MOLYBDAEN_ERZ, UOBJ_MANGAN_ERZ,
+      UOBJ_IRIDIUM_ERZ, UOBJ_TENERUM_ERZ, UOBJ_INDIUM_ERZ,
+      UOBJ_LANTHAN_ERZ, UOBJ_WOLFRAM_ERZ, UOBJ_PLATIN_ERZ,
+      UOBJ_CHROM_ERZ, UOBJ_TITANIUM_ERZ,
+      // Sand und Goldstuecke
+      UOBJ_SAND, UOBJ_GOLD_COIN
+  })))
+    SendSysMessagePergon(who,
+      "Das könnt Ihr nicht schmelzen!", "You cannot smelt this!",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+    );
+    return;
+  EndIf
+
+  If (!AccessiblePergon(who, ore) or Distance(who, ore) > 1)
+    SendSysMessagePergon(who,
+      "Ihr kommt da nicht heran.", "You cannot reach that.",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+    );
+    return;
+  EndIf
+
+  If (!ReserveItem(ore))
+    return;
+  EndIf
+
+  var orecfg := GetOreConfig(ore);
+  If (!orecfg)
+    SendSysMessagePergon(who,
+      "Interner Fehler", "Internal error",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+    );
+    syslog(
+      "FEHLER: Laden der Werte fuer "+ItemInfoStr(ore)+" liefert: "+
+      orecfg.errortext
+    );
+    return;
+  EndIf
+
+  var sizemul; // byref beachten
+  var tool := SelectPot(who, orecfg.diff, sizemul);
+  If (!tool)
+    return;
+  EndIf
+
+  // Quasi-Cache, damit man es nicht jede Runde berechnen muss
+  var minamount  := CInt(sizemul * orecfg.amount * orecfg.amountmul);
+  var prodamount := CInt(sizemul * orecfg.amount);
+  var points     := CInt(sizemul/3.0 * orecfg.diff * orecfg.diffmul);
+  var orename    := DescMehrzahl(GetItemDescriptor(ore.objtype).desc);
+  var prodname   := DescMehrzahl(GetItemDescriptor(orecfg.product).desc);
+
+  If (ore.amount < minamount)
+    SendSysMessagePergon(who,
+      "Ihr habt nicht genug "+orename+" benutzt!",
+      "You have to use more "+orename+"!",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+    );
+    return;
+  EndIf
+
+  // Werkzeug-Eigenschaften auslesen/auswerten
+  var skill := Max(
+      1,
+      // gute Tiegel machen es leichter,
+      // grosse Tiegel machen es schwerer (geben aber mehr Punkte)
+      CInt(orecfg.diff - GetPropertyItem(tool).quality + sizemul/3.0)
+  );
+
+  While (ore.amount >= minamount)
+    If (who.dead or !who.connected)
+      break;
+    EndIf
+
+    // Zeit zum Weglaufen
+    Sleep(1);
+
+    If (!FindForge(who))
+      SendSysMessagePergon(who,
+        "Ihr müsst neben einem Schmiedefeuer stehen!",
+        "You have to be next to a forge.",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+      );
+      break;
+    EndIf
+
+    If (!AccessiblePergon(who, ore) or Distance(who, ore) > 1)
+      SendSysMessagePergon(who,
+        "Ihr kommt nicht mehr an die "+orename+" heran.",
+        "You cannot reach the "+orename+".",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+      );
+      break;
+    EndIf
+
+    // in den Pott hauen
+    PerformAction(who, UACTION_SMELT);
+    PlaySoundEffect(who, SOUND_EFFECT_BELLOWS);
+    Sleep(1);
+
+    // schmelzen
+    PlaySoundEffect(who, SOUND_EFFECT_BUBBLE);
+    Sleep(4);
+
+    If (!CheckSkillPergon(who, SKILLID_ERZVERARBEITUNG, skill, points))
+      SubtractAmount(ore, CInt(minamount/2));
+      SendSysMessagePergon(who,
+        "Ihr zerstört einige "+orename+".", "You destroy some "+orename+".",
+        _DEFAULT_TEXT_FONT, MSG_COLOR_FAIL
+      );
+      If (SetWerkzeugSchaden(who, tool,
+          "Euer Schmelztiegel hat gelitten!",
+          "Euer Schmelztiegel ist stark beschädigt!",
+          "Euer Schmelztiegel ist zerbrochen!"
+      ))
+        break;
+      EndIf
+      continue;
+    EndIf
+
+    // Skillcheck erfolgreich
+    SubtractAmount(ore, minamount);
+
+    If (RandomInt(100) <= 96)
+      // meist klappt alles
+      CreateItemInBackpackPergon(who, orecfg.product, prodamount);
+      SendSysMessagePergon(who,
+        "Ihr fertigt "+prodamount+" "+prodname+".",
+        "You manufacture "+prodamount+" "+prodname+"."
+      );
+      continue;
+    EndIf
+
+    // oder es passiert etwas Magie
+    HandleExplosion(who, orecfg.explosion, minamount);
+
+    PlayObjectCenteredEffect(who, EFFECT_EXPLOSION, 10, 10);
+    PlaySoundEffect(who, SOUND_EFFECT_EXPLOSION);
+    var damage := CalculateExplosionDamage(who, sizemul);
+    ApplyRawDamagePergon(who, damage, DAMAGE_NO_REPSYS);
+    SendSysMessagePergon(who,
+      "Irgendetwas ist schiefgelaufen!", "Something went wrong!",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_FAIL
+    );
+
+    SetWerkzeugSchaden(who, tool,
+      "Euer Schmelztiegel hat gelitten!",
+      "Euer Schmelztiegel ist stark beschädigt!",
+      "Euer Schmelztiegel ist zerbrochen!"
+    );
+    break;
+  EndWhile
+EndProgram
+
+Function CalculateExplosionDamage(who, sizemul) // {{{
+  var basedamage := 20;
+  If (sizemul > 1)
+    // grosse Tiegel machen mehr Schaden
+    basedamage := 40;
+  EndIf
+
+  var gloves    := GetEquipmentByLayer(who, LAYER_GLOVES);
+  var apron     := GetEquipmentByLayer(who, LAYER_WAIST);
+  If (apron and apron.objtype <> 0x153b)
+    // das ist keine Schuerze
+    apron := 0;
+  EndIf
+  var fullapron := GetEquipmentByLayer(who, LAYER_TUNIC);
+  If (fullapron and fullapron.objtype <> 0x153d)
+    fullapron := 0;
+  EndIf
+
+  // Handschuhe gehen immer in Berechnung ein
+  If (gloves)
+    basedamage -= BasicProtection(gloves);
+  EndIf
+
+  // wenn Vollschuerze, bewerten
+  If (fullapron)
+    basedamage -= BasicProtection(fullapron, 1);
+    // Mini-Bonus, wenn alle drei Items getragen werden
+    If (gloves and apron)
+      basedamage -= 1;
+    EndIf
+
+  // sonst normaler Bonus fuer Halbschuerze
+  ElseIf (apron)
+    basedamage -= BasicProtection(apron);
+  EndIf
+
+  return basedamage;
+EndFunction // }}}
+
+Function BasicProtection(what, base := 0) // {{{
+  If (what.name["Exceptional "])
+    return 4+base;
+  EndIf
+
+  If (what.name["Meisterstueck "])
+    return 3+base;
+  EndIf
+
+  If (what.getprop(TOOLINFO))
+    return 2+base;
+  EndIf
+
+  return 1+base;
+EndFunction // }}}
+
+Function HandleExplosion(who, type, amount) // {{{
+  var what := array{};
+  If (type == "ore")
+    what.append(struct{type := UOBJ_EISEN_ERZ,     mul :=   2});
+    what.append(struct{type := UOBJ_MOLYBDAEN_ERZ, mul :=   2});
+    what.append(struct{type := UOBJ_MANGAN_ERZ,    mul := 1.6});
+    what.append(struct{type := UOBJ_IRIDIUM_ERZ,   mul := 1.6});
+    what.append(struct{type := UOBJ_TENERUM_ERZ,   mul := 1.2});
+    what.append(struct{type := UOBJ_INDIUM_ERZ,    mul := 1.2});
+    what.append(struct{type := UOBJ_LANTHAN_ERZ,   mul := 0.8});
+    what.append(struct{type := UOBJ_WOLFRAM_ERZ,   mul := 0.8});
+    what.append(struct{type := UOBJ_PLATIN_ERZ,    mul := 0.4});
+    what.append(struct{type := UOBJ_CHROM_ERZ,     mul := 0.4});
+    what.append(struct{type := UOBJ_TITANIUM_ERZ,  mul := 0.2});
+  Else
+    what.append(struct{type := UOBJ_GOLD_COIN,     mul :=   1});
+    what.append(struct{type := UOBJ_SAND,          mul :=   1});
+  EndIf
+
+  var tocreate := what[1+RandomInt(what.size())];
+
+  CreateItemInBackpackPergon(who, tocreate.type, CInt(amount * tocreate.mul));
+EndFunction // }}}
+
+Function FindForge(who) // {{{
+  ForEach forge in (
+    ListItemsNearLocation(who.x, who.y, who.z, 2, who.realm)
+  )
+    If (
+      // kleines Schmiedefeuer
+      (forge.objtype == UOBJ_SMALL_FORGE) or
+      // grosses Schmiedefeuer
+      (forge.objtype >= UOBJ_FORGE_START and forge.objtype <= UOBJ_FORGE_END)
+    )
+      return forge;
+    EndIf
+    SleepMS(2);
+  EndForEach
+  
+  var ret := error;
+  ret.errortext := ENOFORGE;
+  return ret;
+EndFunction // }}}
+
+Function SelectPot(who, diff, byref sizemul) // {{{
+  SendSysMessagePergon(who,
+    "Wählt den Schmelztiegel, mit dem Ihr arbeiten wollt.",
+    "Select the melting pot you want to work with."
+  );
+  var tool := Target(who);
+  If (!tool)
+  	SendSysMessagePergon(who, "Abbruch", "Abort");
+  	return;
+  ElseIf (!(tool.objtype in (array{POT_LARGE, POT_SMALL})))
+    SendSysMessagePergon(who,
+      "Das ist kein Schmelztiegel!", "That's not a smelting pot!",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+    );
+    var ret := error;
+    ret.errortext := ENOPOT;
+    return ret;
+  EndIf
+
+  If (tool.objtype == POT_SMALL)
+    sizemul := 1;
+  ElseIf (
+    (tool.objtype == POT_LARGE) and
+    (GetSkillPergon(who, SKILLID_ERZVERARBEITUNG) >= 10+diff)
+  )
+    sizemul := 10;
+  Else
+    SendSysMessagePergon(who,
+      "Ihr habt noch nicht die Fähigkeiten, um mit so großen Mengen "+
+      "umgehen zu können.",
+      "You aren't skilled enough to handle such a large amount.",
+      _DEFAULT_TEXT_FONT, MSG_COLOR_ERROR
+    );
+    var ret := error;
+    ret.errortext := ETOOMUCH;
+    return ret;
+  EndIf
+
+  var ret := ReserveItem(tool);
+  If (ret == error)
+    return ret;
+  EndIf
+
+  return tool;
+EndFunction // }}}
+
+Function GetOreConfig(used_ore) // {{{
+  var cfg := ReadConfigFile("itemdesc");
+  If (cfg == error)
+    return cfg;
+  EndIf
+
+  var ore := FindConfigElem(cfg, used_ore.objtype);
+  If (ore == error)
+    return ore;
+  EndIf
+
+  // safe defaults
+  var result := struct{
+    diff      := 10,     // Schwierigkeit
+    diffmul   := 6,      // Multiplikator fuer "points"
+    product   := 0x6300, // Produkt
+    amount    := 10,     // Produktanzahl
+    amountmul := 1,      // Multiplikator: Erzmenge := amount * amountmul
+    explosion := "ore"   // Explosionstyp
+  };
+
+  var tmp;
+
+  tmp := GetConfigInt(ore, "SmeltAmountMul");
+  If (tmp != error)
+    result.amountmul := tmp;
+  EndIf
+
+  tmp := GetConfigInt(ore, "SmeltDiff");
+  If (tmp != error)
+    result.diff := tmp;
+  EndIf
+
+  tmp := GetConfigReal(ore, "SmeltDiffMul");
+  If (tmp != error)
+    result.diffmul *= tmp;
+  EndIf
+
+  tmp := GetConfigString(ore, "SmeltExplosion");
+  If (tmp != error)
+    result.explosion := tmp;
+  EndIf
+
+  tmp := GetConfigInt(ore, "SmeltProduct");
+  If (tmp != error)
+    result.product := tmp;
+  EndIf
+
+  tmp := GetConfigInt(ore, "SmeltProductAmount");
+  If (tmp != error)
+    result.amount := tmp;
+  EndIf
+
+  return result;
+EndFunction // }}}
+
+// vim: sw=2 sts=2

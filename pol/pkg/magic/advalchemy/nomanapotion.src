@@ -1,0 +1,22 @@
+// Made By Charles Haustron
+// Lower mana to 0
+use os;
+use uo;
+include "drinkpotion";
+include "include/modifyskill";
+
+Program drink_blue (character, potion)
+    If (!checkifcandrink(character))
+        return;
+    EndIf
+
+    If (is_poison(potion))
+        do_poison(character, potion);
+    Else
+        empty_bottle(character, potion);
+        SetManaPergon(character, 0);
+        detach();
+        Sleep(10);
+        candrink(character);
+    EndIf
+EndProgram

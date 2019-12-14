@@ -1,0 +1,231 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file poisoncloud.src
+//
+// implements spell 320 <Poison Cloud> - "Giftnebel"
+//
+// heavily poisons several spelltargets simultaneously (raises poison level)
+
+///////////////////////////////////////////////////////////////////////////
+// $Log: not supported by cvs2svn $
+// Revision 1.20  2008/08/18 17:36:04  mehdorn
+// - auf Basis von cleric/fog umgeschrieben
+//   + nur noch auf LOS zauberbar
+//   + Minimal-/Maximaldauer wird ausgewertet
+//   + keine Wirkung auf >= Seer
+//
+// 20.09.2005 Seppel
+// Umbau zum echten Giftnebel
+//
+// 04.10.2003 Sebastian 'Bihinos' Giese
+// ueberarbeitet
+//
+// 19.11.2001 Sebastian 'Bihinos' Giese
+// begonnen
+
+include "../magicpergon";
+include "../spellattack";
+include "include/poison";
+include "include/server";
+
+Const SOUND_FOG := 0x0458;
+
+Program Cast_PoisonCloud(params)
+  var power;
+  var caster;
+  var caston := struct{x, y, z, realm};
+  If (params[1] == "#MOB")
+    caster       := params[2];
+    power        := params[3];
+    caston       := struct{x,y,z,realm};
+    caston.x     := params[4].x;
+    caston.y     := params[4].y;
+    caston.z     := params[4].z;
+    caston.realm := params[4].realm;
+    If (!caston.realm)
+      syslog(
+        "HINWEIS: Gifnebel auf Ziel mit kaputtem Realm aufgerufen; Abbruch"
+      );
+      return;
+    EndIf
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetArea(caster, TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_NECRO_POISONCLOUD);
+    caston := TargetArea(caster, TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  If (caster)
+    TurnCharTo(caster, caston);
+    PerformAction(caster, ANIM_CAST_AREA);
+  EndIf
+
+  // load spelldata
+  var spells := ReadConfigFile("::spells");
+  var spell  := FindConfigElem(spells, SPELLID_NECRO_POISONCLOUD);
+
+  // calc spell damage and spell range according to casting power
+  var dmg    := CInt(power*spell.primary/100.0);
+  var range  := CInt(power*spell.range/100.0);
+  var maxlvl := CInt(power*spell.maxLevel/100.0);
+  var dur    := CInt(power*spell.duration/100.0);
+
+  If (spell.primarymin and spell.primarymin > dmg)
+    dmg := spell.primarymin;
+  ElseIf (spell.primarymax and spell.primarymax < dmg)
+    dmg := spell.primarymax;
+  EndIf
+  If (spell.durationmin and spell.durationmin > dur)
+    dur := spell.durationmin;
+  ElseIf (spell.durationmax and spell.durationmax < dur)
+    dur := spell.durationmax;
+  EndIf
+  If (spell.rangemin and spell.rangemin > range)
+    range := spell.rangemin;
+  ElseIf (spell.rangemax and spell.rangemax < range)
+    range := spell.rangemax;
+  EndIf
+
+  var CloudDescs := array{};
+  CloudDescs[1] := CloudDesc(FX_EXPLODE_1);
+  CloudDescs[2] := CloudDesc(FX_EXPLODE_2);
+  CloudDescs[3] := CloudDesc(FX_EXPLODE_3);
+  CloudDescs[4] := CloudDesc(FX_SMOKE);
+
+  // item in the middle for sound effects
+  var midcloud := CreateItemAtLocationPergon(
+    caston.x, caston.y, caston.z, CloudDescs[1], 1, caston.realm
+  );
+  SetName(midcloud, "Giftnebel");
+  PlaySoundEffect(midcloud, SOUND_FOG);
+
+  PlaySoundEffect(caster, 0x0475);
+  SleepMS(1500);
+
+  var clouds := array{};
+  var i;
+  For (i := 1; i < CInt(Pow(range, 2)*2); i += 1)
+    SleepMS(50);
+    clouds[i] :=
+      CreateCloud(caston, range, CloudDescs[RandomInt(4) + 1]);
+    ReserveItem(clouds[i]);
+  EndFor
+
+  For (i := 0; i < dur; i += 1)
+    PlaySoundEffect(midcloud, SOUND_FOG);
+    ForEach cloud in clouds
+      SleepMS(2);
+      DriftCloud(cloud, midcloud, range);
+    EndForEach
+
+    // get current victims
+    var victims := ListMobilesNearLocationEx(
+      caston.x, caston.y, caston.z, range,
+      LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN, caston.realm
+    );
+    If (victims)
+      ForEach victim in victims
+        SleepMS(2);
+        If (
+          victim.dead or
+          (victim == caster) or
+          (victim.cmdlevel >= CMDLEVEL_SEER)
+        )
+          // caster and ghosts should not be affected
+          continue;
+        EndIf
+
+        If (victim.isa(POLCLASS_NPC))
+          Send_Attack(victim, caster, 320);
+        EndIf
+
+        // maximaler Giftlevel abhängig von Power
+        If (GetPoisonLevel(victim) < maxlvl)
+          // poison victim
+          AddPoisonLevel(victim, dmg, caster);
+          // small 'cloud'
+          PlayStationaryEffect(
+            victim.x, victim.y, victim.z, 0x11a6, 1, 0, 0, victim.realm
+          );
+          PlaySoundEffect(victim, SFX_22A);
+
+          PrintTextAbovePrivatePergon(
+            victim, "Ihr wurdet magisch vergiftet",
+            "You have been magically poisoned", victim
+          );
+        EndIf
+      EndForEach
+    EndIf
+
+    // after 5 seconds caster is not responsible for the cloud
+    If (i == 5)
+      SetScriptController(0);
+    EndIf
+    Sleep(1);
+  EndFor
+
+  ForEach cloud in clouds
+    SleepMS(50);
+    DestroyItem(cloud);
+  EndForEach
+  DestroyItem(midcloud);
+EndProgram
+
+Function CreateCloud(caston, range, type) // {{{
+  var cloud := CreateItemAtLocation(
+    caston.x - range + RandomInt(2 * range) + 1,
+    caston.y - range + RandomInt(2 * range) + 1,
+    caston.z + RandomInt(10),
+    type, 1, caston.realm
+  );
+  SetName(cloud, "Giftnebel");
+
+  return cloud;
+EndFunction // }}}
+
+Function CloudDesc(effect) // {{{
+  var desc     := GetItemDescriptor(effect);
+  desc.color   := 65+RandomInt(10);
+  desc.movable := 0;
+
+  return desc;
+EndFunction // }}}
+
+Function DriftCloud(cloud, center, range); // {{{
+  var tries := 3;
+  While (cloud)
+    SleepMS(2);
+    var pos := struct{
+      x := cloud.x + DriftDir(), y := cloud.y + DriftDir()
+    };
+    If (CoordinateDistance(pos.x, pos.y, center.x, center.y) >= range)
+      // aus Bereich geraten? neuer Versuch
+      tries -= 1;
+      If (tries <= 0)
+        // alle Versuche verbraucht? dann keine Bewegung
+        return;
+      EndIf
+      continue;
+    EndIf
+
+    MoveObjectToLocation(cloud, pos.x, pos.y, cloud.z, cloud.realm,MOVEITEM_IGNOREMOVABLE);
+    return;
+  EndWhile
+
+EndFunction // }}}
+
+Function DriftDir() // {{{
+  // -1, 0 or 1
+  return RandomInt(3) - 1;
+EndFunction // }}}
+// vim: sts=2 sw=2

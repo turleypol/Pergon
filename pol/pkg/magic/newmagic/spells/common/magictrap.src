@@ -1,0 +1,110 @@
+//**************************************************************************************************
+// Script file magictrap.src
+//
+//    implements spell 18 <Magic Trap> - "Magische Falle"
+//
+//	magically attaches trap to container
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 27.06.2003 Sebsatian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+use util;
+
+Include ":traps:traps";
+Include "../magicpergon";
+Include "include/npc";
+
+program cast_magictrap (params)
+
+   Var caster;
+   Var caston;
+   Var skill;
+   Var power;
+
+   if (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      skill:=  params[4];
+      caston:= TargetThing(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+      skill:=  params[2];
+
+      power:= GetCastPowerPergon(caster, SPELLID_COMMON_MAGICTRAP);
+      caston:= TargetThing(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+																						// check if target is multi
+   if ((caston.multi) or GetObjProperty(caston, PROP_HS_C_SC_HOUSE) or GetObjProperty(caston, PROP_HS_M_HOUSE) Or GetObjProperty(caston, "spawnnet"))
+      SendSysMessagePergon(caster, "Das kann nicht mit einer magischen Falle versehen werden",
+                                   "This cannot be magically trapped");
+      PlayLightningBoltEffect(caster);										// zapp villain ;)
+      return;
+   endif
+
+   if (Distance(caster, caston) > 2)										// check if caster is close enough
+      SendSysMessagePergon(caster, "Ihr müsst schon etwas näher heran, um zu versuchen, das mit einer magischen Falle zu versehen",
+                                   "You have to be somewhat closer for trying to magically trap this");
+      return;
+   endif
+
+   if (caston.locked)															// check if target is locked
+      PlaySoundEffect(caster, SFX_11F);
+      SendSysMessagePergon(caster, "Solange das abgeschlossen ist, kann es nicht mit einer magischen Falle versehen werden",
+                                   "As long as this remains locked, it cannot be magically trapped");
+      return;
+   endif
+
+   if (GetObjProperty(caston, "trap_strength"))							// check if target is already trapped
+      PlaySoundEffect(caster, SFX_236);
+      SendSysMessagePergon(caster, "Das ist bereits mit einer Falle versehen",
+                                   "This is already magically trapped");
+      return;
+   endif
+
+   if ( ((caston.graphic<=0x9ab) and (caston.graphic>=0x9a8)) or
+        ((caston.graphic<=0xe43) and (caston.graphic>=0xe3c)) or
+        ((caston.graphic<=0xe80) and (caston.graphic>=0xe7c)) )		// check if target is container
+
+      TurnCharTo(caster, caston);
+      PerformAction(caster, ANIM_CAST_AREA);
+
+      Var dmg:= CInt(power * 3/5);							// calc trap damagae according to casting power
+
+      if (PlaceTown(caston))		// if spell is cast in town
+         dmg:= CInt(dmg / 2);				// possible damage is halved
+      endif
+
+      if (dmg < 1) 					// trap damage is at least 1
+         dmg:= 1;
+      endif
+
+      if (RandomInt(100) < dmg)													// check if caster attaches trap
+         PlaySoundEffect(caster, SFX_SPELL_MAGIC_TRAP);					// and create trap
+         PlayObjectCenteredEffect(caston, FX_MARK_EFFECT, 5, 10);
+	 		case (skill)																	// determine trap type
+	    		SKILLID_SEGNEN:  	CreateMagicTrap(caster, caston, dmg, 8, ":traps:containertrap");		// cleric -> bolt
+	    		SKILLID_MAGIE:   	CreateMagicTrap(caster, caston, dmg, 9, ":traps:containertrap");		// mage   -> explosive
+	    		SKILLID_FLUCHEN:	CreateMagicTrap(caster, caston, dmg, 10, ":traps:containertrap");		// necro  -> poison
+	    		default:	     		CreateMagicTrap(caster, caston, dmg, RandomInt(3) + 8, ":traps:containertrap");
+	 		endcase
+	    SetObjProperty(caston, "castedby", {caster.serial, caster.acctname, caster.name});
+      else
+	 		PlaySoundEffect(caster, SFX_236);
+	 		SendSysMessagePergon(caster, "Ihr scheitert beim Versuch, das  mit einer Falle zu versehen",
+	      		                       "You fail in trying to magically trap this");
+      endif
+   else
+      SendSysMessagePergon(caster, "Das kann nicht mit einer magischen Falle versehen werden",
+                                   "This cannot be magically trapped");
+   endif
+
+endprogram

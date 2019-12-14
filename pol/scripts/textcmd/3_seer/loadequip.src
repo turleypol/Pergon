@@ -1,0 +1,26 @@
+//
+// Cause another to perform an action by number
+//
+//  27.09.2005 Fraggulus: Logging
+//  03.11.2005 Fraggulus: .EquipT umbenannt in .LoadEquip
+//
+
+use uo;
+
+Include "include/msgs";
+
+program textcmd_loadequip(who, template)
+  SendSysMessagePergon(who, "Wen wollt Ihr ausstatten mit Template " + template + "?",
+                            "Whom do you want to equip with template " + template + "?");
+
+  Var subject := Target(who);
+  If (subject)
+    Var result := EquipFromTemplate(subject, template);
+    If (!result)
+      SendSysMessagePergon(who, "Konnte Vorgang nicht ausfuehren: " + result,
+                                "Could not finish: " + result);
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+endprogram

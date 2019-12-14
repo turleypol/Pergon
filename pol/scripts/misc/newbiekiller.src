@@ -1,0 +1,46 @@
+Use uo;
+Use os;
+Use polsys;
+
+Include "include/client";
+Include "include/msgs";
+
+Program NewbieKiller(killer)
+  killer.frozen:=1;
+  IncRevision(killer);
+  SetObjProperty(killer, "frozen", 1);
+
+  BroadcastPergon(killer.name+" ist ein unwürdiger Newbiekiller!");
+  SysLog(killer.name+" ist ein unwuerdiger Newbiekiller!");
+
+  UnEquip(killer, LAYER_HAND1);
+  UnEquip(killer, LAYER_HAND2);
+  UnEquip(killer, LAYER_HELMET);
+  UnEquip(killer, LAYER_GLOVES);
+  UnEquip(killer, LAYER_NECK);
+  UnEquip(killer, LAYER_WAIST);
+  UnEquip(killer, LAYER_CHEST);
+  UnEquip(killer, LAYER_WRIST);
+  UnEquip(killer, LAYER_TUNIC);
+  UnEquip(killer, LAYER_TUNIC);
+  UnEquip(killer, LAYER_ARMS);
+  UnEquip(killer, LAYER_SKIRT);
+  UnEquip(killer, LAYER_LEGS);
+
+  Var i;
+  For (i:=0; i<12; i+=1)
+    PlayLightningBoltEffect(killer);
+    Sleep(5);
+  EndFor
+
+  SetObjProperty(killer, "frozen", 0);
+  killer.frozen:=0;
+  IncRevision(killer);
+EndProgram
+
+Function UnEquip(who, layer)
+  Var item:=GetEquipmentByLayer(who, layer);
+  If (item)
+    MoveItemToContainer(item, who.backpack);
+  EndIf
+EndFunction

@@ -1,0 +1,1278 @@
+///////////////////////////////////////////////////////////////////////////
+// Plantgrowing
+//
+// Samen in Topf pflanzen und hegen und pflegen um Deco Pflanzen zu bekommen
+//
+// Author: Turley
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// 29.03.06 Turley - Fehler bei Mutanten behoben, Hilfegump etwas verbessert
+// 27.03.06 Turley - Farbkreuztabelle getuned oder so
+// 16.02.06 Turley - Farben geändert, Kübelleeren hat Farbe und Name behalten
+// 06.02.06 Turley - Check beim erzeugen der Samen/Res eingebaut
+// 01.02.06 Turley - DistanceCheck bei Dirt geändert
+// 18.12.05 Turley - Bissl Wasserkram
+// 14.12.05 Turley - Bissl was mit Target geändert, Tränke werden nicht mehr zerstört, Topf wird auch grün
+// 13.12.05 Turley - kleine Gumpänderung und Soundseingefügt
+// 07.12.05 Turley - Erste Version
+
+// ToDo:
+//   - Mmmmh vielleicht doch den ganzen Zustandskram über nen Controllscript regeln?
+//   - Aufploppgump beim ersten Wassereinfüllen wieviel liter eingefüllt werden sollen
+// Ressourcen:
+//   - Wasserquelle
+//   - Bohne (großes grünes Ding entsteht Char kommt auf Insel mit Riesen die dummsülzlabern)
+//           (0x1AA1,0x2BA0(SE),0x2CFB(SE),0x3023(SE)als Ranke nach oben)
+// Bonsai:
+//   - Flammengo-irgendwasVogelVieh spannt super selten und gibt Bonsaisamen
+///////////////////////////////////////////////////////////////////////////
+//Samen CProps:
+//"seedtype"    - Welcher Same
+//"seedcolor"   - Farbe
+//"resmoeglich" - Ressource?
+//"mutant"      - Mutant
+//
+//Topf CProps:
+//"seedtype"    - Welche Pflanze (graphic) (Same)
+//"type"        - Welche Pflanze (graphic) (Pflanze)
+//"seedcolor"   - Welche Farbe (color) (Same)
+//"color"       - Welche Farbe (color) (Pflanze)
+//"dirt"        - Welche Erde [erde,humus,torf]
+//"water"       - Wasserstand [1..5] (rot-,gelb-,nix,gelb+,rot+)
+//                (stark vertrocknet,leicht vertrocknet,nix,leicht überwässert,stark verwässert)
+//"stage"       - Wachstumsstufe [1..9]
+//"nextgrowth"  - nächster Wachstumscheck (ReadgameCLock()+23h)
+//"wachstum"    - Wachstum [nix,rot!,rot-,gelb-,blau+,grün+]
+//                (error/noch kein Wachstum,kein wachstum weil falsche Stelle, kein wachstum weil nicht gesund,lebhaft,
+//                 kein wachstum da noch keine 23h um, wachstum erfolgreich,bonuswachstum wegen erde)
+//"insekten"    - Insektenbefall [nix,gelb+,rot+]
+//                (kein befall,kleiner befall,starker befall) (Gifttrank) (Grund: Zufall)
+//"pilz"        - Pilzbefall [nix,gelb+,rot+]
+//                (kein befall, kleiner begall,starker befall) (Gegengifttrank) (Grund: Zufall)
+//"gift"        - Vergiftet [nix,gelb+,rot+]
+//                (keine Vergiftung, kleine Vergiftung,starke Vergiftung) (Heiltrank) (Grund: zuviel Gift)
+//"krank"       - Krank [nix,gelb+,rot+]
+//                (nicht krank, leicht krank, stark krank) (Heiltrank) (Grund: zuviel Gegengift)
+//"zustand"     - Gesamtzustand [lebhaft,gesund,welkend,sterbend]
+//"bestaeubung" - Bestäubungszustand [gelb-,rot!,grün+]
+//                (noch nicht bestäubt da noch nicht ausgewachsen,bestäubung möglich, bestäubt)
+//"samen"       - Anzahl produzierter Samen [X,1..8]
+//"ressource"   - Anzahl produzierter Ressourcen [X,1..8]
+//"deco"        - DecoModus [0,1] (reine Deco, Script deaktiviert)
+//"mutant"      - Mutant (besondere Farbe, aber keine Samen oder Ressourcen Produktion)
+//"mutantseed"  - Einziger Same der entsteht ist Mutant
+//"resmoeglich" - werden Ressourcen produziert?
+///////////////////////////////////////////////////////////////////////////
+
+
+use util;
+use uo;
+use cfgfile;
+use math;
+
+Include "include/msgs";
+Include "include/objtype";
+Include "include/modifyskill";
+Include "include/client";
+
+Var layouthintergrund:= {
+                         "page 0",
+                         "nodispose",
+                         "ResizePic 10 10 3600 200 160",  //Hintergrund
+                         "TilePic -15 5 3307",            //Pflanzenberahmung
+                         "TilePic -15 65 3307",
+                         "TilePic 170 5 3307",
+                         "TilePic 170 65 3307"};
+Var layoutpage0:={
+                  "page 1",
+                  "Text 70 7 910 0",
+                  "Button 40 40 210 210 1 0 1",  // Erde
+                  "TilePic 28 40 3899",
+                  "Button 40 80 210 210 1 0 2",  // Wasser
+                  "TilePic 25 80 4089",
+                  "Button 40 120 210 210 1 0 3", // Same
+                  "TilePic 32 123 3174"
+                  };
+
+Var datapage0:={"Pflanzenkuebel",
+                "Erde einfuellen",
+                "Giessen",
+                "Samen einpflanzen"};
+
+Var layoutpage1:={
+                  "page 1",                        // HAUPTSEITE
+                  "TilePic 57 130 6809",           // Pflanzenunten
+                  "TilePic 123 130 6809",
+                  "GumpPic 10 10 210",             //EckButtons (PlantStage 1-9)
+                  "GumpPic 190 10 210",            // (Growth Indicator nix,rot!,rot-,gelb-,blau+,grün+)
+                  "Button 190 150 210 210 1 0 1",  // (empty Bowl)
+                  "TilePic 178 148 5629",          // Ecke rechts unten (empty bowl)
+                  "Button 10 150 210 210 1 0 11",   // HilfeButton
+                  "Text 15 150 910 2",
+                  "Button 30 30 210 210 0 2 0",  //Innere Buttons links
+                  "TilePic 18 31 3336",            // (Vermehrungsmenu)
+                  "GumpPic 30 55 9028",            // 2te
+                  "TilePic -33 60 882",            // (Insekten)
+                  "GumpPic 30 80 9028",            // 3te
+                  "TilePic 16 81 3350",            // (Pilze)
+                  "GumpPic 30 105 9028",           // 4te
+                  "TilePic 18 108 6884",           // (Vergiftet-zuviel Gift)
+                  "GumpPic 30 130 9028",           // 5te
+                  "TilePic 13 133 5927",           // (Krank-zuviel Gegengift)
+                  "Button 170 30 210 210 1 0 2", //Innere Buttons rechts
+                  "TilePic 155 30 4089",           // (Wasserstand+Wassergeben)
+                  "Button 170 55 210 210 1 0 3", // 2te
+                  "TilePic 158 55 3850",           // (GiftStand+Giftgeben
+                  "Button 170 80 210 210 1 0 4", // 3te
+                  "TilePic 154 80 3847",           // (gegengift+geben)
+                  "Button 170 105 210 210 1 0 5",// 4te
+                  "TilePic 152 105 3852",          // (HeilStand+geben)
+                  "Button 170 130 210 210 1 0 6",// 5te
+                  "TilePic 155 130 3849",          // (StärkeStand+geben)
+                  "HtmlGump 87 135 50 26 3 0 0"};  // Gesundheitszustand (lebhaft,gesund,welkend,sterbend)
+
+Var layouttopf:={ "GumpPic 70 50 1417",            // Topf
+                  "TilePic 65 70 3899",            // Erde
+                  "TilePic 65 80 3899",
+                  "TilePic 65 90 3899",
+                  "TilePic 75 60 3899",
+                  "TilePic 75 70 3899",
+                  "TilePic 75 80 3899",
+                  "TilePic 75 90 3899",
+                  "TilePic 75 100 3899",
+                  "TilePic 85 60 3899",
+                  "TilePic 85 70 3899",
+                  "TilePic 85 80 3899",
+                  "TilePic 85 90 3899",
+                  "TilePic 85 100 3899",
+                  "TilePic 95 60 3899",
+                  "TilePic 95 70 3899",
+                  "TilePic 95 80 3899",
+                  "TilePic 95 90 3899",
+                  "TilePic 95 100 3899",
+                  "TilePic 105 70 3899",
+                  "TilePic 105 80 3899",
+                  "TilePic 105 90 3899"};
+
+
+Var layoutpage2:={
+                  "page 2",                        // VERMEHRUNGSMENU
+                  "GumpPic 75 55 3601",            // Zwischenbalken
+                  "GumpPic 20 55 3601",
+                  "GumpPic 75 105 3601",
+                  "GumpPic 20 105 3601",
+                  "Button 30 30 210 0 0 1 0",      // Überschrift Button (Wieder zurück)
+                  "TilePic 17 29 5632",
+                  "Button 170 30 210 210 1 0 7",   // DecoMode (nur anzeigen wenn voll)
+                  "TilePic 160 30 3169",
+                  "Text 175 30 37 1",
+                  "Text 75 30 910 0",              // Überschrift
+                  "GumpPic 40 78 9028",            // Anzeige 1
+                  "TilePic 27 79 6818",            // (pollenstand gelb-,rot!,grün+)
+                  "GumpPic 90 78 9028",            // Anzeige 2
+                  "TilePic 76 82 4129",            // (Resourceproduktion)
+                  "GumpPic 140 78 9028",           // Anzeige 3
+                  "TilePic 130 81 3174",           // (Samenproduktion)
+                  "Button 30 130 210 210 1 0 8",   // Button 1
+                  "TilePic 17 131 6818",           // (Kreuzen)
+                  "Button 100 130 210 210 1 0 9",  // Button 2
+                  "TilePic 86 134 4129",           // (Ressourcensammeln)
+                  "Button 170 130 210 210 1 0 10", // Button 3
+                  "TilePic 160 133 3174",          // (Samensammeln)
+                  "Text 115 78 37 12"};             // Ressourcenstand
+
+
+Var layout2:={"TilePic 87 80 3169"};  // Stage 2 Pflanze
+Var layout3:={"TilePic 85 55 3198",   // Stage 3
+              "TilePic 87 80 3169"};
+Var layout4:={"TilePic 85 55 3198",   // Stage 4
+              "TilePic 87 80 3169",
+              "TilePic 80 85 3169",
+              "TilePic 94 85 3169"};
+Var layout5:={"TilePic 87 80 3169",   // Stage 5
+              "TilePic 80 85 3169",
+              "TilePic 94 85 3169",
+              "TilePic 72 70 3169",
+              "TilePic 100 70 3169",
+              "TilePic 72 90 3169",
+              "TilePic 100 90 3169"};
+Var layout6:={"TilePic 65 70 3169",   // Stage 6
+              "TilePic 65 80 3169",
+              "TilePic 65 90 3169",
+              "TilePic 80 60 3169",
+              "TilePic 80 70 3169",
+              "TilePic 80 80 3169",
+              "TilePic 80 90 3169",
+              "TilePic 80 100 3169",
+              "TilePic 95 60 3169",
+              "TilePic 95 70 3169",
+              "TilePic 95 80 3169",
+              "TilePic 95 90 3169",
+              "TilePic 95 100 3169",
+              "TilePic 110 70 3169",
+              "TilePic 110 80 3169",
+              "TilePic 110 90 3169"};
+
+
+Var datastandart:={"Vermehrung","/","?"};
+
+Var datazustand:={"<basefont color=#00FF00><center>lebhaft</center>","<basefont color=#00FF00><center>gesund</center>","<basefont color=#00FF00><center>welkend</center>","<basefont color=#00FF00><center>sterbend</center>"};
+Var datainsekten:={"","+","+"};
+Var layoutinsekten:={"Text 55 55 0 4","Text 55 55 52 4","Text 55 55 37 4"};  //nix,gelb,rot
+Var datapilz:={"","+","+"};
+Var layoutpilz:={"Text 55 80 0 5","Text 55 80 52 5","Text 55 80 37 5"};  //nix,gelb,rot
+Var datagift:={"","+","+"};
+Var layoutgift:={"Text 55 105 0 6","Text 55 105 52 6","Text 55 105 37 6"};  //nix,gelb,rot
+Var datakrank:={"","+","+"};
+Var layoutkrank:={"Text 55 130 0 7","Text 55 130 52 7","Text 55 130 37 7"};  //nix,gelb,rot
+Var datawater:={"-","-","","+","+"};
+Var layoutwater:={"Text 155 30 37 8","Text 155 30 52 8","Text 155 30 0 8","Text 155 30 52 8","Text 155 30 37 8"}; //rot,gelb,nix,gelb,rot
+Var datastage:={"1","2","3","4","5","6","7","8","9"};
+Var layoutstage:={"Text 15 10 910 9"};
+Var datawachstum:={"","!","-","-","+","+"};
+Var layoutwachstum:={"Text 195 10 0 10","Text 195 10 37 10","Text 195 10 37 10","Text 195 10 52 10","Text 195 10 2 10","Text 195 10 67 10"};//nix,rot,rot,gelb,blau,grün
+Var databestaeubung:={"-","!","+"};
+Var layoutbestaeubung:={"Text 65 78 52 11","Text 65 78 37 11","Text 65 78 67 11"};
+Var dataressource:={"X","0","1","2","3","4","5","6","7","8"};
+Var datasamen:={"X","0","1","2","3","4","5","6","7","8"};
+
+// 1  - dunkel rot
+// 2  - hell rot
+// 3  - dunkel orange
+// 4  - hell orange
+// 5  - dunkel gelb
+// 6  - hell gelb
+// 7  - dunkel grün
+// 8  - hell grün
+// 9  - dunkel blau
+// 10 - hell blau
+// 11 - dunkel lila
+// 12 - hell lila
+// 13 - weiß (Mutant)
+// 14 - schwarz (Mutant)
+// 0  - farblos
+Var colortypes:={37,35,43,1161,1281,54,1268,72,1327,2121,1374,1378,1150,1175};
+Var colorgump:={31,33,41,42,47,49,71,67,2,4,21,23,910,91};
+
+//Generation 0:
+// Farbe: 0,1,5,9
+// Type:  1,9,17
+//Generation 1:
+// Farbe: 0,2,3,6,7,10,11
+// Type:  1,5,9,13,17
+//Generation 2:
+// Farbe: 0,1,2,3,4,5,6,7,8,9,10,11,12
+// Type:  1,3,5,7,9,11,13,15,17
+//Generation 3:
+// Tarbe: 0,1,2,3,4,5,6,7,8,9,10,11,12
+// Type:  1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17
+
+// Welche Farbe mit Welcher Farbe gibt was?
+//                 1   2   3   4   5   6   7   8   9  10  11  12   0
+Var colortable:={{ 2,  2,  1,  1,  3,  3,  1,  1, 11, 11,  1,  1,  0},  //  1
+                 { 2,  2,  1,  1,  3,  3,  1,  1, 11, 11,  1,  1,  0},  //  2
+                 { 1,  1,  4,  4,  5,  5,  5,  5,  9,  9,  1,  1,  0},  //  3
+                 { 1,  1,  4,  4,  5,  5,  5,  5,  9,  9,  1,  1,  0},  //  4
+                 { 3,  3,  5,  5,  6,  6,  5,  5,  7,  7,  5,  5,  0},  //  5
+                 { 3,  3,  5,  5,  6,  6,  5,  5,  7,  7,  5,  5,  0},  //  6
+                 { 1,  1,  5,  5,  5,  5,  8,  8,  9,  9,  9,  9,  0},  //  7
+                 { 1,  1,  5,  5,  5,  5,  8,  8,  9,  9,  9,  9,  0},  //  8
+                 {11, 11,  9,  9,  7,  7,  9,  9, 10, 10,  9,  9,  0},  //  9
+                 {11, 11,  9,  9,  7,  7,  9,  9, 10, 10,  9,  9,  0},  // 10
+                 { 1,  1,  1,  1,  5,  5,  9,  9,  9,  9, 12, 12,  0},  // 11
+                 { 1,  1,  1,  1,  5,  5,  9,  9,  9,  9, 12, 12,  0},  // 12
+                 { 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0}}; //  0
+
+// Was mit was gekreuzt gibt was?
+//                1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17
+Var crosstable:={{1,  0,  2,  2,  3,  3,  4,  4,  5,  5,  6,  6,  7,  7,  8,  8,  9},  //  1
+                 {0,  2,  0,  3,  3,  4,  4,  5,  5,  6,  6,  7,  7,  8,  8,  9,  9},  //  2
+                 {2,  0,  3,  0,  4,  4,  5,  5,  6,  6,  7,  7,  8,  8,  9,  9, 10},  //  3
+                 {2,  3,  0,  4,  0,  5,  5,  6,  6,  7,  7,  8,  8,  9,  9, 10, 10},  //  4
+                 {3,  3,  4,  0,  5,  0,  6,  6,  7,  7,  8,  8,  9,  9, 10, 10, 11},  //  5
+                 {3,  4,  4,  5,  0,  6,  0,  7,  7,  8,  8,  9,  9, 10, 10, 11, 11},  //  6
+                 {4,  4,  5,  5,  6,  0,  7,  0,  8,  8,  9,  9, 10, 10, 11, 11, 12},  //  7
+                 {4,  5,  5,  6,  6,  7,  0,  8,  0,  9,  9, 10, 10, 11, 11, 12, 12},  //  8
+                 {5,  5,  6,  6,  7,  7,  8,  0,  9,  0, 10, 10, 11, 11, 12, 12, 13},  //  9
+                 {5,  6,  6,  7,  7,  8,  8,  9,  0, 10,  0, 11, 11, 12, 12, 13, 13},  // 10
+                 {6,  6,  7,  7,  8,  8,  9,  9, 10,  0, 11,  0, 12, 12, 13, 13, 14},  // 11
+                 {6,  7,  7,  8,  8,  9,  9, 10, 10, 11,  0, 12,  0, 13, 13, 14, 14},  // 12
+                 {7,  7,  8,  8,  9,  9, 10, 10, 11, 11, 12,  0, 13,  0, 14, 14, 15},  // 13
+                 {7,  8,  8,  9,  9, 10, 10, 11, 11, 12, 12, 13,  0, 14,  0, 15, 15},  // 14
+                 {8,  8,  9,  9, 10, 10, 11, 11, 12, 12, 13, 13, 14,  0, 15,  0, 16},  // 15
+                 {8,  9,  9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15,  0, 16,  0},  // 16
+                 {9,  9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15, 16,  0, 17}}; // 17
+
+
+
+Const DIRTAMOUNT:=40; // Wieviel Humus/Torf wird benötigt
+Const MAXSEEDS:=5;    // Max Samen
+Const MAXRES:=5;      // Max Ressourcen
+Const SEEDS:=UOBJ_SEED;
+Const RES:=0xff87;
+Var dirt, seedtype, planttype, seedcolor, color, water, stage, nextgrowth, insekten, pilz, gift, krank, zustand, mutantseed;
+Var bestaeubung, samen, ressource, wachstum, lastuse, hp, mutant, resmoeglich, samengesammelt, resgesammelt;
+Var plantcfg:=ReadConfigFile("plant");
+Var who,bowl;
+
+Program plantgrow(character,plant)
+  Var layout:={}, data:={}, result, status, reply;
+  who:=character; // Global machen
+  bowl:=plant;
+  If (GetObjProperty(bowl,"deco")) // DecoModus nix mehr passiert
+    Return;
+  EndIf
+  If (!GetObjProperty(bowl,"seedtype"))  // Erstes Gump anzeigen
+    If (bowl.graphic==0x15FD) // Erde
+      layout:=layouthintergrund+layoutpage0+"Text 70 40 51 1"+"Text 70 80 37 2"+"Text 70 120 37 3";
+      status:=1;
+    ElseIf ((!GetObjProperty(bowl,"water")) && (!GetObjProperty(bowl,"seedtype")))  // Wasser
+      layout:=layouthintergrund+layoutpage0+"Text 70 40 37 1"+"Text 70 80 51 2"+"Text 70 120 37 3";
+      status:=2;
+    ElseIf (!GetObjProperty(bowl,"seedtype"))  // Same
+      layout:=layouthintergrund+layoutpage0+"Text 70 40 37 1"+"Text 70 80 51 2"+"Text 70 120 51 3";
+      status:=3;
+    EndIf
+    result:=SendDialogGump(who,layout,datapage0,50,50);
+    If (result)
+      Case (result.keys[2])
+        1:  If (status <> 1)
+                SendSysMessagePergon(who,"Es ist schon mit Erde befüllt.","This is already filled with dirt.");
+                Return;
+              EndIf
+              FillDirt();
+        2:  If (status == 1)
+                SendSysMessagePergon(who,"Ihr benötigt erst Erde.","You first need dirt.");
+                Return;
+              EndIf
+              FillWater(1);
+        3:  If (status <> 3)
+                SendSysMessagePergon(who,"Jetzt könnt ihr noch keinen Samen setzen.","You cannot plant a seed at this moment.");
+                Return;
+              EndIf
+              FillSeed();
+      EndCase
+      Return;
+    EndIf
+    SendSysMessagePergon(who,"Abbruch","Abort");
+    Return;
+  EndIf
+
+  ////////////////////
+  // Hauptscript
+  ////////////////////
+  seedtype:=GetObjProperty(bowl,"seedtype");       // Welche Pflanze
+  planttype:=GetObjProperty(bowl,"type");
+  seedcolor:=GetObjProperty(bowl,"seedcolor");     // Welche Farbe
+  color:=GetObjProperty(bowl,"color");
+  water:=GetObjProperty(bowl,"water");             // Wasserstand
+  dirt:=GetObjProperty(bowl,"dirt");               // Welche Erde
+  stage:=GetObjProperty(bowl,"stage");             // Wachstumsstufe
+  nextgrowth:=GetObjProperty(bowl,"nextgrowth");   // nächster Wachstumcheck
+  insekten:=GetObjProperty(bowl,"insekten");       // Insektenbefall
+  pilz:=GetObjProperty(bowl,"pilz");               // Pilzbefall
+  gift:=GetObjProperty(bowl,"gift");               // Vergiftet
+  krank:=GetObjProperty(bowl,"krank");             // Krank
+  zustand:=GetObjProperty(bowl,"zustand");         // Gesamtzustand
+  wachstum:=GetObjProperty(bowl,"wachstum");       // Wachstum
+  bestaeubung:=GetObjProperty(bowl,"bestaeubung"); // Bestäubungszustand
+  samen:=GetObjProperty(bowl,"samen");             // Anzahl produzierter Samen
+  ressource:=GetObjProperty(bowl,"ressource");     // Anzahl produzierter Ressourcen
+  lastuse:=GetObjProperty(bowl,"lastuse");         // letzte Benutzung
+  hp:=GetObjProperty(bowl,"hp");                   // hp
+  mutant:=GetObjProperty(bowl,"mutant");           // Mutant
+  mutantseed:=GetObjProperty(bowl,"mutantseed");   // Mutantseed
+  resmoeglich:=GetObjProperty(bowl,"resmoeglich"); // Res möglich
+  samengesammelt:=GetObjProperty(bowl,"samengesammelt"); // Samen bis jetzt gesammelt
+  resgesammelt:=GetObjProperty(bowl,"resgesammelt"); // Res bis jetzt gesammelt
+
+  If (!seedcolor)
+    seedcolor:=0;
+  EndIf
+  If ((!water) || (water < 1))
+    water:=1;
+  EndIf
+  If (!stage)
+    stage:=1;
+  EndIf
+  If ((!insekten) || (insekten < 1))
+    insekten:=1;
+  EndIf
+  If (insekten >= 4)
+    insekten:=3;
+  EndIf
+  If ((!pilz) || (pilz < 1))
+    pilz:=1;
+  EndIf
+  If (pilz >= 4)
+    pilz:=3;
+  EndIf
+  If ((!gift) || (gift < 1))
+    gift:=1;
+  EndIf
+  If (gift >= 4)
+    gift:=3;
+  EndIf
+  If ((!krank) || (krank < 1))
+    krank:=1;
+  EndIf
+  If (krank >= 4)
+    krank:=3;
+  EndIf
+  If (!zustand)
+    zustand:=1;
+  EndIf
+  If (!wachstum)
+    wachstum:=1;
+  EndIf
+  If (!bestaeubung)
+    bestaeubung:=1;
+  EndIf
+  If (!samen)
+    samen:=1;
+  EndIf
+  If (!samengesammelt)
+    samengesammelt:=0;
+  EndIf
+  If (!ressource)
+    ressource:=1;
+  EndIf
+  If (!resgesammelt)
+    resgesammelt:=0;
+  EndIf
+
+  result:=ZustandCheck();
+  If (result)
+    WachstumCheck();
+  Else
+    SendSysMessagePergon(who,"Ihr leert den Kübel.","You empty the bowl.");
+    EraseObjProperty(bowl,"seedtype");
+    EraseObjProperty(bowl,"type");
+    EraseObjProperty(bowl,"seedcolor");
+    EraseObjProperty(bowl,"color");
+    EraseObjProperty(bowl,"water");
+    EraseObjProperty(bowl,"dirt");
+    EraseObjProperty(bowl,"stage");
+    EraseObjProperty(bowl,"nextgrowth");
+    EraseObjProperty(bowl,"insekten");
+    EraseObjProperty(bowl,"pilz");
+    EraseObjProperty(bowl,"gift");
+    EraseObjProperty(bowl,"krank");
+    EraseObjProperty(bowl,"zustand");
+    EraseObjProperty(bowl,"wachstum");
+    EraseObjProperty(bowl,"bestaeubung");
+    EraseObjProperty(bowl,"samen");
+    EraseObjProperty(bowl,"ressource");
+    EraseObjProperty(bowl,"lastuse");
+    EraseObjProperty(bowl,"hp");
+    EraseObjProperty(bowl,"mutant");
+    EraseObjProperty(bowl,"mutantseed");
+    EraseObjProperty(bowl,"resmoeglich");
+    EraseObjProperty(bowl,"samengesammelt");
+    EraseObjProperty(bowl,"resgesammelt");
+    bowl.graphic:=0x15FD;
+    bowl.color:=0;
+    bowl.name:="Pflanzenkuebel";
+    Return;
+  EndIf
+
+  ///////////////////////////////////
+  // layout und data zusammenbasteln
+  ///////////////////////////////////
+  Case (stage) // Wachstumsstufe (Pflanzeanzeigen)
+    1:  layoutpage1:=layoutpage1+layouttopf;
+    2:  layoutpage1:=layoutpage1+layouttopf+layout2;
+    3:  layoutpage1:=layoutpage1+layouttopf+layout3;
+    4:  layoutpage1:=layoutpage1+layouttopf+layout4;
+    5:  layoutpage1:=layoutpage1+layouttopf+layout5;
+    6:  layoutpage1:=layoutpage1+layouttopf+layout6;
+    7:
+    8:
+    9:  layoutpage1:=layoutpage1+("TilePic "+(70+plantcfg[planttype].gumpx)+" "+(50+plantcfg[planttype].gumpy)+" "+CInt(plantcfg[planttype].type));
+        bowl.graphic:=plantcfg[planttype].type;
+        bowl.name:=plantcfg[planttype].name;
+        If ((!color) || (color==0))
+          bowl.color:=0;
+        Else
+          bowl.color:=colortypes[color];
+        EndIf
+  EndCase
+  If ((stage > 2) && (stage < 7))
+    bowl.graphic:=0x1600; // Etwas Grün im Topf
+  EndIf
+
+  data:=datastandart;
+  data:=data+datazustand[zustand];
+  layoutpage1:=layoutpage1+layoutinsekten[CInt(insekten)];
+  data:=data+datainsekten[CInt(insekten)];
+  layoutpage1:=layoutpage1+layoutpilz[CInt(pilz)];
+  data:=data+datapilz[CInt(pilz)];
+  layoutpage1:=layoutpage1+layoutgift[CInt(gift)];
+  data:=data+datagift[CInt(gift)];
+  layoutpage1:=layoutpage1+layoutkrank[CInt(krank)];
+  data:=data+datakrank[CInt(krank)];
+  layoutpage1:=layoutpage1+layoutwater[CInt(water)];
+  data:=data+datawater[CInt(water)];
+  layoutpage1:=layoutpage1+layoutstage;
+  data:=data+datastage[stage];
+  layoutpage1:=layoutpage1+layoutwachstum[wachstum];
+  data:=data+datawachstum[wachstum];
+  layoutpage2:=layoutpage2+layoutbestaeubung[bestaeubung];
+  data:=data+databestaeubung[bestaeubung];
+  data:=data+dataressource[ressource];
+
+  If (samen==1)  // Samenstand
+    layoutpage2:=layoutpage2+("Text 165 78 37 13");
+  ElseIf ((!seedcolor) || (seedcolor == "0"))
+    layoutpage2:=layoutpage2+("Text 165 78 910 13");
+  Else
+    layoutpage2:=layoutpage2+("Text 165 78 "+colorgump[seedcolor]+" 13");
+  EndIf
+  data:=data+datasamen[samen];
+
+  layout:=layouthintergrund+layoutpage1+layoutpage2;
+
+  result:=SendDialogGump(who,layout,data,50,50);
+  If (result)
+    Case (result.keys[2])
+      1:    reply:=YesNo("Wollt ihr wirklich den Kuebel leeren?");  // Kübel leeren
+            If (reply)
+              EraseObjProperty(bowl,"seedtype");
+              EraseObjProperty(bowl,"type");
+              EraseObjProperty(bowl,"seedcolor");
+              EraseObjProperty(bowl,"color");
+              EraseObjProperty(bowl,"water");
+              EraseObjProperty(bowl,"dirt");
+              EraseObjProperty(bowl,"stage");
+              EraseObjProperty(bowl,"nextgrowth");
+              EraseObjProperty(bowl,"insekten");
+              EraseObjProperty(bowl,"pilz");
+              EraseObjProperty(bowl,"gift");
+              EraseObjProperty(bowl,"krank");
+              EraseObjProperty(bowl,"zustand");
+              EraseObjProperty(bowl,"wachstum");
+              EraseObjProperty(bowl,"bestaeubung");
+              EraseObjProperty(bowl,"samen");
+              EraseObjProperty(bowl,"ressource");
+              EraseObjProperty(bowl,"lastuse");
+              EraseObjProperty(bowl,"hp");
+              EraseObjProperty(bowl,"mutant");
+              EraseObjProperty(bowl,"mutantseed");
+              EraseObjProperty(bowl,"resmoeglich");
+              EraseObjProperty(bowl,"samengesammelt");
+              EraseObjProperty(bowl,"resgesammelt");
+              bowl.graphic:=0x15FD;
+              bowl.color:=0;
+              bowl.name:="Pflanzenkuebel";
+              Return;
+            EndIf
+      2:    FillWater();                  // Wasser
+      3:    FillTrank("Gifttrank");       // Gift
+      4:    FillTrank("Gegengifttrank");  // Gegengift
+      5:    FillTrank("Heiltrank");       // Heiltrank
+      6:    FillTrank("Staerketrank");    // Stärketrank
+      7:    reply:=YesNo("Wollt ihr wirklich die Pflanze in den DecoModus versetzen?");  // DecoModus
+            If (reply)
+              SetObjProperty(bowl,"deco",1);
+            EndIf
+      8:    Kreuzen();  // Kreuzen
+      9:    Sammeln("Ressourcen","ressource");  // Ressourcen sammeln
+      10:   Sammeln("Samen","seeds"); // Samen sammeln
+      11:   HilfeGump();  // Hilfe
+    EndCase
+  Else
+    SendSysMessagePergon(who,"Abbruch","Abort");
+  EndIf
+  SetObjProperty(bowl,"seedtype",seedtype);       // Welche Pflanze
+  SetObjProperty(bowl,"type",planttype);
+  SetObjProperty(bowl,"seedcolor",seedcolor);     // Welche Farbe
+  SetObjProperty(bowl,"color",color);
+  SetObjProperty(bowl,"water",water);             // Wasserstand
+  SetObjProperty(bowl,"dirt",dirt);               // Welche Erde
+  SetObjProperty(bowl,"stage",stage);             // Wachstumsstufe
+  SetObjProperty(bowl,"nextgrowth",nextgrowth);   // nächster Wachstumcheck
+  SetObjProperty(bowl,"insekten",insekten);       // Insektenbefall
+  SetObjProperty(bowl,"pilz",pilz);               // Pilzbefall
+  SetObjProperty(bowl,"gift",gift);               // Vergiftet
+  SetObjProperty(bowl,"krank",krank);             // Krank
+  SetObjProperty(bowl,"zustand",zustand);         // Gesamtzustand
+  SetObjProperty(bowl,"wachstum",wachstum);       // Wachstum
+  SetObjProperty(bowl,"bestaeubung",bestaeubung); // Bestäubungszustand
+  SetObjProperty(bowl,"samen",samen);             // Anzahl produzierter Samen
+  SetObjProperty(bowl,"ressource",ressource);     // Anzahl produzierter Ressourcen
+  SetObjProperty(bowl,"lastuse",lastuse);         // letzte Benutzung
+  SetObjProperty(bowl,"hp",hp);                   // hp
+  SetObjProperty(bowl,"mutant",mutant);           // Mutant
+  SetObjProperty(bowl,"mutantseed",mutantseed);  // Same Mutant
+  SetObjProperty(bowl,"resmoeglich",resmoeglich); // Ressource möglich?
+  SetObjProperty(bowl,"samengesammelt",samengesammelt); // Samen bisjetzt gesammelt
+  SetObjProperty(bowl,"resgesammelt",resgesammelt); // Res bisjetzt gesammelt
+EndProgram
+
+///////////////////////////////////
+// Zustand - Zustandsänderungen
+///////////////////////////////////
+
+Function ZustandCheck()
+  var time, timediff, dirtnum, check;
+
+  time:=ReadGameClock();  // einmal reicht
+  timediff:=CInt((time-lastuse)/(60.0*60)); // 1h Intervall
+
+  Case (dirt)
+    "erde":   dirtnum:=0;
+    "humus":  dirtnum:=1;
+    "torf":   dirtnum:=2;
+  EndCase
+
+  // Wasserzustand ändern
+  water:=water-(timediff/10.0);  // Alle 10h ein Punkt runter
+  If (water <= 0)
+    SendSysMessagePergon(who,"Eure Pflanze ist vertrocknet!", "The plant died because of dry dirt.");
+    Return(0);
+  EndIf
+  // Nur alle 5h tut sich was
+  If (lastuse <(nextgrowth-20*60*60))
+    check:=0;
+  ElseIf (lastuse <(nextgrowth-15*60*60))
+    check:=1;
+  ElseIf (lastuse <(nextgrowth-10*60*60))
+    check:=2;
+  ElseIf (lastuse <(nextgrowth-5*60*60))
+    check:=3;
+  Else
+    check:=4;
+  EndIf
+
+  If (time < (nextgrowth-20*60*60))
+    check:=0;
+  ElseIf (time < (nextgrowth-15*60*60))
+    check:=1-check;
+  ElseIf (time < (nextgrowth-10*60*60))
+    check:=2-check;
+  ElseIf (time < (nextgrowth-5*60*60))
+    check:=3-check;
+  Else
+    check:=4-check;
+  EndIf
+
+  If (check)
+    // Insekten
+    If (RandomInt(100) < (50-(10*dirtnum)+(10*(insekten-1))+(check*10)))
+      insekten+=0.5;
+      If (insekten > 3)
+        SendSysMessagePergon(who,"Eure Pflanze wurde von Insekten zerfressen!","Insects canker the plant!");
+        Return(0);
+      EndIf
+    EndIf
+    // Pilze
+    If (RandomInt(100) < (50-(10*dirtnum)+(10*(pilz-1))+(check*10)))
+      pilz+=0.5;
+      If (pilz > 3)
+        SendSysMessagePergon(who,"Eure Pflanze wurde von Pilzen zerfressen!","Mushrooms canker the plant!");
+        Return(0);
+      EndIf
+    EndIf
+    // Gift
+    If ((CInt(gift) > 1) && ((RandomInt(2)) || (check>1)))
+      gift+=0.5;
+      If (gift > 3)
+        SendSysMessagePergon(who,"Eure Pflanze wurde vom Gift zerfressen!","The plant died because of poison!");
+        Return(0);
+      EndIf
+    EndIf
+    // Krank
+    If ((CInt(krank) > 1) && ((RandomInt(2)) || (check>1)))
+      krank+=0.5;
+      If (krank > 3)
+        SendSysMessagePergon(who,"Eure Pflanze war zu krank und ist gestorben!","The plant was to sick and died!");
+        Return(0);
+      EndIf
+    EndIf
+    hp-=(CInt(insekten-1)+CInt(pilz-1)+CInt(gift-1)+CInt(krank-1));
+    Case (CInt(water))
+      1: hp-=(1*check);
+      2: hp-=(0.5*check);
+      4: hp-=(0.5*check);
+      5: hp-=(1*check);
+    EndCase
+    If (hp < 1)
+      SendSysMessagePergon(who,"Eure Pflanze ist verwelkt.","The plant died because of dry dirt.");
+      Return(0);
+    EndIf
+  EndIf
+  // hp in zustandanzeige
+  If (hp <= 3)
+    zustand:=4;
+  ElseIf (hp <= 6)
+    zustand:=3;
+  ElseIf (hp <= 8)
+    zustand:=2;
+  Else
+    zustand:=1;
+  EndIf
+  lastuse:=time;
+  Return(1);
+EndFunction
+
+///////////////////////////////////
+// WachstumCheck - Stage gestiegen? (+ Samen & Resourcen erzeugen)
+///////////////////////////////////
+
+Function WachstumCheck()
+  If (ReadGameClock() >= nextgrowth)          // Ist es wieder soweit?
+    If (bowl.multi)                           // Befindet es sich in einem Haus?
+      If (zustand < 3)                        // Nur wenn gesund oder lebhaft
+        stage+=1;
+        If ((stage > 7) && (bestaeubung<>3) && (!mutant))  // Bestäubung möglich
+          If (stage == 9)
+            bestaeubung:=3;                   // Selbstbestäubung
+            samen:=2;
+          Else
+            bestaeubung:=2;
+          EndIf
+        EndIf
+        If (stage > 9)
+          stage:=9;
+          If ((bestaeubung==3) && (!mutant))
+            samen+=1;                   // Samen produzieren, wenn Bestäubt
+            If (mutantseed)                   // Nur ein Same bei Mutanten
+              samen:=3;
+            EndIf
+            If (samen > MAXSEEDS)
+              samen:=MAXSEEDS;
+            EndIf
+            If (resmoeglich)                  // Ressourcen produzieren, wenn möglich
+              ressource+=1;
+              If (ressource > MAXRES)
+                ressource:=MAXRES;
+              EndIf
+            EndIf
+          EndIf
+        EndIf
+        If (dirt<>"dirt")                     // Bonus anzeigen
+          wachstum:=6;
+        Else
+          wachstum:=5;
+        EndIf
+      Else
+        wachstum:=3;
+      EndIf
+    Else
+      wachstum:=2;
+    EndIf
+    nextgrowth+=(23*60*60);        // nächsten Wachstum festlegen
+  Else
+    If (stage==1)                             // noch kein Wachstum möglich
+      wachstum:=1;
+    Else
+      wachstum:=4;
+    EndIf
+  EndIf
+EndFunction
+
+///////////////////////////////////
+// FillDirt - Topf mit Erde füllen
+///////////////////////////////////
+
+Function FillDirt()
+  Var tile;
+  SendSysMessagePergon(who,"Welche Erde wollt Ihr nutzen?","Which dirt do you want to use?");
+  dirt:=TargetCoordinates(who);
+  If (dirt)
+    If (!dirt.item) // Erde
+      If ((abs(dirt.x-who.x)<3) && (abs(dirt.y-who.y)<3))
+        tile:=GetMapInfo(dirt.x,dirt.y,dirt.realm);
+        // DirtTiles
+        If (   ((tile.landtile >= 0x71 ) && (tile.landtile <= 0xA7 )) || ((tile.landtile >= 0x272) && (tile.landtile <= 0x275))
+            || ((tile.landtile >= 0x27E) && (tile.landtile <= 0x281)) || ((tile.landtile >= 0x2D0) && (tile.landtile <= 0x31F))
+            || ((tile.landtile >= 0x32C) && (tile.landtile <= 0x32F)) || ((tile.landtile >= 0x33D) && (tile.landtile <= 0x340))
+            || ((tile.landtile >= 0x345) && (tile.landtile <= 0x34C)) || ((tile.landtile >= 0x355) && (tile.landtile <= 0x358))
+            || ((tile.landtile >= 0x367) && (tile.landtile <= 0x36E)) || ((tile.landtile >= 0x377) && (tile.landtile <= 0x37A))
+            || ((tile.landtile >= 0x38D) && (tile.landtile <= 0x390)) || ((tile.landtile >= 0x395) && (tile.landtile <= 0x39C))
+            || ((tile.landtile >= 0x3A5) && (tile.landtile <= 0x3A8)) || ((tile.landtile >= 0x3F6) && (tile.landtile <= 0x405))
+            || ((tile.landtile >= 0x547) && (tile.landtile <= 0x54E)) || ((tile.landtile >= 0x553) && (tile.landtile <= 0x556))
+            || ((tile.landtile >= 0x597) && (tile.landtile <= 0x59E)) || ((tile.landtile >= 0x623) && (tile.landtile <= 0x63A))
+            || ((tile.landtile >= 0x6F3) && (tile.landtile <= 0x6FA)) || ((tile.landtile >= 0x777) && (tile.landtile <= 0x7B1)))
+          SetObjProperty(bowl,"dirt","dirt");
+          bowl.graphic:=0x1602;
+          SendSysMessagePergon(who,"Ihr befüllt den Topf mit Erde.","You filled dirt into the bowl.");
+          Return;
+        Else
+          SendSysMessagePergon(who,"Hier könnt Ihr euch keine Erde nehmen.","You cant get dirt from here.");
+          Return;
+        EndIf
+      Else
+        SendSysMessagePergon(who,"Dies ist zuweit entfernt.","This is to far away.");
+        Return;
+      EndIf
+    ElseIf ((dirt.item.objtype==UOBJ_HUMUS) && (AccessiblePergon(who,dirt.item,CHECK_LOCKEDDOWN)))
+      If (dirt.item.amount>=DIRTAMOUNT)
+        SubtractAmount(dirt.item,DIRTAMOUNT);
+        SetObjProperty(bowl,"dirt","humus");
+        bowl.graphic:=0x1602;
+        SendSysMessagePergon(who,"Ihr befüllt den Topf mit Humus.","You filled humus into the bowl.");
+        Return;
+      Else
+        SendSysMessagePergon(who,"Ihr habt nicht genügend Humus.","Not enough humus.");
+        Return;
+      EndIf
+    ElseIf ((dirt.item.objtype==UOBJ_TORF) && (AccessiblePergon(who,dirt.item,CHECK_LOCKEDDOWN)))
+      If (dirt.item.amount>=DIRTAMOUNT)
+        SubtractAmount(dirt.item,DIRTAMOUNT);
+        SetObjProperty(bowl,"dirt","torf");
+        bowl.graphic:=0x1602;
+        SendSysMessagePergon(who,"Ihr befüllt den Topf mit Torf.","You filled torf into the bowl.");
+        Return;
+      Else
+        SendSysMessagePergon(who,"Ihr habt nicht genügend Torf.","Not enough torf.");
+        Return;
+      EndIf
+    Else
+      SendSysMessagePergon(who,"Dies ist keine Erde.","This is not dirt.");
+      Return;
+    EndIf
+  Else
+    SendSysMessagePergon(who,"Das ist zu weit weg!", "That's too far away!");
+    Return;
+  EndIf
+EndFunction
+
+///////////////////////////////////
+// FillWater - Mit Wasser füllen
+///////////////////////////////////
+
+Function FillWater(detail:=0)
+  Var wasser, filled, item, cfg, wasser_cfg;
+
+  cfg:=ReadConfigFile("::itemdesc");
+
+  SendSysMessagePergon(who,"Welchen Wasserkrug wollt ihr nutzen?","Which pot do you want to use?");
+  wasser:=Target(who, TGTOPT_CHECK_LOS);
+  If ((!AccessiblePergon(who,wasser,CHECK_LOCKEDDOWN)) || (!wasser) || (!GetObjProperty(wasser, "filled")) || (GetObjProperty(wasser,"filled") < 0.5))
+    SendSysMessagePergon(who,"Abbruch", "Abort");
+    Return;
+  Else
+    water:=GetObjProperty(bowl,"water");
+    If (!water)
+      water:=0;
+    EndIf
+    If (water >= 5)
+      SendSysMessagePergon(who,"Der Kübel ist bereits randvoll!","The bowl is already full to the brim!");
+      Return;
+    EndIf
+    filled:=GetObjProperty(wasser,"filled");
+    If ((filled-0.5) < 0.5)
+      wasser_cfg := cfg[wasser.objtype];
+      item:=CreateItemInBackpackPergon(who, wasser_cfg.targetitem, 1);
+      item.movable:=1;
+      DestroyItem(wasser);
+    Else
+      SetObjProperty(wasser,"filled",(filled-0.5));
+    EndIf
+    water+=0.5;
+    If (water > 5.9)
+      water:=5.9;
+    EndIf
+    SendSysMessagePergon(who,"Ihr giesst 0.5 Liter in den Kübel.","You filled 0.5 liter in the bowl.");
+    If (detail)
+      SendSysMessagePergon(who,"Es sind nun "+water+" Liter in dem Kübel.","There is now "+water+" liter in the bowl.");
+    EndIf
+    SetObjProperty(bowl,"water",water);
+    PlaySoundEffect(who,SFX_12);
+  EndIf
+EndFunction
+
+///////////////////////////////////
+// FillSeed - Same setzen
+///////////////////////////////////
+
+Function FillSeed()
+  Var seed;
+  If (!GetObjProperty(bowl,"seedtype"))
+    SendSysMessagePergon(who,"Welchen Samen wollt ihr setzen?","Which seed do you want to plant?");
+    seed:=Target(who, TGTOPT_CHECK_LOS);
+    If ((seed) && (AccessiblePergon(who,seed,CHECK_LOCKEDDOWN)))
+      If (seed.objtype == SEEDS)
+        SendSysMessagePergon(who,"Ihr pflanzt den Samen.","You sow the seed.");
+        PlaySoundEffect(who, 0x23);
+        SetObjProperty(bowl,"seedtype",GetObjProperty(seed,"seedtype"));
+        SetObjProperty(bowl,"type",GetObjProperty(seed,"seedtype"));
+        SetObjProperty(bowl,"seedcolor",GetObjProperty(seed,"seedcolor"));
+        SetObjProperty(bowl,"color",GetObjProperty(seed,"seedcolor"));
+        SetObjProperty(bowl,"stage",1);
+        SetObjProperty(bowl,"nextgrowth",(ReadGameClock()+(23*60*60)));
+        SetObjProperty(bowl,"insekten",1);
+        SetObjProperty(bowl,"pilz",1);
+        SetObjProperty(bowl,"gift",1);
+        SetObjProperty(bowl,"krank",1);
+        SetObjProperty(bowl,"zustand",1);
+        SetObjProperty(bowl,"wachstum",1);
+        SetObjProperty(bowl,"bestaeubung",1);
+        SetObjProperty(bowl,"samen",1);
+        SetObjProperty(bowl,"ressource",1);
+        SetObjProperty(bowl,"resmoeglich",GetObjProperty(seed,"resmoeglich"));
+        SetObjProperty(bowl,"lastuse",ReadGameClock());
+        SetObjProperty(bowl,"hp",10);
+        SetObjProperty(bowl,"mutant",GetObjProperty(seed,"mutant"));
+        SubtractAmount(seed,1);
+        Return;
+      Else
+        SendSysMessagePergon(who,"Dies ist kein Samen.","This is not a seed.");
+        Return;
+      EndIf
+    Else
+      SendSysMessagePergon(who,"Das ist zu weit weg!", "That's too far away!");
+      Return;
+    EndIf
+  EndIf
+EndFunction
+
+///////////////////////////////////
+// FillTrank - Trank "einflößen"
+///////////////////////////////////
+
+Function FillTrank(trankpromt)
+  Var trank, cfg, strength, applied:=0;
+  SendSysMessagePergon(who,"Wählt den "+trankpromt+" aus.","Choose the "+trankpromt+".");
+  trank:=Target(who, TGTOPT_CHECK_LOS);
+  If ((!trank) || (!AccessiblePergon(who, trank,CHECK_LOCKEDDOWN)))
+    SendSysMessagePergon(who,"Abbruch","Abort");
+    Return;
+  EndIf
+  cfg:=ReadConfigFile(":advalchemy:itemdesc");
+  Case (trankpromt)
+    "Gifttrank":        If (trank.objtype == 0xffa1)
+    	                    ForEach wirk in (trank.getprop("potion").posWirk)
+    	                    	If (wirk[1]=="vergiftend")
+    	                    		insekten-=(wirk[2]/10.0);
+    	                    		gift+=(wirk[2]/15.0);
+    	                    		applied:=1;
+    	                    		Break;
+    	                    	EndIf
+    	                    EndForEach
+    	                    If (!applied)
+    	                      SendSysMessagePergon(who,"Dies ist kein "+trankpromt+".","This is no "+trankpromt+".");
+                            Return;
+                          EndIf
+                          Break;
+    	                  Endif
+    	
+                        If (trank.graphic <> 0x0f0a)
+                          SendSysMessagePergon(who,"Dies ist kein "+trankpromt+".","This is no "+trankpromt+".");
+                          Return;
+                        EndIf
+                        strength:=cfg[trank.objtype].strength;
+                        insekten-=(strength/2.0);
+                        gift+=(strength/3.0);
+    "Gegengifttrank":   If (trank.objtype == 0xffa1)
+    	                    ForEach wirk in (trank.getprop("potion").posWirk)
+    	                    	If (wirk[1]=="entgiftend")
+    	                    		pilz-=(wirk[2]/10.0);
+    	                    		krank+=(wirk[2]/15.0);
+    	                    		applied:=1;
+    	                    		Break;
+    	                    	EndIf
+    	                    EndForEach
+    	                    If (!applied)
+    	                      SendSysMessagePergon(who,"Dies ist kein "+trankpromt+".","This is no "+trankpromt+".");
+                            Return;
+                          EndIf
+                          Break;
+    	                  Endif
+    	                  
+                        If (trank.graphic <> 0x0f07)
+                          SendSysMessagePergon(who,"Dies ist kein "+trankpromt+".","This is no "+trankpromt+".");
+                          Return;
+                        EndIf
+                        strength:=cfg[trank.objtype].strength;
+                        pilz-=(strength/2.0);
+                        krank+=(strength/3.0);
+    "Heiltrank":        If (trank.objtype == 0xffa1)
+    	                    ForEach wirk in (trank.getprop("potion").posWirk)
+    	                    	If (wirk[1]=="heilend")
+    	                    		gift-=(wirk[2]/60.0);
+    	                    		krank-=(wirk[2]/60.0);
+    	                    		applied:=1;
+    	                    		Break;
+    	                    	EndIf
+    	                    EndForEach
+    	                    If (!applied)
+    	                      SendSysMessagePergon(who,"Dies ist kein "+trankpromt+".","This is no "+trankpromt+".");
+                            Return;
+                          EndIf
+                          Break;
+    	                  Endif
+                        
+                        If (trank.graphic <> 0x0f0c)
+                          SendSysMessagePergon(who,"Dies ist kein "+trankpromt+".","This is no "+trankpromt+".");
+                          Return;
+                        EndIf
+                        strength:=cfg[trank.objtype].strength;
+                        gift-=(strength/2.0);
+                        krank-=(strength/2.0);
+    "Staerketrank":     If (trank.objtype == 0xffa1)
+    	                    ForEach wirk in (trank.getprop("potion").posWirk)
+    	                    	If (wirk[1]=="staerkend")
+    	                    		hp+=(wirk[2]/6.0);
+    	                    		applied:=1;
+    	                    		Break;
+    	                    	EndIf
+    	                    EndForEach
+    	                    If (!applied)
+    	                      SendSysMessagePergon(who,"Dies ist kein "+trankpromt+".","This is no "+trankpromt+".");
+                            Return;
+                          EndIf
+                          Break;
+    	                  Endif
+                        
+                        If (trank.graphic <> 0x0f09)
+                          SendSysMessagePergon(who,"Dies ist kein "+trankpromt+".","This is no "+trankpromt+".");
+                          Return;
+                        EndIf
+                        strength:=cfg[trank.objtype].strength;
+                        hp+=(strength/2.0);
+  EndCase
+
+  PlaySoundEffect(who,SFX_2D7);
+  SendSysMessagePergon(who,"Ihr verabreicht der Pflanze einen Trank", "You apply to the plant a potion");
+  CreateItemInBackpackPergon(who, UOBJ_EMPTY_BOTTLE, 1);
+	SubtractAmount(trank,1);
+EndFunction
+
+///////////////////////////////////
+// YesNo - Ja/Nein Gump
+///////////////////////////////////
+
+Function YesNo(promt)
+  Var layoutyesno:={
+                    "page 1",
+                    "HtmlGump 35 40 140 100 0 0 0", // Frage
+                    "Button 50 120 210 210 1 0 1",  // Ja
+                    "TilePic 37 119 5629",
+                    "Button 120 120 210 210 1 0 0", // Nein
+                    "TilePic 107 119 5634",
+                    "Text 70 120 37 1",
+                    "Text 150 120 67 2"
+                    };
+  Var datayesno:={"<basefont color=#008000 size=5><center>"+promt+"</center>",
+                  "Ja",
+                  "Nein"};
+  Var layout, yesnoresult;
+  layout:=layouthintergrund+layoutyesno;
+  yesnoresult:=SendDialogGump(who,layout,datayesno,50,50);
+  Return(yesnoresult.keys[2]);
+EndFunction
+
+///////////////////////////////////
+// Kreuzen - Kreuzen mit einem anderen Samen
+///////////////////////////////////
+
+Function Kreuzen()
+  Var crossseed, cs_color, cs_type;
+  If (bestaeubung == 1)
+    SendSysMessagePergon(who,"Fremdbestäubung ist noch nicht moeglich.","Cross pollination is not possible at this moment.");
+    Return;
+  ElseIf (bestaeubung == 3)
+    SendSysMessagePergon(who,"Diese Pflanze ist bereits bestäubt.","This plant is already been pollinationed.");
+    Return;
+  Else
+    SendSysMessagePergon(who,"Wählt den Samen mit dem ihr die Pflanze Fremdbestäuben wollt.","Choose the seed for the cross pollination.");
+    crossseed:=Target(who, TGTOPT_CHECK_LOS);
+    If ((crossseed) && (Distance(who,crossseed) < 3) && (crossseed.movable) && (crossseed.objtype==SEEDS))
+      cs_color:=GetObjProperty(crossseed,"seedcolor");
+      cs_type:=GetObjProperty(crossseed,"seedtype");
+      If (!SubtractAmount(crossseed,1))
+        SendSysMessagePergon(who,"Abbruch","Abort");
+        Return;
+      EndIf
+      If ((zustand==1) && (dirt=="torf") && (RandomInt(100)<5)) // Sehr geringe Wahrscheinlichkeit auf Mutanten
+        Case (RandomInt(2))
+          0: seedcolor:=13;  // Weiß
+          1: seedcolor:=14;  // Schwarz
+        EndCase
+        mutantseed:=1;
+      Else
+        seedcolor:=colortable[seedcolor][cs_color];  // Farbe bestimmen
+      EndIf
+      seedtype:=crosstable[seedtype][cs_type];     // Pflanze bestimmen
+      If (seedtype==0)  // 50/50 Chance welcher Typ
+        Case (RandomInt(2))
+          0: seedtype:= cs_type;
+          1: seedtype:= planttype;
+        EndCase
+      EndIf
+      If ((seedtype==2) && (seedcolor==2)) //Hellrote Poppies geben Osterblumen
+        resmoeglich:=1;
+      EndIf
+      bestaeubung:=3; // Bestäubt
+      samen:=2; // Auf 0 setzen
+    Else
+      SendSysMessagePergon(who,"Abbruch","Abort");
+      Return;
+    EndIf
+  EndIf
+EndFunction
+
+///////////////////////////////////
+// Sammeln - Samen oder Ressourcen einsammeln
+///////////////////////////////////
+
+Function Sammeln(wtf_de, wtf_en)
+  Var seeds, ress;
+  If ((bestaeubung <> 3) || (((samen < 2) && (wtf_de=="Samen")) || ((ressource < 2) && (wtf_de=="Ressourcen"))))
+    SendSysMessagePergon(who,"Diese Pflanze hat noch keine "+wtf_de+" produziert.","This plant have not produced any "+wtf_en);
+    Return;
+  EndIf
+  Case (wtf_de)
+    "Samen":      If ((samen-samengesammelt-2 <= 0) && (samengesammelt>0))
+                    SendSysMessagePergon(who,"Ihr habt bereits alle "+wtf_de+" geeerntet","You already have collected all "+wtf_en);
+                    Return;
+                  EndIf
+                  If (samen-samengesammelt-2 > 0)
+                    seeds:=CreateItemInBackpackPergon(who,SEEDS,(samen-samengesammelt-2));
+                    If (!seeds)
+                      SendSysMessagePergon(who, "In Eurem Rucksack ist zu wenig Platz.", "Your backpack is full.");
+                      seeds:=CreateItemAtLocationPergon(who.x, who.y, who.z, SEEDS, (samen-samengesammelt-2),who.realm);
+                      If (!seeds)
+                        SendSysMessagePergon(who, "Die Samen konnten nicht erzeugt werden!","Creation of the seeds failed!");
+                        Return;
+                      EndIf
+                    EndIf
+                    SetObjProperty(seeds,"seedcolor",seedcolor);
+                    SetObjProperty(seeds,"seedtype",seedtype);
+                    SetObjProperty(seeds,"resmoeglich",resmoeglich);
+                    SetObjProperty(seeds,"mutant",mutantseed);
+                    SendSysMessagePergon(who,"Ihr legt "+(samen-samengesammelt-2)+" "+wtf_de+" in euren Rucksack","You put "+(samen-samengesammelt-2)+" "+wtf_en+" in your backpack");
+                    samengesammelt+=(samen-samengesammelt-2);
+                  EndIf
+
+    "Ressourcen": If ((ressource-resgesammelt-2 <= 0) && (resgesammelt>0))
+                    SendSysMessagePergon(who,"Ihr habt bereits alle "+wtf_de+" geeerntet","You already have collected all "+wtf_en);
+                    Return;
+                  EndIf
+                  If (ressource-resgesammelt-2 > 0)
+                    ress:=CreateItemInBackpackPergon(who,RES,(ressource-resgesammelt-2));
+                    If (!ress)
+                      SendSysMessagePergon(who, "In Eurem Rucksack ist zu wenig Platz.", "Your backpack is full.");
+                      ress:=CreateItemAtLocationPergon(who.x, who.y, who.z, RES, (ressource-resgesammelt-2),who.realm);
+                      If (!ress)
+                        SendSysMessagePergon(who, "Fehler beim erzeugen!","Creation failed!");
+                        Return;
+                      EndIf
+                    EndIf
+                    SendSysMessagePergon(who,"Ihr legt "+(ressource-resgesammelt-2)+" "+wtf_de+" in euren Backpack","You put "+(ressource-resgesammelt-2)+" "+wtf_en+" in your backpack");
+                    resgesammelt+=(ressource-resgesammelt-2);
+                  EndIf
+  EndCase
+EndFunction
+
+///////////////////////////////////
+// HilfeGump - Hilfetext
+///////////////////////////////////
+
+Function HilfeGump()
+  Var layouthilfe:= {
+                     "page 0",
+                     "nodispose",
+                     "ResizePic 10 10 3600 300 400",  //Hintergrund
+                     "TilePic -15 5 3307",            //Pflanzenberahmung
+                     "TilePic -15 65 3307",
+                     "TilePic -15 125 3307",
+                     "TilePic -15 185 3307",
+                     "TilePic -15 245 3307",
+                     "TilePic -15 310 3307",
+                     "TilePic 270 5 3307",
+                     "TilePic 270 65 3307",
+                     "TilePic 270 125 3307",
+                     "TilePic 270 185 3307",
+                     "TilePic 270 245 3307",
+                     "TilePic 270 310 3307",
+                     "HtmlGump 10 10 300 26 0 0 0",
+                     "HtmlGump 35 30 250 360 1 0 1"
+                     };
+  Var datahilfe:={"<basefont color=#FFFFFF><center>Hilfe</center>",
+                  "<basefont color=#C0C0C0><center><b>Pflanzenwachstum</b></center>"+
+                  "<p>Eine Pflanze durchlaeuft mehrere Phasen, es gibt 9 Wachstumsstufen vom Samen bis zur ausgewachsenen Pflanze. "+
+                  "Sie waechst nur auf Spielergrundstuecken. Wenn die Pflanze gepflegt wird, wird sie eine Wachstumstufe pro Tag durchleben.<br>"+
+                 "Die aktuelle Wachstumsstufe (1..9) wird in der oberen linken Ecke des Hauptmenues angezeigt.</p>"+
+                 "<center><b>Wachstumsindikator</b></center>"+
+                 "<p>In der oberen rechten Ecke ist ein Symbol, dass Auskunft ueber den letzten Wachstumsversuch gibt.</p>"+
+                 "<p><i>kein Symbol</i> Die Pflanze konnte noch nicht wachsen<br>"+
+                 "<basefont color=#FF0000> ! <basefont color=#C0C0C0>Kein Wachstum, da sich die Pflanze nicht auf einem Spielergrundstueck befindet.<br>"+
+                 "<basefont color=#FF0000> - <basefont color=#C0C0C0>Kein Wachstum, da die Pflanze nicht gesund ist. Eine Pflanze muß 'lebhaft oder 'gesund' sein damit ein Wachstum stattfinden kann.<br>"+
+                 "<basefont color=#FFFF00> - <basefont color=#C0C0C0>Kein Wachstum, da noch keine 23h seit dem letzten Wachstum vorbei sind.<br>"+
+                 "<basefont color=#0000FF> + <basefont color=#C0C0C0>Die Pflanze wuchs erfolgreich.<br>"+
+                 "<basefont color=#00FF00> + <basefont color=#C0C0C0>Die Pflanze wuchs erfolgreich und erhielt einen Bonus aufgrund besonderer Erde.</p>"+
+                 "<center><b>Gesamtzustand</b></center>"+
+                 "<p>Eine Pflanze verliert Lebenspunkte durch verschiedene Krankheiten: Insektenbefall, Pilzbefall, Ueberwaesserung, Gift oder Krankheit.<br>"+
+                 "Folgende Zustaende gibt es:</p>"+
+                 "<p>-lebhaft<br>-gesund<br>-welkend<br>-sterbend</p>"+
+                 "<p>Wenn eine Pflanze ihre gesamten Lebenspunkte verliert, stirbt sie.</p>"+
+                 "<center><b>Insektenbefall</b></center>"+
+                 "<p>Im Laufe des Lebens besteht eine gewisse Chance, dass die Pflanze durch Insekten befallen wird. Sie fressen langsam die Pflanze auf, wodurch sie Lebenskraft verliert. Durch besondere Erde kann die Wahrscheinlichkeit gesenkt werden.<br>"+
+                 "Durch Einsatz von Gifttraenken koennen die Insekten getoetet werden. Aber Vorsicht, durch uebermaessigen Gebrauch von Gift kann die Pflanze krank werden.<br>"+
+                 "Die Insektenbefallanzeige befindet sich in der linken Reihe an 2ter Position.</p>"+
+                 "<p><i>kein Symbol</i> Die Pflanze ist nicht von Insekten befallen.<br>"+
+                 "<basefont color=#FFFF00> + <basefont color=#C0C0C0>Kleiner Befall von Insekten.<br>"+
+                 "<basefont color=#FF0000> + <basefont color=#C0C0C0>Starker Befall.<br>"+
+                 "<center><b>Pilzbefall</b></center>"+
+                 "<p>Im Laufe des Lebens besteht eine gewisse Chance, dass die Pflanze durch Pilze befallen wird. Durch diese verliert die Pflanze an Lebenskraft. Wie auch bei Insekten, ist die Wahrscheinlichkeit eines Befalls verringert durch besondere Erde.<br>"+
+                 "Durch Einsatz von Gegengifttraenken kann die Pflanze von Pilzen geheilt werden.<br>"+
+                 "Die Pilzbefallanzeige befindet sich in der linken Reihe an 3ter Position.</p>"+
+                 "<p><i>kein Symbol</i> Die Pflanze ist nicht von Pilzen befallen.<br>"+
+                 "<basefont color=#FFFF00> + <basefont color=#C0C0C0>Kleiner Befall von Pilzen.<br>"+
+                 "<basefont color=#FF0000> + <basefont color=#C0C0C0>Starker Befall.<br>"+
+                 "<center><b>Vergiftete Pflanze</b></center>"+
+                 "<p>Durch zu starken Einsatz von Gifttraenken kann die Pflanze krank werden.<br>"+
+                 "Mit Heiltraenken kann die Wirkung von Gifttraenken wieder aufgehoben werden.<br>"+
+                 "Die Giftanzeige befindet sich in der linken Reihe an 4ter Position.</p>"+
+                 "<p><i>kein Symbol</i> Die Pflanze ist nicht vergiftet.<br>"+
+                 "<basefont color=#FFFF00> + <basefont color=#C0C0C0>Die Pflanze ist leicht vergiftet.<br>"+
+                 "<basefont color=#FF0000> + <basefont color=#C0C0C0>Stark vergiftet.</p>"+
+                 "<center><b>Kranke Pflanze</b></center>"+
+                 "<p>Durch zu starken Einsatz von Gegengifttraenken kann die Pflanze krank werden.<br>"+
+                 "Mit Heiltraenken kann die Wirkung von Gegengifttraenken wieder aufgehoben werden.<br>"+
+                 "Die Krankeheitanzeige befindet sich in der linken Reihe an letzter Position.</p>"+
+                 "<p><i>kein Symbol</i> Die Pflanze ist nicht krank.<br>"+
+                 "<basefont color=#FFFF00> + <basefont color=#C0C0C0>Die Pflanze ist ein wenig krank.<br>"+
+                 "<basefont color=#FF0000> + <basefont color=#C0C0C0>Die Pflanze ist sehr krank.</p>"+
+                 "<center><b>Bewaesserung</b></center>"+
+                 "<p>Eine Pflanze benoetigt regelmaessig Wasser. Wenn sie zuwenig oder zuviel Wasser bekommt, verliert die Pflanze an Lebenskraft.<br>"+
+                 "Der aktuelle Wasserzustand kann im Hauptmenue in der rechten Reihe an erster Position eingesehen werden.</p>"+
+                 "<p><basefont color=#FF0000> - <basefont color=#C0C0C0>Stark vertrocknet.<br>"+
+                 "<basefont color=#FFFF00> - <basefont color=#C0C0C0>Leicht vertrocknet.<br>"+
+                 "<i>kein Symbol</i> Die Pflanze ist weder unterwaessert noch ueberwaessert.<br>"+
+                 "<basefont color=#FFFF00> + <basefont color=#C0C0C0>Leicht ueberwaessert.<br>"+
+                 "<basefont color=#FF0000> + <basefont color=#C0C0C0>Stark ueberwaessert.</p>"+
+                 "<center><b>Traenke</b></center>"+
+                 "<p>Um die Lebenskraft der Pflanze wiederherzustellen, koennen Staerketraenke verabreicht werden.</p>"+
+                 "<p>Wasser und die Traenke können durch klick auf die Symbole in der rechten Reihe angewendet werden.</p>"+
+                 "<center><b>Kreuzung</b></center>"+
+                 "<p>Das Kreuzungsmenue kann man durch das obere Symbol in der linken Reihe erreichen.<br>"+
+                 "Das Hauptmenue erreicht man wieder durch das obere linke Symbol.</p>"+
+                 "<p>Ab der 8ten Wachstumsstufe kann die Pflanze mit einem anderen Samen gekreuzt werden, nach einiger Zeit aber wird sich die Pflanze selbst bestaeuben.<br>"+
+                 "Dadurch koennen andere Pflanzentypen und Farben entstehen.<br>"+
+                 "Dieser Zustand kann durch das erste Symbol in der mittleren Reihe eingesehen werden.</p>"+
+                 "<p><basefont color=#FFFF00> - <basefont color=#C0C0C0>Noch keine Bestaeubung moeglich, da noch nicht ausgewachsen.<br>"+
+                 "<basefont color=#FF0000> ! <basefont color=#C0C0C0>Bestaeubung ist moeglich.<br>"+
+                 "<basefont color=#00FF00> + <basefont color=#C0C0C0>Bestaeubt.</p>"+
+                 "<p>Durch klick auf das erste Symbol in der unteren Reihe kann eine Kreuzbestaeubung durchgefuehrt werden.</p>"+
+                 "<center><b>Samen</b></center>"+
+                 "<p>Die aktuelle Anzahl an gewachsenen Samen kann man ueber das letzte Symbol in der 2ten Reihe einsehen.<br>"+
+                 "Anhand der Schriftfarbe kann man die zukuenftige Farbe der Pflanze erkennen, die aus den Samen wachsen werden.<br>"+
+                 "Sobald eine Pflanze bestaeubt ist produziert diese taeglich einen Samen. Diese koennen durch klick auf das letzte Symbol in der unteren Reihe geerntet weden.<br>"+
+                 "In sehr seltenen Faellen entsteht durch Kreuzbestaeubung eine Mutantenpflanze, diese produzieren keine Samen.</p>"+
+                 "<center><b>Ressourcen</b></center>"+
+                 "<p>Unter bestimmten Umstaenden kann eine Pflanze besondere Ressourcen produzieren, diese sind ueber das mittlere Symbol in der 2ten Reihe einsehbar und koennen ueber das mittlere Symbol in der letzten Reihe erntbar.</p>"+
+                 "<center><b>Dekorationsmodus</b></center>"+
+                 "<p>Durch den oberen rechten Knopf kann die Pflanze in den Dekorationsmodus versetzt werden.<br>"+
+                 "Eine Pflanze in diesem Modus produziert weder Samen noch Ressourcen, dafuer benoetigt es keine Pflege und ist immer in einem gesunden Zustand.</p>"+
+                 "<p>Sobald eine Pflanze einmal in diesem Modus ist, kann es nicht wieder rueckgaengig gemacht werden!</p>"+
+                 "<center><b>Blumentopf leeren</b></center>"+
+                 "<p>Um den Blumentopf zu leeren, muss man im Hauptmenue auf das Symbol in der unteren rechten Ecke klicken.</p>"};
+
+  SendDialogGump(who,layouthilfe,datahilfe,100,50);
+EndFunction

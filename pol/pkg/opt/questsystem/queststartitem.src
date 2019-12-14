@@ -1,0 +1,25 @@
+/////////////////////////////////////////////////////////
+//
+//   queststartitem - Clickscript zum Starten von
+//                    Itembasierenden Quests
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     23.04.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+
+Include "include/pergonutil";
+
+Program queststartitem(who, item)
+  Var questnr:=item.getprop("quest");
+  If (questnr)
+    Start_ScriptPergon(":questsystem:questsystem",{0,who,questnr,item});
+  EndIf
+EndProgram

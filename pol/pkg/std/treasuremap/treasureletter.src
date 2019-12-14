@@ -1,0 +1,13 @@
+use uo;
+
+Program TreasureLetter(who)
+  SendStringAsTipWindow(who, "Aetsch! Das war 'ne Niete.");
+  // SendStringAsTipWindow(who,
+  //   "Du blickst in eine leere Kiste? Dann hast du was falsch gemacht... "+
+  //   "Pruefe umgehend deine aktuelle Version der tiledata.mul und "+
+  //   "verdata.mul in deinem Client-Verzeichnis. Beide sollten im "+
+  //   "Februar 2005 oder halt spaeter entstanden sein. "+
+  //   "Wenn nicht, besorg dir die neuesten Dateien via .update "+
+  //   "(dafuer reicht i.d. das Teil-Update)!"
+  // );
+EndProgram

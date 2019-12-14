@@ -1,0 +1,205 @@
+/////////////////////////////////////////////////////////
+//
+//   gostone - an gohouse angelehnt für Stadtsteine und
+//             Gildensteine
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     08.09.10 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+
+Use os;
+Use uo;
+
+Include "include/msgs";
+Include "include/place";
+Include "include/string";
+Include "include/objtype";
+
+
+Const HOEHE_STONE := 25; // Wieviel Zeilen passen in den Stone-Gump?
+Const BUTTON_STONE := 1000; // Stoneauswahl
+
+// Hauptprogramm
+Program GoStone(who) // {{{
+  Var page := 1;
+  Var stoneinfo := GetStoneInfo();
+  If (stoneinfo.size() <= 0)
+    SendSysMessagePergon(who, "Es gibt keine Stadtsteine/Gildensteine.");
+    Return;
+  EndIf
+
+  Var stonedata := FillInStoneInfo(stoneinfo);
+  While (who.connected)
+    // Stone auswaehlen
+    Var nummer := SendDialogGump(
+      who, stonedata[1][page], stonedata[2][page], 20, 20
+    )[0];
+    If (!nummer)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      Break;
+    EndIf
+
+    If (nummer >= BUTTON_STONE)  // Goto
+      Var stonetype:=nummer/1000;
+      Var stoneid:=nummer%1000;
+      Var stone := stoneinfo[stonetype][stoneid+1];
+      JumpLocationAdd(who);
+      MoveObjectToLocation(who,
+        stone.x, stone.y, stone.z, stone.realm, MOVEOBJECT_FORCELOCATION
+      );
+      Break;
+    Else  // Andere Page anzeigen
+      page := nummer-10;
+    EndIf
+  EndWhile
+EndProgram // }}}
+
+// Haus-Daten ins Gump eintragen
+Function FillInStoneInfo(byref stonearray) // {{{
+  // Gump-Layout
+  Var layoutorig := {
+    // Seite 0 (Basisseite)
+    "page 0",
+    "nodispose",
+    "resizepic 5 25 5100 750 "+(85+HOEHE_STONE*20),
+    "button 10 10 5006 5007 1 1 11",   // Stadtsteine
+    "htmlgump 10 10 88 20 0 0 0",
+    "button 98 10 5006 5007 1 0 12",   // Gildensteine
+    "htmlgump 98 10 88 20 1 0 0",
+    "page 1"
+  };
+  // Gump-Data
+  // Sortierung muss zum Return bei GetStoneInfo passen!
+  Var dataorig := {
+    "<center>Stadtsteine</center>",
+    "<center>Gildensteine</center>"
+  };
+
+  Var stonecount := 0;           // Zahl des einzutragenden Hauses
+  Var pagecount := 1;            // Akt. Seitenzahl
+  Var nextpageswap := 0;         // Wann erfolgt ein Seitenwechsel?
+  Var pos_y;                     // Akt. Y-Koordinate
+
+  Var layout, data;
+  // Array aus Arrays der einzelnen Listen
+  Var retlayout := {}, retdata := {};
+
+  ForEach stoneinfo in stonearray // Alle Listen durchgehen
+    Var msgbutton:=BUTTON_STONE*_stoneinfo_iter; // Nummer des Buttons
+    layout := layoutorig;
+    data := dataorig;
+    // Reiterkarte ist gedrückt und kein Button mehr
+    layout[4+(_stoneinfo_iter-1)*2] :=
+      "gumppic "+(10+(_stoneinfo_iter-1)*88)+" 10 5007";
+    ForEach stone in stoneinfo // Alle Stones eintragen
+      If (stonecount == nextpageswap)  // Seitenwechsel-Buttons einfuegen?
+        If (stonecount)
+          layout.append("page "+pagecount);
+        EndIf
+        layout.append("htmlgump 30 30 500 20 "+data.size()+" 0 0");
+
+        If (stonecount>0)
+          layout.append("button 720 30 2650 2651 0 "+(pagecount-1)+" 0");
+        EndIf
+        If (stoneinfo.size()>stonecount+HOEHE_STONE)
+          layout.append("button 700 30 2648 2647 0 "+(pagecount+1)+" 0");
+          data.append(
+            "Stone auswählen ("+(stonecount+1)+" bis "+
+            (stonecount+HOEHE_STONE)+")"
+          );
+        Else
+          data.append(
+            "Stone auswählen ("+(stonecount+1)+" bis "+stoneinfo.size()+")"
+          );
+        EndIf
+
+        pagecount += 1;
+        nextpageswap += HOEHE_STONE;
+        pos_y := 60;
+      EndIf
+
+      // Goto-Button
+      layout.append("button 30 "+(pos_y+4)+" 2362 2360 1 0 "+msgbutton);
+
+      // Stoneinformationen
+      layout.append("htmlgump 60 "+pos_y+" 300 20 "+data.size()+" 0 0");
+      data.append("<basefont color="+HTML_DARKBLUE+">"+stone.name+"</basefont>");
+      layout.append("htmlgump 365 "+pos_y+" 140 20 "+data.size()+" 0 0");
+      data.append("<basefont color="+HTML_BLUE+">"+PlaceName(stone));
+      layout.append("htmlgump 515 "+pos_y+" 200 20 "+data.size()+" 0 0");
+      data.append("("+stone.x+", "+stone.y+", "+stone.z+"; "+stone.realm+")");
+
+      stonecount += 1;
+      msgbutton += 1;
+      pos_y += 20;
+      SleepMS(2);
+    EndForEach
+    pagecount := 1;
+    nextpageswap := 0;
+    stonecount := 0;
+    pos_y := 60;
+    retlayout.append(layout);
+    retdata.append(data);
+  EndForEach
+
+  Return({retlayout, retdata});
+EndFunction // }}}
+
+// Liefert alle Steine
+Function GetStoneInfo() // {{{
+  Var stones:=array{
+    array{},
+    array{}
+  };
+  ForEach realm in (Realms())
+    Var cx:=realm.width/2;
+    Var cy:=realm.height/2;
+    Var r:=Max(realm.width,realm.height);
+    Var towns:=ListItemsNearLocationOfType( cx, cy, LIST_IGNORE_Z, r, UOBJ_TOWNSTONE, _realm_iter );
+    ForEach town in towns
+      Var name:=town.name;
+      If (Len(name)==0)
+        name:="NoName";
+      EndIf
+      stones[1].append(struct{
+        x:=town.x,
+        y:=town.y,
+        z:=town.z,
+        realm:=town.realm,
+        name:=name
+      });
+
+      SleepMs(2);
+    EndForEach
+    Var guilds:=ListItemsNearLocationOfType( cx, cy, LIST_IGNORE_Z, r, UOBJ_GUILDSTONE, _realm_iter );
+    ForEach guild in guilds
+      Var name:=guild.name;
+      If (Len(name)==0)
+        name:="NoName";
+      EndIf
+      stones[2].append(struct{
+        x:=guild.x,
+        y:=guild.y,
+        z:=guild.z,
+        realm:=guild.realm,
+        name:=name
+      });
+      SleepMs(2);
+    EndForEach
+  EndForEach
+
+  ForEach key in (stones)
+    SleepMs(2);
+    stones[key] := SortArrayABC(stones[key], 1, "name");
+  EndForEach
+
+  Return(stones);
+EndFunction // }}}
+
+// vim: sw=2 sts=2

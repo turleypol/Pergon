@@ -1,0 +1,234 @@
+/////////////////////////////////////////////////////////
+//
+// createpkgitem - Erstellt Itemliste mit Anzeige für Ausgewählte pkg
+//             
+//
+//     Author: Turley
+//
+//   Modifications:
+//     24.06.2006 Turley - erste Version
+//     12.07.2006 Turley - Liste der Items alphabetisch Sortiert
+//     12.07.2006 Turley - Genauere Infos nach Createn (.desc,.name,.objtype)
+//     13.02.2007 Turley - Umstellung auf Datafile, gefiltere Liste und "Endlosgump"
+//
+/////////////////////////////////////////////////////////
+
+use os;
+use cfgfile;
+use uo;
+use datafile;
+use file;
+
+Include "include/string";
+Include "include/itemnpc";
+Include "include/msgs";
+Include "include/datafile";
+
+Var datafile :=DFOpenDataFile("pkgitems", DF_CREATE, DF_KEYTYPE_STRING);
+
+Program createpkgitem(who)
+	Var ret,item;
+	If (who[1]=="Init") // Datafile beim Serverstart erzeugen
+		SysLog(".CREATEPKGITEM Datafile begin");
+		InitLayout();
+		SysLog(".CREATEPKGITEM Datafile completed");
+		Return;
+	EndIf
+	
+	If (GetGlobalProperty("createpkgiteminit"))
+		SendSysMessagePergon(who,"Datafile wird noch erzeugt, probiere es später nochmal.");
+  	Return;
+  EndIf
+
+  Var dataelement :=datafile.FindElement("Menu");
+  Var layout      :=dataelement.getprop("lMain_");
+  Var data        :=dataelement.getprop("dMain_");
+  Var enabled_pkgs:=dataelement.getprop("pkgs");
+  Var items:={};//:=DFGetProp(dataelement, "iMain_", DF_NO_CREATE);
+  
+	If (!layout)
+		SendSysMessagePergon(who,"Fehler beim Laden des Gumps!");
+		Return;
+	EndIf
+	
+  Repeat
+  	ret:=SendDialogGump(who,layout,data,50,50);
+  	If (ret.keys[2])
+  		If (ret.keys[2]==9001)  // Neue pkg ausgewählt
+  			ret[9002][1,6]:="";
+        layout:=dataelement.getprop("l"+enabled_pkgs[CInt(ret[9002])]);
+        If (layout)
+          data  :=dataelement.getprop("d"+enabled_pkgs[CInt(ret[9002])]);
+          items :=dataelement.getprop("i"+enabled_pkgs[CInt(ret[9002])]);
+    		  data[1]:="<center>Create-PKG-Item  <basefont size=5 color=#404040>"+enabled_pkgs[CInt(ret[9002])]+"</center></basefont>";
+        Else
+        	layout:=dataelement.getprop("lMain_");
+        	data  :=dataelement.getprop("dMain_");
+        	items:={};
+        	SendSysMessagePergon(who,"Ungültige Eingabe.");
+        EndIf
+      Else // Item erzeugen
+        item:=items[ret.keys[2]];
+		  	If (item)
+		  	  CreateItemAtLocationPergon(who.x, who.y, who.z, item[1], 1,who.realm);
+    	    SendSysMessagePergon(who,item[3]+" erzeugt.( "+Hex(item[1])+" "+item[5]+" )");
+        Else
+    	    SendSysMessagePergon(who,"Abbruch", "Abort");
+    	    Break;
+    	  EndIf
+      EndIf
+  	Else
+  		SendSysMessagePergon(who,"Abbruch", "Abort");
+  		Break;
+  	EndIf
+  Until (!who.connected);
+EndProgram
+
+Function pkgitems(byref layout, byref data, entry)
+	Var pkg, cfgkeys, pagemax, i, x, y, graphic, page, items:={};
+  If (entry=="Root")
+  	pkg:=ReadConfigFile("../config/itemdesc");  //pkg laden
+  Else
+	  pkg:=ReadConfigFile(":"+entry+":itemdesc");  //pkg laden
+  EndIf
+  If (pkg)
+    cfgkeys:=GetConfigStringKeys(pkg);  // Items laden
+
+    For (i:=1;i<=cfgkeys.size();i+=1)  // Items in speziellen Array und umsortieren
+    	items.append({CInt(cfgkeys[i]),CInt(pkg[cfgkeys[i]].graphic),DescEndung(pkg[cfgkeys[i]].desc),CInt(pkg[cfgkeys[i]].color), pkg[cfgkeys[i]].name});
+    	SleepMs(5);
+    EndFor
+    items:=SortArrayABC( items, 1, 3);
+    
+    If (items.size()!=0)
+      pagemax:=CInt(items.size()/20)+1;  // Pageanzahl berechnen
+      i:=1;page:=1;
+      layout.append("page "+page);
+      If (page<pagemax)
+        layout.append("button 490 545 2224 2224 0 2 0");  //Vorwärts Button
+        layout.append("tooltip 1046031");
+      EndIf
+      While (i<=items.size())
+        For (y:=0;y<=3;y+=1)
+          For (x:=0;x<=4;x+=1)
+        	  If (items[i][2])  // Grafik oder Objtype anzeigen
+      	      graphic:=items[i][2];
+            Else
+    	        graphic:=items[i][1];
+            EndIf
+            layout.append("buttontileart "+(230+(x*90))+" "+(60+(y*125))+" 2328 2329 1 0 "+i+" "+graphic+" "+items[i][4]+" 10 7");	
+            layout.append("htmlgump "+(230+(x*90))+" "+(120+(y*125))+" 80 60 "+data.size()+" 0 0");
+            If (items[i][3])
+              data.append(items[i][3]);
+            Else
+            	data.append(items[i][5]);
+            EndIf
+            i+=1;
+            If (!items[i])
+            	Break;
+            EndIf
+            SleepMs(5);
+          EndFor
+          If (!items[i])
+          	Break;
+          EndIf
+        EndFor
+        page+=1;
+        layout.append("page "+page);
+        layout.append("button 391 545 2223 2223 0 "+(page-1)+" 0");  // Zurück Button
+        layout.append("tooltip 1046030");
+        If (page<pagemax)
+          layout.append("button 490 545 2224 2224 0 "+(page+1)+" 0");  // Vorwärts Button
+          layout.append("tooltip 1046031");
+        EndIf
+      EndWhile
+      Return(items);
+    Else
+    	Return(0);
+    EndIf
+  Else
+  	Return(0);
+  EndIf
+EndFunction
+
+Function DescEndung(text)
+  Var posslash:=Find(text, "/", 1);
+  Var pospercent:=Find(text, "%", 1);
+  If (posslash)
+    If (text[Len(text)]=="%")
+      text:=text[1,pospercent-1] + text[posslash+1,Len(text)-posslash-1];
+    Else
+      text:=text[1,pospercent-1] + text[posslash+1,Len(text)-posslash];
+      If (Find(text, "%", 1))
+        text[Find(text, "%", 1)]:="";
+      EndIf
+    EndIf
+    Return(text);
+  EndIf
+  Return(DescEinzahl(text));
+EndFunction
+
+Function InitLayout()
+	Var i,nlayout, ndata, items,datapkg:="",enabled_pkgs:={};
+	Var cfg, cfgkeys;
+  Var layout:={"nodispose",
+	             "page 0",
+	             "resizepic 0 0 3600 698 580",  //background
+	             "resizepic 15 15 5054 668 30", // Titel
+	             "htmlgump 15 22 668 30 0 0 0", // Titeltext
+	             "resizepic 15 50 5054 194 515", // pkg's
+	             "htmlgump 22 56 180 460 1 1 1",
+	             "resizepic 215 50 5054 468 515"}; // itemdesc einträge
+	Var data:={"<center>Create-PKG-Item</center>"};
+	
+	SetGlobalProperty("createpkgiteminit",1);
+	
+	Var pkgs:=Polcore().packages;
+
+  ForEach pkg in pkgs  // Gibt es da ne gescheite itemdesc?
+  	If (FileExists(":"+pkg+":itemdesc.cfg"))
+      cfg:=ReadConfigFile(":"+pkg+":itemdesc");
+      If (cfg)
+        cfgkeys:=GetConfigStringKeys(cfg);
+        If (cfgkeys.size()>0)
+      	  enabled_pkgs.append(pkg);
+        EndIf
+      Endif
+      UnloadConfigFile(":"+pkg+":itemdesc");
+    EndIf
+    SleepMS(2);
+  EndForEach
+  enabled_pkgs:=SortArrayABC( enabled_pkgs, 1, 0);  // pkgs alphabetisch Sortieren
+  enabled_pkgs.append("Root");
+  
+  For (i:=1;i<=enabled_pkgs.size();i:=i+1)
+  	datapkg:=datapkg+"<br>"+CStr(i)+" "+enabled_pkgs[i];
+  	SleepMS(2);
+  EndFor
+  data.append(datapkg);
+  layout.append("textentry 75 522 30 20 1000 9002 "+data.size()); //Nr eintragen
+  layout.append("button 105 520 9721 9724 1 0 9001");  // Ok button
+  layout.append("tooltip 1074974");
+  data.append("");
+  Var posEntry:=data.size();
+  
+  DFPurgeFile(datafile);
+  Var dataelement:=datafile.CreateElement("Menu");
+  dataelement.setprop("pkgs",   enabled_pkgs);
+  dataelement.setprop("lMain_", layout);
+  dataelement.setprop("dMain_", data);
+  
+  ForEach pkg in enabled_pkgs
+  	nlayout:=layout;
+  	ndata:=data;
+  	items:=pkgitems(nlayout, ndata, pkg);
+  	If (items)
+  		ndata[posEntry]:=_pkg_iter;
+  	  dataelement.setprop("l"+pkg, nlayout);
+      dataelement.setprop("d"+pkg, ndata);
+      dataelement.setprop("i"+pkg, items);
+    EndIf
+    SleepMS(2);
+  EndForEach
+  EraseGlobalProperty("createpkgiteminit");
+EndFunction

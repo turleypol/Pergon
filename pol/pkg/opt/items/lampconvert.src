@@ -1,0 +1,43 @@
+use uo;
+include "include/server";
+
+Program OnInsertScript(who, box, movetype, inserttype, item)
+    If (item.objtype <> 0x0a1d)
+        // ist es ein ehemals festgemachtes Item?
+        If (item.getprop(PROP_HS_C_FIXED))
+            // da es offenbar lose ist, Marker entfernen
+            item.eraseprop(PROP_HS_C_FIXED);
+        EndIf
+        // andere Items ignorieren
+        return 1;
+    EndIf
+
+    // neue Lampe erzeugen
+    var newitem := CreateItemInContainer(box, 0x0a22, 1);
+    newitem.color  := item.color;
+    newitem.newbie := item.newbie;
+    newitem.name   := item.name;
+
+    // sind CProps zu kopieren?
+    var props := GetObjPropertyNames(item);
+    If (!props)
+        // nichts weiter zu tun, Original killen
+        SubtractAmount(item, 1);
+        return 1;
+    EndIf
+
+    ForEach prop in (props)
+        If (prop == "original")
+            // keine falschen Grafiken uebernehmen
+            continue;
+        EndIf
+        newitem.setprop(prop, item.getprop(prop));
+    EndForEach
+
+    SubtractAmount(item, 1);
+    return 1;
+
+    // Compiler beruhigen
+    who      := 0;
+    movetype := inserttype;
+EndProgram

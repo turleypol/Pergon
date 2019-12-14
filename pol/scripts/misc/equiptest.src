@@ -1,0 +1,309 @@
+///////////////////////////////////////////////////////////////////////////
+// EquipTest Script - Checks wheather or not u can equip Something
+//
+// based on Class/Racc System
+//      Author: Shinigami
+//
+//      Thanks to Dream Weaver, Racalac and Sigismund for scripting support.
+
+use attributes;
+use cfgfile;
+use os;
+use uo;
+include "include/logutil";
+include "include/modifyskill";
+include "include/msgs";
+include "include/objtype";
+
+///////////////
+// Konstanten
+///////////////
+
+Const SKILL_PERMISSION_EGAL     := 0;
+Const SKILL_PERMISSION_VERBOTEN := 1;
+Const SKILL_PERMISSION_ERLAUBT  := 2;
+
+///////////
+// Programm
+///////////
+Program EquipTest(who, item) // {{{
+    // Meldungen beim StartUp unterdruecken
+    // If (GetGlobalProperty("#GameActive"))
+    //   SysLog("EquipTestStart "+who.name+" "+item.desc);
+    // EndIf
+
+    If (who.isa(POLCLASS_NPC) or (who.cmdlevel >= CMDLEVEL_SEER))
+        return 1;
+    EndIf
+
+    // Items, die nie getragen werden sollen
+    If (NeverEquip(item))
+        return 0;
+    EndIf
+
+    // SysLog(
+    //     "EquipTest: "+who.name+" ("+Hex(who.serial)+") -> "+item.desc+
+    //     " ("+Hex(item.serial)+")"
+    // );
+
+    // Ein normaler Spieler im Newbie-Area oder Newbie/Alt am Goetterpalast,
+    // jedoch ausserhalb einer Arena?
+    If (
+        (
+            (
+                GetObjProperty(who, PLACE_INNEWBIEAREA) And
+                (!GetObjProperty(who, TYPNEWBIE))
+            ) Or
+                GetObjProperty(who, PLACE_ATGODPALACE)
+        ) And
+            (!GetObjProperty(who, ARENABATTLE))
+    )
+        If (item.objtype == 0x6601)
+            SendSysMessagePergon(
+                who, "In dieser Region dürft ihr keine Inkognitorobe tragen!"
+            );
+            return 0;
+        ElseIf (item.isa(POLCLASS_WEAPON))
+            SendSysMessagePergon(
+                who, "In dieser Region dürft ihr keine Waffen tragen!"
+            );
+            // SysLog("EquipTestEnde NewbieWeapon "+who.name+" "+item.desc);
+            return 0;
+        ElseIf (item.isa(POLCLASS_ARMOR) and who.ar-who.ar_mod+item.ar > 25)
+            // 'n bissl Schutz ist zulaessig
+            // (ar_mod, damit man Kleidung tragen darf, obwohl man ggf. einen
+            // relativ starken Schutzzauber hat)
+            SendSysMessagePergon(
+                who,
+                "In dieser Region dürft ihr keine großen Rüstungen tragen!"
+            );
+            // SysLog("EquipTestEnde NewbieArmor "+who.name+" "+item.desc);
+            return 0;
+        EndIf
+    EndIf
+
+    // Ein Newbie darf keine hoeherwertigen Waffen/Ruestungen tragen
+    If (GetObjProperty(who, TYPNEWBIE))
+        // Das eigene Backpack wird nicht geprueft, da unkritisch
+        If (item.objtype<>UOBJ_BACKPACK)
+            Var result := IsUsableByNewbie(item);
+
+            Case (result.size()) // Gibs was zu beanstanden?
+            1:
+                SendSysMessagePergon(
+                    who,
+                    "Ihr dürft als Neuling nichts aus "+result[1]+" tragen!"
+                );
+                return 0;
+            2:
+                SendSysMessagePergon(
+                    who,
+                    "Ihr dürft als Neuling nichts aus "+
+                    result[1]+" und "+result[2]+" tragen!"
+                );
+                return 0;
+            EndCase
+        EndIf
+    EndIf
+
+    If (!CheckItemClasses(who, item))
+        return 0;
+    EndIf
+
+    // Werkzeugbeschaedigung pruefen und Werkzeug ggf. zerstoeren
+    If (CheckWerkzeugSchaden(who, item, 1))
+        // SysLog("EquipTestEnde Schaden "+who.name+" "+item.desc);
+        return 0;
+    EndIf
+
+    // Meldungen beim StartUp unterdruecken
+    // If (GetGlobalProperty("#GameActive"))
+    //     SysLog("EquipTestEnde Ok "+who.name+" "+item.desc);
+    // EndIf
+
+    return 1;
+EndProgram // }}}
+
+// diese Items sollen nie getragen werden
+Function NeverEquip(item) // {{{
+    If (item.objtype in (array{
+            // (noch) nutzloses NPC-Magiebuch
+            0x0efa,
+            // magischer Kompass (eigentlich ein Schild)
+            0xa403
+    }))
+        return 1;
+    EndIf
+
+    return 0;
+EndFunction // }}}
+
+/////////////////////////////////////////////////////////////////
+// CheckItemClasses - Pruefen, ob Item klassenbasiert erlaubt ist
+/////////////////////////////////////////////////////////////////
+Function CheckItemClasses(who, item) // {{{
+    // Was erlauben bzw. verbieten denn die Gegenstaende selber?
+    Var itemdesc := ReadConfigFile("::itemdesc");
+    If (!itemdesc)
+        SysLog("FEHLER: Kann itemdesc.cfg nicht oeffnen!");
+        return 0;
+    EndIf
+
+    Var itemdef := itemdesc[item.objtype];
+    If (!itemdef)
+        // Nur bei Playern meckern (haben Item das sie nicht haben sollten)
+        If (who.isA(POLCLASS_NPC))
+            return 1;
+        EndIf
+        If (who.cmdlevel<CMDLEVEL_QUESTCHAR)
+            SysLog(
+                "FEHLER: "+ItemInfoStr(item, COORDS_REALM)+
+                " soll nicht in Besitz eines Spielers sein, ist aber bei "+
+                CharInfoStr(who)+"!"
+            );
+        EndIf
+        return 0;
+    EndIf
+
+    // Klassenabhaengiges Tragen
+    Var klasse := GetObjProperty(who, SKKLASSE);
+    If (!klasse)
+        klasse := KLASSE_BERUF_NIX;
+    EndIf
+
+    // Bei Waffen ist diese Einschraenkung eigentlich schon durch den
+    // Skill geregelt
+    // If (!item.isa(POLCLASS_WEAPON))
+    //     If (GetConfigInt(itemdef, klasse))
+    //         SendSysMessagePergon(
+    //             who, "Eure Klasse verbietet das Tragen!"
+    //         );
+    //         // SysLog(
+    //             "EquipTestEnde Klasse "+who.name+" "+item.desc
+    //         );
+    //         Return (0);
+    //     EndIf
+    // EndIf
+
+    // Berufsabhaengiges Tragen
+    Var beruf := GetObjProperty(who, SKBERUF);
+    If (!beruf)
+        beruf := KLASSE_BERUF_NIX;
+    EndIf
+
+    // If (GetConfigInt(itemdef, beruf))
+    //     SendSysMessagePergon(
+    //         who, "Eure Berufung verbietet das Tragen!"
+    //     );
+    //     // SysLog("EquipTestEnde Berufung "+who.name+" "+item.desc);
+    //     Return (0);
+    // EndIf
+
+    // Skillabhaengiges Tragen
+    Var skill_perm := CheckSkillPermission(who, itemdef);
+    If (skill_perm == SKILL_PERMISSION_ERLAUBT)
+        // falls generell erlaubt, sparen wir ein paar Tests
+        // fängt ausserdem allgemeinere Regeln, daher weit vorn
+    ElseIf (skill_perm == SKILL_PERMISSION_VERBOTEN)
+        // Falls es verboten ist, auch unabhaengig von Klasse und Beruf
+        SendSysMessagePergon(who, "Eure Fähigkeiten verbieten das Tragen!");
+        return 0;
+    ElseIf ((!item.isa(POLCLASS_WEAPON)) And GetConfigInt(itemdef, klasse))
+        // Falls es die Klasse verbietet (bei Waffen bestimmt es der Skill)
+        SendSysMessagePergon(who, "Eure Klasse verbietet das Tragen!");
+        return 0;
+    ElseIf (GetConfigInt(itemdef, beruf))
+        // Falls es der Beruf verbietet
+        SendSysMessagePergon(who, "Eure Berufung verbietet das Tragen!");
+        return 0;
+    EndIf
+    // Wenns immernoch nicht verboten ist, wirds wohl erlaubt sein
+
+    // StrRequiredPlayer - Wird eine Mindeststaerke benoetigt?
+    Var strrequired := GetConfigInt(itemdef, "strrequiredplayer");
+    If (strrequired)
+        If (GetStrBasePergon(who) < strrequired)
+            SendSysMessagePergon(who, "Ihr seid nicht stark genug!");
+            // SysLog("EquipTestEnde Staerke "+who.name+" "+item.desc);
+            return 0;
+        EndIf
+    EndIf
+
+    // SkillRequired - Wird ein Mindestskill benoetigt?
+    Var skillrequired := GetConfigInt(itemdef, "skillrequired");
+    If (skillrequired)
+        Var skillid := GetConfigString(itemdef, "attribute");
+        If (!skillid)
+            SysLog(
+                "FEHLER: "+ItemInfoStr(item, COORDS_REALM)+
+                " besitzt kein Attribut!"
+            );
+            return 1;
+        EndIf
+
+        Var skilldiff := CInt(skillrequired - GetSkillPergon(who, skillid));
+        If (skilldiff <= 0)
+            return 1;
+        EndIf
+
+        If (skilldiff > 40)
+            SendSysMessagePergon(
+                who, "Ihr habt überhaupt keine Ahnung, "+
+                "wie Ihr dies benutzen sollt!"
+            );
+        ElseIf (skilldiff>30)
+            SendSysMessagePergon(
+                who, "Dies ist bestimmt nützlich. Nur wofür?"
+            );
+        ElseIf (skilldiff>20)
+            SendSysMessagePergon(
+                who, "Ihr habt nur eine vage Ahnung, wie damit umzugehen ist!"
+            );
+        ElseIf (skilldiff>10)
+            SendSysMessagePergon(
+                who, "Dies sieht nützlich aus."
+            );
+        ElseIf (skilldiff>5)
+            SendSysMessagePergon(
+                who, "Eure Fertigkeiten sind noch nicht gut genug ausgebildet!"
+            );
+        Else
+            SendSysMessagePergon(
+                who, "Ihr wollt es benutzen, aber Ihr riskiert es noch nicht."
+            );
+        EndIf
+
+        // SysLog("EquipTestEnde Skill "+who.name+" "+item.desc);
+        return 0;
+    EndIf
+
+    return 1;
+EndFunction // }}}
+
+/////////////////////////////////////////////////////////
+// CheckSkillPermission - Skillabhaengiges Tragen pruefen
+/////////////////////////////////////////////////////////
+Function CheckSkillPermission(who, itemdef) // {{{
+    ForEach skill in GetConfigStringArray(itemdef, "Skill")
+        Var dummy   := SplitWords(skill);
+        Var skillid := dummy[1];
+        Var permit  := CInt(dummy[2]);
+
+        If (!HasPlayerSkill(who, skillid))
+            continue;
+        EndIf
+
+        If (permit == SKILL_PERMISSION_ERLAUBT)
+            // Erlaubt - egal wie, auch unabhaengig von Klasse und Beruf
+            return SKILL_PERMISSION_ERLAUBT;
+        ElseIf (permit == SKILL_PERMISSION_VERBOTEN)
+            // Verboten - egal wie, auch unabhaengig von Klasse und Beruf
+            return SKILL_PERMISSION_VERBOTEN;
+        Else
+            // Nicht verboten -> weiter schaun
+            return SKILL_PERMISSION_EGAL;
+        EndIf
+    EndForEach
+
+    return SKILL_PERMISSION_EGAL;
+EndFunction // }}}

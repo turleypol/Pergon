@@ -1,0 +1,5 @@
+<h3 id="resource">resource</h3>
+
+<p>Erzeugt eine Auflistung bestimmter Resourcen (Erze, Metalle,
+Legierungen, Hölzer, Samen, Felle, Edelsteine), die man gerade bei
+sich trägt.</p>

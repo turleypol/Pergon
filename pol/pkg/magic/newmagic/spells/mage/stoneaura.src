@@ -1,0 +1,217 @@
+//**************************************************************************************************
+// Script file stoneaura.src
+//
+//    implements spell 121 <Stone Aura> - "Felsaura"
+//
+//  caster achieves earth aura which deals earth damage to adjacent mobiles
+//  lower resistance against air pushes adjacent mobiles away
+//     [ Resisted (Elemental - Earth) ]
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 28.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+use os;
+use util;
+use vitals;
+include "../magicpergon";
+include "../spellattack";
+include "include/mobile";
+include "include/packets";
+include "include/spellcheck";
+
+Program cast_stoneaura (params)
+	
+  var caster, victims, resist, dmg, power;
+  var spells   := ReadConfigFile("::spells");                   // load spelldata
+  var spell    := FindConfigElem(spells, SPELLID_MAGE_STONEAURA);
+  var basedmg  := spell.primary;
+  var mindmg   := spell.primarymin;
+  var maxdmg   := spell.primarymax;
+  var chngres  := spell.secondary;
+  var minchng  := spell.secondarymin;
+  var maxchng  := spell.secondarymax;
+  var dur      := spell.duration;
+  var mindur   := spell.durationmin;
+  var maxdur   := spell.durationmax;
+  var range    := spell.range;
+  var minrange := spell.rangemin;
+  var maxrange := spell.rangemax;
+
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  :=  params[3];
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  :=  params[3];
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_MAGE_STONEAURA);
+  EndIf
+
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  If (GetObjProperty(caster, "spell_aura"))
+	If (GetObjProperty(caster, "spell_aura")[2] == "earth");   // check If caster already has elemental aura
+      SendSysMessagePergon(caster, "Ihr verfügt bereits über eine Steinaura oder verkraftet zur Zeit keine weitere Aura",
+                                   "You are already protected by a Stone Aura or you are not ready to bear another Aura yet");
+      return;
+    Else
+      var tag := GetObjProperty(caster, "spell_aura");
+      tag[5]  := GetPID();
+      SetObjProperty(caster, "spell_aura", tag);
+      SendSpellwaiter(caster, "spell_aura", 0, tag[4], caster);
+      While (1)
+    	var ev := Wait_For_Event(200);
+    	If (ev)
+    	  break;
+    	EndIf
+      EndWhile
+    EndIf
+  EndIf
+
+  basedmg := CDbl(power*basedmg/100.0);     // calc duration, range and spell damage according to
+  chngres := CInt(power*chngres/100.0);     // casting power
+  dur     := CInt(power*dur/100.0);
+  range   := CInt(power*range/100.0);
+
+  If (minchng and minchng > chngres)
+    chngres := minchng;
+  ElseIf (maxchng and maxchng < chngres)
+    chngres := maxchng;
+  EndIf
+  If (mindur and mindur > dur)
+    dur := mindur;
+  ElseIf (maxdur and maxdur < dur)
+    dur := maxdur;
+  EndIf
+  If (minrange and minrange > range)
+    range := minrange;
+  ElseIf (maxrange and maxrange < range)
+    range := maxrange;
+  EndIf
+
+  var tag := array;
+  tag[1]  := ReadGameClock() + CInt(dur * 1.5);
+  tag[2]  := "earth";
+  tag[3]  := chngres;
+  tag[4]  := ReadMilliSecondClock();
+
+  SetObjProperty(caster, "spell_aura", tag);     // remember aura and tag caster for spellchecker
+  SendSpellWaiter(caster, "spell_aura", CInt(dur * 1.5), tag[4], caster);
+  // (in case caster logs off before spell ends)
+
+  Set_Critical(1);
+  resist := CInt(GetObjProperty(caster, "resist_air"));    // get air resistance
+  SetObjProperty(caster, "resist_air", resist - chngres);  // set new air resistance
+  Set_Critical(0);
+
+  PrintTextAbovePrivatePergon(caster, "Steine wirbeln um Euch herum", "Stones are whirling around you", caster);
+
+  SendStatus(caster);                                //Update Statuswindow
+
+  detach();
+
+  Var stones := array;
+  Var stone  := struct;
+  stone.+dir;
+  stone.+stone;
+
+  stone.dir   := 0;            // initialise 1st rotating stone
+  stone.stone := CreateItemAtLocationPergon(caster.x+ConvertDirectionToLocX(stone.dir), 
+                                           caster.y+ConvertDirectionToLocY(stone.dir), 
+                                           caster.z, 0x136C, 1,caster.realm);
+  stones[1]   := stone;
+
+  stone.dir   := 4;             // initialise 2nd rotating stone
+  stone.stone := CreateItemAtLocationPergon(caster.x+ConvertDirectionToLocX(stone.dir), 
+                                           caster.y+ConvertDirectionToLocY(stone.dir), 
+                                           caster.z, 0x136C, 1,caster.realm);
+  stones[2]   := stone;
+
+  While (caster and GetObjProperty(caster, "spell_aura")[2] == "earth" and !caster.dead and caster.connected)    // wait duration
+    // get possible victims
+    victims:= ListMobilesNearLocationEX(caster.x, caster.y, caster.z, 1, LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN,caster.realm);
+    If (victims.size())
+      ForEach victim in victims
+        If ((victim.serial != caster.serial) and (!victim.dead))             // preserve caster and ghosts
+          If (victim.isa(POLCLASS_NPC))
+            send_attack(victim, caster, 119);
+          EndIf
+
+          resist := 1 - CDbl(GetResistance(victim, "earth"));   // get victims earth resistance
+          dmg    := CInt(basedmg * resist);                     // alter spell damage
+          If (mindmg and mindmg > dmg)
+            dmg := mindmg;
+          ElseIf (maxdmg and maxdmg < dmg)
+            dmg := maxdmg;
+          EndIf
+
+          ApplyRawDamagePergon(victim, dmg);                    // apply spell damage to victim
+
+          If (RandomInt(100) <= power/3)                        // check if victim gets pushed
+            If (victim) // still alive?
+              Pushback(caster, victim, range);
+            EndIf
+          EndIf
+        EndIf
+      EndForEach
+    EndIf
+    PlaySoundEffect(caster, SFX_223);                 // play aura sound
+    For ani := 1 To 40                                // rotate flames
+      If (!caster)
+        Break;
+      EndIf
+      ForEach rotor in stones
+        rotor.dir := (rotor.dir+1)%8;
+        MoveObjectToLocation(rotor.stone,caster.x+ConvertDirectionToLocX(rotor.dir),
+                                         caster.y+ConvertDirectionToLocY(rotor.dir),
+                                         caster.z,caster.realm,
+                                         MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+      EndForEach
+      SleepMS(50);
+    EndFor
+  EndWhile
+
+  SleepMS(1);
+
+  ForEach rotor in stones          // destroy aura
+    DestroyItem(rotor.stone);
+  EndForEach
+
+  If (caster)
+    PrintTextAbovePrivatePergon(caster, "Die Euch umgebenden Steine verschwinden wieder",
+                                        "The surrounding stones disappear again", caster);
+  EndIf
+
+EndProgram
+
+Function Pushback (who, whom, range)
+  var dist := range - CInt(GetStrPergon(whom) / 30) + 1;      // calc how far char gets pushed
+
+  If (dist <= 0)                               // no pushback
+    return;
+  EndIf
+  
+  dist := GetPossibleDistance(whom,dist,CInt(GetFacing(who.x,who.y,whom.x,whom.y)));
+  MoveObjectToLocation(whom, whom.x + dist.x, whom.y + dist.y, whom.z, whom.realm, MOVEOBJECT_NORMAL);
+
+EndFunction
+
+Function GetPossibleDistance (who, range, dir)
+  var dist := 0;
+  var ret  := struct;
+  ret.+x   := ConvertDirectionToLocX(dir);
+  ret.+y   := ConvertDirectionToLocY(dir);
+
+  While (CheckLosAt(who, who.x + ret.x*dist, who.y + ret.y*dist, who.z) and dist <= range)
+    dist+= 1;
+  EndWhile
+
+  ret.x := (dist - 1) * ret.x;
+  ret.y := (dist - 1) * ret.y;
+
+  return ret;
+
+EndFunction

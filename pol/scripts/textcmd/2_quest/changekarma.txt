@@ -1,0 +1,9 @@
+<h3 id="changekarma">changekarma</h3>
+
+<h4>Parameter: keiner oder <kbd>c</kbd> oder <kbd>e</kbd> oder <kbd>f</kbd>
+oder <kbd>m</kbd> oder <kbd>n</kbd> oder <kbd>s</kbd></h4>
+
+<p>Ändert das eigene Karma. Mit &bdquo;e&rdquo; oder &bdquo;m&rdquo;
+bekommt man magisches Karma, &bdquo;n&rdquo; oder &bdquo;f&rdquo; liefern
+nekromantisches Fluchkarma, und &bdquo;c&rdquo; oder &bdquo;s&rdquo;
+ergeben den Segen der Kirche.</p>

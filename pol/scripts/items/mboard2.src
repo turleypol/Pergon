@@ -1,0 +1,155 @@
+//
+// 20.02.2001 - Fraggulus - Bugfixing der Namen des Bretts und der Ueberschriften
+//
+
+
+use uo;
+
+program messageboard(who, board)
+  Var i, space, topic;
+
+  Var layout := {
+    "page 0",
+    "resizepic 50 50 5120 540 380",
+    "resizepic 75 25 5120 200 50",
+    "resizepic 365 405 5120 200 50",
+    "button 395 420 2121 2120 1 0 1",
+    "button 475 420 2130 2129 3 2 2",
+    "text 100 40 45 0",
+    "text 80 390 45 1",
+
+    "radio 100 100 5002 5003 1 1001",
+    "radio 100 142 5002 5003 0 1002",
+    "radio 100 184 5002 5003 0 1003",
+    "radio 100 226 5002 5003 0 1004",
+    "radio 100 268 5002 5003 0 1005",
+    "radio 100 310 5002 5003 0 1006",
+    "radio 100 352 5002 5003 0 1007",
+
+    "text 140  98 45 2",
+    "text 140 140 45 3",
+    "text 140 182 45 4",
+    "text 140 224 45 5",
+    "text 140 266 45 6",
+    "text 140 308 45 7",
+    "text 140 350 45 8",
+
+    "radio 330 100 5002 5003 0 1008",
+    "radio 330 142 5002 5003 0 1009",
+//    "radio 330 184 5002 5003 0 1010",
+//    "radio 330 226 5002 5003 0 1011",
+    "radio 330 352 5002 5003 0 1012",
+
+    "text 370  98 45 9",
+    "text 370 140 45 10",
+    "text 370 182 45 11",
+    "text 370 308 45 12",
+    "text 370 350 45 13",
+
+    "text 330 182 45 14",
+    "text 330 205 45 15",
+    "text 330 228 45 16",
+    "text 330 251 45 17",
+	"text 330 285 45 18",
+    "text 330 308 45 19"
+  };
+
+  Var data := {
+    board.desc,
+    "Guten Appetit."
+  };
+
+  // Inhalt des Bretts wird fest vorgegeben (kann aber im nachhinein ueber die Propertys noch geaendert werden
+  SetObjProperty(board, "Thema1", "Suppen");
+  SetObjProperty(board, "Thema2", "Eintoepfe");
+  SetObjProperty(board, "Thema3", "belegte Brote");
+  SetObjProperty(board, "Thema4", "vom Schwein");
+  SetObjProperty(board, "Thema5", "vom Rind");
+  SetObjProperty(board, "Thema6", "Gefluegel");
+  SetObjProperty(board, "Thema7", "aus dem Meer");
+  SetObjProperty(board, "Thema8", "Wildbrett");
+  SetObjProperty(board, "Thema9", "Beilagen");
+  SetObjProperty(board, "Thema10", " ");
+  SetObjProperty(board, "Thema11", " ");
+  data[15] := "Unser Angebot richtet sich stets ";
+  data[16] := "nach der Marktlage. Es sind jedoch ";
+  data[17] := "taeglich mindestens 5 verschiedene ";
+  data[18] := "Gerichte im Angebot.";
+  data[19] := "Bei besonderen Wuenschen moeglichst ";
+  data[20] := "3-5 Tage vorher bestellen.";
+  SetObjProperty(board, "Thema12", "Getraenke");
+
+
+  SetObjProperty(board, "Text1", "Huehnerbruehe                          3GP#Tomatensuppe                           4GP#Tagessuppe                             4GP#Erbsensuppe                            4GP#Pilzcremsuppe                          5GP#Gulaschsuppe                           7GP##zu jeder Suppe reichen wir 2 Scheiben#Graubrot");
+  SetObjProperty(board, "Text2", "Linseneintopf                          5GP#bunter Gemueseeintopf                  6GP#Krautwickel                            5GP");
+  SetObjProperty(board, "Text3", "Brot mit Ei                            3GP#Brot mit Butter                        3GP#Brot mit Schmalz                       3GP#Brot mit Kaese                         4GP#Brot mit Wurst                         5GP");
+  SetObjProperty(board, "Text4", "Schnitzel mit frischen Pilzen         12GP#Nackensteak mit Butterbohnen          13GP#Rippchen und Salatteller              11GP#Haxe mit Kraut                        14GP##Spanferkel mit Bohnengemuese          15GP##Beilagen können frei gewaehlt werden.");
+  SetObjProperty(board, "Text5", "Pfeffersteak  (vorsicht scharf)       12GP#Roastbeef mit Saltatteller            14GP#2 Rouladen in dunkler Sauce           13GP##Die Beilage kann frei gewaehlt werden.");
+  SetObjProperty(board, "Text6", "Huehnergeschnetzeltes                  9GP#gebratene Ente                        14GP#Gaensebraten mit Salatteller          15GP#Truthahn mit Rotkraut                 15GP##fuer den erlesenen Geschmack##gebratene Taube mit Trueffeln         23GP##dazu servieren wir eine Beilage nach Wahl.");
+  SetObjProperty(board, "Text7", "Forelle mit Butter                     7GP#Karpfen, dazu Gemuese der Saison       8GP#geraeucherter Aal                     12GP#Lachs in Sahnesauce                   15GP##dazu servieren wir eine Beilage nach Wahl.");
+  SetObjProperty(board, "Text8", "Rehruecken                            15GP#Wildschweinragout                     16GP#Hirschkeule                           16GP#3 Kaninchenfilets                     15GP##zu allen Gerichten wird ein Salatteller#gereicht.#Beilagen können frei gewaehlt werden.");
+  SetObjProperty(board, "Text9", "Pellkartoffeln#Salzkartoffeln#Roestkartoffeln#Kartoffelbrei#3 Scheiben Graubrot");
+  SetObjProperty(board, "Text12", "alkoholfreie Getraenke:#Wasser                                 1GP#Apfelsaft                               2GP#Traubensaft                            3GP#Zitronenlimonade                         3GP#Milch                                  2GP#Tee                                    1GP##alkoholische Getraenke:#Bier                                   2GP#Wein                                   4GP#Schnaps                                5GP");
+
+
+  for (i := 1; i <= 12; i += 1)
+    topic := GetObjProperty(board, "Thema" + cstr(i));
+    if (topic == error)
+      data[i+2] := "[kein Angebot]";
+    else
+      space := find (topic, " ", 1);
+	  data[i+2] := topic;
+    endif
+  endfor
+
+  Var res := SendDialogGump(who, layout, data);
+  if (res[0] != 2)  //  Antwort != "OK"
+    return;
+  endif
+
+  Var selected;
+  foreach key in (res.keys)
+    if (key > 1000)
+      selected := cstr(key - 1000);
+      break;
+    endif
+  endforeach
+
+  print ( "Gewaehlt: " + selected );
+  Var text := GetObjProperty( board, "Text" + selected );
+  if (text == error)
+  	text := " ";	// in leeren Angeboten steht natuerlich auch nichts drin
+  endif
+
+  layout := {
+    "page 0",
+    "resizepic 50 50 5120 540 380",
+    "resizepic 75 25 5120 400 50",
+    "resizepic 365 405 5120 200 50",
+    "button 395 420 2121 2120 1 0 1",
+    "button 475 420 2130 2129 3 2 2",
+    "text 110 390 45 1",
+    "text 100 40 45 0"
+  };
+
+  topic := GetObjProperty(board, "Thema" + selected);
+  if ( topic == error )
+    data[1] := "(Kein Angebot)";
+  else
+    space := find ( topic, " ", 1 );
+    data[1] := topic[space+1, len(topic)-space];
+  endif
+
+  Var crlf;
+  Var line := 1;
+  repeat
+    crlf := find( text, "#", 1 );
+    layout[line+9] := "text 100 " + (82 + line * 16) + " 45 " + (line + 1);
+    data[line+2] := text[1, crlf-1];
+    text := text[crlf+1,len(text)-crlf];
+    line += 1;
+  until (!crlf);
+
+  res := SendDialogGump(who, layout, data);
+
+endprogram

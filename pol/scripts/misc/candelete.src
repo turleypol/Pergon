@@ -1,0 +1,20 @@
+///////////////////////////////////////////////////////////////////
+//
+//   CanDelete - Runs on Character Deletion
+//
+//     Parameters:
+//       who       - Character created
+//       delete_by - Player or Script tries to delete
+//
+//     (Runs Critical - May be changed to just Run to Completion)
+//
+///////////////////////////////////////////////////////////////////
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+// Program CanDelete(who, deleteby)
+Program CanDelete()
+  Return (1);
+EndProgram

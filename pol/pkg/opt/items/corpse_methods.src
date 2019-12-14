@@ -1,0 +1,22 @@
+use uo;
+
+Include ":popuphook:popupmenu";
+Include "include/party";
+Include "include/pergonutil";
+
+Program Install()
+	return 1;
+EndProgram
+
+Exported Function haspopup(corpse)
+	return 1;
+	corpse := corpse;
+EndFunction
+
+Exported Function popupinfo(corpse, who)
+	If (ZugriffErlaubt(who, corpse))
+	  return {{ID_LEICHE, CLILOC_LEICHE}};
+	Else
+	  return 0;
+	EndIf
+EndFunction

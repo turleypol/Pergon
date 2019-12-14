@@ -1,0 +1,408 @@
+// Shinigami hat hier einige Sachen veraendert
+//
+// 17.11.2000 - Fraggulus - Bugfixing
+// 10.05.2007 - Turley - DEAKTIVERT
+
+use attributes;
+use cfgfile;
+use math;
+use os;
+use uo;
+use util;
+use vitals;
+
+include "include/client";
+include "include/modifyskill";
+include "include/poison";
+
+Const EFFECT_EXPLOSION       := 0x36b0;
+Const EFFECT_SPARKLE         := 0x374a;
+Const SOUND_EFFECT_EXPLOSION := 0x208;
+Const SOUND_EFFECT_GRIND     := 0x243;
+Const SOUND_EFFECT_POISON    := 0x247;
+Const SOUND_EFFECT_POUR      := 0x241;
+Const UOBJECT_EMPTY_BOTTLES  := 0x0f0e;
+Const UOBJECT_MORTAR         := 0x0e9b;
+
+var layout := array(
+  "page 0",
+  "nodispose", // Shinigami
+  "gumppic 150 150 2203",
+  "gumppic 185 285 58",
+  "gumppic 200 285 58",
+  "gumppic 215 285 58",
+  "gumppic 230 285 58",
+  "gumppic 245 285 58",
+  "gumppic 260 285 58",
+  "gumppic 275 285 58",
+  "gumppic 290 285 58",
+  "gumppic 340 285 58",
+  "gumppic 355 285 58",
+  "gumppic 370 285 58",
+  "gumppic 385 285 58",
+  "gumppic 400 285 58",
+  "gumppic 415 285 58",
+  "gumppic 430 285 58",
+  "gumppic 445 285 58"
+);
+var data := array;
+
+Program recipe_book_open(who, item)
+  //cria o array var com todas pocoes contidas
+  var potions := GetObjProperty( item, "recipes");
+  potions := SplitWords( potions);
+
+  var cfg := ReadConfigFile("alchemy2");
+  If (!cfg)
+    syslog("FEHLER: unable to read alchemy2.cfg");
+    return;
+  EndIf
+
+
+  var itemdesc := ReadConfigFile("::itemdesc"); // Shinigami
+  If (!itemdesc)
+    syslog("FEHLER: unable to read itemdesc.cfg");
+    return;
+  EndIf
+
+
+  var lastpotion := 0;
+  var i;
+  For (i:=1; i<=potions.size(); i+=1)
+    If(cint(potions[i])>lastpotion)
+      lastpotion := cint(potions[i]);
+    EndIf
+  EndFor
+
+
+  var potionlist:= array;
+
+  For(i:=1; i<=potions.size(); i+=1)
+    potionlist[cint(potions[i])] := 1;
+  EndFor
+
+
+  var pagina:=1;
+  var offset := 18;
+  var dataoffset :=1;
+  var tilepic;
+  var curpotion;
+  var curtext := 0;
+  var page := 1;
+  var picX;
+  var fbuttonX;
+  var sbuttonX;
+  var textX;
+  var titleX;
+  var regs;
+  var amount;
+  var tpage;
+  var fbuttonpic;
+  var regname;
+
+  For(i:=1; i<=lastpotion;i+=1)
+  curpotion := cfg[i];
+
+  If(!potionlist[i])
+    continue;
+  EndIf
+
+  //build the layout structure
+
+  //page header
+
+  If ((!Modulus((offset-18),17)) and (Modulus(pagina, 2)))
+    layout[offset] := "page " + cstr(page);
+    offset +=1;
+    page +=1;
+  EndIf
+
+  //set some layout properties based of current pagina
+  If (Modulus(pagina,2))
+    picX := cstr(220);
+    fbuttonX := cstr(172);
+    sbuttonX := cstr(290);
+    titleX := cstr(185);
+    textX := cstr(180);
+    tpage := cstr(page-2);
+    fbuttonpic := cstr(2205);
+  Else
+    picX := cstr(380);
+    fbuttonX := cstr(444);
+    sbuttonX := cstr(445);
+    titleX := cstr(340);
+    textX := cstr(340);
+    tpage := cstr(page);
+    fbuttonpic := cstr(2206);
+  EndIf
+
+
+  //tilepics
+
+  tilepic := curpotion.icon;
+
+
+  layout[offset] := "tilepic " + cstr(picX) + " 225 " + cstr(tilepic);
+  offset += 1;
+
+
+  //buttons
+
+  layout[offset] := "button " + cstr(fbuttonX) + " 155 " + " " + cstr(fbuttonpic) + " " + cstr(fbuttonpic) + " 0 " + cstr(tpage) + " 0 ";
+  offset += 1;
+
+  layout[offset] := cstr("button " + sbuttonX + " 275 5032 5300 1 0 " + cstr(i));
+  offset += 1;
+
+
+  //texts
+
+  //title
+  layout[offset] := cstr("text " + titleX + " 172 0 " + curtext);
+  offset += 1;
+  curtext := curtext +1;
+
+
+  //regs
+
+  layout[offset] := cstr("text " + textX + " 294 0 " + cstr(curtext));
+  offset += 1;
+  curtext += 1;
+
+  layout[offset] := cstr("text " + textX + " 306 0 " + cstr(curtext));
+  offset += 1;
+  curtext += 1;
+
+  layout[offset] := cstr("text " + textX + " 318 0 " + cstr(curtext));
+  offset += 1;
+  curtext += 1;
+
+  layout[offset] := cstr("text " + textX + " 330 0 " + cstr(curtext));
+  offset += 1;
+  curtext += 1;
+
+  //increase other variables
+
+  pagina += 1;
+
+  ////////////Data/////////////////
+
+  regs := GetConfigStringArray(curpotion, "reagent");
+  amount :=GetConfigStringArray(curpotion, "amount");
+
+  data[dataoffset] := cstr(curpotion.name);
+  dataoffset += 1;
+
+
+  If (!regs[1])
+    data[dataoffset] := cstr(" ");
+  Else
+    regname := GetConfigString( FindConfigElem(itemdesc, cint(regs[1])), "name");
+    data[dataoffset] := cstr( " " + amount[1] + " " + regname );
+  EndIf
+
+  dataoffset += 1;
+
+
+  If (!regs[2])
+    data[dataoffset] := cstr(" ");
+  Else
+    regname := GetConfigString( FindConfigElem(itemdesc, cint(regs[2])), "name");
+    data[dataoffset] := cstr(" " + amount[2] + " " + regname );
+  EndIf
+
+  dataoffset += 1;
+
+
+  If (!regs[3])
+    data[dataoffset] := cstr( " " );
+  Else
+    regname := GetConfigString( FindConfigElem(itemdesc, cint(regs[3])), "name");
+    data[dataoffset] := cstr( " " + amount[3] + " " + regname );
+  EndIf
+
+  dataoffset += 1;
+
+
+  If (!regs[4])
+    data[dataoffset] := cstr( " " );
+  Else
+    regname := GetConfigString( FindConfigElem(itemdesc, cint(regs[4])), "name");
+    data[dataoffset] := cstr( " " + amount[4] + " " + regname );
+  EndIf
+
+  dataoffset += 1;
+
+  SleepMS(2);
+
+  EndFor
+
+  //SysLog(layout);
+  //SysLog(data);
+
+  var box := SendDialogGump( who, layout, data );
+
+  // DEAKTIVIERT
+  UnloadConfigFile("alchemy2");
+  SendSysMessagePergon(who,"Ihr wisst nichts damit anzufangen!");
+  return;
+  //////////////////////////////////////////////////////////////////
+
+  If (box[0])
+    var TX:=who.x;
+    var TY:=who.y;
+
+    var val := cint(SendTextEntryGump( who, "Wieviele Traenke wollt Ihr herstellen? (Max 20)", 40 ));
+    If (!val or val>20)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return 0;
+    EndIf
+    For (i:=1;i<=val;i+=1)
+      If (TX<>who.x or TY<>who.y)
+        break;
+      ElseIf (!make_potion(who, box[0]))
+        break;
+      EndIf
+    EndFor
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+
+  //clearance
+
+  //UnloadConfigFile("::itemdesc"); // Entladen verursacht Fehler!
+EndProgram
+
+Function make_potion(user, PotionId)
+   var config_file := readconfigfile("alchemy2");
+   var elem := FindConfigElem(config_file,PotionID);
+
+   var PotionName:=GetConfigString(elem,"name");
+   var PotionsSkill:=GetConfigInt(elem,"skill");
+   var PotionRegs:=GetConfigStringArray(elem,"reagent");
+   var PotionAmount:=GetConfigStringArray(elem,"amount");
+   var PotionPoints :=GetConfigInt(elem,"points");
+   var PotionObjType:=GetConfigInt(elem,"objtype");
+   var Bottle:= is_item(user,UOBJECT_EMPTY_BOTTLES);
+   var Mortar:= is_item(user,UOBJECT_MORTAR);
+
+   If (!Bottle)
+     SendSysMessagePergon(user, "Ihr habt keine Flaschen.", "You have no bottles.");
+     return 0;
+     Else
+     If (!mortar)
+       SendSysMessagePergon(user, "Ihr habt keinen Mörser.", "You have no mortar.");
+       return 0;
+     Else
+       If (!Take_Regs(user, PotionRegs, PotionAmount));
+         SendSysMessagePergon(user, "Ihr habt nicht genug Reagenzien.", "You don't have enough ingredients.");
+       Else
+         var control;
+
+         For (control:= 1; control <= 4; control += 1)
+            playsoundeffect(user, SOUND_EFFECT_GRIND);
+            SendSysMessagePergon(user, "Ihr zermahlt die Zutaten.", "You grind the ingredients.");
+            sleep(2);
+         EndFor
+         var SkillCheck:=CheckSkillPergon(user, SKILLID_ALCHEMIE, PotionsSkill, PotionPoints);
+
+         If (SkillCheck<=0)
+           return RandomEffect(user,SkillCheck, PotionObjType);
+         Else
+           SubtractAmount(Bottle, 1);
+           var Potion := CreateItemInBackpackPergon(user, PotionObjType, 1);
+           potion.name:=PotionName;
+           PlaySoundEffect(user, SOUND_EFFECT_POUR);
+           SendSysMessagePergon(user, "Ihr kredenzt den Trank und legt ihn in Eurem Rucksack ab.", "You mix the potion and put in into your backpack.");
+           return 1;
+         EndIf
+       EndIf
+     EndIf
+   EndIf
+EndFunction
+
+Function is_item(user,LookingFor)
+  var hasitem:= 0;
+  var RetItem;
+
+  //set_critical/(1);
+
+  ForEach item in EnumerateItemsInContainer(user.backpack)
+    If (item.objtype == LookingFor)
+      RetItem:=item;
+      hasitem := 1;
+      break;
+    EndIf
+    SleepMS(2);
+  EndForEach
+
+  //set_critical/(0);
+
+  If (hasitem)
+    return RetItem;
+  Else
+    return 0;
+  EndIf
+EndFunction
+
+Function Take_Regs(user,PotionRegs,PotionAmount)
+  var i,has_item;
+  var ItemArray:=Array(len(PotionRegs));
+
+  For (i:=1;i<len(PotionRegs)+1 ;i+=1)
+    //set_critical/(1);
+    has_item:=0;
+
+    ForEach item in EnumerateItemsInContainer(user.backpack)
+      If (item.objtype == Cint(PotionRegs[i]) and item.amount>=CInt(PotionAmount[i]) )
+        ItemArray[i]:=item;
+        has_item:=1;
+        break;
+      EndIf
+      SleepMS(2);
+    EndForEach
+
+    //set_critical/(0);
+
+    If (!has_item)
+    return 0;
+    EndIf
+  EndFor
+
+  // Take Regs
+  For (i:=1;i<=len(ItemArray) ;i+=1)
+    SubtractAmount(itemArray[i], Cint(PotionAmount[i]));
+  EndFor
+  return 1;
+EndFunction
+
+Function RandomEffect(user,Bottle, PotionObjType)
+  var config_file := readconfigfile("itemdesc"); // Shinigami
+  var elem := FindConfigElem(config_file,PotionObjType);
+
+  var strength:=Cint(GetConfigString(elem,"Strength"));
+  var results := Randomint(9) + 1;
+  If (results <= 2)
+    SendSysMessagePergon(user, "Die instabile Mischung explodiert.", "The instable mixture explodes.");
+    PlayObjectCenteredEffect(user, EFFECT_EXPLOSION, 10,10);
+    PlaySoundEffect(user, SOUND_EFFECT_EXPLOSION);
+    var dmg := (Randomint(19) + 1) * strength ;
+    dmg += 2;
+    ApplyRawDamagePergon(user, dmg);
+    SubtractAmount(Bottle, 1);
+    return 0;
+  ElseIf (results <= 9)
+    PlayObjectCenteredEffect(user, EFFECT_SPARKLE, 10,10);
+    SendSysMessagePergon(user, "Diese Mixtur setzt ätzende Dämpfe frei.", "The mixture frees up acidic vapors.");
+    sleep(1);
+
+    AddPoisonLevel(user, CInt(strength)); // Vergiftung durchfuehren
+
+    SubtractAmount(bottle, 1);
+    return 0;
+  Else
+    PlaySoundEffect(user, SOUND_EFFECT_POUR);
+    SendSysMessagePergon(user, "Ihr schüttet die nutzlose Mixtur weg.", "You pour away that useless mixture.");
+    return 1;
+  EndIf
+EndFunction

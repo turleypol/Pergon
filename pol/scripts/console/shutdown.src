@@ -1,0 +1,67 @@
+///////////////////////////////////////////////////////////////////////////
+// Designed by:		Cassandra White of Nirvana Shard
+// Last Updated:	Feb, 19, 2000
+// Status:		Fully tested
+
+///////////////////////////////////////////////////////////////////////////
+// Notes:
+// Three warnings are given to players. The first is based on basetime in
+// minutes. The second warning is based on basetime - 1/3. The final
+// warning is basetime - 2/3.
+//
+// An easy reminder For times are keypress * 6 minutes.
+//
+// Messages are sent to console display and all online characters.
+//
+// console.cfg will need to concur with 1-0 entries.
+//
+// You are welcome too add/subtract/adjust basetimes as you see fit. If
+//
+// I hope it helps - ENJOY!!! :o)
+// *Thanks to Syzygy For help scripting and much needed commands!*
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.6  2008/09/09 16:00:17  mehdorn
+// - umgebaut auf zentrale Routine
+//
+// Revision 1.5  2008/08/02 04:58:39  mehdorn
+// - Funktionen aus messages.inc in msgs.inc uebernommen
+// - messages.inc entsorgt
+// - Scripte angepasst
+//
+// 2007/05/05 Shinigami:
+// Server via ListOnlineCharacterInfos als Offline anzeigen
+//
+// 2000/06/18 Shinigami:
+// ReWrite
+
+/////////////
+// Includes
+/////////////
+Include "include/client";
+include "include/clock";
+include "include/msgs";
+include "include/npc";
+include "include/onlinesearch";
+include "include/pergoninfos";
+include "include/pergonutil";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program CMD_ShutDown(cmd)
+  syslog(GetGlobalProperty("#ShutDownMessage"));
+  syslog(GetGlobalProperty("#ShutDownMessageFormat"));
+  If (GetGlobalProperty(PROP_SHUTDOWN_RUNNING))
+    syslog("Der ShutDown-Prozess laeuft bereits!");
+    return;
+  EndIf
+
+  // verzoegerter Shutdown mit Standardwerten
+  TimedShutdown(cmd);
+EndProgram
+
+// vim: sw=2 sts=2

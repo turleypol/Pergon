@@ -1,0 +1,84 @@
+use uo;
+use datafile;
+
+Include "include/msgs";
+Include "include/utility";
+Include "tstonegump";
+Include "tstoneconstants";
+
+Program usetstone(who, stone)
+  If (!ReserveItem(stone))
+    SendSysMessagePergon(who,
+      "Dieser Stein wird schon benutzt. Probiert es später erneut."
+    );
+    return;
+  EndIf
+  
+  If (GetObjProperty(who, "spell_incognito") or GetObjProperty(who, "realrname"))
+    SendSysMessagePergon(who,
+      "Ihr steht unter Einfluss eines Inkognitos. "+
+      "Versucht es später noch einmal."
+    );
+    return;
+  EndIf
+  
+  var tstonedat := OpenDataFile("TStone");
+  If (!InitTStone(stone, tstonedat, who))
+    return;
+  EndIf
+  
+  var town    := stone.getprop("Town");
+  var towndat := tstonedat.FindElement(town);
+  InitTown(towndat);
+ 
+  var ret, BMBtn, GMBtn;
+  var habitants := towndat.getprop("Einwohner");
+  var habitant  := habitants[who.serial];
+  var rights    := habitant.rights;
+  var layout    := GetLayoutBg(who, stone, towndat);
+  var data      := GetDataBg(who, town, towndat);
+
+  If (who.cmdlevel >= CMDLEVEL_HIGHGM)
+    GMBtn := {
+      "Page 0",
+  
+      "Button 368 228 30084 30085 1 0 3",                          //GMMenü öffnen
+      "Tooltip 1011066"                                            //Nächste Seite
+    };
+    rights := struct { all := 1 };
+  EndIf
+
+  If (rights and rights.size())
+    BMBtn := {
+      "Page 0",
+  
+      "Button 368 228 30084 30085 1 0 1",                        //BMGump öffnen
+      "Tooltip 1011066"                                          //Nächste Seite
+    };
+    layout := layout + BMBtn;
+  EndIf
+  
+  Repeat
+    ret := SendDialogGump(who, layout, data);
+    Case (ret.keys[2])
+      1: layout := GetLayoutBM(rights)+GMBtn;
+         data   := GetDataBM(who, towndat);
+      2: layout := GetLayoutBg(who, stone, towndat)+BMBtn;
+         data   := GetDataBg(who, town, towndat);
+      3: layout := GetLayoutGM();
+         data   := GetDataGM(who);
+    EndCase
+  Until (!(ret.keys[2] in {1, 2, 3}));
+  
+  Case (ret.keys[2])    
+    BTN_ADDBG:    AddBG(who, town, towndat);
+    BTN_DELBG:    EraseBG(who, towndat);
+    BTN_ADDFUNCT: AddFunct(who, ret, towndat);
+    BTN_DELFUNCT: DelFunct(who, ret, towndat);
+    BTN_ADDPASS:  AddPass(who, town, towndat);
+    BTN_DELPASS:  DelPass(who, ret, town, towndat);
+    BTN_ADDBM:    AddBM(who, town, towndat);
+    default:      SendSysMessagePergon(who, "Auf Wiedersehen.");
+                  return;
+  EndCase
+EndProgram

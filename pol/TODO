@@ -1,0 +1,450 @@
+Halbgar
+=======
+
+- Weihnachtssets/Ostersets - Aufstellung auf cronlike umbauen
+- bestechbare NPCs (gegen X Gold auch Öffnung in Ruhezeit etc.)
+- Dachitembenennung fuer Bautool
+- statt ständiger Tierumwandlung beim Reiten Tiere temporär auf GreenAcres
+  abstellen
+  - siehe scripts/ai/stamaster.src (fertig) und scripts/include/animal.inc
+
+
+Offene Fragen an Staff allgemein
+================================
+
+- Leibwaechter (NPC, bezahlt)
+
+
+Themen GM-Treffen
+=================
+
+- taegliches Skillgain-Limit
+- Status Kartenupdate
+
+
+Dinge fuer den runden Tisch
+===========================
+
+- Diebstahl
+  - Rueckkaufpreis darf nach Angriffen auf Dieb erhoeht werden
+    - Maximalwert?
+  - Verjährung von Diebstahl von 2 Wochen (Backpack)/4 Wochen (Haus)
+    in den Regeln verankern
+
+- Allgemein
+  - "Jeder Spieler verpflichtet sich, vor jedem Login, über Neuerungen
+    und Veränderungen von Gesetzen und Regeln im Forum und Regelwerk zu
+    informieren."
+    - "Forum und " streichen, da in Anbetracht von >10k Postings das
+      einfach keinem Neuling zuzumuten ist
+
+- Hausbau
+  - keine gleichen Häuser nebeneinander
+  - Sonderregeln für Städte (Material, Typen)
+    - Cove: kein Kastenhaus
+
+
+(Vermutlich) unbenutzte Scripte für die nächste Abräumsammlung:
+===============================================================
+
+- pkg/std/combat/makehitscript.src
+
+
+Noch nicht einsortiert:
+=======================
+
+- Faehre redet nicht mehr mit mir nach Trockendock mit vollem Deck
+
+- 0x3d98 (Wandfackel) wurde festgemacht
+
+- BM zu Counselor machen bzw. Status zurücknehmen (Stein, Logon)
+
+- taegliches Skillcap
+
+- Createbauaccount auf neues Anlegesystem erweitern
+
+- Controlscript am Hausschild/Tillerman zum Aufraeumen bei Multiverlust
+  - bei Tillerman ueber Items mit identischer "lockid"-CProp
+
+- Questzonen:
+  - Overrides fuer normale Zonen bezueglich Zaubern/Tore?
+  - Bug: NPCs aus Sets werden nicht gekillt
+
+- .customnpc: Angabe vom Equip-Type erlauben
+
+- .bautool
+  - Haken bei Mark, kein Haken bei Custom: Einzelitems bautoolmarkieren?
+  - als Default-Bereich Spieler-z +/-20 nehmen, um die Chance zu
+    verringern, in der falschen Etage umzubauen?
+
+- CTF: boese Zuschauer bestrafen
+
+- Hauscontainer (die auf GreenAcres) aussondern, Idee:
+  - neue Storage-Area anlegen
+  - ausgewählte Container (entweder in bestimmten Bereich stehend oder
+    irgendwie per CProp etc. markiert) in entsprechende Boxen in der
+    Storage-Area verschieben
+  - lose Items ebenfalls verlagern
+  - einheitliches Namensschema auf Basis des Hausbesitzers (Name, Serial
+    wenn noch vorhanden, aufsteigende Zahl) zum Wiederfinden
+  - Storage-Area bei gestopptem Server aus storage.txt schneiden und
+    separat wegspeichern
+  - bei Bedarf wieder eingliedern und Kisten z. B. im Playerhaus
+    wiederherstellen
+  - Problem: lose Items wie große Erzstacks, die nicht in Kisten passen
+    - Ansatz: Amount in CProp sichern und auf 1 reduzieren, beim
+      Wiederherstellen entsprechend umkehren
+
+- "Hausbaukiste" (Kiste, in die man Baumaterialien tut und die ein
+  einstellbares Multi entsprechend schrittweise mit Items nachbaut -> fuer
+  Handwerkerquest)
+
+- verzoegerten Disconnect bauen (fuer Nachrichten bei start.src, da kein
+  Sleep moeglich)
+
+- Gump 0x755e fuer Aquarium
+
+- Gump 0xc5da als Peitsche
+
+- fuer Gump 0xec16 Item ermitteln fuer Freudenhaus
+
+- Management erweitern um E-Mail-Adress-Exporter, Abfrage von:
+  - Adressen inaktiver Accounts (Spieler, Counselor)
+    - "Schau mal wieder rein"-Mails
+  - Adressen aktiver Accounts (Spieler, Counselor)
+    - gezielte Informationen bei Forenausfaellen etc.
+  - Adressen leerer Accounts
+    - Ankuendigung anstehender Accountloeschung
+  - Adressen von Questchar-Accounts
+    - Questankuendigungen, Suche von Helfern fuer Grossquests
+  - Adressen von ">= Seer"-Accounts
+    - automatischer Abgleich der pergonstaff-Liste
+  - weitere?
+
+- .status color[s]
+  - Gump, wo man Farbselektoren hat fuer:
+    - Farbe für Fehlermeldungen (interne Fehler in Scripten etc.)
+    - Farbe für Fehlschläge (Skillcheck geht daneben etc.)
+    - Farbe für Erfolge (Skillcheck erfolgreich etc.)
+    - Farbe für sonstige/normale Meldungen
+    - Werte in CProp(s) am Char oder Account speichern
+  - scripts/include/msgs.inc erweitern, um Farben leicht bei
+    SysMsg-Aufrufen etc. nutzen zu können
+  - Scripte, wo bereits Farben benutzt werden, entsprechend umrüsten
+  - nach und nach sonstige Scripte entsprechend aufrüsten
+
+- Huetchenspieler-NPC
+  - gewisse Goldmenge geben
+    - abhängig von Menge stellt er drei bis fünf Tonnen (festgemacht) auf
+  - wirft Gold erkennbar in eine Tonne (farbig blinken lassen oder so)
+  - bei allen Tonnen das Opencont-Script durch eigenes Script ersetzen
+    (niemand soll mehr hineingucken können)
+  - einige Runden lang tauschen, abhängig von Goldmenge
+    - pro Runde je zwei Tonnen zufällig wählen, auf verschiedene Höhen
+      heben und per MovingEffekt die Positionen tauschen, dann absetzen
+  - am Ende Spieler eine Tonne wählen lassen
+    (obiges Doppelklickscript z. B. per CProp so beeinflussen, daß es den
+    NPC über geklickte Tonne informiert)
+  - ist die Auswahl richtig, wird der Einsatz samt Bonus ausgezahlt
+    - sonst behält der NPC das Gold
+    - geht dem NPC das Gold aus, gibt es nur den Einsatz zurück
+      (d. h. der hat ein eingebautes Konto, ähnlich wie Playerhändler)
+  - pro Tag darf ein Spieler nur n-mal spielen/m Goldstücke gewinnen,
+    dann streikt der NPC für ihn
+  - Tonnen wieder einsammeln, eventuell zur Wiederverwendung ins Backpack
+    (Serialverschwendung vermeiden)
+
+- Gildennewsgroups aus Include nehmen und als CProp an Gilde packen
+
+- Commcrystals nochmal checken (die bei Angeldor im Rucksack/Haus sind
+  vermutlich kaputt)
+
+- Config-Gump fuer Beamblocker bauen
+
+- Config-Gump fuer blockrider-Stein um "strict"-Modus erweitern
+
+- Fährenkontrollscript für Pendelfahrten + Textcmd/Item zum Einrichten
+  - Textcmd
+    - erste Fähre auswählen und an Staffler oder Item die Serial der Fähre
+      sichern
+    - die Leute .goboat benutzen lassen
+    - zweite Fähre auswählen
+    - eine eindeutige Nummer (z. B. hochzählende GProp pro Nutzung)
+      für die Fährverbindung ausdenken
+      - als Verbindungs-ID an beiden Fähren sichern
+    - zusätzlich die Serial des der jeweils anderen Fähre an Fähren sichern
+  - Fährenscript umbauen
+    - Pendel-Fähren senden sich im Hafen kein Abfahrtevent an sich selbst
+      oder ignorieren es, wenn es von sich selbst kommt
+    - Befehl "abfahrt" einbauen, der nur von Pendel-Fähre verstanden wird
+      - bei "abfahrt" ein "ich will los"-Event als Kontrollscript senden
+    - bei Ankunft im Hafen ein "angekommen"-Event an Kontrollscript senden
+    - ab und an kontrollieren, ob das andere Schiff noch da ist (über
+      gespeichert Serial) und ggf. Pendelmodus verlassen
+  - Kontrollscript arbeitet in Dauerschleife eventbasiert fuer alle Fähren
+    - hat ein Dictionary mit Structs zur Verwaltung aller Fähren
+    - "angekommen"-Event triff ein
+      - wenn Verbindungs-ID der Fähre unbekannt, neuen Key in mit ID in
+        dictionary anlegen
+        - dort wird pro Fähre der Verbindung ein Arraywert angelegt
+          (also am Ende sollte das Array immer zwei Elemente haben)
+          - Arraywert ist struct und enthält
+            - PID der Fähre
+            - Serial vom Tillerman der Fähre
+            - Status der Fähre (auf "wartet im Hafen" setzen)
+      - sonst: ID bekannt, Array unter der ID durchzählen
+        - ein Element: gucken, ob das eine neue Fähre auf der Verbindung
+          ist, wenn ja, Eintrag wie eben erzeugen
+        - mehr als zwei Elemente: Fehler loggen und Key aus dict löschen
+        - zwei Elemente
+          - Status der Fähren auf "bereit" ändern
+    - "ich will los"-Event kommt, wieder nach ID im Dict gucken
+      - nicht zwei Elemente
+        - über Tillerman der Eventquelle "Verbindung kaputt" sagen
+      - zwei Elemente
+        - wenn beide Fähren im Status bereit, Abfahrvorbeitungsevents senden
+        - wenn nur eine Fähre bereit, "bitte warten" auf Eventquelle sagen
+        - keine Fähre bereit: Event ignorieren
+
+- Kompost-Herstellscript (Skill: Ackerbau oder Wildniskunde)
+  - Script für gammliges Holz (bisher scriptlos)
+  - Auswahl von Humus, Lehm, Asche ...
+    - eventuell so, daß man 5 Items insgesamt braucht,
+      aber zwei der drei Typen genügen, also z. B. 3 Humus und 2 Asche
+  - Skillcheck, bei Erfolg Grundstockitem erzeugen
+  - eventuell Holzfällen erweitern, daß ab und zu neben Wurzeln und
+    Ästen auch gammliges Holz gefunden wird
+
+- Skills "Fallen entschärfen" und "Verstecktes finden"
+  - prüfen, ob "trainiere"-bar
+    - ggf. bei Waldläufer und Wegelagerer einbauen
+  - Balancing, Erfolgsquote und Skillanstieg an magische
+    Entsprechungen anpassen
+    (jemand mit geradeso ausreichenden Magieskill zum magischen Verstecken
+    und moderatem Int-Wert ist für "Verstecktes finden" in ähnlichem
+    Skillgegend quasi unfindbar)
+    - eventuell zusätlichen Skillbonus bei erfolgreichem
+      Entschärfen/Finden, falls angemessene Schwierigkeit gegeben
+
+- Kommentarfunktion fuer Pages
+
+- Zweitcharsupporterkennung
+  - nach Möglichkeit auf andere Arten des Supports ausdehnen
+  - übersichtlicheres Logging
+    - mittlere und starke Vordachte erhöhen einen Zähler am Account
+    - Zähler sind langsam wieder, z. B. monatlich um einen kleinen Wert
+    - erst ab überschreiten eines gewissen Schwellwerts loggen
+  - geringer Verdacht
+    - Configfile oder Textcmd bauen, wo man festlegen kann, welche Accounts
+      definitiv verschiedenen Spielern gehören
+    - bei entsprechend markierten Accountkombinationen kein Logging mehr
+      oder zumindest nicht in News/Forum posten
+
+- Wildtiere verhungern, damit sie nicht ewig im Feindesland etc. herumgammeln
+  - bisher nur bei grazer_new, enticedanimal, meek
+
+- Playerhändler
+  - sollen bei Kündigung die Waren und Kleidung in Bankbox (falls voll:
+    Backpack) das Besitzers zurücklegen; dann Einkleiden mit
+    Standardkleidung
+
+- statt 'tillermancontrol: FEHLER: Faehre ist mit keinem Boot verknuepft!'
+  Suche nach Items mit gleicher 'lockid' in Umgebung und killen
+
+- Wachen setzen Guardkill erst beim Zuschlagen, sofern sie nicht gerade
+  den Bogen benutzen?
+
+- Salomon soll alte Angreifer angreifen
+
+- .lag erreicht Spectator nicht
+
+- Reisebuero
+  - Peking, Karibik-Rundreise, Fahrradtour, Flug nach New York
+
+- Zeilenumbruch Letterbox
+
+- von pkg/skills/tierzucht/placeitemtierzucht.src auf
+  placedeed.src/unideed.src umstellen
+  - Spieler koennen den Kram allein wieder abreissen
+
+- .grab hob hidden nicht auf -- mal weitere Textcmds darauf abklopfen
+
+- magische Artefakte überarbeiten
+  - statt "wenn altes Item so, wenn neues Item so"
+    Konvertierscript oder killen der alten Items
+  - generell Code aufräumen
+
+- Hanf/Wasserpfeife rauchbar
+  - modifizierte Pakete an Client, die Farbe/Form benachbarter
+    Items/Mobiles ändern
+
+- Triffids (wandelnde Pflanzen)
+
+- Tor-/Teleportcode gründlich überarbeiten
+  - Moongates mal mit gemeinsamen Configfile ausstatten
+  - Codeduplikate aus uni_script entfernen
+
+- Bug: magische Gelbgruen-Fische hinterlassen teilweise permanente
+  STR/DEX-Aenderungen (angeblich bei Fritze Matten)
+  - eventuell gleich umbauen, damit sie normale Magiescripte aufrufen?
+
+- Multi-Plazierung unter statischen Haeusern automatisieren
+
+- Testphase/Freischaltung von Bootsbau
+
+- herausfinden, welche Items zum Kochen herstellbar gemacht werden müssen
+  Item (? = braucht man das)                    Status
+  0x0a1e Mehlschuessel (mit Nudelholz)?         nicht eingebaut
+  0x10e9 grosser Loeffel?                       nicht eingebaut
+
+- gucken, warum beim Einloggen das Status-Gump herumspringt, wenn man in
+  einer Party ist
+  - mit neuem Partykram noch aktuell?
+
+- editcprops sollte das Erstellen neuer Structs zulassen
+
+- bei Schuppenbastelei mit Murphy folgendes beachten:
+  - ItemDesc-Eintrag
+  - in pkg/opt/crafting/materials.cfg Qualitaet etc. festlegen
+  - beim Ledern den Array mit den Schuppen ergänzen
+  - Schuppen kommen dann in die nlootgroup.cfg
+
+
+Gross und eher unwichtig:
+=========================
+
+- Bootsbauskill
+  - statt ewigem Hämmern, wenn man das Material hat, vielleicht lieber
+    Boot auf freiem Platz aufbauen
+    - rundherum sollte mindestens ein Feld frei sein, damit nichts
+      blockiert wird/werden kann
+    - vielleicht bei mangeldem Platz per VisualizeRange Grundfläche des
+      Schiffes anzeigen und Problemstellen per Zusatzeffekt hervorheben
+  - wie bei Createmulti einzelne Items auslesen, aus denen Multi besteht
+  - wie bei Kompost Platz auf geeignete Größe checken
+  - per Configfile pro Item benötigtes Material von Player einziehen
+  - Player entweder gezielte an passende Stelle teleporten oder irgendwie
+    anzeigen, wo er gerade hinlaufen muß
+  - auf diese Art Schritt für Schritt das Boot bauen
+  - eventuell einbauen, daß man einen NPC als Steuermann anheuern muß
+  - wenn fertig, wird Besitzurkunde erzeugt und die Items werden wieder
+    gekillt
+  - Vorteile
+    - man kann das Boot über mehrere Tage bauen (gut für Spieler mit
+      nicht so viel Zeit)
+    - mehrere kleinere Skillanstiege/Skillchecks, daher Training leichter
+  - Nachteile
+    - eventuell verschandeln dann viele angefangene Boote Pergon
+      - nur in Küstennähe erlauben?
+      - bei Inaktivwerden des Accounts das angefangene Boot löschen?
+
+- Paketdienst implementieren
+  - bei jeder Bank steht ein Postbeamter, der Items/Container annimmt
+    - Auswahl eines Empfängers wie bei .msg (muß also online sein)
+    - Kassieren von Gold abhängig von Warenwert und Gewicht
+      - Jhe'lomer zahlen nichts oder nur einen Bruchteil
+  - sobald mindestens ein Paket wartet, wird der nächste (leere) gelbe
+    Postdrache gerufen (registrieren in globaler Prop?)
+    - gibt es gar keinen Postdrachen, wird einer erzeugt
+    - weitere Drachen kann man Staff nach Bedarf erstellen
+  - ist der Drache angekommen, werden alle Pakete hineingepackt
+  - je nach Gewicht fliegt der mehr oder minder schnell
+  - das dichteste Ziel aufsuchen
+    - Position aller Empfänger suchen
+    - Distanz zu den Postbeamten ermitteln (weitere globale Prop aller
+      Beamter?)
+    - dichtester Beamter, der für einen Empfänger zuständig ist, wird
+      zuerst angeflogen
+  - am Ziel gibt er Paket an Beamten und schickt eine msg/letterbox
+    an den Empfänger, daß er sein Paket holen kann
+    - per Textcmd wird es herausgegeben
+  - solange weitermachen, bis alle Pakete verteilt sind
+  - an letzter Poststation ausruhen (feste Koordinaten am Postbeamten
+    festlegen, die der Drache aufsuchen kann und wo er nicht im Weg ist)
+    - bei Beamtenerstellung per Kommando festlegen
+  - nicht abgeholte Post wird vom Postbeamten nach einem Monat entweder
+    ins Fundbüro gelegt (für Versteigerungen)
+    - eventuell Sachen aus jhe'lom-tauglichen Materialien aussortieren
+      und kostenlos in eine Kiste auf Jhe'lom packen, wo sich jeder
+      Newbie bedienen darf (Beschränkung auf x Items pro Tag und Newbie?)
+  - zusaetzlich zum mehrfachen Preis "Blitzlieferung"
+    - Blitzeffekt bei Empfänger abspielen und Paket ins Backpack legen
+      - bei vollem Backpack auf den Boden
+    - falls offline, Blitzeffekt bei entsprechendem Postbeamten und
+      Paket dort ablegen (also Drachen ueberspringen)
+
+- Samengraphik und Farbe bei Wildniskunde aus Ackerbau ziehen
+  - entweder Konfigfile camping.cfg anpassen
+  - oder vielleicht besser: statt Grafik/Farbe im Cfgfile einzutragen,
+    Objtypes notieren und Werte per GetItemDescriptor holen
+  - alternativ: Pfeilgrafik oder dergleichen zum Anzeigen des Fundorts
+
+- Containerkapazitäten prüfen und ggf. überarbeiten
+
+- NPC-Movemodes überarbeiten
+
+
+Kleinkram, der schnell gemacht sein sollte:
+===========================================
+
+- Bootsbau
+  - Schiffbarkeitsrestriktionen ueberpruefen
+    - Feindesland und Inseln komplett abgedeckt?
+    - speziell Jhe'lom verbieten
+
+- Sichel/Sense einbauen
+  - erntet automatisch nacheinander alle Ackerbaupflanzen
+    auf und um das Feld mit dem Spieler ab (UseItem auf die Pflanzen)
+  - Sichelsound SFX_57
+    - Erntescript so aendern, dass bei Sichel/Sense in Hand Sichelsound
+      kommt, sonst Rupfsound
+
+- Klo für den Zoo (wenn man sich davorstellt, wird man passend gedreht und
+  hingesetzt, Hose ausgezogen; dann folgen passende Geräusche; sobald man
+  geht, wird gespült und wieder angezogen)
+
+- mehr Bilder bei Malerei (crafting) einbauen
+  - 0x2d6f - 0x2d74, 0xec8 - 0xec9, (0x2ff2 - 0x2ff3)
+
+- losgemachte Dartscheiben sollten auf Wurfentfernung/Schwierigkeitsgrad
+  konfigurierbar sein
+
+- generalisierte Routinen für Objekt-an-Containerposition-Erzeugung beim
+  Wasserfinden
+
+- Ambientsteinen ein Config-Gump (vorauswahl aus Config-Datei?) verpassen
+
+- Kochen zum Brauen weiterbauen
+
+- Feuerstein anders Faerben als Mischholzsamen
+
+- Tooltips bei bestimmten Items ergänzen/ändern
+  - Zustands-Tooltip für Huete
+  - herstellbare Statuen (Sandstein, Granit, Marmor) haben kein Tooltip
+
+- prüfen, ob Ersetzung von
+  "Oh je, Eure magischen Fähigkeiten sind noch nicht ausreichend"
+  durch
+  "Euch misslingt die Herstellung von Brokat"
+  sinnvoll ist
+
+
+Unkritisch, nebenbei zu erledigen:
+==================================
+
+- nicht stackbare Sachen ermitteln
+    - Teppichstücken (0xab3 und Umgebung)
+    - Pflanzen bei der Wildniskunde (siehe itemdesc im Paket)
+    - Schlösser sowie Schlüsselrohlinge (rostiger Schlüssel etc.)
+    - unmarkierte Runen
+
+- Teller (0x09af, 0x09d7, 0x0a19) zum Container erklären
+
+- überall wo sinnvoll das Foreach EnumerateItemsInContainer() durch
+  FindSubstance ersetzen (wie zB in alchemie) Core kann spezielle
+  Suche schneller erledigen und man bekommt keine Runaways
+
+- bei Magie Aufruf der Spells Parameterübergabe beim Aufruf von
+  inkonsistent aufgebauten Arrays auf einheitliche Structs umstellen
+
+# vim: sts=2 sw=2 tw=75

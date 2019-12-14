@@ -1,0 +1,150 @@
+/////////////////////////////////////////////////////////////////////
+//
+//   Weather - System
+//
+//     based on DayNight Pkg (1999/06/02)
+//       Author: Racalac
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     1999/06/02 Rac: Day/Night transitions for one time zone only
+//     2000/04/23 Raxxla: Played around with a little bit
+//     2000/05/28 Shinigami: Complete ReWrite
+//
+/////////////////////////////////////////////////////////////////////
+
+//////////////
+// Libraries
+//////////////
+
+Use uo;
+Use os;
+Use util;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonutil";
+Include "include/msgs";
+Include "include/place";
+Include "daymoonweather";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program WeatherSystem()
+  BroadcastPergon("Wetter-System wird aktiviert...", "Weather-cycle activated...");
+  SysLog("Wetter-System wird aktiviert...");
+
+  //Set_Critical/(1);
+
+  Var actweather:=CheckGlobalProperty("PresentWeather");
+  If (actweather==-1)
+    actweather:=0;
+    SetGlobalProperty("PresentWeather", actweather);
+  EndIf
+  SetWeather(actweather);
+
+  While (1)
+    Var prob:=RandomInt(4);
+    Case (GetGlobalProperty("Season"))
+      0: prob-=1; // Sommer
+      2: prob+=1; // Winter
+    EndCase
+
+    Var pweather:=GetGlobalProperty("PresentWeather");
+    If (prob<=1)
+      If (pweather>0)
+        pweather-=1;
+      EndIf
+    EndIf
+
+    If (prob<>2)
+      If (prob>=3)
+        If (pweather<4)
+          pweather+=1;
+        EndIf
+      EndIf
+
+      If (GetGlobalProperty("PresentWeather")<>pweather)
+        Var waiting:=6;
+
+        SetGlobalProperty("PresentWeather", -1);
+        While ((GetGlobalProperty("PresentWeather")==-1) And (waiting))
+          waiting-=1;
+          Sleep(5);
+        EndWhile
+
+        SetGlobalProperty("PresentWeather", pweather);
+        SetWeather(pweather);
+      EndIf
+    EndIf
+
+    Sleep(RandomInt(60)*120);
+  EndWhile
+EndProgram
+
+//////////////////////////////////
+// SetWeather - Setzt das Wetter
+//////////////////////////////////
+
+Function SetWeather(pweather)
+  Case (pweather)
+    0: SetSunny();
+    1: SetOvercast();
+    2: SetCloudy();
+    3: SetRain();
+    4: SetThunder();
+  EndCase
+EndFunction
+
+/////////////////////////////////////////////
+// SetSunny - Kein Woelkchen weit und breit
+/////////////////////////////////////////////
+
+Function SetSunny()
+  BroadcastPergon("ii tenki ga tsuzukimasu...", "");//"Kein Wölkchen weit und breit...", "No cloud far and wide...");
+  SetWeatherLight(0);
+EndFunction
+
+/////////////////////////////////////////
+// SetOvercast - Der Himmel ist bedeckt
+/////////////////////////////////////////
+
+Function SetOvercast()
+  BroadcastPergon("sora ga kumotte imasu...", "");//"Der Himmel ist bedeckt...", "The sky is overclouded...");
+  SetWeatherLight(3);
+EndFunction
+
+//////////////////////////////////////////////////////////////
+// SetCloudy - Dunkle Wolken am Himmel, aber es regnet nicht
+//////////////////////////////////////////////////////////////
+
+Function SetCloudy()
+  BroadcastPergon("ii warui ni narimasu...", "");//"Dunkle Wolken am Himmel...", "Dark clouds at the sky...");
+  SetWeatherLight(6);
+EndFunction
+
+///////////////////////////////////////////////
+// SetRain - Ein gewaltiger Schauer setzt ein
+///////////////////////////////////////////////
+
+Function SetRain()
+  BroadcastPergon("ame ga furiso desu...", "");//""Ein gewaltiger Schauer setzt ein...", "A hard shower begins...");
+  SetWeatherLight(9);
+  Start_ScriptPergon("snowrain", 1);
+EndFunction
+
+///////////////////////////////////////////////
+// SetThunder - Ein Sturm ueberzieht das Land
+///////////////////////////////////////////////
+
+Function SetThunder()
+  BroadcastPergon("arashi desu...", "");//""Ein Sturm überzieht das Land...", "A storm comes up...");
+  SetWeatherLight(9);
+  Start_ScriptPergon("snowrain", 2);
+  Start_ScriptPergon("lightning");
+EndFunction

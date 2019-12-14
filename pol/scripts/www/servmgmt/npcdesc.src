@@ -1,0 +1,610 @@
+/////////////////////////////////////////////////////////
+// npcdesc - Listet NPCs auf
+//
+// Author: Turley
+
+use cfgfile;
+use http;
+use os;
+use uo;
+include "header";
+include "include/modifyskill";
+
+var chr22 := CChr(0x22); // "
+var chr5C := CChr(0x5C); // \
+
+Program HTMLPage()
+  var data;
+  DoHeader(
+    "NPC Templates",
+    "<link href='npc.norm.css' title='Standard' "+
+    "rel='stylesheet' type='text/css'> "+
+    "<link href='main.css' title='Alles' "+
+    "rel='alternate stylesheet' type='text/css'>"+
+    "<link href='npc.tame.css' title='Zucht' "+
+    "rel='alternate stylesheet' type='text/css'>"+
+    "<link href='npc.fight.css' title='Kampf' "+
+    "rel='alternate stylesheet' type='text/css'>"+
+    "<link href='npc.script.css' title='Scripter' "+
+    "rel='alternate stylesheet' type='text/css'>"
+  );
+  WriteHTML("<div id='container'>");
+  WriteHTML("<div id='header'></div>");
+  WriteHTML("<div id='content'>");
+  TableHeader("NPC Templates");
+
+  DenyAccess(isALLOWED);
+
+  data := ReadNPCDesc();
+
+  WriteHTML("<br>");
+  ShowNPCs(data);
+
+  DoFooter();
+EndProgram
+
+Function ReadNPCDesc()
+  var npcdesc   := ReadConfigFile(":*:npcdesc");
+  var lootgroup := ReadConfigFile("::nlootgroup");
+  var data      := {};
+  var entryorg  := struct{
+    template       := "",
+    name           := "",
+    script         := "",
+    objtype        := 0,
+    str            := 0,
+    int            := 0,
+    dex            := 0,
+    hits           := 0,
+    mana           := 0,
+    stam           := 0,
+    attackspeed    := 0,
+    attackdmg      := 0,
+    ar             := 0,
+    spells         := {},
+    castdelay      := 0,
+    sounds         := {},
+    lootgoup       := "",
+    loot           := {},
+    zaehmskill     := 0,
+    abrichtskill   := 0,
+    tierzuchtskill := 0,
+    provo          := 0
+  };
+  var entry;
+  ForEach template in GetConfigStringKeys(npcdesc)
+    entry             := entryorg;
+    entry.template    := template;
+    entry.name        := EscapeHTML(npcdesc[template].name);
+    entry.script      := npcdesc[template].script;
+    entry.objtype     := Hex(npcdesc[template].objtype);
+    entry.str         := npcdesc[template].STR;
+    entry.int         := npcdesc[template].INT;
+    entry.dex         := npcdesc[template].DEX;
+    entry.hits        := npcdesc[template].HITS;
+    entry.mana        := npcdesc[template].MANA;
+    entry.stam        := npcdesc[template].STAM;
+    entry.attackspeed := npcdesc[template].AttackSpeed;
+    entry.attackdmg   := npcdesc[template].AttackDamage;
+    entry.ar          := npcdesc[template].AR;
+    If (TypeOfInt(entry.ar) == OT_UNINIT)
+      entry.ar := "";
+    EndIf
+    entry.spells    := GetConfigStringArray(npcdesc[template], "spell");
+    entry.castdelay := npcdesc[template].castdelay;
+    If (TypeOfInt(entry.castdelay) == OT_UNINIT)
+      entry.castdelay := "";
+    EndIf
+    entry.skills := FindSkills(npcdesc[template]);
+    If (npcdesc[template].AttackHitSound)
+      entry.sounds.append("AtkHit "+Hex(npcdesc[template].AttackHitSound));
+    EndIf
+    If (npcdesc[template].AttackMissSound)
+      entry.sounds.append("AtkMiss "+Hex(npcdesc[template].AttackMissSound));
+    EndIf
+    If (npcdesc[template].angersound)
+      entry.sounds.append("Anger "+Hex(npcdesc[template].angersound));
+    EndIf
+    If (npcdesc[template].idlesound)
+      entry.sounds.append("Idle "+Hex(npcdesc[template].idlesound));
+    EndIf
+    If (npcdesc[template].deathsound)
+      entry.sounds.append("Death "+Hex(npcdesc[template].deathsound));
+    EndIf
+    entry.lootgroup := npcdesc[template].lootgroup;
+    If (TypeOfInt(entry.lootgroup) == OT_UNINIT)
+      entry.lootgroup := "";
+    Else
+      If (lootgroup[entry.lootgroup])
+        ForEach loot in (GetConfigStringArray(lootgroup[entry.lootgroup], "Stack"))
+          entry.loot.append("Stack "+loot);
+        EndForEach
+        ForEach loot in (GetConfigStringArray(lootgroup[entry.lootgroup], "Random"))
+          entry.loot.append("Random "+loot);
+        EndForEach
+        ForEach loot in (GetConfigStringArray(lootgroup[entry.lootgroup], "Item"))
+          entry.loot.append("Item "+loot);
+        EndForEach
+        ForEach loot in (GetConfigStringArray(lootgroup[entry.lootgroup], "Unique"))
+          entry.loot.append("Unique "+loot);
+        EndForEach
+      EndIf
+    EndIf
+    entry.zaehmskill := npcdesc[template].zaehmskill;
+    If (TypeOfInt(entry.zaehmskill) == OT_UNINIT)
+      entry.zaehmskill := "";
+    EndIf
+    entry.abrichtskill := npcdesc[template].abrichtskill;
+    If (TypeOfInt(entry.abrichtskill) == OT_UNINIT)
+      entry.abrichtskill := "";
+    EndIf
+    entry.tierzuchtskill := npcdesc[template].tierzuchtskill;
+    If (TypeOfInt(entry.tierzuchtskill) == OT_UNINIT)
+      entry.tierzuchtskill := "";
+    EndIf
+    entry.provo:=npcdesc[template].provoke;
+    If (TypeOfInt(entry.provo) == OT_UNINIT)
+      entry.provo := "";
+    EndIf
+
+    data.append(entry);
+    SleepMS(2);
+  EndForEach
+  return data;
+EndFunction
+
+Function FindSkills(entry)
+  var skills := {};
+  var names  := GetSkillsSorted();
+  ForEach skill in names
+    SleepMS(2);
+    If (GetConfigInt(entry, skill))
+      skills.append(GetSkillInfo(skill).TrainName+" "+GetConfigInt(entry,skill));
+    EndIf
+  EndForEach
+  return skills;
+EndFunction
+
+Function ShowNPCs(byref data)
+  WriteHtml("<div id="+chr22+"TabellenToggle"+chr22+"></div>");
+  WriteHtml("<div id="+chr22+"NPCTabelle"+chr22+"></div>");
+  WriteHtml("<script type="+chr22+"text/javascript"+chr22+">");
+  WriteHtml("<!--");
+  WriteHtml("var Tabellendaten = new Array(");
+  var i:=1;
+  ForEach value in data
+    WriteHtmlRaw("Array(");
+    WriteHtmlRaw(chr22+value.template+chr22+","
+                +chr22+value.name+chr22+","
+                +chr22+value.script+chr22+","
+                +chr22+value.objtype+chr22+","
+                +chr22+value.str+chr22+","
+                +chr22+value.int+chr22+","
+                +chr22+value.dex+chr22+","
+                +chr22+value.hits+chr22+","
+                +chr22+value.mana+chr22+","
+                +chr22+value.stam+chr22+","
+                +chr22+value.attackspeed+chr22+","
+                +chr22+value.attackdmg+chr22+","
+                +chr22+value.ar+chr22+",");
+    WriteHtmlRaw(chr22);
+    ForEach elem in (value.spells)
+      WriteHtmlRaw(elem);
+      If (_elem_iter<value.spells.size())
+        WriteHtmlRaw("<br>");
+      EndIf
+    EndForEach
+    WriteHtmlRaw(chr22+",");
+    WriteHtmlRaw(chr22+value.castdelay+chr22+",");
+    WriteHtmlRaw(chr22);
+    ForEach elem in (value.skills)
+      WriteHtmlRaw(elem);
+      If (_elem_iter<value.skills.size())
+        WriteHtmlRaw("<br>");
+      EndIf
+    EndForEach
+    WriteHtmlRaw(chr22+",");
+    WriteHtmlRaw(chr22);
+    ForEach elem in (value.sounds)
+      WriteHtmlRaw(elem);
+      If (_elem_iter<value.sounds.size())
+        WriteHtmlRaw("<br>");
+      EndIf
+    EndForEach
+    WriteHtmlRaw(chr22+",");
+    WriteHtmlRaw(chr22+value.lootgroup+chr22+",");
+    WriteHtmlRaw(chr22);
+    ForEach elem in (value.loot)
+      WriteHtmlRaw(elem);
+      If (_elem_iter<value.loot.size())
+        WriteHtmlRaw("<br>");
+      EndIf
+    EndForEach
+    WriteHtmlRaw(chr22+",");
+    WriteHtmlRaw(chr22+value.zaehmskill+chr22+",");
+    WriteHtmlRaw(chr22+value.abrichtskill+chr22+",");
+    WriteHtmlRaw(chr22+value.tierzuchtskill+chr22+",");
+    WriteHtmlRaw(chr22+value.provo+chr22);
+    WriteHtmlRaw(")");
+    If (i<data.size())
+      WriteHtml(",");
+    EndIf
+    i+=1;
+    SleepMS(2);
+  EndForEach
+  WriteHtml(");");
+
+  WriteHtml("var sortierte_Tabellendaten = new Array(Tabellendaten.length);");
+
+  WriteHtml("var Spaltenueberschriften = new Array(");
+  WriteHtml(""+chr22+"Template"+chr22+",");
+  WriteHtml(""+chr22+"Name"+chr22+",");
+  WriteHtml(""+chr22+"Script"+chr22+",");
+  WriteHtml(""+chr22+"ObjType"+chr22+",");
+  WriteHtml(""+chr22+"Str"+chr22+",");
+  WriteHtml(""+chr22+"Int"+chr22+",");
+  WriteHtml(""+chr22+"Dex"+chr22+",");
+  WriteHtml(""+chr22+"Hits"+chr22+",");
+  WriteHtml(""+chr22+"Mana"+chr22+",");
+  WriteHtml(""+chr22+"Stam"+chr22+",");
+  WriteHtml(""+chr22+"AtkSpeed"+chr22+",");
+  WriteHtml(""+chr22+"AtkDmg"+chr22+",");
+  WriteHtml(""+chr22+"AR"+chr22+",");
+  WriteHtml(""+chr22+"Spells"+chr22+",");
+  WriteHtml(""+chr22+"CastDelay"+chr22+",");
+  WriteHtml(""+chr22+"Skills"+chr22+",");
+  WriteHtml(""+chr22+"Sounds"+chr22+",");
+  WriteHtml(""+chr22+"LootGroup"+chr22+",");
+  WriteHtml(""+chr22+"Loot"+chr22+",");
+  WriteHtml(""+chr22+"Z&auml;hmen"+chr22+",");
+  WriteHtml(""+chr22+"Abrichten"+chr22+",");
+  WriteHtml(""+chr22+"Tierzucht"+chr22+",");
+  WriteHtml(""+chr22+"Provo"+chr22);
+  WriteHtml(");");
+
+  WriteHtml("var Spalten = Spaltenueberschriften.length;");
+
+  WriteHtml("var Spaltensortierungen = new Array(");
+  WriteHtml(chr22+"alphabetisch"+chr22+","
+            +chr22+"alphabetisch"+chr22+","
+            +chr22+"alphabetisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"alphabetisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"alphabetisch"+chr22+","
+            +chr22+"alphabetisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"alphabetisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"numerisch"+chr22+","
+            +chr22+"numerisch"+chr22
+           );
+  WriteHtml(");");
+
+  WriteHtml("var Spaltentoggle = new Array(Spaltensortierungen.length);");
+  WriteHtml("for (var i = 0; i < Spaltentoggle.length; i++) {");
+  WriteHtml("  Spaltentoggle[i]=1;");
+  WriteHtml("}");
+  WriteHtml("Spaltentoggle[7]=0;");  //Hits
+  WriteHtml("Spaltentoggle[8]=0;");  //Mana
+  WriteHtml("Spaltentoggle[9]=0;");  //Stam
+  WriteHtml("Spaltentoggle[10]=0;"); //AttackSpeed
+  WriteHtml("Spaltentoggle[14]=0;"); //CastDelay
+  WriteHtml("Spaltentoggle[15]=0;"); //Skills
+  WriteHtml("Spaltentoggle[16]=0;"); //Sounds
+  WriteHtml("Spaltentoggle[17]=0;"); //Lootgroup
+  WriteHtml("Spaltentoggle[18]=0;"); //Loot
+  WriteHtml("Spaltentoggle[19]=0;"); //Zähmen
+  WriteHtml("Spaltentoggle[20]=0;"); //Abrichten
+  WriteHtml("Spaltentoggle[21]=0;"); //Tierzucht
+  WriteHtml("Spaltentoggle[22]=0;"); //Provozieren
+
+  WriteHtml("var Sortierzeile = "+chr22+""+chr22+";");
+
+  WriteHtml("function Erzeuge_Sortierzeile(Nummer,Richtung) {");
+  WriteHtml("  Sortierzeile = "+chr22+"<tr>"+chr22+";");
+  WriteHtml("  for(var j = 0; j < Spalten; ++j) {");
+  WriteHtml("    Sortierzeile += "+chr22+"<th class='NPCSort'>"+chr22+";");
+  WriteHtml("    if(Richtung == "+chr22+"aufsteigend"+chr22+" && j == Nummer) {");
+  WriteHtml("      Sortierzeile += "+chr22+"auf "+chr22+";");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','absteigend')"+chr5C+""+chr22+">ab</a>"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    else if(Richtung == "+chr22+"absteigend"+chr22+" && j == Nummer) {");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','aufsteigend')"+chr5C+""+chr22+">auf</a>"+chr22+";");
+  WriteHtml("      Sortierzeile += "+chr22+" ab"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    else {");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','aufsteigend')"+chr5C+""+chr22+">auf</a> "+chr22+";");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','absteigend')"+chr5C+""+chr22+">ab</a><"+chr5C+"/td>"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    Sortierzeile += "+chr22+"<"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  }");
+  WriteHtml("  Sortierzeile += "+chr22+"</tr>"+chr22+";");
+  WriteHtml("}");
+
+  WriteHtml("function Sortiere_nach_Spalte(Nummer,Art,Richtung) {");
+  WriteHtml("  sortierte_Tabellendaten=Tabellendaten;");
+  WriteHtml("  sortierte_Tabellendaten.sort(cmpWrapper(Nummer,Art,Richtung));");
+  WriteHtml("  Erzeuge_Sortierzeile(Nummer,Richtung);");
+  WriteHtml("  Schreibe_TabelleScript(sortierte_Tabellendaten);");
+  WriteHtml("  for (var i = 0; i < Spaltentoggle.length; i++) {");
+  WriteHtml("    if (Spaltentoggle[i]==0)");
+  WriteHtml("      toggleRow(i);");
+  WriteHtml("  }");
+  WriteHtml("}");
+
+  WriteHtml("function Schreibe_TabelleScript(Array) {");
+  WriteHtml("  var Tabelleninhalt = "+chr22+""+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<table id='npctab' WIDTH='100%' CELLSPACING='1' CELLPADDING='2'>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<thead>"+chr22+";");
+  WriteHtml("  for(var j = 0; j < Spalten; ++j)");
+  WriteHtml("    Tabelleninhalt += "+chr22+"<th><B>"+chr22+" + Spaltenueberschriften[j] + "+chr22+"</B><"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/tr>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += Sortierzeile;");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/thead>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<tbody>"+chr22+";");
+
+  WriteHtml("  for(var i = 0; i < Array.length; ++i) {");
+  WriteHtml("    Tabelleninhalt += "+chr22+"<tr>"+chr22+";");
+  WriteHtml("    for(var j = 0; j < Array[i].length; ++j)");
+  WriteHtml("      Tabelleninhalt += "+chr22+"<td class='NPCTabelle' nowrap>"+chr22+" + Array[i][j] + "+chr22+"<"+chr5C+"/td>"+chr22+";");
+  WriteHtml("    Tabelleninhalt += "+chr22+"<"+chr5C+"/tr>"+chr22+";");
+  WriteHtml("  }");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/tbody>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/table>"+chr22+";");
+  WriteHtml("  if(document.getElementById)");
+  WriteHtml("    document.getElementById("+chr22+"NPCTabelle"+chr22+").innerHTML = Tabelleninhalt;");
+  WriteHtml("  else if(document.all)");
+  WriteHtml("    document.all.NPCTabelle.innerHTML = Tabelleninhalt;");
+  WriteHtml("  else if(document.layers) {");
+  WriteHtml("    document.NPCTabelle.document.open();");
+  WriteHtml("    document.NPCTabelle.document.write(Tabelleninhalt);");
+  WriteHtml("    document.NPCTabelle.document.close();");
+  WriteHtml("  }");
+  WriteHtml("}");
+
+  WriteHtml("function Schreibe_ToggleTable()");
+  WriteHtml("{");
+  WriteHtml("  var Tabelleninhalt = "+chr22+""+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<table id='tabtoggle' WIDTH='100%' CELLSPACING='1' CELLPADDING='2'>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<thead>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<tr>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<th class='TabToggle' COLSPAN='12' ALIGN='LEFT'><a href="+chr5C+""+chr22+"javascript:toggleAll(1)"+chr5C+""+chr22+">Alle Ausklappen</a><"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<th class='TabToggle' COLSPAN='11' ALIGN='LEFT'><a href="+chr5C+""+chr22+"javascript:toggleAll(0)"+chr5C+""+chr22+">Alle Einklappen</a><"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"</tr>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<tr>"+chr22+";");
+  WriteHtml("  for(var j = 0; j < Spalten; ++j)");
+  WriteHtml("    Tabelleninhalt += "+chr22+"<th class='TabToggle'><a href="+chr5C+""+chr22+"javascript:toggleRow("+chr22+" + (j)+"+chr22+")"+chr5C+""+chr22+">"+chr22+"+Spaltenueberschriften[j] + "+chr22+"</a><"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/tr>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/thead>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/table>"+chr22+";");
+  WriteHtml("  if(document.getElementById)");
+  WriteHtml("    document.getElementById("+chr22+"TabellenToggle"+chr22+").innerHTML = Tabelleninhalt;");
+  WriteHtml("  else if(document.all)");
+  WriteHtml("    document.all.TabellenToggle.innerHTML = Tabelleninhalt;");
+  WriteHtml("  else if(document.layers) {");
+  WriteHtml("    document.TabellenToggle.document.open();");
+  WriteHtml("    document.TabellenToggle.document.write(Tabelleninhalt);");
+  WriteHtml("    document.TabellenToggle.document.close();");
+  WriteHtml("  }");
+  WriteHtml("}");
+
+  WriteHtml("function Numsort(a,b)");
+  WriteHtml("{");
+  WriteHtml(" if (a.substring(0,2)=="+chr22+"0x"+chr22+") {");
+  WriteHtml("   a=a.substr(2);");
+  WriteHtml("   a=parseInt(a,16);");
+  WriteHtml(" }");
+  WriteHtml(" if (b.substring(0,2)=="+chr22+"0x"+chr22+") {");
+  WriteHtml("   b=b.substr(2);");
+  WriteHtml("   b=parseInt(b,16);");
+  WriteHtml(" }");
+  WriteHtml(" return a-b;");
+  WriteHtml("}");
+
+  WriteHtml("function cmpWrapper(i,Art,Richtung)");
+  WriteHtml("{");
+  WriteHtml("  return function(a, b) {");
+  WriteHtml("    if (a[i] == b[i])");
+  WriteHtml("      return 0;");
+  WriteHtml("    else {");
+  WriteHtml("      var a2 = [a[i], b[i]];");
+  WriteHtml("      if (Art=="+chr22+"alphabetisch"+chr22+") {");
+  WriteHtml("        a2[0]=a2[0].toLowerCase();");
+  WriteHtml("        a2[1]=a2[1].toLowerCase();");
+  WriteHtml("        a2.sort();");
+  WriteHtml("      }");
+  WriteHtml("      else");
+  WriteHtml("        a2.sort(Numsort);");
+  WriteHtml("      if (Richtung=="+chr22+"aufsteigend"+chr22+")");
+  WriteHtml("        a2.reverse();");
+  WriteHtml("      if (a2[0].toLowerCase() == a[i].toLowerCase())");
+  WriteHtml("        return 1;");
+  WriteHtml("      else");
+  WriteHtml("        return -1;");
+  WriteHtml("    }");
+  WriteHtml("  };");
+  WriteHtml("} ");
+
+  WriteHtml("function toggleRow(iNumber) {");
+  WriteHtml("  var TABLE = document.getElementById('npctab');");
+  WriteHtml("  var tbody = TABLE.getElementsByTagName('tbody')[0];");
+  WriteHtml("  var thead = TABLE.getElementsByTagName('thead')[0];");
+  WriteHtml("  var theadtr = thead.getElementsByTagName('tr');");
+  WriteHtml("  for(var i=0;i<theadtr.length;i++) {");
+  WriteHtml("    var TH = theadtr[i].getElementsByTagName('th')[iNumber];");
+  WriteHtml("    if(TH.style.display == 'none') {");
+  WriteHtml("      TH.style.display = '';");
+  WriteHtml("      var tog = document.getElementById('TabellenToggle');");
+  WriteHtml("      var togTH = tog.getElementsByTagName('th')[iNumber+2];");
+  WriteHtml("      togTH.style.backgroundColor = '#D9E5EC';");
+  WriteHtml("      Spaltentoggle[iNumber]=1;");
+  WriteHtml("    }");
+  WriteHtml("    else {");
+  WriteHtml("      TH.style.display = 'none';");
+  WriteHtml("      var tog = document.getElementById('TabellenToggle');");
+  WriteHtml("      var togTH = tog.getElementsByTagName('th')[iNumber+2];");
+  WriteHtml("      togTH.style.backgroundColor = '#F1F1F1';");
+  WriteHtml("      Spaltentoggle[iNumber]=0;");
+  WriteHtml("    }");
+  WriteHtml("  }");
+  
+  WriteHtml("  var TRs = tbody.getElementsByTagName('tr');");
+  WriteHtml("  for(var i=0;i<TRs.length;i++) {");
+  WriteHtml("    var TD = TRs[i].getElementsByTagName('td')[iNumber];");
+  WriteHtml("    if(TD.style.display == 'none') TD.style.display = '';");
+  WriteHtml("    else TD.style.display = 'none';");
+  WriteHtml("  }");
+  WriteHtml("}");
+
+  WriteHtml("function toggleAll(iNumber) {");
+  WriteHtml("  var TABLE = document.getElementById('npctab');");
+  WriteHtml("  var tbody = TABLE.getElementsByTagName('tbody')[0];");
+  WriteHtml("  var thead = TABLE.getElementsByTagName('thead')[0];");
+  WriteHtml("  var theadtr = thead.getElementsByTagName('tr');");
+  WriteHtml("  for(var i=0;i<theadtr.length;i++) {");
+  WriteHtml("    var THs = theadtr[i].getElementsByTagName('th')");
+  WriteHtml("    for(var j=1;j<THs.length;j++) {");
+  WriteHtml("      if(iNumber == 1)");
+  WriteHtml("        THs[j].style.display = '';");
+  WriteHtml("      else");
+  WriteHtml("        THs[j].style.display = 'none';");
+  WriteHtml("    }");
+  WriteHtml("  }");
+  
+  WriteHtml("  var TRs = tbody.getElementsByTagName('tr');");
+  WriteHtml("  for(var i=0;i<TRs.length;i++) {");
+  WriteHtml("    var TDs = TRs[i].getElementsByTagName('td');");
+  WriteHtml("    for(var j=1;j<TDs.length;j++) {");
+  WriteHtml("      if(iNumber == 1)");
+  WriteHtml("        TDs[j].style.display = '';");
+  WriteHtml("      else");
+  WriteHtml("        TDs[j].style.display = 'none';");
+  WriteHtml("    }");
+  WriteHtml("  }");
+ 
+
+  WriteHtml("  var tog = document.getElementById('TabellenToggle');");
+  WriteHtml("  var togTH = tog.getElementsByTagName('th');");
+  WriteHtml("  togTH[2].style.backgroundColor = '#D9E5EC';");
+  WriteHtml("  Spaltentoggle[0]=1;");
+  WriteHtml("  for(var i=3;i<togTH.length;i++) {");
+  WriteHtml("    if(iNumber==1) {");
+  WriteHtml("      togTH[i].style.backgroundColor = '#D9E5EC';");
+  WriteHtml("      Spaltentoggle[i-2]=1;");
+  WriteHtml("    }");
+  WriteHtml("    else {");
+  WriteHtml("      togTH[i].style.backgroundColor = '#F1F1F1';");
+  WriteHtml("      Spaltentoggle[i-2]=0;");
+  WriteHtml("    }");
+  WriteHtml("  }");
+  WriteHtml("}");
+
+  WriteHtml("Schreibe_ToggleTable();");
+  WriteHtml("Sortiere_nach_Spalte(0,Spaltensortierungen[0],'aufsteigend');");
+  WriteHtml("//-->");
+
+  WriteHtml("</script>");
+
+  WriteHtml("<noscript>");
+  WriteHtml("<table class='dense'>");
+  WriteHtml("<tr>");
+  WriteHtml("<th class='base'>Template</th>");
+  WriteHtml("<th class='base'>Name</th>");
+  WriteHtml("<th class='misc'>Script</th>");
+  WriteHtml("<th class='misc'>ObjType</th>");
+  WriteHtml("<th class='stat'>Str</th>");
+  WriteHtml("<th class='stat'>Int</th>");
+  WriteHtml("<th class='stat'>Dex</th>");
+  WriteHtml("<th class='stat'>Hits</th>");
+  WriteHtml("<th class='stat'>Mana</th>");
+  WriteHtml("<th class='stat'>Stam</th>");
+  WriteHtml("<th class='stat'>AR</th>");
+  WriteHtml("<th class='attk'>AtkSpeed</th>");
+  WriteHtml("<th class='attk'>AtkDmg</th>");
+  WriteHtml("<th class='attk'>Spells</th>");
+  WriteHtml("<th class='attk'>CastDelay</th>");
+  WriteHtml("<th class='attk'>Skills</th>");
+  WriteHtml("<th class='spcl'>Sounds</th>");
+  WriteHtml("<th class='spcl'>LootGroup</th>");
+  WriteHtml("<th class='spcl'>Loot</th>");
+  WriteHtml("<th class='skil'>Z&auml;hmen</th>");
+  WriteHtml("<th class='skil'>Abrichten</th>");
+  WriteHtml("<th class='skil'>Tierzucht</th>");
+  WriteHtml("<th class='skil'>Provo</th>");
+  WriteHtml("</tr>");
+
+  ForEach value in data
+    SleepMS(2);
+    WriteHtml("<tr>");
+    WriteHtmlRaw("<td class='base'>"+value.template+"</td>");
+    WriteHtmlRaw("<td class='base'>"+value.name+"</td>");
+    WriteHtmlRaw("<td class='misc'>"+value.script+"</td>");
+    WriteHtmlRaw("<td class='misc num'>"+value.objtype+"</td>");
+    WriteHtmlRaw("<td class='stat num'>"+value.str+"</td>");
+    WriteHtmlRaw("<td class='stat num'>"+value.int+"</td>");
+    WriteHtmlRaw("<td class='stat num'>"+value.dex+"</td>");
+    WriteHtmlRaw("<td class='stat num'>"+value.hits+"</td>");
+    WriteHtmlRaw("<td class='stat num'>"+value.mana+"</td>");
+    WriteHtmlRaw("<td class='stat num'>"+value.stam+"</td>");
+    WriteHtmlRaw("<td class='stat num'>"+value.ar+"</td>");
+    WriteHtmlRaw("<td class='attk num'>"+value.attackspeed+"</td>");
+    WriteHtmlRaw("<td class='attk num'>"+value.attackdmg+"</td>");
+    WriteHtmlRaw("<td class='attk'>");
+    ForEach elem in (value.spells)
+      WriteHtmlRaw(elem);
+      If (_elem_iter<value.spells.size())
+        WriteHtmlRaw("<br>");
+      EndIf
+    EndForEach
+    WriteHtmlRaw("</td>");
+    WriteHtmlRaw("<td class='attk num'>"+value.castdelay+"</td>");
+    WriteHtmlRaw("<td class='attk'>");
+    ForEach elem in (value.skills)
+      WriteHtmlRaw(elem);
+      If (_elem_iter<value.skills.size())
+        WriteHtmlRaw("<br>");
+      EndIf
+    EndForEach
+    WriteHtmlRaw("</td>");
+    WriteHtmlRaw("<td class='misc'>");
+    ForEach elem in (value.sounds)
+      WriteHtmlRaw(elem);
+      If (_elem_iter<value.sounds.size())
+        WriteHtmlRaw("<br>");
+      EndIf
+    EndForEach
+    WriteHtmlRaw("</td>");
+    WriteHtmlRaw("<td class='misc'>"+value.lootgroup+"</td>");
+    WriteHtmlRaw("<td class='misc'>");
+    ForEach elem in (value.loot)
+      WriteHtmlRaw(elem);
+      If (_elem_iter<value.loot.size())
+        WriteHtmlRaw("<br>");
+      EndIf
+    EndForEach
+    WriteHtmlRaw("</td>");
+    WriteHtmlRaw("<td class='skil num'>"+value.zaehmskill+"</td>");
+    WriteHtmlRaw("<td class='skil num'>"+value.abrichtskill+"</td>");
+    WriteHtmlRaw("<td class='skil num'>"+value.tierzuchtskill+"</td>");
+    WriteHtmlRaw("<td class='skil num'>"+value.provo+"</td>");
+    WriteHtml("</tr>");
+  EndForEach
+
+  WriteHtml("</table>");
+  WriteHtml("</noscript>");
+
+  WriteHtml("</div>");
+EndFunction
+
+// vim: sw=2 sts=2

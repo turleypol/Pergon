@@ -1,0 +1,290 @@
+//
+//  Autor:    Hotny & Turley
+//  Date:     28.10.2007
+//
+//  Controllskript für Feld Nr. 30
+
+//      Aufgaben:
+//                - Initialisierung
+//                - Feldkontrolle
+//                  - Boss wechselt Farbe
+//                  - Wenn Player langegenug auf dem passenden Feld steht verliehrt Boss invul
+//
+//  Modifikation:
+
+Use cfgfile;
+Use os;
+Use uo;
+Use util;
+
+Include ":dyndungeon:dyndungeon";  // Konstanten
+Include "include/eventid";
+Include "include/eventwaiter";
+Include "include/modifyskill";
+Include "include/starteqp";
+
+Const FIELD_NR:=30;
+
+Var aColors:={4,34,55,70,219,1323};
+Var WalkFieldCoords:={{183,149,0},
+                      {183,162,0},
+                      {183,174,0},
+                      {208,149,0},
+                      {208,162,0},
+                      {208,174,0}};
+
+Program FieldControl(param)
+  Var Difficulty:=param[1];
+  // Var Manager:=param[2];
+  Var Restart:=param[3];
+  param:=0;
+  var Boss;
+  var Mobs:={};
+  var WalkFieldSerials:={};
+
+  //Als erstes mal kurz warten
+  SleepMS(250);
+  Var oDungeonConfig:=ReadConfigFile(":dyndungeon:dungeon");
+  Var oFieldConfig  :=FindConfigElem(oDungeonConfig,FIELD_NR);
+
+  var DungeonX1:=CInt(SplitWords(oFieldConfig.Corner1)[1]);
+  var DungeonY1:=CInt(SplitWords(oFieldConfig.Corner1)[2]);
+  var DungeonX2:=CInt(SplitWords(oFieldConfig.Corner2)[1]);
+  var DungeonY2:=CInt(SplitWords(oFieldConfig.Corner2)[2]);
+
+  //Spawnen wir zu ersteinmal den Boss Persönlich
+  If (!Restart)
+    Boss := Spawn(GetConfigString(oFieldConfig, "SpawnBoss"), Difficulty);
+    GrantPrivilege(Boss, "invul");
+    Boss.enable("invul");
+    IncRevision(Boss);
+    Boss.setprop(CPMOB_BOSS,1); // als Boss markieren
+  Else  // Boss finden
+    Boss:=FindBossAfterRestart(DungeonX1,DungeonY1,DungeonX2,DungeonY2);
+  EndIf
+  If (Boss)
+    Boss.setprop(CPMOB_CONTROL,GetPID());
+  EndIf
+
+  var SpawnMobs:=GetConfigStringArray(oFieldConfig,"SpawnNPC");
+  If (!Restart)
+    ForEach Mob In SpawnMobs
+      var npc_:=Spawn(Mob,Difficulty);
+      If (npc_)
+        npc_.setprop(CPMOB_CONTROL,GetPID());
+        Mobs.Append(npc_);
+      EndIf
+      SleepMS(2);
+    EndForEach
+  Else  // Mobs finden
+    FindMobsAfterRestart(DungeonX1,DungeonY1,DungeonX2,DungeonY2, Mobs);
+  EndIf
+
+  If (!Restart) // Special's gibts nur einmal
+    var SpawnSpecials:=GetConfigStringArray(oFieldConfig,"SpawnSpecial");
+    ForEach Special in SpawnSpecials
+      SpawnSpecial(Special,Difficulty);
+      SleepMS(2);
+    EndForEach
+
+    // WalkoverFelder erzeugen
+    var color_index := 1;
+    ForEach koord in WalkFieldCoords
+      Var item:=CreateItemAtLocation(koord[1],koord[2],koord[3],0x6690,1,REALM_MALAS);
+      item.setprop(CPTELE_FIELDID,_koord_iter); // Reihenfolge speichern zum definierten wiederfinden
+      item.setprop(CPMOB_CONTROL,GetPID());
+      item.color := aColors[color_index];
+      WalkFieldSerials.append(item.serial);
+      color_index += 1;
+    EndForEach
+
+  Else  // PID der WalkoverFelder aktualisieren
+    ForEach item in (ListObjectsInBox(DungeonX1,DungeonY1,-127,DungeonX2,DungeonY2,128,REALM_MALAS))
+      SleepMS(2);
+      If (!item.isA(POLCLASS_ITEM))
+        Continue;
+      EndIf
+      If (item.objtype==0x6690)
+        WalkFieldSerials[item.getprop(CPTELE_FIELDID)]:=item.serial;
+      EndIf
+    EndForEach
+  EndIf
+
+  var event;
+  var Aktiv:=0;
+  // var player:={};
+  var temp:={};
+  var lAktivWOField:=0;
+  var lAktivWOFieldTime:=0;
+  var lLastColorChoose:=0;
+  var FirstAttack:=0;
+
+  While (Boss)
+    // Solange der Boss noch lebt
+    event:=Wait_for_Event(10);
+    If (event)
+      Case (event.type)
+        EVID_NPC_DIED:
+          //war es der Boss?
+          If (!Boss)
+            Return;
+          EndIf
+
+        EVID_DUNGEONBOSSFIELDAKTIV:
+          Aktiv:=1;
+
+        EVID_DUNGEONFIELDRESET:
+          //feldresetten
+          Aktiv:=0;
+          lAktivWOField:=0;
+          lAktivWOFieldTime:=0;
+          lLastColorChoose:=0;
+          FirstAttack:=0;
+          SetHPPergon(Boss,GetMaxHPPergon(Boss));
+          SetManaPergon(Boss,GetMaxManaPergon(Boss));
+          SetStaminaPergon(Boss,GetMaxStaminaPergon(Boss));
+          Boss.enable("invul");
+          IncRevision(Boss);
+          temp:=Boss.getprop(CPMOB_COORDS);
+          MoveObjectToLocation(Boss,temp[1],temp[2],temp[3],REALM_MALAS);
+
+        EVID_DUNGEONWALKOVER:
+          If (event.FieldID==lAktivWOField)
+            // Ist über/auf das richtige Feld gelaufen
+            lAktivWOFieldTime:=ReadGameClock();
+            Var ev:=struct;
+            ev.+type:=EVID_DUNGEONTIMECONTROL;
+            ev.+desc:="StayField";
+            ev.+playerserial:=event.playerserial;
+            ev.+FieldID:=event.FieldID;
+            ev.+FieldSerial:=event.FieldSerial;
+            ev.+Reached:=1;
+            SendEventWaiterGeneral(GetProcess(GetPid()),15,ev);
+
+            // Effekt, damit man merkt, dass man richtig steht
+            var walkfield := SystemFindObjectBySerial(
+              WalkFieldSerials[lAktivWoField]
+            );
+            PlayMovingEffectEx(walkfield, boss, 0x36f4, 10, 0, boss.color);
+          Else
+            lAktivWOFieldTime:=0;
+          EndIf
+
+        EVID_DUNGEONBOSSATTACKED:
+          //Next Color Event Auslösen (nur einmal, danach selbstläufer)
+          If (!FirstAttack)
+            Var ev:=struct;
+            ev.+desc:="NextColor";
+            ev.+field:=lAktivWOField;
+            ev.+type:=EVID_DUNGEONTIMECONTROL;
+            SendEventWaiterGeneral(GetProcess(GetPid()),15,ev);
+            FirstAttack:=1;
+          EndIf
+
+        EVID_DUNGEONTIMECONTROL:
+          If (!Aktiv)
+            Break;
+          EndIf
+          //Timeout für aufs Feld laufen
+          If (event.desc=="ReachedField?")
+            If (event.FieldID==lAktivWOField)
+              //Timeout für das aktive Feld kommt
+              If (lAktivWOFieldTime AND (ReadGameClock()>=lAktivWOFieldTime))
+                //rechtzeitig erreicht -> passiert nix
+              Else
+                //nicht rechtzeitig erreicht -> stellung halten
+                Var ev:=struct;
+                ev.+type:=EVID_DUNGEONTIMECONTROL;
+                ev.+desc:="StayField";
+                ev.+FieldID:=event.FieldID;
+                ev.+FieldSerial:=event.FieldSerial;
+                ev.+Reached:=0;
+                SendEventWaiterGeneral(GetProcess(GetPid()),15,ev);
+              EndIf
+            EndIf
+            SpawnWaechter(event.FieldSerial,Difficulty);
+          EndIf
+          //Timeout für aufs Feld stehen
+          If (event.desc=="StayField")
+            If (event.FieldID==lAktivWOField)
+              If (event.Reached)
+                If (Boss.enabled("invul"))
+                  // Boss wird (erstmalig) verwundbar
+                  Boss.disable("invul");
+                  IncRevision(Boss);
+
+                  // Effekt, damit man merkt, dass man lange genug stand
+                  var walkfield := SystemFindObjectBySerial(
+                    WalkFieldSerials[lAktivWoField]
+                  );
+                  PlayMovingEffectEx(
+                    walkfield, boss, 0x36d4, 10, 0, boss.color
+                  );
+                  PlaySoundEffect(boss, SFX_DYN_BOSS_VUL);
+                EndIf
+              Else
+                If (!Boss.enabled("invul"))
+                  // Boss wird (erstmalig) wieder unverwundbar
+                  Boss.enable("invul");
+                  IncRevision(Boss);
+
+                  PlaySoundEffect(boss, SFX_DYN_BOSS_INVUL);
+                  PlayObjectCenteredEffect(boss, 0x3763, 10, 40);
+                EndIf
+              EndIf
+              //Next Color Event Auslösen
+              Var ev:=struct;
+              ev.+desc:="NextColor";
+              ev.+field:=lAktivWOField;
+              ev.+type:=EVID_DUNGEONTIMECONTROL;
+              SendEventWaiterGeneral(GetProcess(GetPid()),30,ev);
+            EndIf
+          EndIf
+          // Timeout für nächsten Farbwechsel, aber nur,
+          // wenn die Farbe noch aktuell ist (veraltete Events ignorieren)
+          If (event.desc=="NextColor" and event.field == lAktivWOField)
+            // Effekt und Betreten-Status bei altem Feld zuruecksetzen
+            var walkfield := SystemFindObjectBySerial(
+              WalkFieldSerials[lAktivWoField]
+            );
+            walkfield.graphic := 0x0ddb;
+            walkfield.eraseprop(CPITEM_STATE);
+
+            // neues Feld bestimmen
+            While (lLastColorChoose==lAktivWOField)
+              lAktivWOField:=RandomInt(6)+1;
+            EndWhile
+            lLastColorChoose := lAktivWOField;
+
+            lAktivWOFieldTime:=0;
+            Boss.color:=aColors[lAktivWOField];
+
+            // Effekte fuers neue Feld und Betreten-Status ruecksetzen
+            walkfield := SystemFindObjectBySerial(
+              WalkFieldSerials[lAktivWoField]
+            );
+            walkfield.graphic := 0x0ddc;
+            walkfield.eraseprop(CPITEM_STATE);
+            PlayMovingEffectEx(boss, walkfield, 0x36f4, 10, 0, boss.color);
+            PlaySoundEffect(boss, SFX_DYN_BOSS_COLOR);
+
+            Var ev:=struct;
+            ev.+FieldID:=lAktivWOField;
+            ev.+FieldSerial:=WalkFieldSerials[lAktivWoField];
+            ev.+desc:="ReachedField?";
+            ev.+type:=EVID_DUNGEONTIMECONTROL;
+            SendEventWaiterGeneral(GetProcess(GetPid()),15,ev);
+          EndIf
+      EndCase
+    EndIf
+  EndWhile
+EndProgram
+
+Function SpawnWaechter(FieldSerial,Difficulty)
+    Var field:=SystemFindObjectBySerial(FieldSerial);
+    Var i;
+    For (i:=1;i<=RandomIntMinMax(5,10);i+=1) // Zufällige Anzahl spawnen
+      SleepMS(2);
+      Spawn("0 0 0 CastleSetGuardField30",Difficulty,field.x,field.y,0,2);
+    EndFor
+EndFunction

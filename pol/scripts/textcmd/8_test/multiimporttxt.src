@@ -1,0 +1,117 @@
+/////////////////////////////////////////////////////////////
+//
+//   MultiImportTxt - ReImport Multi for Modification
+//
+//     Author: Shinigami
+//
+//   Modification
+//     C&P von MultiImport für anderes Format
+//
+//
+/////////////////////////////////////////////////////////////
+//
+// Needs:
+//   multi/multi_*.uoa
+//
+////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use file;
+Use math;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/errormsg";
+Include "include/itemnpc";
+Include "include/msgs";
+
+///////////////
+// Konstanten
+///////////////
+
+Const ERRORMSGS_GERMAN:=
+  "{}MultiImport: ImportArea aktiviert..."+
+  "{}MultiImport: ImportArea beendet."+
+  "{}MultiImport: Item %% an %% %% %% konnte nicht erzeugt werden!"+
+  "{}Die Items wurden importiert."+
+  "{}Probleme beim Lesen der Configdatei %% !";
+Const ERRORMSGS_ENGLISH:=
+  "{}MultiImport: ImportArea started..."+
+  "{}MultiImport: ImportArea done."+
+  "{}MultiImport: Was impossible to create Item %% at %% %% %%!"+
+  "{}Items have been imported."+
+  "{}Problems on Reading Config File %% !";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_MultiImportTxt(who, params)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  PrintErrorMessage(1);
+  ImportArea(who, params);
+  PrintErrorMessage(2);
+EndProgram
+
+//////////////////////////////////////
+// ImportArea - Importiert die Items
+//////////////////////////////////////
+
+Function ImportArea(who, params)
+  Var filename:="config/multi/multi_";
+  If (params)
+    filename+=params;
+  EndIf
+  filename+=".uoa";
+
+  var file:=ReadFile(filename);
+
+  If (file)
+    Var min_x:=6144;
+    Var min_y:=4096;
+    Var object;
+    Var item;
+    Var id,x,y,z;
+
+    file.erase(1); //ersten 4 zeilen löschen
+    file.erase(1);
+    file.erase(1);
+    file.erase(1);
+
+    ForEach i in file
+      item:=SplitWords(i);
+      min_x:=Min(min_x,CInt(item[2]));
+      min_y:=Min(min_y,CInt(item[3]));
+    EndForeach
+
+    min_x:=min_x-who.x;
+    min_y:=min_y-who.y;
+
+    foreach i in file
+      item:=SplitWords(i);
+      id:=CInt(item[1]);
+      x:=CInt(item[2]);
+      y:=CInt(item[3]);
+      z:=CInt(item[4]);
+      object:=CreateItemAtLocationPergon(x-min_x, y-min_y, z, id, 1,who.realm);
+      If (object)
+        object.decayat:=0;
+        object.movable:=0;
+      Else
+        PrintErrorMessage(3, {id, x, y, z});
+      EndIf
+    EndForeach
+
+    PrintErrorMessage(4, { }, who);
+  Else
+    PrintErrorMessage(5, {filename}, who);
+  EndIf
+EndFunction

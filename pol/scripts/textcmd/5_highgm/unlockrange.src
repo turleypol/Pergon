@@ -1,0 +1,99 @@
+//////////////////////////////////////////////////////////////////
+//
+//   UnLockRange - Locks all Items within Range
+//
+//     Author: Shinigami
+//
+//   Modifications
+//     2007/04/10 Shinigami: Containerinhalt wird auch behandelt
+//
+//////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/errormsg";
+Include "include/msgs";
+
+///////////////
+// Konstanten
+///////////////
+
+Const ERRORMSGS_GERMAN:=
+  "{}UnLockRange: UnLockArea aktiviert..."+
+  "{}UnLockRange: UnLockArea beendet."+
+  "{}X1 muss kleiner-gleich X2 bzw. Y1 muss kleiner-gleich Y2 sein!"+
+  "{}%% darf nur 0 bis 4095 sein!"+
+  "{}%% darf nur 0 bis 6143 sein!"+
+  "{}Sie muessen 4 Paramter angeben: X1 Y1 X2 Y2"+
+  "{}Die Objekte wurden beweglich gemacht.";
+Const ERRORMSGS_ENGLISH:=
+  "{}UnLockRange: UnLockArea started..."+
+  "{}UnLockRange: UnLockArea done."+
+  "{}X1 must be lower/equal X2 and Y1 must be lower/equal Y2!"+
+  "{}%% must be between 0 and 4095!"+
+  "{}%% must be between 0 and 6143!"+
+  "{}U've to enter 4 Paramters: X1 Y1 X2 Y2"+
+  "{}Objects have been unlocked.";
+
+/////////////////
+// Hauptprogram
+/////////////////
+
+Program TextCMD_LockRange(who, params)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  params:=SplitWords(params);
+  If (params.size()==4)
+    If ((0<=CInt(params[1])) And (CInt(params[1])<6144))
+      If ((0<=CInt(params[2])) And (CInt(params[2])<4096))
+        If ((0<=CInt(params[3])) And (CInt(params[3])<6144))
+          If ((0<=CInt(params[4])) And (CInt(params[4])<4096))
+            If ((CInt(params[1])<=CInt(params[3])) And (CInt(params[2])<=CInt(params[4])))
+              PrintErrorMessage(1);
+
+              ForEach object in ListObjectsInBox(CInt(params[1]), CInt(params[2]), -128, CInt(params[3]), CInt(params[4]), 127,who.realm)
+                If (object.isa(POLCLASS_ITEM))
+                  If (object.isa(POLCLASS_CONTAINER))
+                    ForEach subobject in EnumerateItemsInContainer(object, ENUMERATE_IGNORE_LOCKED)
+                      subobject.movable:=1;
+                    EndForEach
+                  EndIf
+
+                  object.movable:=1;
+
+                  If (object.multi)
+                    SysLog("GMCMD: "+who.name+" ["+who.acctname+" / "+Lower(Hex(who.serial))+"] bei "+who.x+" "+who.y+" "+who.z+" aendert die Prop movable bei "+object.desc+" ["+Lower(Hex(object.serial))+"] von 0 auf 1");
+                  EndIf
+                EndIf
+              EndForEach
+
+              PrintErrorMessage(7, {}, who);
+              PrintErrorMessage(2);
+            Else
+              PrintErrorMessage(3, {}, who);
+            EndIf
+          Else
+            PrintErrorMessage(4, {"Y2"}, who);
+          EndIf
+        Else
+          PrintErrorMessage(5, {"X2"}, who);
+        EndIf
+      Else
+        PrintErrorMessage(4, {"Y1"}, who);
+      EndIf
+    Else
+      PrintErrorMessage(5, {"X1"}, who);
+    EndIf
+  Else
+    PrintErrorMessage(6, {}, who);
+  EndIf
+EndProgram

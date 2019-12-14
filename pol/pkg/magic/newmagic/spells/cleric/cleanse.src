@@ -1,0 +1,68 @@
+//**************************************************************************************************
+// Script file cleanse.src
+//
+//    implements spell 208 <Cleanse> - "Augen Oeffnen"
+//
+//	removes blindness caused by necromancer spell 'blind'
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+use util;
+
+Include "../magicpergon";
+
+program cast_cleanse (params)
+
+   Var caster;
+   Var caston;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_CLEANSE);
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+
+   PlayObjectCenteredEffect(caston, FX_MARK_EFFECT, 7, 7);
+
+   if (GetObjProperty(caston, "spell_blind"))							// check if spelltarget is blinded
+
+      Var tag:= GetObjProperty(caston, "spell_blind");				// get spelltag
+
+      if (power - tag[2] + 25 >= RandomInt(51))							// check if caster breaks curse
+         SendSysMessagePergon(caster, "Ihr erlöst " + caston.name + " von seinen Leiden",
+         			      				  "You release " + caston.name + " from their pain");
+         EraseObjProperty(caston, "spell_blind");						// remove spelltag
+         BuffIcons(caston, "spell_blind", 0, 1);            // remove bufficon
+      else																			// (scripts/misc/blinded does the rest)
+      	 SendSysMessagePergon(caster, "Ihr schafft es nicht, " + caston.name + " das Augenlicht wiederzugeben",
+				      							"You do not succeed in restoring " + caston.name + "'s eyesight");
+      endif
+   else
+      SendSysMessagePergon(caster, "Euer Ziel ist nicht blind", "Your target is not blinded");
+   endif
+
+endprogram

@@ -1,0 +1,26 @@
+///////////////////////////////////////////////////////////////////
+// UseScript StaticSign - Doppelklick auf das Hausschild
+//
+// Beim Abriss bleiben Rohstoffe uebrig
+
+use os;
+use uo;
+include "house";
+include "include/logutil";
+include "include/msgs";
+
+Program UseStaticSign(who, sign)
+  var houseinfo := GetObjProperty(sign, PROP_HS_S_DIMENSIONS);
+  If (houseinfo)
+    // Das Hausschild benutzen
+    UseHouseSign(who, sign, sign);
+  Else
+    SendSysMessagePergon(who,
+      "Dieses Schild scheint keinem Haus zugeordnet zu sein!"
+    );
+    syslog(
+      "WARNUNG: Schild "+LHex(sign.serial)+
+      " scheint keinem Haus zugeordnet zu sein!"
+    );
+  EndIf
+EndProgram

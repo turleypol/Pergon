@@ -1,0 +1,2307 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=iso-8859-1">
+  <title>In-Game Text Commands</title>
+</head>
+
+<body>
+
+<h1>In-Game Text Commands</h1>
+
+<p>The in-game commands are split up into the following access levels: You
+can access the commands at your (command) access level and below.</p>
+
+<h2>The command levels</h2>
+
+<ol start="0">
+  <li><a href="#SectPlay">Player</a></li>
+  <li><a href="#SectCoun">Counselor</a></li>
+  <li><a href="#SectQuest">Questchar</a></li>
+  <li><a href="#SectSeer">Seer</a></li>
+  <li>GM (no extra commands)</li>
+  <li><a href="#SectGM">(High) GM</a></li>
+  <li><a href="#SectGL">GL</a></li>
+  <li><a href="#SectScr">Scripter</a></li>
+  <li><a href="#SectTest">Test</a></li>
+</ol>
+
+<h2 id="SectPlay">Player Commands</h2>
+
+<h3>Player Command Index</h3>
+
+<ul>
+  <li><a href="#arm">arm</a></li>
+  <li><a href="#changeemail">changeemail</a></li>
+  <li><a href="#changepassword">changepassword</a></li>
+  <li><a href="#changeskills">changeskills</a></li>
+  <li><a href="#consider">consider</a></li>
+  <li><a href="#copybook">copybook</a></li>
+  <li><a href="#count">count</a></li>
+  <li><a href="#disable">disable</a></li>
+  <li><a href="#disarm">disarm</a></li>
+  <li><a href="#enable">enable</a></li>
+  <li><a href="#forcecmdlevel">forcecmdlevel</a></li>
+  <li><a href="#forum">forum</a></li>
+  <li><a href="#gc">gc</a></li>
+  <li><a href="#getitemsfromcont">getitemsfromcont</a></li>
+  <li><a href="#grab">grab</a></li>
+  <li><a href="#guild">guild</a></li>
+  <li><a href="#handbook">handbook</a></li>
+  <li><a href="#homepage">homepage</a></li>
+  <li><a href="#jewelprice">jewelprice</a></li>
+  <li><a href="#lag">lag</a></li>
+  <li><a href="#language">language</a></li>
+  <li><a href="#letterbox">letterbox</a></li>
+  <li><a href="#lookup">lookup</a></li>
+  <li><a href="#msg">msg</a></li>
+  <li><a href="#name">name</a></li>
+  <li><a href="#online">online</a></li>
+  <li><a href="#onlinefull">onlinefull</a></li>
+  <li><a href="#page">page</a></li>
+  <li><a href="#performance">performance</a></li>
+  <li><a href="#performancediff">performance_diff</a></li>
+  <li><a href="#pvp">pvp</a></li>
+  <li><a href="#quest">quest</a></li>
+  <li><a href="#regprice">regprice</a></li>
+  <li><a href="#resource">resource</a></li>
+  <li><a href="#setbookcasename">setbookcasename</a></li>
+  <li><a href="#status">status</a></li>
+  <li><a href="#switchbookcase">switchbookcase</a></li>
+  <li><a href="#threatmsg">threatmsg</a></li>
+  <li><a href="#treffen">treffen</a></li>
+  <li><a href="#update">update</a></li>
+  <li><a href="#vote">vote</a></li>
+  <li><a href="#wetter">wetter</a></li>
+</ul>
+
+<h2 id="SectCoun">Counselor Commands</h2>
+
+<h3>Counselor Command Index</h3>
+
+<ul>
+  <li><a href="#bmonline">bmonline</a></li>
+  <li><a href="#share">share</a></li>
+</ul>
+
+<h2 id="SectQuest">Questchar Commands</h2>
+
+<h3>Questchar Command Index</h3>
+
+<ul>
+  <li><a href="#addquestcharacter">addquestcharacter</a></li>
+  <li><a href="#barberme">barberme</a></li>
+  <li><a href="#bcast">bcast</a></li>
+  <li><a href="#buzz">buzz</a></li>
+  <li><a href="#changeclass">changeclass</a></li>
+  <li><a href="#changecriminal">changecriminal</a></li>
+  <li><a href="#changeinvul">changeinvul</a></li>
+  <li><a href="#changekarma">changekarma</a></li>
+  <li><a href="#changesysmsg">changesysmsg</a></li>
+  <li><a href="#concealme">concealme</a></li>
+  <li><a href="#create">create</a></li>
+  <li><a href="#createc">createc</a></li>
+  <li><a href="#createnpc">createnpc</a></li>
+  <li><a href="#createregs">createregs</a></li>
+  <li><a href="#createspellbooks">createspellbooks</a></li>
+  <li><a href="#createstack">createstack</a></li>
+  <li><a href="#customnpc">customnpc</a></li>
+  <li><a href="#destroy">destroy</a></li>
+  <li><a href="#go">go</a></li>
+  <li><a href="#godeathloc">godeathloc</a></li>
+  <li><a href="#iddqd">iddqd</a></li>
+  <li><a href="#info">info</a></li>
+  <li><a href="#iteminfo">iteminfo</a></li>
+  <li><a href="#kill">kill</a></li>
+  <li><a href="#light">light</a></li>
+  <li><a href="#powerup">powerup</a></li>
+  <li><a href="#refreshme">refreshme</a></li>
+  <li><a href="#resme">resme</a></li>
+  <li><a href="#sayabove">sayabove</a></li>
+  <li><a href="#sayabovepvt">sayabovepvt</a></li>
+  <li><a href="#shave">shave</a></li>
+  <li><a href="#tame">tame</a></li>
+  <li><a href="#throw">throw</a></li>
+  <li><a href="#unconcealme">unconcealme</a></li>
+  <li><a href="#walkto">walkto</a></li>
+</ul>
+
+<h2 id="SectSeer">Seer Commands</h2>
+
+<h3>Seer Command Index</h3>
+
+<ul>
+  <li><a href="#action">action</a></li>
+  <li><a href="#addquestloc">addquestloc</a></li>
+  <li><a href="#bank">bank</a></li>
+  <li><a href="#baumarkt">baumarkt</a></li>
+  <li><a href="#bautool">bautool</a></li>
+  <li><a href="#bow">bow</a></li>
+  <li><a href="#checkgain">checkgain</a></li>
+  <li><a href="#checklos">checklos</a></li>
+  <li><a href="#colorhair">colorhair</a></li>
+  <li><a href="#contcheck">contcheck</a></li>
+  <li><a href="#countitems">countitems</a></li>
+  <li><a href="#countitemsrange">countitemsrange</a></li>
+  <li><a href="#createat">createat</a></li>
+  <li><a href="#createatc">createatc</a></li>
+  <li><a href="#createdoor">createdoor</a></li>
+  <li><a href="#createnpcrange">createnpcrange</a></li>
+  <li><a href="#createrect">createrect</a></li>
+  <li><a href="#createrune">createrune</a></li>
+  <li><a href="#createset">createset</a></li>
+  <li><a href="#createshipdeed">createshipdeed</a></li>
+  <li><a href="#createswampitem">createswampitem</a></li>
+  <li><a href="#destroyset">destroyset</a></li>
+  <li><a href="#equip">equip</a></li>
+  <li><a href="#findlostnpcs">findlostnpcs</a></li>
+  <li><a href="#freeze">freeze</a></li>
+  <li><a href="#getopenclose">getopenclose</a></li>
+  <li><a href="#gmpage">gmpage</a></li>
+  <li><a href="#gobauplatz">gobauplatz</a></li>
+  <li><a href="#goboat">goboat</a></li>
+  <li><a href="#gohouse">gohouse</a></li>
+  <li><a href="#goserial">goserial</a></li>
+  <li><a href="#goto">goto</a></li>
+  <li><a href="#gotopid">gotopid</a></li>
+  <li><a href="#goxyz">goxyz</a></li>
+  <li><a href="#hideme">hideme</a></li>
+  <li><a href="#hiderune">hiderune</a></li>
+  <li><a href="#ident">ident</a></li>
+  <li><a href="#itemmove">itemmove</a></li>
+  <li><a href="#itemsetxyz">itemsetxyz</a></li>
+  <li><a href="#jailtime">jailtime</a></li>
+  <li><a href="#keyword">keyword</a></li>
+  <li><a href="#loadequip">loadequip</a></li>
+  <li><a href="#lock">lock</a></li>
+  <li><a href="#maction">maction</a></li>
+  <li><a href="#mask">mask</a></li>
+  <li><a href="#mcreatenpc">mcreatenpc</a></li>
+  <li><a href="#mtele">mtele</a></li>
+  <li><a href="#myform">myform</a></li>
+  <li><a href="#nocarverange">nocarverange</a></li>
+  <li><a href="#nocorpserange">nocorpserange</a></li>
+  <li><a href="#nolootrange">nolootrange</a></li>
+  <li><a href="#petmasterdeath">petmasterdeath</a></li>
+  <li><a href="#placeinfo">placeinfo</a></li>
+  <li><a href="#playsfxpriv">playsfxpriv</a></li>
+  <li><a href="#playstateffect">playstateffect</a></li>
+  <li><a href="#price">price</a></li>
+  <li><a href="#punish">punish</a></li>
+  <li><a href="#px">px</a></li>
+  <li><a href="#py">py</a></li>
+  <li><a href="#pz">pz</a></li>
+  <li><a href="#reloadequip">reloadequip</a></li>
+  <li><a href="#rename">rename</a></li>
+  <li><a href="#setmovable">setmovable</a></li>
+  <li><a href="#setopenclose">setopenclose</a></li>
+  <li><a href="#setplane">setplane</a></li>
+  <li><a href="#settalk">settalk</a></li>
+  <li><a href="#setwordofpower">setwordofpower</a></li>
+  <li><a href="#showcprops">showcprops</a></li>
+  <li><a href="#showrune">showrune</a></li>
+  <li><a href="#skillwin">skillwin</a></li>
+  <li><a href="#storybook">storybook</a></li>
+  <li><a href="#summon">summon</a></li>
+  <li><a href="#tele">tele</a></li>
+  <li><a href="#testweapon">testweapon</a></li>
+  <li><a href="#thaw">thaw</a></li>
+  <li><a href="#time">time</a></li>
+  <li><a href="#useskill">useskill</a></li>
+  <li><a href="#where">where</a></li>
+  <li><a href="#writebook">writebook</a></li>
+</ul>
+
+<h2 id="SectGM">(High) GM Commands</h2>
+
+<h3>(High) GM Command Index</h3>
+
+<ul>
+  <li><a href="#addset">addset</a></li>
+  <li><a href="#addteleporter">addteleporter</a></li>
+  <li><a href="#arenaquest">arenaquest</a></li>
+  <li><a href="#attack">attack</a></li>
+  <li><a href="#bcastas">bcastas</a></li>
+  <li><a href="#clone">clone</a></li>
+  <li><a href="#createartefactbooks">createartefactbooks</a></li>
+  <li><a href="#createcannon">createcannon</a></li>
+  <li><a href="#createkey">createkey</a></li>
+  <li><a href="#createoldspellbook">createoldspellbook</a></li>
+  <li><a href="#createpkgitem">createpkgitem</a></li>
+  <li><a href="#createstone">createstone</a></li>
+  <li><a href="#createstonenew">createstonenew</a></li>
+  <li><a href="#createtele">createtele</a></li>
+  <li><a href="#createtreasurechest">createtreasurechest</a></li>
+  <li><a href="#createtreasuremap">createtreasuremap</a></li>
+  <li><a href="#destroyship">destroyship</a></li>
+  <li><a href="#editcprops">editcprops</a></li>
+  <li><a href="#erasep">erasep</a></li>
+  <li><a href="#findnpc">findnpc</a></li>
+  <li><a href="#forest">forest</a></li>
+  <li><a href="#forgive">forgive</a></li>
+  <li><a href="#getbaseskilltorawskill">getbaseskilltorawskill</a></li>
+  <li><a href="#getglobal">getglobal</a></li>
+  <li><a href="#getp">getp</a></li>
+  <li><a href="#getprop">getprop</a></li>
+  <li><a href="#getrawskilltobaseskill">getrawskilltobaseskill</a></li>
+  <li><a href="#gm">gm</a></li>
+  <li><a href="#goforce">goforce</a></li>
+  <li><a href="#gorune">gorune</a></li>
+  <li><a href="#itemmovetocont">itemmovetocont</a></li>
+  <li><a href="#itemsample">itemsample</a></li>
+  <li><a href="#jail">jail</a></li>
+  <li><a href="#kick">kick</a></li>
+  <li><a href="#killoldtownstone">killoldtownstone</a></li>
+  <li><a href="#lightningkill">lightningkill</a></li>
+  <li><a href="#lockradius">lockradius</a></li>
+  <li><a href="#lockrange">lockrange</a></li>
+  <li><a href="#looktreasuremap">looktreasuremap</a></li>
+  <li><a href="#movesecurecontitems">movesecurecontitems</a></li>
+  <li><a href="#namequestregion">namequestregion</a></li>
+  <li><a href="#openpack">openpack</a></li>
+  <li><a href="#playmusic">playmusic</a></li>
+  <li><a href="#playsfx">playsfx</a></li>
+  <li><a href="#recreatekey">recreatekey</a></li>
+  <li><a href="#refresh">refresh</a></li>
+  <li><a href="#res">res</a></li>
+  <li><a href="#resetspellpanel">resetspellpanel</a></li>
+  <li><a href="#setbook">setbook</a></li>
+  <li><a href="#setkey">setkey</a></li>
+  <li><a href="#setlight">setlight</a></li>
+  <li><a href="#setp">setp</a></li>
+  <li><a href="#setprop">setprop</a></li>
+  <li><a href="#setquests">setquests</a></li>
+  <li><a href="#setstaticdimensions">setstaticdimensions</a></li>
+  <li><a href="#setstaticguildhouse">setstaticguildhouse</a></li>
+  <li><a href="#setstaticroom">setstaticroom</a></li>
+  <li><a href="#showcont">showcont</a></li>
+  <li><a href="#showip">showip</a></li>
+  <li><a href="#showscript">showscript</a></li>
+  <li><a href="#spawnnet">spawnnet</a></li>
+  <li><a href="#stripplayervendor">stripplayervendor</a></li>
+  <li><a href="#switchlibrarian">switchlibrarian</a></li>
+  <li><a href="#teleboat">teleboat</a></li>
+  <li><a href="#teleto">teleto</a></li>
+  <li><a href="#thawme">thawme</a></li>
+  <li><a href="#throwkill">throwkill</a></li>
+  <li><a href="#toggledoor">toggledoor</a></li>
+  <li><a href="#toggletele">toggletele</a></li>
+  <li><a href="#unequip">unequip</a></li>
+  <li><a href="#unlock">unlock</a></li>
+  <li><a href="#unlockradius">unlockradius</a></li>
+  <li><a href="#unlockrange">unlockrange</a></li>
+  <li><a href="#whereship">whereship</a></li>
+</ul>
+
+<h2 id="SectGL">GL Commands</h2>
+
+<h3>GL Command Index</h3>
+
+<ul>
+  <li><a href="#addseercharacter">addseercharacter</a></li>
+  <li><a href="#areainfo">areainfo</a></li>
+  <li><a href="#attackrange">attackrange</a></li>
+  <li><a href="#ban">ban</a></li>
+  <li><a href="#bcastw">bcastw</a></li>
+  <li><a href="#desolate">desolate</a></li>
+  <li><a href="#destroymulti">destroymulti</a></li>
+  <li><a href="#earthquake">earthquake</a></li>
+  <li><a href="#emptybox">emptybox</a></li>
+  <li><a href="#eraseglobal">eraseglobal</a></li>
+  <li><a href="#floorexchange">floorexchange</a></li>
+  <li><a href="#getacctp">getacctp</a></li>
+  <li><a href="#globalizebook">globalizebook</a></li>
+  <li><a href="#grantpriv">grantpriv</a></li>
+  <li><a href="#hidebankboxes">hidebankboxes</a></li>
+  <li><a href="#itemcolorbox">itemcolorbox</a></li>
+  <li><a href="#itemcolorrange">itemcolorrange</a></li>
+  <li><a href="#itemcopyrange">itemcopyrange</a></li>
+  <li><a href="#itemexchangebox">itemexchangebox</a></li>
+  <li><a href="#itemexchangerange">itemexchangerange</a></li>
+  <li><a href="#itemmoverange">itemmoverange</a></li>
+  <li><a href="#jehova">jehova</a></li>
+  <li><a href="#killrange">killrange</a></li>
+  <li><a href="#lightning">lightning</a></li>
+  <li><a href="#listitems">listitems</a></li>
+  <li><a href="#mbolt">mbolt</a></li>
+  <li><a href="#multibuild">multibuild</a></li>
+  <li><a href="#multimove">multimove</a></li>
+  <li><a href="#multitest">multitest</a></li>
+  <li><a href="#nukekoord">nukekoord</a></li>
+  <li><a href="#nukerange">nukerange</a></li>
+  <li><a href="#nuketyperange">nuketyperange</a></li>
+  <li><a href="#recreatenpc">recreatenpc</a></li>
+  <li><a href="#resetrunes">resetrunes</a></li>
+  <li><a href="#revokepriv">revokepriv</a></li>
+  <li><a href="#saveequip">saveequip</a></li>
+  <li><a href="#savenow">savenow</a></li>
+  <li><a href="#saveplayercorpses">saveplayercorpses</a></li>
+  <li><a href="#setattentaeterpassage">setattentaeterpassage</a></li>
+  <li><a href="#setcmdlevel">setcmdlevel</a></li>
+  <li><a href="#setglobal">setglobal</a></li>
+  <li><a href="#setmaxpages">setmaxpages</a></li>
+  <li><a href="#setrawskill">setrawskill</a></li>
+  <li><a href="#setscript">setscript</a></li>
+  <li><a href="#setweather">setweather</a></li>
+  <li><a href="#speechmod">speechmod</a></li>
+  <li><a href="#squelch">squelch</a></li>
+  <li><a href="#staticdeed">staticdeed</a></li>
+  <li><a href="#staticscheck">staticscheck</a></li>
+  <li><a href="#stepcolor">stepcolor</a></li>
+  <li><a href="#testnlootgroup">testnlootgroup</a></li>
+  <li><a href="#teststartequip">teststartequip</a></li>
+  <li><a href="#toggleshowrunes">toggleshowrunes</a></li>
+  <li><a href="#unban">unban</a></li>
+  <li><a href="#unblockaccount">unblockaccount</a></li>
+  <li><a href="#unblockchar">unblockchar</a></li>
+</ul>
+
+<h2 id="SectScr">Scripter Commands</h2>
+
+<h3>Scripter Command Index</h3>
+
+<ul>
+  <li><a href="#changenpcscript">changenpcscript</a></li>
+  <li><a href="#createlightsource">createlightsource</a></li>
+  <li><a href="#getitemprop">getitemprop</a></li>
+</ul>
+
+<h2 id="SectTest">Test Commands</h2>
+
+<h3>Test Command Index</h3>
+
+<ul>
+  <li><a href="#addchar">addchar</a></li>
+  <li><a href="#backpack">backpack</a></li>
+  <li><a href="#clearmurderer">clearmurderer</a></li>
+  <li><a href="#containerexport">containerexport</a></li>
+  <li><a href="#containerimport">containerimport</a></li>
+  <li><a href="#convertspellchecker">convertspellchecker</a></li>
+  <li><a href="#createaccount">createaccount</a></li>
+  <li><a href="#createbauaccount">createbauaccount</a></li>
+  <li><a href="#delaccount">delaccount</a></li>
+  <li><a href="#deleteaccount">deleteaccount</a></li>
+  <li><a href="#equipmentexport">equipmentexport</a></li>
+  <li><a href="#fire">fire</a></li>
+  <li><a href="#getplayerskills">getplayerskills</a></li>
+  <li><a href="#harvest">harvest</a></li>
+  <li><a href="#harvestinfo">harvestinfo</a></li>
+  <li><a href="#logscriptinfo">logscriptinfo</a></li>
+  <li><a href="#makedungtele">makedungtele</a></li>
+  <li><a href="#makemoongates">makemoongates</a></li>
+  <li><a href="#mounttest">mounttest</a></li>
+  <li><a href="#moveaccount">moveaccount</a></li>
+  <li><a href="#multicheckexport">multicheckexport</a></li>
+  <li><a href="#multiexport">multiexport</a></li>
+  <li><a href="#multiimport">multiimport</a></li>
+  <li><a href="#npcwipe">npcwipe</a></li>
+  <li><a href="#npcwipetype">npcwipetype</a></li>
+  <li><a href="#nukerec">nukerec</a></li>
+  <li><a href="#nukerecspecial">nukerecspecial</a></li>
+  <li><a href="#observeskills">observeskills</a></li>
+  <li><a href="#openstone">openstone</a></li>
+  <li><a href="#recreateall">recreateall</a></li>
+  <li><a href="#recreatemerchants">recreatemerchants</a></li>
+  <li><a href="#reequipall">reequipall</a></li>
+  <li><a href="#reloadcfg">reloadcfg</a></li>
+  <li><a href="#renamestuff">renamestuff</a></li>
+  <li><a href="#restart">restart</a></li>
+  <li><a href="#restartall">restartall</a></li>
+  <li><a href="#restartspecial">restartspecial</a></li>
+  <li><a href="#restockall">restockall</a></li>
+  <li><a href="#rpm">rpm</a></li>
+  <li><a href="#sendpacket">sendpacket</a></li>
+  <li><a href="#setacctp">setacctp</a></li>
+  <li><a href="#setopentimeall">setopentimeall</a></li>
+  <li><a href="#shutdown">shutdown</a></li>
+  <li><a href="#splitaccount">splitaccount</a></li>
+  <li><a href="#staticscheckexport">staticscheckexport</a></li>
+  <li><a href="#staticscheckrestore">staticscheckrestore</a></li>
+  <li><a href="#staticsexport">staticsexport</a></li>
+  <li><a href="#staticsexportforce">staticsexportforce</a></li>
+  <li><a href="#staticsimport">staticsimport</a></li>
+  <li><a href="#storagewipe">storagewipe</a></li>
+  <li><a href="#test">test</a></li>
+  <li><a href="#testprop">testprop</a></li>
+  <li><a href="#trial">trial</a></li>
+  <li><a href="#unloadall">unloadall</a></li>
+  <li><a href="#unloadcfg">unloadcfg</a></li>
+  <li><a href="#unloadscript">unloadscript</a></li>
+  <li><a href="#xmasreset">xmasreset</a></li>
+</ul>
+
+<!-- old stuff {{{
+<ul>
+  <li><a href="#Grantpriv">Grantpriv</a></li>
+    <li><a href="#Makemoongates">MakeMoongates</a></li>
+    <li><a href="#NPCwipe">NPCwipe</a></li>
+    <li><a href="#Restart">Restart</a></li>
+    <li><a href="#Revokepriv">Revokepriv</a></li>
+    <li><a href="#RPM">RPM</a></li>
+    <li><a href="#Setcmdlevel">Setcmdlevel</a></li>
+    <li><a href="#Unloadcfg">Unloadcfg</a></li>
+</ul>
+
+<ul>
+  <li><a href="#Bcast">Bcast</a></li>
+  <li><a href="#Goto">Goto</a></li>
+  <li><a href="#Tele">Tele</a></li>
+  <li><a href="#Time">Time</a></li>
+</ul>
+
+    Seer Commands
+<ul>
+  <li><a href="#Bank">Bank</a></li>
+  <li><a href="#Concealme">Concealme</a></li>
+  <li><a href="#Create">Create</a></li>
+  <li><a href="#Createat">Createat</a></li>
+  <li><a href="#Createnpc">Createnpc</a></li>
+  <li><a href="#Createstack">Createstack</a></li>
+  <li><a href="#Critter">Critter</a></li>
+  <li><a href="#Equipt">Equipt</a></li>
+  <li><a href="#Go">Go</a></li>
+  <li><a href="#Goxyz">Goxyz</a></li>
+  <li><a href="#Hideme">Hideme</a></li>
+  <li><a href="#Music">Music</a></li>
+  <li><a href="#Refreshme">Refreshme</a></li>
+  <li><a href="#Rename">Rename</a></li>
+  <li><a href="#Sayabove">Sayabove</a></li>
+  <li><a href="#Sayabovepvt">Sayabovepvt</a></li>
+  <li><a href="#Setlight">Setlight</a></li>
+  <li><a href="#Setobjectproperty">Setobjproperty</a></li>
+  <li><a href="#Spawn">Spawn</a></li>
+  <li><a href="#Unconcealme">Unconcealme</a></li>
+  <li><a href="#Where">Where</a></li>
+  <li><a href="#Wildlife">Wildlife</a></li>
+</ul>
+
+    GM Commands
+<ul>
+  <li><a href="#Action">Action</a></li>
+  <li><a href="#Buzz">Buzz</a></li>
+  <li><a href="#Destroy">Destroy</a></li>
+  <li><a href="#Equip">Equip</a></li>
+  <li><a href="#Eraseglobal">Eraseglobal</a></li>
+  <li><a href="#Eraseobjproperty">Eraseobjproperty</a></li>
+  <li><a href="#Freeze">Freeze</a></li>
+  <li><a href="#Getglobal">GetGlobal</a></li>
+  <li><a href="#Getprop">Getprop</a></li>
+  <li><a href="#Ident">Ident</a></li>
+  <li><a href="#Kick">Kick</a></li>
+  <li><a href="#Kill">Kill</a></li>
+  <li><a href="#Lock">Lock</a></li>
+  <li><a href="#Makeregs">Makeregs</a></li>
+  <li><a href="#Makeshipdeed">Makeshipdeed</a></li>
+  <li><a href="#Moveitem">Moveitem</a></li>
+  <li><a href="#Myform">Myform</a></li>
+  <li><a href="#Movetocont">Movetocont</a></li>
+  <li><a href="#Powerup">Powerup</a></li>
+  <li><a href="#Res">Res</a></li>
+  <li><a href="#Resme">Resme</a></li>
+  <li><a href="#Savenow">Savenow</a></li>
+  <li><a href="#Setglobal">Setglobal</a></li>
+  <li><a href="#Setmovable">Setmovable</a></li>
+  <li><a href="#Setprop">Setprop</a></li>
+  <li><a href="#Setskill">Setskill</a></li>
+  <li><a href="#Sfx">Sfx</a></li>
+  <li><a href="#Shave">Shave</a></li>
+  <li><a href="#Showscript">Showscript</a></li>
+  <li><a href="#Showstats">Showstats</a></li>
+  <li><a href="#Spellbook">Spellbook</a></li>
+  <li><a href="#Summon">Summon</a></li>
+  <li><a href="#Tame">Tame</a></li>
+  <li><a href="#Thaw">Thaw</a></li>
+  <li><a href="#Thawme">Thawme</a></li>
+  <li><a href="#Unlock">Unlock</a></li>
+  <li><a href="#Whereship">Whereship</a></li>
+  <li><a href="#Wipebank">Wipebank</a></li>
+  <li><a href="#Writequip">Writequip</a></li>
+</ul>
+
+
+<h2>Admin Commands</h2>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Grantpriv"><big><big><big><strong>Grantpriv</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.grantpriv [<a href="setpriv.htm">priv</a>]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Grants an <a href="setpriv.htm">access privlage</a> to a targetted character.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Use <i>.set [privname] on</i> to enable the privlage</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Makemoongates"><big><big><big><strong>MakeMoongates</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.makemoongates</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates the 8 world moongates.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Should not be needed more than once.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="NPCwipe"><big><big><big><strong>NPCwipe</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.npcwipe</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Kills all mobiles in the world. Including online players.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Takes a long while to complete</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Restart"><big><big><big><strong>Restart</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.restart</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Restarts the targetted NPC's AI script.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Revokepriv"><big><big><big><strong>Revokepriv</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.revokepriv [<a href="setpriv.htm">priv</a>]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Revokes an <a href="setpriv.htm">access privlage</a> from a targetted character.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Or use <i>.set [privname] off</i> to disable the privlage</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="RPM"><big><big><big><strong>RPM</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.rpm</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>returns the system RPM, which is the number of "game loop rotations" completed 
+        in the last minute. Acts as a "benchmark" of system performace. Note that a large number
+	  of running scripts will bring down the RPM.
+  </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>This can be zero!</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Setcmdlevel"><big><big><big><strong>Setcmdlevel</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.setcmdlevel [level]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Grants a new access level to the targetted player.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Broken, 2/14/99</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Unloadcfg"><big><big><big><strong>Unloadcfg</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.unloadcfg [filename]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Forces POL to re-read a config file without restarting.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Do not append filename with ".cfg"</td>
+  </tr>
+</table>
+</center></div>
+
+<h2>GM Commands</h2>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Action"><big><big><big><strong>Action</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.action [number]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Forces the targetted mobile to perform the given action (i.e. bow, breathe fire..)
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Use decimal or prepend with "0x" to use Hex.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Buzz"><big><big><big><strong>Buzz</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.buzz</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Give the targetted human a buzzcut (i.e. remove hair)
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>none</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Destroy"><big><big><big><strong>Destroy</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.destroy</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Destroys the targetted item.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>none</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Equip"><big><big><big><strong>Equip</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.equip</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Equips the targetted item on a targetted mobile.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Eraseglobal"><big><big><big><strong>Eraseglobal</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.eraseglobal [property]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Deletes the given global property.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Eraseobjproperty"><big><big><big><strong>Eraseobjproperty</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.eraseobjproperty [propname]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Erases the given property from the targetted Object.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Freeze"><big><big><big><strong>Freeze</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.freeze</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Paralyzes the targetted mobile. Use .thaw to undo.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>none</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Getglobal"><big><big><big><strong>Getglobal</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.getglobal [propname]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Prints the value of the given global property.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Getprop"><big><big><big><strong>Getprop</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.getprop [propname]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Prints the value of the given object property.
+        Valid properties are:
+	  <pre>
+        properties in a UOBJECT:
+        x
+        y
+        z
+        objtype
+        color
+        serial
+        height
+        facing
+    properties in an ITEM (in addition to those in UOBJECT):
+        amount
+        layer
+        container
+    properties in a CHARACTER (in addition to those in UOBJECT):
+        name
+        warmode
+        gender
+        truecolor
+        hp
+        maxhp
+        mana
+        maxmana
+        stamina
+        maxstamina
+        strength
+        dexterity
+        intelligence
+        dead
+        ar
+    </pre>	
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Will print an error if the property does not exist. i.e. "mana" on a door.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Kick"><big><big><big><strong>Kick</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.kick</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Disconnects the targetted plaeyr from the server.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>none</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Kill"><big><big><big><strong>Kill</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.kill</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Murders the targetted mobile with extreme predjudice.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Be nice!</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Ident"><big><big><big><strong>Ident</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.ident</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Prints the serial and objtype of the targetted object.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td></td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Lock"><big><big><big><strong>Lock</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.lock</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sets the "locked" property on the targetted container to true.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Note that the original key will still open the container.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Makeregs"><big><big><big><strong>Makeregs</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.makeregs</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates a bag in your pack with 20 of each type of reagent in it.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Now less messy!</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Makeshipdeed"><big><big><big><strong>Makeshipdeed</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.makeshipdeed [shiptype]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates a shipdeed in your pack, ready to be placed.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Use shiptype of "0x4000" for now.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Moveitem"><big><big><big><strong>Moveitem</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.moveitem</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Moves the targetted item to a new position. Spooky.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Movetocont"><big><big><big><strong>Movetocont</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.movetocont</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Moves the targetted item to a new container.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Myform"><big><big><big><strong>Myform</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.myform</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Changes you back to the human male graphic.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Good if you somehow change your graphic to an invisible one and cant target yourself to change back.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Powerup"><big><big><big><strong>Powerup</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.powerup</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sets all your skills to 100. d00d u rOk!
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Dont go nuts.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Res"><big><big><big><strong>Res</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.res</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Resurrect the targetted unfortunate soul.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Resme"><big><big><big><strong>Resme</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.resme</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Resurrects yourself.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Savenow"><big><big><big><strong>Savenow</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.savenow</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Forces a worldsave.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Setglobal"><big><big><big><strong>Setglobal</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.setglobal [propname] [value]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sets the given global property to the given value.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Setmovable"><big><big><big><strong>Setmovable</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.setmovable [0 or 1]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sets the targetted item to movable (1) or not (0).
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Still may highlight. Client issue. :(</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Setprop"><big><big><big><strong>Setprop</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.setprop [propname] [value]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sets the given property to the given value.
+	  Valid (writable) properties are:
+	  <pre>
+	  graphic (aka 'model' , 'form' , etc)
+	  color
+	  hp
+          mana
+	  stamina
+	  str
+          int
+          dex
+	  </pre>
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Setskill"><big><big><big><strong>Setskill</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.setskill [skill#] [amount]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sets the given skill number to the given amount.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>As of 2/14/99, [amount] is a rawskill scale from 0-1000000. Will change to 0-1000 soon.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Sfx"><big><big><big><strong>Sfx</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.Sfx [number]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Play the given sound number to those in the vacinity, centered around you.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Shave"><big><big><big><strong>Shave</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.shave</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Shaves off the targetted human's facial hair.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>none</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Showscript"><big><big><big><strong>Showscript</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.showscript</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Prints the AI script name targetted NPC is using.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Showstats"><big><big><big><strong>Showstats</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.showstats</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Prints the str, int, and dex above the targetted mobile.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Faster than using getprop.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Spellbook"><big><big><big><strong>Spellbook</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.spellbook</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates a full spellbook in your pack.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Summon"><big><big><big><strong>Summon</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.summon [player name]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Moves the given player to your location.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Use <i>.online</i> to find the players connected.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Tame"><big><big><big><strong>Tame</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.tame</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Artificially tames the targetted NPC.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>none</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Thaw"><big><big><big><strong>Thaw</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.thaw</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Unfreezes the frozen target (frozen from .freeze command).
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Use .thawme for unfreezing yourself (since you can't target anything while frozen).</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Thawme"><big><big><big><strong>Thawme</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.thawme</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Unfreezes yourself.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>none</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Unlock"><big><big><big><strong>Unlock</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.Unlock</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sets the "locked" property on the targetted container to false.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Whereship"><big><big><big><strong>Whereship</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.whereship</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Prints the coordinates of the ship by targetting the built ship title deed.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>The deed is placed in the builder's bank on boat placement.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Wipebank"><big><big><big><strong>Wipebank</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.wipebank</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Empties the bankbox of the targetted player.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Perfect for exploiting d00p d00dZ.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Writequip"><big><big><big><strong>Writequip</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.writequip</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Writes the equipped items of the targetted mobile to equip.cfg for later use with "equipt"
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+
+<h2>Seer Commands</h2>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Bank"><big><big><big><strong>Bank</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.bank</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Opens your bankbox.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Bankbox will still close if you move.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Concealme"><big><big><big><strong>Concealme</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.concealme</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Unlimited stealth until .unconcealme is used.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Speech while concealed can only be heard by players at your commandlevel or higher.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Create"><big><big><big><strong>Create</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.create {objtype or name} {amount}</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>.create with no parameters brings up a small item creation menu. Otherwise, creates the specified item amount times (amount defaults to 1).
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Too bad they don't stack.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Createat"><big><big><big><strong>Createat</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.createat {objtype or name} {amount}</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Same as .create but it prompts for a target to create the item at.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Createnpc"><big><big><big><strong>Createnpc</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.createnpc [npc template]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates an npc of type specified in the template (look in npcdesc.cfg) at the targetted location
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Createstack"><big><big><big><strong>Createstack</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.createstack [objtype] [amount]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates a stack of items. If the client will not stack the given item, the name will be changed, but only 1 item will be created.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Todo: create aliases for the most used items.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Critter"><big><big><big><strong>Critter</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.critter</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates a random "town animal" for easy town deorating.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>none</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Equipt"><big><big><big><strong>Equipt</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.equipt [equipment templatename]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Equips the targetted mobile with the items defined in the given entry in equip.cfg
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Name is case-sensative</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Go"><big><big><big><strong>Go</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.go [place]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Transport to the given location. New locations can be defined in the script.
+        Example: .go green transports you to green acres.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Goxyz"><big><big><big><strong>Goxyz</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.goxyz [x] [y] [z]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Transport to the given coordinates.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>coordinates must be space-delimited.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Hideme"><big><big><big><strong>Hideme</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.hideme</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Hides yourself. Note that you will be unhidden for the same reasons as if you were using the hiding skill. The advantage to this is that none of the normal LOS or distance checks are made.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Music"><big><big><big><strong>Music</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.music [music #]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Plays a UO midi to yourself. I like #b
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Must be entered in HEX.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Refreshme"><big><big><big><strong>Refreshme</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.refreshme</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Refills your hp, mana, and stamina
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>none</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Rename"><big><big><big><strong>Rename</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.rename [newname]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Renames the targetted object to the given newname. <i>Use this instead of ".setprop name blah"</i>
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Sayabove"><big><big><big><strong>Sayabove</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.sayabove [text]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Prints the given text above the targetted object for all to see.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Sayabovepvt"><big><big><big><strong>Sayabovepvt</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.sayabovepvt [text]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Prints the text above the targetted object for you to see only.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Todo: choose who can see the text.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Setlight"><big><big><big><strong>Setlight</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.setlight [region name] [amount]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Changes the global light level in the given region name (see regions.cfg for names) to the given amount (0-15)
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Setobjectproperty"><big><big><big><strong>Setobjproperty</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.setobjproperty [propname] [value]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Sets a property of the given name and value on the targetted object.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Spawn"><big><big><big><strong>Spawn</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.spawn</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Super-nifty in-game tool to define new spawn points. Make sure your npcdesc.cfg and spawndef.cfg are synched.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>NPCs will spawn on next spawn cycle. No reboot needed.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Unconcealme"><big><big><big><strong>Unconcealme</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.unconcealme</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Unconceals you. Used with .concealme.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>none</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Where"><big><big><big><strong>Where</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.where</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Prints your current coordinates.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Wildlife"><big><big><big><strong>Wildlife</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.wildlife</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Creates a random out-of-town animal. Good for decorating the countryside.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>none</td>
+  </tr>
+</table>
+</center></div>
+
+<h2>Counselor Commands</h2>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Bcast"><big><big><big><strong>Bcast</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.bcast [msg]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Send the given message to every online character.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Goto"><big><big><big><strong>Goto</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.goto [player name]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Teleports you to the given player.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Use ".online" to get the online players.</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Tele"><big><big><big><strong>Tele</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.tele</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Teleports you to the targetted tile.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Time"><big><big><big><strong>Time</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.time</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Prints the time of day.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Military time. (24:00)</td>
+  </tr>
+</table>
+</center></div>
+
+<h2>Player Commands</h2>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Msg"><big><big><big><strong>Msg</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.msg [player name]</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Will prompt for a message to send privately to the given player.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>none</td>
+  </tr>
+</table>
+</center></div>
+<p>&nbsp; </p>
+
+<div align="center"><center>
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2" id="Online"><big><big><big><strong>Online</strong></big></big></big></a></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Syntax:</small></td>
+    <td>.online</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Prints the players online.
+    </td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>TBD</td>
+  </tr>
+</table>
+</center></div>
+
+<p id="Old">Old Text Commands</a></p>
+
+<p>All commands are preceded by a '.' dot character. </p>
+
+<table border="1" width="100%" cellspacing="0" cellpadding="3">
+  <tr bgcolor="#99CCFF">
+    <td width="50%">Command</td>
+    <td width="50%">Description</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.resendchars</code></td>
+    <td width="50%">Resend data on all characters to you</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.where</code></td>
+    <td width="50%">Show your X,Y,Z position</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.shutdown</code></td>
+    <td width="50%">Shut the server down</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.create</code></td>
+    <td width="50%">Create an item using the item creation menus</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.create OBJTYPE</code></td>
+    <td width="50%">Create an object by object type.</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.los</code></td>
+    <td width="50%">Check line of sight to an object</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.wheretest</code></td>
+    <td width="50%">Check the client's idea of where you are versus the server's idea</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.res</code></td>
+    <td width="50%">Resurrect a ghost</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.weapon TEMPLATENAME</code></td>
+    <td width="50%">Create a weapon by template name</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.action ACTIONID</code></td>
+    <td width="50%">Perform an action</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.ident</code></td>
+    <td width="50%">Target an object to learn its Serial number and ObjType</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.set SETTING [on|off]</code></td>
+    <td width="50%">Enable or disable an option</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.set</code></td>
+    <td width="50%">List your enabled <a href="setpriv.htm">settings</a></td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.privs</code></td>
+    <td width="50%">List your <a href="setpriv.htm">privileges</a></td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.props</code></td>
+    <td width="50%">List scripted properties of an object</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.turn</code></td>
+    <td width="50%">Turn an object to your facing</td>
+  </tr>
+  <tr>
+    <td width="50%"><code>.createnpc TEMPLATENAME</code></td>
+    <td width="50%">Create an NPC by template name</td>
+  </tr>
+</table>
+<!-- }}} -->
+
+</body>
+</html>
+
+<!-- vim: set sw=2 sts=2 tw=75:-->

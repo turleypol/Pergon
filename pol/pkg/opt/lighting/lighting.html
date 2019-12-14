@@ -1,0 +1,421 @@
+<html><head><title>Lighting System - version .4</title></head>
+
+<body bgcolor="#FFFFFF" text="#000000" link="#0000FF" vlink="#800080" alink="#FF0000">
+
+<table border="0" width="100%">
+  <tr>
+    <td width="100%" bgcolor="#3259DD"><font color="#ffffff" face="arial,helvetica" size="4">Lighting - version .4</font></td>
+</tr></table>
+<font size="1" face="arial,helvetica">Created by <a href="mailto:zuluhotel@home.com">Zulu</a> Jan 15, 2000 - updated March 28, 2000</font>
+<p>
+My temporary email address is <a href="zuluhotel@hotmail.com">zuluhotel@hotmail.com</a><p>
+
+In version .3 - I have added some new objects in the itemdesc.cfg file.<p>
+Thanks to <a href="boum0@frankiz.polytechnique.fr">Helldrige</a> for his updates. He has a great PERL program that will convert all of the old items to the settings. Helldrige and I worked on making sure our two programs are in sync. Follow this link to <a href="http://www.polytechnique.fr/eleves/1997/boumaou/pol.html">Helldrige's website</a><p>
+
+In version .2 - I have updated the itemdesc.cfg to include all of the walls with windows. If you already installed the lighting system, then just replace the <strong>itemdesc.cfg</strong> in the <strong>\POL\pkg\opt\lighting\</strong> directory.<p>
+
+This lighting system will fix all of the items that have light sources. Plus it will allow <strong>any</strong> object to be double clicked with the following result.<p>
+
+ - the object can change to show a different image<br>
+ - when the object is dclicked again, it will return to the original image<br>
+ - there can be a sound effect played when the image is changing<br>
+ - you can set objects that can only be changed by staff members
+
+<p>This system works great for touches, street lamps, etc. I have included most objects that have a light source, they are fully accessible from HOD. You can also use objects like the sleeping bag, I have included the two sleeping bags that will unroll/roll when dclicked.<p>
+
+<br><p><strong>Extra Effects:</strong><p>
+If you want to see some of the new lighting system in color, do the following:
+
+Edit the uo.cfg file from the \uo\desktop\... directory NOT the \uo\ directory. Sample path is below:
+
+D:\UO\Desktop\gm\ZuluHotel\Zulu
+gm = the account name you are using
+ZuluHotel = the shard name
+Zulu = the char name
+
+Change ColoredLighting=off to ColoredLighting=on
+Save the file and restart UO.
+
+
+<br><p><strong>How does it work:</strong><p>
+In the <strong>\POL\pkg\opt\lighting\itemdesc.cfg</strong> file you can add the following items to control objects.<br>
+
+<br>
+Cprop change     i#<br>
+Cprop changesnd  i#<br>
+Cprop originsnd  i#<br>
+Cprop staff  i1<br>
+<br>
+# means replace the # with a <strong>DECIMAL</strong> number. So, if you want an object's new image to be 0x0B21, then you would have to use <strong>DECIMAL</strong> 2849 Sounds will also have to be converted to <strong>DECIMAL</strong>.<p>
+
+<strong>change</strong> is what graphic to change to.<br>
+<strong>changesnd</strong> is what sound to play when changing to NEW graphic.<br>
+<strong>originsnd</strong> is what sound to play when changing to OLD graphic.<br>
+<strong>staff</strong> is only used if you ONLY want staff to be able to change the item.<p>
+
+ If you set it 3, then only GMs and Admins can change the object. Players won't be able to. A setting of 1 will allow all staff to change the object.<br>
+ Counselor = 1<br>
+ Seer = 2<br>
+ GM = 3<br>
+ Administrator = 4<p>
+
+<br><p><strong>How to set up the script:</strong>
+<p>This will require editing and changing files. If you are <strong>NOT</strong> that familiar with <a href="http://www.vulpin.burdell.org/pol/">POL</a> or editing files, maybe you not attempt this. If you decide that want try this, MAKE back ups of the following files. Do <strong>NOT</strong> skip this step, this is for your own safety.<p>
+
+<strong>\POL\config\itemdesc.cfg</strong><br>
+<strong>\POL\pkg\std\decorations\itemdesc.cfg</strong><p>
+
+The lighting system designed to replace any scripts that change the image. The following files are not longer required and should be deleted:<p>
+<strong>\POL\scripts\items\torch.ecl</strong><br>
+<strong>\POL\scripts\items\torch.src</strong><p>
+
+If you the following files delete them too:<p>
+
+<strong>\pol\pkg\std\tinkering\candlabra.src</strong><br>
+<strong>\pol\pkg\std\tinkering\candlabra.ecl</strong><br>
+<strong>\pol\pkg\std\tinkering\lantern.src</strong><br>
+<strong>\pol\pkg\std\tinkering\lantern.ecl</strong><br>
+<strong>\pol\pkg\std\tinkering\sconce.src</strong><br>
+<strong>\pol\pkg\std\tinkering\sconce.ecl</strong><p>
+
+<br><p><strong>Installing the Lighting System:</strong><p>
+Unzip lighting.zip to <strong>\POL\pkg\opt\lighting</strong><p>
+
+<br><p><strong>Editing files:</strong><p>
+Load the <strong>\POL\config\itemdesc.cfg</strong> into notepad or any editor. <strong>Delete</strong> the following items from the script:<p>
+Item 0x0f64<br>
+{<br>
+    Name Torch<br>
+    Script torch<br>
+    VendorSellsFor  7<br>
+    VendorBuysFor   3<br>
+}<br>
+<br>
+Item 0x1853<br>
+{<br>
+    Name            SkullWithCandle<br>
+}<br>
+<br>
+Item 0x0A0F<br>
+{<br>
+    Name            candle<br>
+}<br>
+<br>
+Item 0x0de3<br>
+{<br>
+    Name            campfire<br>
+    SaveOnExit      0<br>
+    movable 0<br>
+}<br>
+<br>
+Now we have to edit some of the items. <strong>Find</strong> the following item:<p>
+Item 0x0F6C<br>
+{<br>
+    Name            bluemoongate<br>
+    WalkOnScript    moongate<br>
+    SaveOnExit      0<br>
+}<br>
+<br>
+<strong>Replace</strong> it with the following:<p>
+Item 0x0F6C<br>
+{<br>
+    Name            bluemoongate<br>
+    Facing 2<br>
+    WalkOnScript    moongate<br>
+    SaveOnExit      0<br>
+    movable 0<br>
+}<br>
+<br>
+Item 0x0dda<br>
+{<br>
+    Name            redmoongate<br>
+    Facing 2<br>
+    WalkOnScript    moongate<br>
+    SaveOnExit      0<br>
+    movable 0<br>
+}<br>
+<br>
+Item 0x1fd4<br>
+{<br>
+    Name            blackmoongate<br>
+    Facing 2<br>
+    WalkOnScript    moongate<br>
+    SaveOnExit      0<br>
+    movable 0<br>
+}<br>
+<br>
+Item 0x1fe7<br>
+{<br>
+    Name            whitemoongate<br>
+    Facing 2<br>
+    WalkOnScript    moongate<br>
+    SaveOnExit      0<br>
+    movable 0<br>
+}<br>
+<br>
+<strong>Find</strong> the following item:<p>
+Item 0x6002<br>
+{<br>
+    Name moongate<br>
+    Graphic 0x0F6C<br>
+    WalkOnScript timedmoongate<br>
+    SaveOnExit 1<br>
+}<br>
+
+<strong>Replace</strong> it with the following:<p>
+Item 0x6002<br>
+{<br>
+    Name moongate<br>
+    Graphic 0x0F6C<br>
+    Facing 2<br>
+    WalkOnScript timedmoongate<br>
+    SaveOnExit 1<br>
+    movable 0<br>
+}<br>
+
+<strong>Find</strong> the following item:<p>
+Item 0x398c<br>
+{<br>
+    Name            firefield<br>
+    SaveOnExit      0<br>
+    WalkOnScript    fires<br>
+    movable 0<br>
+    ControlScript firecontrol<br>
+}<br>
+<br>
+Item 0x3996<br>
+{<br>
+    Name            fire_field<br>
+    SaveOnExit      0<br>
+    WalkOnScript    fires<br>
+    movable 0<br>
+    ControlScript firecontrol<br>
+}<br>
+<br>
+Item 0x3946<br>
+{<br>
+    Name            energyfield<br>
+    SaveOnExit      0<br>
+    movable 0<br>
+}<br>
+<br>
+<strong>Replace</strong> it with the following:<p>
+Item 0x398c<br>
+{<br>
+    Name            firefield<br>
+    SaveOnExit      0<br>
+    WalkOnScript    fires<br>
+    Facing 2<br>
+    movable 0<br>
+    ControlScript firecontrol<br>
+}<br>
+<br>
+Item 0x3996<br>
+{<br>
+    Name            fire_field<br>
+    SaveOnExit      0<br>
+    WalkOnScript    fires<br>
+    Facing 2<br>
+    movable 0<br>
+    ControlScript firecontrol<br>
+}<br>
+<br>
+Item 0x3946<br>
+{<br>
+    Name            energyfield<br>
+    SaveOnExit      0<br>
+    Facing 2<br>
+    movable 0<br>
+}<br>
+<br>
+
+<strong>Find</strong> the following item:<p>
+Item 0x3914<br>
+{<br>
+    Name            poisonfield_ns<br>
+    SaveOnExit      0<br>
+    WalkOnScript    poisonfield<br>
+    movable 0<br>
+    controlscript poisoncontrol<br>
+}<br>
+<br>
+Item 0x3920<br>
+{<br>
+                Name poisonfield_ew<br>
+                SaveOnExit 0<br>
+                walkonscript poisonfield<br>
+                movable 0<br>
+                controlscript poisoncontrol<br>
+}<br>
+<br>
+
+<strong>Replace</strong> it with the following:<p>
+
+Item 0x3914<br>
+{<br>
+    Name            poisonfield_ns<br>
+    SaveOnExit      0<br>
+    WalkOnScript    poisonfield<br>
+    Facing 2<br>
+    movable 0<br>
+    controlscript poisoncontrol<br>
+}<br>
+<br>
+Item 0x3920<br>
+{<br>
+    Name poisonfield_ew<br>
+    SaveOnExit 0<br>
+    walkonscript poisonfield<br>
+    Facing 2<br>
+    movable 0<br>
+    controlscript poisoncontrol<br>
+}<br>
+<br>
+
+<strong>Find</strong> the following item:<p>
+
+Item 0x3967<br>
+{<br>
+	Name parafield1<br>
+	WalkonScript walkon_parafield<br>
+ 	saveonexit 0<br>
+	movable 0<br>
+}<br>
+<br>
+Item 0x3979<br>
+{<br>
+	Name parafield2<br>
+	WalkonScript walkon_parafield<br>
+	saveonexit 0<br>
+	movable 0<br>
+}<br>
+<br>
+<strong>Replace</strong> it with the following:<p>
+
+Item 0x3967<br>
+{<br>
+	Name parafield1<br>
+	WalkonScript walkon_parafield<br>
+ 	saveonexit 0<br>
+    Facing 2<br>
+	movable 0<br>
+}<br>
+<br>
+Item 0x3979<br>
+{<br>
+	Name parafield2<br>
+	WalkonScript walkon_parafield<br>
+	saveonexit 0<br>
+    Facing 2<br>
+	movable 0<br>
+}<br>
+<br>
+
+<strong>Save the file</strong><p>
+
+Load the <strong>\POL\pkg\std\decorations\itemdesc.cfg</strong> into notepad or any editor. <strong>Delete</strong> the following items from the script:<p>
+
+Item 0x0B26 // tall candlabra<br>
+{<br>
+   Name tallcandlabra<br>
+   VendorSellsFor  300<br>
+   VendorBuysFor   120<br>
+}<br>
+<br>
+Item 0x0E31 // brazier<br>
+{<br>
+   Name brazier<br>
+   VendorSellsFor  350<br>
+   VendorBuysFor   140<br>
+}<br>
+<br>
+Item 0x1854 // skull candle<br>
+{<br>
+   Name skullcandle<br>
+   VendorSellsFor  100<br>
+   VendorBuysFor   20<br>
+}<br>
+<br>
+<strong>Find</strong> the following item:<p>
+<br>
+Item 0x0E5C // glowing "C" rune<br>
+{<br>
+   Name glowingcrune<br>
+   VendorSellsFor  500<br>
+   VendorBuysFor   75<br>
+}<br>
+<br>
+Item 0x0E5F // glowing "H" rune<br>
+{<br>
+   Name glowinghrune<br>
+   VendorSellsFor  500<br>
+   VendorBuysFor   250<br>
+}<br>
+<br>
+Item 0x0E68 // glowing "W" rune<br>
+{<br>
+   Name glowingwrune<br>
+   VendorSellsFor  500<br>
+   VendorBuysFor   250<br>
+}<br>
+<br>
+Item 0x0E62 // glowing "M" rune<br>
+{<br>
+   Name glowingmrune<br>
+   VendorSellsFor  500<br>
+   VendorBuysFor   250<br>
+}<br>
+<br>
+Item 0x0E66 // glowing "O" rune<br>
+{<br>
+   Name glowingorune<br>
+   VendorSellsFor  500<br>
+   VendorBuysFor   250<br>
+}<br>
+<br>
+<strong>Replace</strong> it with the following:<p>
+<br>
+Item 0x0E5C // glowing "C" rune<br>
+{<br>
+   Name glowingcrune<br>
+   Facing 2<br>
+   VendorSellsFor  500<br>
+   VendorBuysFor   75<br>
+}<br>
+<br>
+Item 0x0E5F // glowing "H" rune<br>
+{<br>
+   Name glowinghrune<br>
+   Facing 2<br>
+   VendorSellsFor  500<br>
+   VendorBuysFor   250<br>
+}<br>
+<br>
+Item 0x0E68 // glowing "W" rune<br>
+{<br>
+   Name glowingwrune<br>
+   Facing 2<br>
+   VendorSellsFor  500<br>
+   VendorBuysFor   250<br>
+}<br>
+<br>
+Item 0x0E62 // glowing "M" rune<br>
+{<br>
+   Name glowingmrune<br>
+   Facing 2<br>
+   VendorSellsFor  500<br>
+   VendorBuysFor   250<br>
+}<br>
+<br>
+Item 0x0E66 // glowing "O" rune<br>
+{<br>
+   Name glowingorune<br>
+   Facing 2<br>
+   VendorSellsFor  500<br>
+   VendorBuysFor   250<br>
+}<br>
+<br>
+<strong>Save the file and start POL.</strong>
+</body>
+</html>

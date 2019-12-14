@@ -1,0 +1,43 @@
+//////////////////////////////////////////////
+//
+//   Jehova TextCMD Script v1.0 (2000/10/14)
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2000/10/13 Shinigami: ReWrite
+//
+//////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+Use util;
+Use math;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/eventid";
+Include "include/clock";
+Include "include/msgs";
+Include "ai/new/include/jehova";
+
+/////////////////////
+// Jehova - TextCMD
+/////////////////////
+
+Program TextCMD_Jehova(who)
+  SendSysMessagePergon(who, "Bitte das Opfer auswählen!");
+
+  Var opfer:=Target(who);
+  If (opfer)
+    Jehova(opfer, who);
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

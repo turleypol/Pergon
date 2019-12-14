@@ -1,0 +1,41 @@
+/////////////////////////////////////////////////////////
+//
+//   debugcontrol - ControlScript für Debugroutine
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     12.11.07 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+use os;
+use uo;
+
+Program debugcontrol( debugpid )
+  // Verbinden
+  var dctx := Create_Debug_Context();
+  dctx.process("attach "+debugpid );
+
+  var gpropkey := "#Debug" + debugpid; // Global verewigen
+  SetGlobalProperty( gpropkey, getpid() );
+
+  var ev;
+  While (1)
+    ev := Wait_For_Event( 120 ); // Nach 120s Selbstzerstörung
+    If (ev)
+      If (ev=="detach")
+        Break;
+      EndIf
+      ev.sendevent( dctx );  // DebugInstanz zurückgeben
+    Else
+      dctx.process("detach");
+      Break;
+    EndIf
+  EndWhile
+
+  // deregister
+  EraseGlobalProperty( gpropkey );
+EndProgram

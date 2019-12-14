@@ -1,0 +1,38 @@
+use cfgfile;
+use uo;
+
+Include "include/msgs";
+
+Program TextCMD_ShowScript(who)
+  SendSysMessagePergon(who, "Wählt ein Object!");
+
+  Var object:=Target(who);
+  If (object.isa(POLCLASS_NPC))
+    SendSysMessagePergon(who, "Script: "+object.script);
+  ElseIf (object.isa(POLCLASS_ITEM))
+    Var usescript:=object.usescript;
+    Var equipscript:=object.equipscript;
+    Var unequipscript:=object.unequipscript;
+
+    Var itemdesccfg:=ReadConfigFile("itemdesc");
+    If (itemdesccfg)
+      Var itemdesc:=itemdesccfg[object.objtype];
+
+      If ((!usescript) And itemdesc.script)
+        usescript:=itemdesc.script;
+      EndIf
+      If ((!equipscript) And itemdesc.equipscript)
+        equipscript:=itemdesc.equipscript;
+      EndIf
+      If ((!unequipscript) And itemdesc.unequipscript)
+        unequipscript:=itemdesc.unequipscript;
+      EndIf
+    EndIf
+
+    SendSysMessagePergon(who, "UseScript: "+usescript);
+    SendSysMessagePergon(who, "EquipScript: "+equipscript);
+    SendSysMessagePergon(who, "UnEquipScript: "+unequipscript);
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

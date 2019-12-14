@@ -1,0 +1,63 @@
+// 11.11.05 Turley - cast_on hat kein .realm -> ersetzt durch character.realm
+
+
+Use uo;
+
+Include "include/eventid";
+Include "include/pergonutil";
+Include "include/msgs";
+Include "include/itemnpc";
+Include "include/modifyskill";
+
+Const MOVING_EFFECT_PURPLE_POTION  := 0x0F0D;
+Const SOUND_EFFECT_EXPLOSION	   := 0x208;
+Const EFFECT_EXPLOSION             := 0x36b0;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Use_Explosion(character, potion)
+  If (GetObjProperty(potion, "#bomb"))
+    SendSysMessagePergon(character, "Das explodiert gleich !!!");
+    Return;
+  EndIf
+
+  If (!AccessiblePergon(character, potion))
+    SendSysMessagePergon(character, "Ihr kommt da nicht ran!");
+    Return;
+  EndIf
+
+  If (character.hidden) // Um unnoetige Events zu sparen...
+    character.hidden:=0;
+  EndIf
+
+  SendSysMessagePergon(character, "Bitte ein Ziel wählen.");
+
+  Var cast_on:=TargetCoordinates(character);
+  If (!cast_on)
+    Return;
+  EndIf
+  If (!CheckLosAt(character, cast_on.x, cast_on.y, cast_on.z))
+    SendSysMessagePergon(character, "Ihr könnt das nicht sehen!");
+    Return;
+  EndIf
+
+  SetObjProperty(potion, "#bomb", 1);
+
+  Var parms:={};
+  parms[1]:=potion;
+  parms[2]:=character;
+  Start_ScriptPergon("explosiontimer", parms);
+
+  Detach();
+
+ // PlayMovingEffectXYZ(character.x, character.y, character.z+15, cast_on.x, cast_on.y, cast_on.z, MOVING_EFFECT_PURPLE_POTION, 8, 0, 0);
+  PlayMovingEffectXYZ(character.x, character.y, character.z+15, cast_on.x, cast_on.y, cast_on.z, MOVING_EFFECT_PURPLE_POTION, 1, 0, 0,character.realm);
+
+  If (!potion)
+    Return;
+  EndIf
+
+  MoveObjectToLocation(potion, cast_on.x, cast_on.y, cast_on.z, character.realm, MOVEOBJECT_FORCELOCATION);
+EndProgram

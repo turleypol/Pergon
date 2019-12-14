@@ -1,0 +1,99 @@
+//////////////////////////////////////////////////////////////////////////////
+// unequip - Items ablegen
+Use os;
+Use uo;
+
+Include "include/animal";
+Include "include/logutil";
+Include "include/msgs";
+
+Program TextCMD_UnEquip(who, param)
+    var allowed := array{
+        1, 2, 3, 4, 5, 6, 7, 8,
+        // 9, (Talisman)
+        10, 11, 12, 13, 14,
+        // 15, (unused secondary backpack)
+        16, 17, 18, 19, 20,
+        // 21, (backpack)
+        22, 23, 24, 25
+    };
+    var layer := CInt(param);
+
+    // Unequipper waehlt bei einem anderen Mobile einen Layer zum unequippen
+    // (da er ja keinen Zugriff auf dessen equippte Items hat)
+    If (layer in allowed)
+        SendSysMessagePergon(who, "Welchem Mobile soll ausgezogen werden?");
+
+        var tgt := Target(who,TGTOPT_NOCHECK_LOS);
+        If ((!tgt) || (!tgt.isa(POLCLASS_MOBILE)))
+            SendSysMessagePergon(who, "Kein oder falsches Ziel.");
+            Return;
+        EndIf
+
+        If (!UnequipLayer(tgt, layer))
+            SendSysMessagePergon(who, "Kein Item auf Layer " + layer);
+        EndIf
+
+        syslog(
+            "HINWEIS: "+CharInfoStr(who)+" hat Layer "+layer+" bei "+
+            CharInfoStr(tgt)+" ausgezogen."
+        );
+
+    ElseIf (0 <> layer)
+        SendSysMessagePergon(who, "Ungueltiges Layer: " + param);
+
+    ElseIf ("all" == param)
+        // alles ablegen
+        ForEach layer in (allowed)
+            SleepMs(2);
+            UnequipLayer(who, layer);
+        EndForEach
+
+    Else
+        // Unequipper waehlt im eigenen Zugriffsbereich ein Item aus
+        SendSysMessagePergon(who, "Was soll abgelegt werden?");
+
+        var what := Target(who);
+        If (!what)
+            SendSysMessagePergon(who, "Fremde Paperdoll?");
+            what := TargetCoordinates(who);
+            If (what.item)
+                what := what.item;
+            Else
+                SendSysMessagePergon(who, "Kein oder falsches Ziel.");
+                return;
+            EndIf
+        EndIf
+
+        MoveObjectToLocation(
+            what, who.x, who.y, who.z, who.realm,
+            MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+        );
+    EndIf
+EndProgram
+
+Function UnequipLayer(who, layer)
+    var item := GetEquipmentByLayer(who, layer);
+    If (!item)
+        return;
+    EndIf
+
+    If ((layer==25) && (GetPetTemplate(item)<>""))
+        // Reit-Layer ist speziell
+        var owner := who;
+        If (who.isA(POLCLASS_NPC))
+            // NPC sind nicht Owner
+            // (damit nicht Script auf enticed gesetzt wird)
+            owner := 0;
+        EndIf
+        return PetDisMount(who, owner);
+    Else
+        If (MoveObjectToLocation(
+                item, who.x, who.y, who.z, who.realm,
+                MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+        ))
+            return 1;
+        EndIf
+    EndIf
+    return 0;
+EndFunction

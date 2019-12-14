@@ -1,0 +1,67 @@
+/////////////////////////////////////////////////////////////////
+//  GoToPID Befehl -
+// wenn eine PID für einen NPC eingegeben wird, wird man an
+// dessen Position teleportiert (zu Erfahren über performance
+// und performance_diff) Param[1] - PID
+//
+// Author: Fox
+
+use file;
+use os;
+use uo;
+include "include/client";
+include "include/msgs";
+include "include/place";
+
+Program go_to_pid(who, text)
+    If (who.cmdlevel < CMDLEVEL_SEER)
+        SendSysMessagePergon(who,
+            "Ihr seid nicht berechtigt diesen Befehl zu nutzen."
+        );
+        return;
+    EndIf
+
+    var pid := 0;
+    If (text)
+        var params := SplitWords(text);
+        var LPid := CInt(params[1]);
+        If (LPid)
+            pid := LPid;
+        Else
+            SendSysMessagePergon(who, "Keine PID angegeben.");
+            return;
+        EndIf
+    Else
+        SendSysMessagePergon(who, "Keine PID angegeben.");
+        return;
+    EndIf
+
+    // PID suchen
+    var script := GetProcess(pid);
+    If (!script)
+      SendSysMessagePergon(who, "Angegebene PID nicht gefunden.");
+      return;
+    EndIf
+
+    var attached   := script.attached_to;
+    var controller := script.controller;
+
+    If (attached.isa(POLCLASS_MOBILE))
+        JumpLocationAdd(who);
+        MoveObjectToLocation(
+            who, attached.x, attached.y, attached.z, attached.realm,
+            MOVEOBJECT_FORCELOCATION
+        );
+    ElseIf (controller.isa(POLCLASS_MOBILE))
+        JumpLocationAdd(who);
+        MoveObjectToLocation(
+            who, controller.x, controller.y, controller.z, controller.realm,
+            MOVEOBJECT_FORCELOCATION
+        );
+    Else
+        SendSysMessagePergon(who,
+            "Das Script der angegebenen PID gehoert nicht zu "+
+            "einem NPC oder Player."
+        );
+    EndIf
+EndProgram

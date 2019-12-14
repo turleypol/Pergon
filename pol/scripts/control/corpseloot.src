@@ -1,0 +1,94 @@
+/////////////////////////////////////////////////////////////
+//
+//     Loot Gravestonebackpack - Managt das Bewegen von Gegenständen im/aus dem Gravestonebackpack
+//
+//     Author: Fox
+//
+//
+/////////////////////////////////////////////////////////////
+
+
+use file;
+use uo;
+include "include/clock";
+include "include/party";
+include "include/poison";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program CanCorpseLoot(who, corpse, item)
+	If (!ZugriffErlaubt(who,corpse))
+		//Logfile beschreiben
+		MoveLoggen(who,item,corpse);
+
+		//Beweiseintrag erstellen	für Forensic
+		Var NoInsert:=0;
+
+		Var Looters:=array; //beinhaltet alle Looter
+		Var looter:=struct; //aktueller Looter
+		looter.+serial;
+		looter.serial:=who.serial;
+
+		Var serial_stone:=GetObjProperty(corpse, "StoneID");
+		If (serial_stone)
+		  Var stone := SystemFindObjectBySerial(serial_stone); //zugehöriges Skelett suchen
+		  If (stone)
+			  Looters:=GetObjProperty(stone, "looters"); //vorherige Looter auslesen
+			  If (Looters)
+				  ForEach looter_old in Looters
+					  //SendSysMessagePergon(who,"Old: "+looter_old.serial+" New: "+looter.serial);
+					  If (looter_old.serial==looter.serial) //nur ein Eintrag, auch wenn viel bewegt wird
+					     NoInsert:=1;
+					     //SendSysMessagePergon(who,"Doppelt");
+					  EndIf
+				  EndForEach
+			  Else
+				  Looters:={}; //noch kein "looters" Eintrag am Skelett, Looters initialisieren
+			  EndIF
+			  If (!NoInsert)
+				  Looters.append(looter);	//neuen Looter hinzufügen
+				  SetObjProperty(stone, "looters", Looters); //Looter am Skelett vermerken
+				  //SendSysMessagePergon(who,"Eintrag");
+			  EndIf
+		  EndIf
+		EndIf
+	EndIf
+	Return (1);			//Taschenlooten darf jeder, aber bei unberechtigtem Zugriff bleibt ein Beweis
+EndProgram
+
+Function MoveLoggen(who,item,corpse)
+LogToFile("log/lootitems.log",GetDateTimeStr()+" "+who.name+" ("+Lower(Hex(who.serial))+") bewegt ungenehmigt im Loot-Bag '"+
+		corpse.name+"' ("+Lower(Hex(corpse.serial))+") bei "+who.x+" "+who.y+" "+who.z+
+		":");
+If (item.isa(POLCLASS_CONTAINER))
+	Var space:="";
+	Var deep_counter:=0;
+	ContLoggen(item,space,deep_counter);
+Else
+	LogToFile("log/lootitems.log",GetDateTimeStr()+" 			Item: '"+item.desc+"' ("+Lower(Hex(item.serial))+")");
+EndIf
+EndFunction
+
+Function ContLoggen(item,space,deep_counter)
+space:=space+" 		";
+deep_counter+=1;
+If (deep_counter > 20)
+	LogToFile("log/lootitems.log",GetDateTimeStr()+space+"Maximale Anzahl Unterebenen erreicht, Loggen geht nicht tiefer!");
+	return(0);
+EndIf
+LogToFile("log/lootitems.log",GetDateTimeStr()+space+"Behaelter: '"+item.desc+"' ("+Lower(Hex(item.serial))+") mit Inhalt:");
+	Var inhalt:=EnumerateItemsInContainer(item, ENUMERATE_IGNORE_LOCKED);
+  If (inhalt.size()) // Is da was drinne?
+  	ForEach item2 in inhalt
+  		If (item2.container==item) //werden schon in einer tieferen Ebene geloggt
+	  		If (item2.isa(POLCLASS_CONTAINER))
+	  			ContLoggen(item2, space, deep_counter);
+	  		Else
+	  	  	LogToFile("log/lootitems.log",GetDateTimeStr()+space+"		Item: '"+item2.desc+"' ("+Lower(Hex(item2.serial))+")");
+		    EndIf
+  		EndIf
+		EndForEach
+  EndIf
+EndFunction

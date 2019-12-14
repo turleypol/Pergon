@@ -1,0 +1,209 @@
+///////////////////////////////////////////////////////////////////////////
+// shipdeed  - ship plan/deed double-click script
+//
+// Based on: 1/7/1999 ENS
+//
+// Author: Turley
+
+use cfgfile;
+use math;
+use uo;
+include ":doorsnew:common";
+include "boat";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/msgs";
+include "include/objtype";
+include "include/pergonutil";
+
+Program useshipdeed(who, deed)
+ If (
+    // Wurde er gezeichnet und
+    GetObjProperty(deed, "build") &&
+    // ist kein Spielzeugboot?
+    (deed.graphic != UOBJ_SHIP_MODEL1) &&
+    (deed.graphic != UOBJ_SHIP_MODEL2)
+  )
+    // Boot bauen
+    Start_ScriptPergon("buildboat", {who, deed});
+    return;
+  EndIf
+  BuildShip(who, deed);
+EndProgram
+
+// Position waehlen, Schiff aufbauen
+Function BuildShip(who, deed) // {{{
+  If (!AccessiblePergon(who, deed))
+    SendSysMessagePergon(who,
+      "Ihr könnt den Schiffsbauplan nicht in die Hand nehmen!", ""
+    );
+    return;
+  EndIf
+
+  If (who.multi.tillerman)
+    SendSysMessagePergon(who,
+      "Ihr könnt das Schiff nur von Land aus aufbauen!", ""
+    );
+    return;
+  EndIf
+
+  If (!ReserveItem(deed))
+    SendSysMessagePergon(who, "Dieser Schiffsbauplan wird bereits benutzt!");
+    return;
+  EndIf
+
+  var shiptype := GetShipObjtype(deed);
+  If (!shiptype)
+    SendSysMessagePergon(who, "Dieser Schiffsbauplan ist nicht in Ordnung.");
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Je nachdem, wie Ihr standet, ist das Schiff ausgerichtet."
+  );
+  var flags := ShipFacingFlags(who.facing);
+  var where := TargetMultiPlacement(who, shiptype, flags);
+  If (!where)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (CoordinateDistance(who.x, who.y, where.x, where.y) > 10)
+    SendSysMessagePergon(who, "Das ist zu weit weg!");
+    return;
+  EndIf
+
+  var created := CreateShipAndKeys(
+    who, shiptype, where.x - 1, where.y - 1, where.z, flags, deed
+  );
+  If (!created)
+    SendSysMessagePergon(who, "Fehler beim Aufbau, Abbruch");
+    return;
+  EndIf
+
+  If ((deed.name != "Spielzeugboot") && (!deed.name["deed"]))
+    created.ship.tillerman.name := deed.name;
+  EndIf
+
+  var builder := GetObjProperty(deed, "builder");
+  If (
+    // hat Erbauer
+    builder &&
+    // nicht aus dem Trockendock
+    (!GetObjProperty(deed, PROP_DRYDROCK)))
+    If (builder[2])  //Weiblich?
+      created.ship.hold.name := "Laderaum - Aus der Reederei der "+builder[1];
+    Else
+      created.ship.hold.name := "Laderaum - Aus der Reederei des "+builder[1];
+    EndIf
+  Else
+    created.ship.hold.name := "Laderaum";
+  EndIf
+
+  var maxhp := GetObjProperty(deed, "maxhp");
+  If (!maxhp)  //CmdLvlcreate für Fähren
+    maxhp := 20000;
+  EndIf
+
+  // Fähren können nur von Cmdlvl gesteuert werden
+  // (Nur bei Spielern ist Kartographiecheck)
+  var skillreq := GetObjProperty(deed, "Skillreq");
+  If (!skillreq)
+    skillreq := 100;
+  EndIf
+
+  created.ship.starboardplank.locked := 1;
+  created.ship.portplank.locked      := 1;
+  created.ship.hold.locked           := 1;
+
+  var hp, lockid, port;
+  If (GetObjProperty(deed, PROP_DRYDROCK));
+    // aus dem Trockendock
+    lockid := GetObjProperty(deed, "lockid");
+    hp     := GetObjProperty(deed, "hp");
+    port   := GetObjProperty(deed, "PortOfRegistry");
+    created.ship.hold.name := GetObjProperty(deed, "HoldName");
+  Else
+    // Erstaufbau
+    lockid := AllocLockId();
+    hp     := maxhp;
+    port   := 0;
+  EndIf
+
+  // Props setzen/uebernehmen
+  created.packkey.setprop(            "lockid",     lockid);
+  created.ship.hold.setprop(          "lockid",     lockid);
+  created.ship.portplank.setprop(     "lockid",     lockid);
+  created.ship.starboardplank.setprop("lockid",     lockid);
+  created.ship.tillerman.setprop(     "lockid",     lockid);
+  created.ship.tillerman.setprop(     "owner",      who.serial);
+  created.ship.tillerman.setprop(     "shipserial", created.ship.serial);
+  created.ship.setprop(               "Material",   deed.getprop("Material"));
+  created.ship.setprop(               "PortOfRegistry", port);
+  created.ship.setprop(               "Skillreq",   skillreq);
+  created.ship.setprop(               "hp",         hp);
+  created.ship.setprop(               "ist_faehre", 0);
+  created.ship.setprop(               "maxhp",      maxhp);
+  created.ship.setprop(               "shiptype",   deed.objtype);
+  created.ship.setprop(               "state",      0);
+
+  // Tillermanscript aktivieren
+  created.ship.tillerman.usescript := ":boat:tillerman";
+
+  // alles erledigt, Deed zerstoeren
+  DestroyItem(deed);
+
+  return (created.ship);
+EndFunction // }}}
+
+// Ausrichtung des Bootes bestimmen
+Function ShipFacingFlags(facing) // {{{
+  var flags := 0;
+
+  Case (facing)
+    DIR_N:
+    DIR_NE: flags := CRMULTI_FACING_EAST;
+    DIR_E:
+    DIR_SE: flags := CRMULTI_FACING_NORTH;
+    DIR_S:
+    DIR_SW: flags := CRMULTI_FACING_WEST;
+    DIR_W:
+    DIR_NW: flags := CRMULTI_FACING_SOUTH;
+  EndCase
+  return flags;
+EndFunction // }}}
+
+// Schluessel erzeugen und Boot aufstellen
+Function CreateShipAndKeys(who, shiptype, x, y, z, flags, deed) // {{{
+  var packkey;
+  If (!GetObjProperty(deed, PROP_DRYDROCK))
+    packkey := CreateItemInBackpackPergon(who, UOBJ_COPPER_KEY);
+  EndIf
+
+  var ship := CreateMultiAtLocation(x, y, z+1, shiptype, flags, who.realm);
+  If (!ship)
+    PrintTextAbovePrivatePergon(
+      who, "Das Schiff kann da nicht gebaut werden.", "", who
+    );
+    DestroyItem(packkey);
+    return 0;
+  EndIf
+  SendSysMessagePergon(who, "Das Schiff wurde vom Stapel gelassen.", "");
+
+  // auf das Schiff setzen (steht selten guenstig am Ufer
+  MoveObjectToLocation(who, ship.x, (ship.y)+1, (ship.z)+3, who.realm);
+
+  var result := struct;
+  result.+packkey := packkey;
+  result.+ship    := ship;
+  return (result);
+EndFunction // }}}
+
+Function GetShipObjtype(deed)
+    var id := ReadConfigFile("itemdesc"); // package itemdesc
+    var elem := id[ deed.objtype ];
+    var ot := GetObjtypeByName(elem.shipobjtype);
+    return (ot);
+Endfunction
+
+// vim: sw=2 sts=2

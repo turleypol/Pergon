@@ -1,0 +1,26 @@
+Use uo;
+Use os;
+
+Program npcres()
+  //Set_Critical/(0);
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  Var number:=0;
+  Var x, y, z;
+  syslog("Restart all");
+  // FIXME: Umbau auf ListObjectsInBox
+  For(x:=6144; x>16; x-=32)
+    For(y:=16; y<4096; y+=32)
+      For(z:=-60; z<=60; z+=30)
+        ForEach npc in ListMobilesNearLocation(x, y, z, 32,REALM_BRITANNIA)
+          RestartScript(npc);
+         // If (!RestartScript(npc))
+         //   SysLog("restartall: X="+x+" Y="+y+"  Z="+z+" ("+npc.serial+")");
+         // EndIf
+          number+=1;
+        EndForEach
+      EndFor
+    EndFor
+  EndFor
+  SysLog("Restart all ended ("+number+")");
+EndProgram

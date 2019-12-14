@@ -1,0 +1,24 @@
+///////////////////////////////////////////////////////////////////////////
+// setupdungtele -- Spezialeinstellungen an Standardteleportern aendern
+
+include "include/msgs";
+include "common";
+
+Program SetupDungTele(who, gate)
+    // optional Fernstart per Textcmd, dann interaktive Auswahl
+    If (!gate)
+        SendSysMessagePergon(who, "Tor wählen", "Select gate");
+        gate := Target(who, TGTOPT_NOCHECK_LOS);
+        If (!gate or (!(gate.objtype in (array{0x6002, 0x6200, 0x6201}))))
+            SendSysMessagePergon(who,
+                "Keine Auswahl oder Tor ungeeignet, Abbruch",
+                "Nothing selected or wrong gate type, cancelled"
+            );
+            return;
+        EndIf
+    EndIf
+
+    // FIXME: Gump bauen, Auswahl sichern
+
+    // Werte siehe common.inc, GATE_SPC_*
+EndProgram

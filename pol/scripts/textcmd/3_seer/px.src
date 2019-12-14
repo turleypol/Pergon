@@ -1,0 +1,32 @@
+use uo;
+
+Program X(who, params)
+    var param := SplitWords(params);
+
+    // Parameter auswerten
+    var dx;
+    var what := 0;
+    If (param.size() == 2)
+        what := SystemFindObjectBySerial(CInt(param[1]));
+        dx   := CInt(param[2]);
+    Else
+        dx := CInt(param[1]);
+    EndIf
+
+    // Alternative zur Serialeingabe
+    If (!what)
+        what := Target(who, TGTOPT_NOCHECK_LOS);
+    EndIf
+    If (!what)
+        return;
+    EndIf
+
+    If (dx == 0)
+        dx := 1;
+    EndIf
+
+    MoveObjectToLocation(
+        what, what.x+dx, what.y, what.z, what.realm,
+        MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+    );
+EndProgram

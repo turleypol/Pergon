@@ -1,0 +1,6 @@
+#
+#  ITEMS.TXT: Item data
+#
+#  This file also contains ship and house components (doors, planks etc)
+#
+

@@ -1,0 +1,33 @@
+// .setwordofpower
+//
+// This command will select the words of power that will open a
+// "Word of Power" gate.  If
+
+use uo;
+
+Include "include/msgs";
+
+// Change this if you change the objtype for the spawnpoint.
+const UOBJ_WORDGATE := 0xA402;
+
+program textcmd_setwordofpower(who)
+
+	Var wordgate := target(who);
+	if (wordgate.objtype != UOBJ_WORDGATE)
+		SendSysMessagePergon(who, "Ungültiges Ziel.");
+		return;
+	endif
+
+	Var newwords := RequestInputPergon(who, wordgate, "Word Of Power eingeben (CASE SENSITIVE):");
+
+	if (!newwords)
+		SendSysMessagePergon(who, "Abbruch", "Abort");
+		return;
+	endif
+
+    newwords := CChrZ(newwords.uc_text);
+	SendSysMessagePergon(who, "Geändert.   Jetzt in Benutzung: " + newwords);
+
+	SetObjProperty(wordgate, "WordOfPower", Cstr(newwords) );
+
+endprogram

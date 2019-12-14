@@ -1,0 +1,215 @@
+///////////////////////////////////////////////////////////////////////////
+// Arena Script
+//
+// Fuehrt die Anmeldung zum Kampf durch (based on Sigismund's Release)
+//
+// Author: Shinigami
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.7  2008/09/04 17:21:21  mehdorn
+// - Funktion "RealName" in "GetRealName" umbenannt
+//   - Scripte passend umgebaut
+// - dabei teilweise gleich auf Funktionen aus names.inc umgestellt
+//   (lief bei einigen teilweise mit eigenen Funktionen)
+//
+// Revision 1.6  2008/08/28 18:30:47  mehdorn
+// + Bestenliste funktioniert nun
+//
+// Revision 1.5  2008/08/27 23:48:00  mehdorn
+// + aus "verschiedene Gegner" wurde "zufaelliger Gegner"
+// + "grosses Gemetzel" freigeschaltet
+// - insgesamt etwas weiter ueberarbeitet
+//
+// Revision 1.4  2008/08/15 01:54:06  mehdorn
+// - Logging via syslog/logutil statt Spieler zu belaestigen
+//
+// 2004/07/24 Shinigami:
+// ReWrite
+//
+// 2003/05/xx Bregg
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+include "include/logutil";
+include "include/msgs";
+include "include/names";
+use math;
+use os;
+use uo;
+
+Const ARENA_KAPUTT := "Diese Arena ist derzeit ausser Betrieb.";
+
+// Hauptprogramm
+Program ArenaRegistry(who, arenactl) // {{{
+  var pid := GetObjProperty(arenactl, "#pid");
+  If (!pid)
+    SendSysMessagePergon(who, ARENA_KAPUTT);
+    syslog(
+      "FEHLER: "+ItemInfoStr(arenactl, COORDS_REALM)+": keine PID"
+    );
+    return;
+  EndIf
+
+  var process := GetProcess(pid);
+  If (!process)
+    SendSysMessagePergon(who, ARENA_KAPUTT);
+    syslog(
+      "FEHLER: "+ItemInfoStr(arenactl, COORDS_REALM)+
+      ": Controlscript laeuft nicht"
+    );
+    return;
+  EndIf
+
+  // Gump-Daten {{{
+  var layout := {
+    "page 0",
+    "resizepic 30 30 9250 300 200",
+
+    // Hauptauswahl
+    "page 1",
+    "text 50 42 10 0",
+    "button 50 70 2104 2103 0 2 1001",
+    "text 70 65 10 1",
+    "button 50 90 2104 2103 0 3 1002",
+    "text 70 85 10 2",
+    "button 50 110 2104 2103 1 0 1003",
+    "text 70 105 10 3",
+    // "button 50 130 2104 2103 1 0 1004",
+    "text 70 125 10 4",
+    "button 288 195 4017 4019 1 0 1",
+
+    // Regeln
+    "page 2",
+    "text 50 42 10 1",
+    "text 70 65 10 5",
+    "text 70 85 10 6",
+    "button 288 195 4017 4019 0 1 1"
+  };
+
+  var data := {
+    "Willkommen in der Arena!",
+    "Informationen/Regeln",
+    "Bestenliste",
+    "Anmeldung zum Kampf",
+    "", // "Abholen von Gegenstaenden nach Tod",
+    // Regeln
+    "- Anmeldungen sind unverbindlich",
+    "- Gekaempft wird bis zum Tod",
+    // Bestenliste
+    "Punkte",
+    "Name"
+  };
+  // }}}
+
+  AddTopTenList(arenactl, data, layout);
+
+  var result := SendDialogGump(who, layout, data);
+  If ((result[0] == 0) Or (result[0] == 1))
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (result[0] == 1004)
+    SendSysMessagePergon(who,
+      "Leider ist dies noch nicht implementiert.",
+      "Sorry, this is not implemented yet."
+    );
+    return;
+  EndIf
+
+  If (GetObjProperty(arenactl, "#Fighter"))
+    SendSysMessagePergon(who,
+      "In der Arena wird gerade gekämpft. "+
+      "Bitte versucht es später noch einmal.",
+      "A fight is already occuring. Try it again later."
+    );
+    return;
+  EndIf
+
+  process.sendevent(struct{type := 1, fighter := who});
+EndProgram // }}}
+
+// AddTopTenList - Erzeugt die Bestenliste
+Function AddTopTenList(arenactl, byref data, byref layout) // {{{
+  AddTopTopPageLayout(3, layout);
+
+  // Dictionary umdrehen, damit man Zuordnung Punkte -> Name hat {{{
+  // ausserdem nichtexistente Spieler entfernen (daher critical)
+  var crit := Is_Critical();
+  Set_Critical(1);
+  var toplist := GetObjProperty(arenactl, "Points");
+  var points       := dictionary;
+
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+  ForEach serial in (toplist.keys())
+    var mobile := SystemFindObjectBySerial(
+      serial, SYSFIND_SEARCH_OFFLINE_MOBILES
+    );
+    If (mobile)
+      If (points.exists(toplist[serial]))
+        // an Array anhaengen
+        points[toplist[serial]].append(GetRealName(mobile));
+      Else
+        // neues Array anlegen
+        points.insert(toplist[serial], array{GetRealName(mobile)});
+      EndIf
+    Else
+      // Spieler existiert nicht mehr
+      toplist.erase(serial);
+    EndIf
+  EndForEach
+
+  SetObjProperty(arenactl, "Points", toplist);
+  // Speicher freigeben
+  toplist := 0;
+  Set_Critical(crit);
+  // }}}
+
+  // Sortierung nach Punkten, die besten nach oben
+  var sortpoints := points.keys();
+  sortpoints.sort();
+  sortpoints.reverse();
+
+  // Leute mit absteigenden Punktezahlen heraussuchen, bis 10 Leute
+  // gefunden oder Leute alle
+  var topten := 0;
+  While (topten < 10 and sortpoints.size() >= 1)
+    SleepMs(2);
+    var score := sortpoints[1];
+    sortpoints.erase(1);
+    ForEach name in (points[score])
+      SleepMs(2);
+      var y := topten % 5;
+
+      data.append(score);
+      layout.append("text  50 "+(100+y*18)+" 10 "+( 9+topten*2));
+      data.append(name);
+      layout.append("text 100 "+(100+y*18)+" 10 "+(10+topten*2));
+
+      topten += 1;
+      If (topten == 5)
+        layout.append("button 228 195 4005 4007 0 4 0");
+        AddTopTopPageLayout(4, layout);
+        layout.append("button 228 195 4014 4016 0 3 0");
+      EndIf
+    EndForEach
+  EndWhile
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 0);
+EndFunction // }}}
+
+// AddTopTopPageLayout - Erzeugt Kopfzeilen der Bestenliste
+Function AddTopTopPageLayout(pagenum, byref layout) // {{{
+  layout.append("page "+(pagenum));
+  // Ueberschrift
+  layout.append("text 50 42 10 2");
+  // Zurueck
+  layout.append("button 288 195 4017 4019 0 1 1");
+  // Spaltenbeschriftung
+  layout.append("text  50 70 10 7");
+  layout.append("text 100 70 10 8");
+EndFunction // }}}
+
+// vim: sw=2 sts=2

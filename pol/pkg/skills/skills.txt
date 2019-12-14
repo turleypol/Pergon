@@ -1,0 +1,78 @@
+00-00 Alchemie                     - Alle Arten von Traenken, Giften und Potions brauen. Gelingen, Wirksamkeit und Art haengen vom Skill ab.
+01-01 Anatomie                     - Unterstuetzt Heilen und Kampfskills
+02-02 Abrichten                    - Gezaehmte Tiere abrichten (Fest an Herren binden) dann Auswahlmenue, was mit dem Tier gemacht werden kann (Pferd: Packpferd oder Reitpferd, Kuh: Fleischkuh oder Zuchtkuh) Auswahl Skill, Auswahl Tier -> Menue, Tierbefehle
+03-03 Gegenstaende identifizieren  - Information ueber Gegenstand, Menge und Erfolg haengt vom Skill ab.
+04-04 Waffenkunde                  - Analysieren von Waffen (Quality etc.)
+05-05 Verteidigung                 - Benutzung aller Schilde
+06nnn Axtkampf                     - Alle Aexte (auch die Holzfaelleraxt)
+07s07 Erzverarbeitung              - Herstellung der Barren aus Erz, Sand (Glas) und Gold, Brennen von Lehm zu Ziegeln. Skill bestimmt Art und Qualitaet und Erfolg. Doppelklick Erz / Rohstoff in der Naehe eines Schmiedefeuers. Hier sollte auch das Legieren rein! (Anpassung des Skills?)
+08nnn Infanteriewaffen             - Helebarde, Bardiche, Lanzen, Speere, Kriegsgabel
+09-09 Friedenstiften               - Wie gehabt.
+10-10 Wildniskunde                 - Feuer machen, Ausloggen im Wald etc.
+11m11 Holzverarbeitung             - Herstellung von Brettern, Pfeilschaeften und Holzeinzelteilen aus Staemmen, Skill bestimmt Gelingen / Anzahl. Saege oder Schnitzmesser doppelklicken, dann Auswahl Staemme
+12-12 Kartographie                 - Alle Arten von Karten lesen, kopieren und schreiben.
+13-13 Kochen/Braten                - Herstellung von Speisen, wie Gebratenes Fleisch, Schinken. Die Hoehe des Skills bestimmt die Qualitaet (Hungerfaktor) der Waren und das Gelingen. Zutaten muessen vorhanden sein und werden auch beim Misslingen verbraucht. (notwendiges Werkzeug muss in Reichweite sein). Gebratene Speisen haben mehr Saettigungswert
+14-14 Verstecktes finden           - Sowohl Char, die sich verstecken als auch Schaetze von den Schatzkarten.
+15-15 Locken                       - Wie gehabt.
+16-16 Intelligenz beurteilen       - Unterstuetzt Alles an Magie.
+17-17 Heilen                       - Ist die Anwendung der Sprueche fuer den Priester.
+18-18 Angeln                       - Wie gehabt.
+19-19 Obduktion                    - Spurensicherung (Todesursache und Moerder) an der Leiche, die Hoehe des Skills bestimmt die Erfolgsrate und Fehlerrate. Bei Fehler wird ein zufaelliger Spieler aus der Onlineliste gewaehlt. (Skilliste)
+20-20 Tierzucht                    - Erzeugung von Nachwuchs von den Eingezaeunten Tieren, Vom Skill und von der Rasse haengt Erfolg ab. (Skillauswahl -> Auswahl zweier gleicherartiger Tiere verschiedenen Geschlechtes) ITEM: Weide! (Zu kaufen bei Architekt)
+21-21 Verstecken                   - Wie gehabt.
+22-22 Provozieren                  - Wie gehabt.
+23s23 Spruchrollen erstellen       - Rollen aus dem Zauberbuch abschreiben, die nur in andere Buecher geschrieben werden koennen (verbrauchen kein Mana und keine Reagenzien). Um Spruchrollen schreiben zu koennen, muss der Spruch gezaubert werden koennen.
+24-24 Schloesser knacken           - Wie gehabt.
+25-25 Magie                        - Sprechen von Zauberspruechen aus dem Zauberbuch wie bisher.
+26-26 Magieresistenz               - Wie gehabt.
+27-27 Taktik                       - Taktisches Vorgehen im Kampf (wie bisher)
+28-28 Schnueffeln                  - Backpack eines Char ansehen und geziehlt stehlen. Die Angezeigten Objekte haengen vom Skill ab.
+29-29 Musizieren                   - Wie gehabt.
+30-30 Vergiften                    - Wie gehabt.
+31-31 Bogenschiessen               - Benutzung saemtlicher Boegen und Armbrueste
+32-32 Ausweichen                   - Die Faehigkeit Pfeilen auszuweichen, Erfolg haengt vom Skill ab, Skillbenutzung automatisch.
+33-33 Stehlen                      - Wie gehabt.
+34-34 Schneidern                   - Herstellung von Beuteln, Kleidern, Hueten usw. Die Hoehe des Skills bestimmt die Lebendauer, Faerbbarkeit und Gelingen des gewaehlten Kleidungsstuecks (Doppelklick auf Schere, Naehzeug muss erreichbar sein)
+35-35 Zaehmen                      - Zaehmen freier Tiere (Bei sehr hohem Skill auch aggressiver Tiere) Skill bestimmt Art und Erfolg. Skill auswaehlen, Tier waehlen.
+36-36 Vorschmecken                 - Information ueber die Wirkung von Fruechten, Gemuese und Ingredienzien in einer Salbe, Trank, Gift oder Potion.
+37m37 Basteln                      - Zusammenfuegen zweier Einzelteile, die passen (wissen). Skill bestimmt Erflog. Auswahl ueber Anwahl der Einzelteile. Property setzten in die jeweiligen Skills!!!
+38-38 Spuren lesen                 - Richtung zu einen bestimmten Tier oder Charakter wird angezeigt.
+39-39 Tiere verarzten              - Die Faehigkeit Tiere zu heilen.
+40-40 Schwertkampf                 - Benutzung aller Schwerter (Nicht Kryss und Dolch)
+41-41 Hiebwaffen                   - Saemtliche Keulen und Haemmer
+42-42 Fechtkunst                   - Kryss und Dolch (evtl. Weitere Waffen Degen, Florett, Saebel)
+43-43 Faustkampf                   - Wie gehabt.
+44-44 Holzfaellen                  - Faellen von Baeumen, Skill bestimmt die Anzahl der Staemme pro Baum. Doppelklick Axt, Baum waehlen.
+45-45 Erzabbau                     - Abbau von Erz, Sand und Lehm, Skill bestimmt Menge, Art und Erfolg. Doppelklick Hacke, Ort waehlen. Geziehlte Erzsuche, wenn man in einer Gilde ist. (Das nicht gewollte Erz wird zur Haelfte zerstoert, der Rest in die Region zurueckgeschrieben => Das Feld wird sukzessiv geleert)
+46-46 Regeneration                 - Die Faehigkeit, die Attribute durch Meditation wieder schneller aufzufuellen. Der Skill geht auf alle Attribute, Schnelligkeit haengt vom Skill ab.
+47-47 Tarnen                       - Wie gehabt.
+48-48 Fallen entschaerfen          - Gegenteil von Oben.
+49s07 Waffenschmieden              - Herstellung der Teile nach Auswahlmenue (haengt vom Werkzeug ab), Der Skill bestimmt Gelingen bzw. Gelingen und Qualitaet (Exep nur bei Exep Barren)
+50s07 Werkzeugschmieden            - Herstellung der Teile nach Auswahlmenue (haengt vom Werkzeug ab), Der Skill bestimmt Gelingen bzw. Gelingen und Qualitaet (Exep nur bei Exep Barren)
+51s07 Kunst-/Feinschmieden         - Herstellung von Schmuck, Uhren und Uhrenteilen, Sextanten und Sextantenteilen und anderen Feinmetallteilen. Vom Skill haengt Art und Gelingen ab. Doppelklick auf das Feinschmiedewerkzeug.
+52s07 Glasverarbeitung             - Herstellung von Glasflaschen, Destille  und Obsidian aus Glasbarren und/oder Goldbarren. Vom Skill haengt Gelingen und Menge ab. Doppelklick auf jeweilige Glasbarren (Auswahlmenue, falls Gold vorhanden Gelingen fuer Obsidian)
+53s23 Zauberrollen erstellen       - Das Erstellen von Rollen, die gesprochen werden koennen. Das Gelingen haengt vom Verzaubern mit ab.
+54s23 Rezepte schreiben            - Die Rezepte kopieren und von eigenen Mixturen festschreiben. Die Anzahl der Zutaten und das Gelingen haengt vom Skill ab.
+55nnn Fluchgegenstaende herstellen - Erstellen benutzbarer Items mit den Spezialspruechen der Necros
+56nnn Heilmittel herstellen        - Ist das erstellen von geweihten Bandagen mit den Speziellen Priesterspruechen
+57nnn Salben herstellen            - Salben beschleunigen die Heilung, oder Verkuerzen und Verringern die Wirkung von Gift. Wirksamkeit der Salbe haengt vom Skill ab.
+58nnn Verfluchen                   - Anwenden der Sprueche fuer den Necromanten.
+59nnn Verzaubern                   - Verzaubern von entsprechenden Gegenstaenden mit Zaubern aus einem speziellen Runenbuch (Genaue Erklaerung im Zauberkonzept)
+60nnn Ackerbau                     - Saehen von Samen (Wachsende Pflanzen haengt vom Skill ab, Doppelklick Samen -> Zielort waehlen) ITEM: Acker! (zu kaufen bei Architekt) Ernten von Pflanzen (Ertrag haengt vom Skill ab, Erntewerkzeug Doppelklicken, Pflanze waehlen, Bei hohem Skill auch Samengewinnung)
+61nnn Foersterei                   - Anpflanzen von Baeumen (auch speziellen) Skill bestimmt Art des Baums und Erfolg. Doppelklick auf Samen und Zielort Waehlen.
+62nnn Ruten benutzen               - Finden von Wasser mit Hilfe einer Wuenschelrute, Schoepfen von Wasser. Skill bestimmt Erfolg und Menge. Doppelklick auf Rute, Ort waehlen. ITEM: Wuenschelrute
+63nnn Weben                        - Herstellung von Stoff aus Wolle, Flachs oder Spinnenseide. Webstuhl muss in Reichweite sein, Der Skill bestimmt welche Grundstoffe man verarbeiten kann (Flachs -> Wolle -> Spinnenseide) und die Qualitaet und Faerbbarkeit (Doppelklick auf den Grundstoff)
+64nnn Backen                       - Herstellung von Backwaren, wie Brot, Kuchen, Pizza. Die Hoehe des Skills bestimmt die Qualitaet (Hungerfaktor) der Waren und das Gelingen. Zutaten muessen vorhanden sein und werden auch beim Misslingen verbraucht. (notwendige Werkzeuge muessen in Reichweite sein)
+65nnn Brauen/Keltern               - Herstellung von Bier, Wein, Branntwein, Schnaps und Saeften aus Fruechten, Getreide, Trauben und Wasser. Doppelklick auf Grundstoff (Wasser automatisch, Flaschen oder Fass muss vorhanden sein) Presse, Kessel oder Destille muessen in Reichweite sein! Skill bestimmt Art, Erfolg und Menge. ITEM: Presse, Kessel, Destille!
+66nnn Mahlen (Mehl)                - Herstellung von Mehl, Die Hoehe des Skills bestimmt die gewonnene Menge Mehl. Doppelklick auf Getreide in Reichweite eines Mahlsteins.
+67nnn Fallen legen                 - Tierfallen, oder Kampffallen legen.
+68nnn Gerben/Faerben               - Verarbeitung von Rohleder und Fellen zu Leder und Holz zu Papier. Vom Skill haengt Menge und Qualitaet ab. Doppelklick auf Zutaten, Gerbebottich muss in der Naehe sein. Einfaerben aller Kleidung, Holz, Leder, und Ruestungen (Wappenverzierungen auf Schilde???) Doppelklick auf Faerbewerkzeug (bottich / Farbe und Pinsel) Auswahl des zu faerbenden Objektes
+69nnn Haeuten                      - Fell- / Hautgewinnung aus Tieren, die Hoehe des Skills bestimmt die Anzahl und Qualitaet des Produkts. Das Messer auf das Tier anwenden (Bonus beim Haeutungsmesser)
+70nnn Lederei/Schustern            - Herstellung von Rucksaecken, Lederkleidung und allen Lederruestungen, die Hoehe des Skills bestimmt das Gelingen und die Qualitaet. Alle Grundstoffe muessen vorhanden sein (Leder und Nieten fuer eine genietete Lederruestung) Doppelklick auf Schere, Auswahl des Leders, Naehzeug muss vorhanden sein. (Exeptional koennen nur aus Exep Leder gewonnen werden!) Herstellung von Schuhen und Stiefeln, Skill bestimmt Gelingen. ITEM: Schusterleiste, Anwendung durch Doppelklick und Auswahl des Leders
+71nnn Schlachten                   - Fleischgewinnung aus Tieren (Das Tier sollte schon tot sein!), die Hoehe des Skills bestimmt die Anzahl und Art der gewonnen Stuecke. Das Messer auf das Tier anwenden.
+72nnn Schiffbau                    - Der Bau aller moeglichen Schiffe aus Brettern, Stoff und Beschlaegen. Lesen und Kopieren der Schiffsbauplaene, muss dazu am befahrbaren Wasser sein. Skill bestimmt die Art und den Erfolg beim Bau des Schiffes sowie die Faehigkeit Plaene zu kopieren.
+
+Fallen raus:
+  Betteln       (06)
+  Bogenhandwerk (08)
+  Spirituismus  (32) - Wird durch Spruch kompensiert

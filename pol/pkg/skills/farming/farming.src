@@ -1,0 +1,236 @@
+///////////////////////////////////////////////////////////////////////////
+// farming -- Pflanzen ernten
+
+// 21.05.2007 - Turley - Neues System
+
+use attributes;
+use cfgfile;
+use os;
+use uo;
+use util;
+include "include/client";
+include "include/modifyskill";
+include "include/objtype";
+
+Const UACTION_CHOP := 0x0d;
+Const DUMMY        := 0x5de8;
+Const DUMMY1       := 0x5de9;
+Const SUCCESS      := 1;
+Const FAIL         := 0;
+
+Program UsePlant(me, plant)
+  If (plant.objtype<>DUMMY)  // Rootitem finden
+    ForEach item in (ListItemsAtLocation(
+        plant.x, plant.y, plant.z, plant.realm
+    ))
+      If (item.objtype == DUMMY)
+        plant := item;
+        break;
+      EndIf
+    EndForEach
+  EndIf
+
+  If (Distance(me, plant) > 1)
+    SendSysMessagePergon(me,
+      "Ihr müsst näher an die Pflanze heran!",
+      "You must get closer to the plant."
+    );
+    return;
+  EndIf
+
+  If (plant.getprop("phase")<>4)
+    SendSysMessagePergon(me,
+      "Diese Pflanze scheint noch nicht ausgewachsen zu sein.",
+      "This plant seems to be not grown up."
+    );
+    return;
+  EndIf
+
+  var cfg := readconfigfile("::itemdesc");
+  var item_cfg := cfg[plant.getprop("plant")];
+
+  If (!item_cfg.Product)
+    SendSysMessagePergon(me,
+      "Fehler bei der Verarbeitung.",
+      "Error while processing data."
+    );
+    syslog(
+      "WARNUNG: "+LHex(plant.objtype)+".Product in :farming:itemdesc.cfg "+
+      "nicht eingetragen"
+    );
+    return;
+  EndIf
+
+  If (me.x <> plant.x or me.y <> plant.y)
+    // der Bauer soll Richtung Pflanze schauen
+    me.facing := GetFacing(me.x, me.y, plant.x, plant.y);
+  EndIf
+
+  // Behaelter fuer die Produkte
+  SendSysMessagePergon(me,
+    "Wählt den Behälter, in dem die Produkte abgelegt werden sollen.",
+    "Choose a container to amass all products."
+  );
+  var use_on := Target(me);
+  If (!use_on)
+    SendSysMessagePergon(me, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (!AccessiblePergon(me, use_on))
+    SendSysMessagePergon(me,
+      "Ihr kommt da nicht ran!", "You cannot reach that!"
+    );
+    return;
+  EndIf
+
+  If (!(use_on.objtype in (array{
+      0x09ab, 0x09a8, 0x09a9, 0x09aa, 0x09ab, 0x09b0, 0x09b2, 0x0e3c,
+      0x0e3d, 0x0e3e, 0x0e3f, 0x0e40, 0x0e41, 0x0e42, 0x0e43, 0x0e75,
+      0x0e76, 0x0e77, 0x0e79, 0x0e7a, 0x0e7c, 0x0e7d, 0x0e7e, 0x0e7f,
+      0x0e80, 0x0fae, 0x14e0, 0x0e83})
+  ))
+    SendSysMessagePergon(me,
+      "Das ist kein zulässiger Behälter! "+
+      "Die Produkte werden im Rucksack abgelegt.",
+      "That's no legal container. "+
+      "All products are being amassed in your backpack."
+    );
+    use_on := me.backpack;
+  EndIf
+
+  var curamount  := CInt(getobjproperty(plant, "amount"));
+  var difficulty := CInt(item_cfg.Difficulty);
+  var generation := CInt(plant.getprop("generation"));
+  var product    := SplitWords(item_cfg.Product);
+  If (!generation)
+    generation := 1;
+  EndIf
+
+  var fullwarned  := 0;
+  var count       := 0;
+  var count_succ  := 0;
+  var lastmessage := -1;
+  While (plant and curamount > 0)
+    If (Distance(me, plant) > 1)
+      SendSysMessagePergon(me,
+        "Das ist zu weit weg!", "That's too far away!"
+      );
+      return;
+    EndIf
+
+    PerformAction(me, 0x0020);
+    PlaySoundEffect(me, 0x56);
+    Sleep(1);
+    count += 1;
+
+    If (CheckSkillPergon(
+        me, SKILLID_ACKERBAU,
+        difficulty+CInt(generation*1.5),
+        difficulty+CInt(generation*1.5*2)
+    ))
+      If (RandomInt(100) == 0)
+        If (HarvestResource("wood", plant.x, plant.y, 1, 1, plant.realm))
+          SendSysMessagePergon(me,
+            "Ihr findet etwas fruchtbaren Boden!",
+            "You found some fertile soil!"
+          );
+          CreateItemInBackpackPergon(me, UOBJ_HUMUS, 1);
+        EndIf
+      EndIf
+
+      var item := CreateItemInContainerPergon(
+        use_on, CInt(product[RandomInt((product).size())+1]), 1
+      );
+      If (lastmessage != SUCCESS)
+        SendSysMessagePergon(me,
+          "Ihr erntet das Produkt.", "You harvest the product."
+        );
+        lastmessage := SUCCESS;
+      EndIf
+      count_succ += 1;
+      If (item)
+        item.movable := 1;
+      Else
+        If (!fullwarned)
+          SendSysMessagePergon(me,
+            "Euer Behälter ist voll oder verschlossen!",
+            "Your container is full or locked!"
+          );
+          fullwarned := 1;
+        EndIf
+        // Erzeugt automatisch auf dem Boden, wenn Backpack voll ist
+        // (Player wollen keinen Abbruch)
+        item := CreateItemInBackpackPergon(
+          me, CInt(product[RandomInt((product).size())+1]), 1
+        );
+        If (item)
+          item.movable := 1;
+        EndIf
+      EndIf
+
+      PlaySoundEffect(me, 0x59);
+
+      If (plant.objtype == 0xda12) // Fuer den Hohlbusch
+        DestroyItem(plant);
+        return;
+      EndIf
+      Sleep(1);
+
+    Else
+      If (lastmessage != FAIL)
+        SendSysMessagePergon(me,
+          "Ihr seid kein guter Farmer.", "You aren't a good farmer."
+        );
+        lastmessage := FAIL;
+      EndIf
+      If (plant.objtype == 0xda12) // fuer den Hohlbusch
+        DestroyItem(plant);
+        return;
+      EndIf
+    EndIf
+
+    curamount -= 1;
+    SetObjProperty(plant, "amount", curamount);
+  EndWhile
+
+  // Ranken erzeugen?
+  If (item_cfg.Ranken)
+    If (RandomInt(100) < 10) // 10% Wahrscheinlichkeit
+      var item := CreateItemInBackpackPergon(
+        me, CInt(SplitWords(item_cfg.Ranken)[
+          RandomInt(SplitWords(item_cfg.Ranken).size())+1]
+        ), 1
+      );
+      item.movable := 1;
+    EndIf
+  EndIf
+
+  // Pflanze komplett abgeerntet?
+  If (curamount < 1)
+    SendSysMessagePergon(me,
+      "Die Pflanze ist abgeerntet.",
+      "The plant is reaped now."
+    );
+    // Quick-Hack statt Tooltip
+    var rename := plant.name;
+    If (!rename[" (abgeerntet)"])
+      rename["ausgewachsene "] := "";
+      rename["ausgewachsener "] := "";
+      rename["bluehende "] := "";
+      rename["reife "] := "";
+      rename["reifer "] := "";
+      rename += " (abgeerntet)";
+      SetName(plant, rename);
+    EndIf
+  EndIf
+
+  If (count > 0)
+    SendSysMessagePergon(me,
+      "Ihr habt "+count_succ+" von "+count+" Produkten erfolgreich geerntet.",
+      "You have harvested "+count_succ+" of "+count+" products."
+    );
+  EndIf
+EndProgram
+
+// vim: sw=2 sts=2

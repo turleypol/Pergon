@@ -1,0 +1,13 @@
+///////////////////////////////////////////////////////////////////////////
+// Treffen - Oeffnet die Seite fuer Spielertreffen auf der Pergon-Homepage
+//
+// Author: Shinigami
+
+use uo;
+include "include/msgs";
+include "include/urls";
+
+Program TextCMD_Treffen(who)
+    SendSysMessagePergon(who, "Die Anmeldeseite wird im Browser geöffnet ...");
+    OpenURL(who, URL_TREFFEN);
+EndProgram

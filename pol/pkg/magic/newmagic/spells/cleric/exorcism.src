@@ -1,0 +1,85 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file exorcism.src
+//
+// implements spell 217 <Exorcism> - "Exorzismus"
+//
+// destroys creatures summoned by necromancers
+
+use util;
+include "../magicpergon";
+
+Program cast_exorcism(params)
+  var caster;
+  var caston;
+  var power;
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  := params[3];
+    caston := struct{};
+    caston.x     := params[4].x;
+    caston.y     := params[4].y;
+    caston.z     := params[4].z;
+    caston.realm := params[4].realm;
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetArea(caster);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_CLERIC_EXORCISM);
+    caston := TargetArea(caster);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  If (!caster or caster.dead)
+    // bei Zielauswahl ausgeloggt, verstorben etc.
+    return;
+  EndIf
+
+  // load spell data
+  var spells := ReadConfigFile("::spells");
+  var spell := FindConfigElem(spells, SPELLID_CLERIC_EXORCISM);
+
+  // calc spell range according to casting power
+  var range := CInt(power*spell.range/100.0);
+  If (spell.rangemin and spell.rangemin > range)
+    range := spell.rangemin;
+  ElseIf (spell.rangemax and spell.rangemax < range)
+    range := spell.rangemax;
+  EndIf
+
+  PlaySoundEffect(caster, SFX_20B);
+
+  // check each victim in range
+  ForEach victim in (ListMobilesNearLocation(
+      caston.x, caston.y , caston.z , range, caston.realm
+  ))
+    SleepMs(2);
+    // check if victim is summoned by necro
+    If (CInt(GetObjProperty(victim, PROP_SUMMONED)) <> SUMMON_BY_NECRO)
+      continue;
+    EndIf
+
+    // check if victim can be busted
+    var resist := GetObjProperty(victim, "power");
+    If (
+      power+65 - resist + 25 >= RandomInt(51) and
+      CheckLineOfSight(victim, caster)
+    )
+      PlaySoundEffect(victim, SFX_11D);
+      PlayStationaryEffect(
+        victim.x, victim.y, victim.z, FX_FLAMESTRIKE, 10, 10, 0, victim.realm
+      );
+      // hide and kill victim
+      victim.hidden := 1;
+      KillNPC(victim, "cleric-exorcism", KILLNPC_NOCORPSE);
+    EndIf
+  EndForEach
+EndProgram

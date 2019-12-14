@@ -1,0 +1,9 @@
+use uo;
+
+
+program textcmd_sendpacket( who, text )
+    Var res := SendPacket( who, text );
+    if (!res) 
+        print( "SendPacket error: " + res.errortext );
+    endif
+endprogram

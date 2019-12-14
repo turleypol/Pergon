@@ -1,0 +1,85 @@
+///////////////////////////////////////////////////////////////////////////
+// ServerStatus PacketHook - Supports UO Gateway ServerStatus for Pol Servers
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2004/07/13 Shinigami: Los gehts
+//     2004/07/18 Shinigami: Nach ewigen Tests siehts erstmal gut aus
+//
+/////////////////////////////////////////////////////////////////////////////////
+//
+// ToDo:
+//   Der Hook von 0x82 ist eigentlich unsauber... mal hoffen, dass die Core keinen Schaden nimmt *g*
+
+/////////////////
+// Bibliotheken
+/////////////////
+use os;
+use uo;
+
+///////////////
+// Konstanten
+///////////////
+Const SERVERNAME     := "removed";
+Const SERVERHOMEPAGE := "removed";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program PacketHook()
+  SysLog("ServerStatus PacketHook activated...");
+  Return (1);
+EndProgram
+
+//////////////////////////////////////////////////////////////////////////////////
+// AccountLoginRequest - Normales Einloggen oder UO Gateway ServerStatus-Abfrage
+//////////////////////////////////////////////////////////////////////////////////
+//
+// Hinweis:
+//   Der Einloggprozess laeuft vollst�ndig Critical ab, d.h. es k�nnen sich _nie_ zwei Chars zeitgleich einloggen.
+//   Deshalb ist keinerlei Abhaengigkeitsbetrachtung noetig!
+
+Exported Function AccountLoginRequest(character, ByRef packet)
+  If ((packet.getint16(1)==65280) And (packet.getint16(31)==65280)) // Status-Abfrage (Login & Passwort = 0x255 0x0) ?
+    SetGlobalProperty("#GetServerStatus", 1);
+  Else
+    EraseGlobalProperty("#GetServerStatus");
+  EndIf
+
+  Return (0); // Pol soll weitermachen
+  // Compilerwarnung ignorieren
+  character := character;
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////////////
+// AccountLoginFailed - Normaler Einloggfehler oder UO Gateway ServerStatus-Abfrage
+/////////////////////////////////////////////////////////////////////////////////////
+//
+// Hinweis:
+//   Der Einloggprozess laeuft vollst�ndig Critical ab, d.h. es k�nnen sich _nie_ zwei Chars zeitgleich einloggen.
+//   Deshalb ist keinerlei Abhaengigkeitsbetrachtung noetig!
+
+Exported Function AccountLoginFailed(character, ByRef packet)
+  If (GetGlobalProperty("#GetServerStatus")) // Status-Abfrage?
+    Var serverinfos:=GetServerInfos();
+    packet.setsize(Len(serverinfos)+4);
+    packet.setstring(3, serverinfos, 1);
+
+    SysLog("HINWEIS: Abfrage vom ServerStatus ["+serverinfos+"]");
+  EndIf
+
+  Return (0); // Pol soll weitermachen (ggf. mit veraenderten Daten)
+  // Compilerwarnung ignorieren
+  character := character;
+EndFunction
+
+/////////////////////////////////////////////////////////////////////////////////////
+// GetServerInfos - Liefert bestimmte Server-Informationen (im Sphere-Stil... evil)
+/////////////////////////////////////////////////////////////////////////////////////
+
+Function GetServerInfos()
+  Return ("Pol, Name="+SERVERNAME+", Age="+CInt(ReadGameClock()/86400)+", Ver="+PolCore().verstr+", TZ=1, "+
+    "EMail="+SERVEREMAIL+", URL="+SERVERHOMEPAGE+", Clients="+(EnumerateOnlineCharacters().size()+1));
+EndFunction

@@ -1,0 +1,46 @@
+<html>
+
+<head>
+<title>Resource System</title>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+</head>
+
+<body>
+
+<h1>Resource System</h1>
+
+<p>There are two parts to the resource system.&nbsp; The first keeps you from harvesting
+the same tree forever, and the second tracks resource usage and availability across
+regions.</p>
+
+<h2>Local Resource Depletion</h2>
+
+<p>When a resource is harvested from a location, that resource is marked as
+&quot;depleted.&quot;&nbsp; A tree may hold 50 units of wood.&nbsp; If 10 logs are
+harvested from it, it will then hold only 40 units of wood until resource regeneration
+occurs.&nbsp; </p>
+
+<p>Resource regeneration occurs at regular intervals, and returns a portion of depleted
+resources to the ecosystem.</p>
+
+<p>The &quot;difficulty&quot; of harvesting a given resource is inversely related to the
+depletion level of that resource.&nbsp; Difficulties range from 10 (at 0% depletion) to 90
+(at 100% depletion).&nbsp; Note that at 100% depletion, nothing can be harvested.
+&nbsp; This difficulty is used as a guide; actual difficulty will range from 0 to 2 times
+this difficulty.&nbsp; In this way, unskilled lumberjacks can eventually harvest wood from
+a heavily deforested area; it will just take them longer, on average.&nbsp; It is never
+impossibly for anyone to harvest from a given area, unless that area is totally depleted.</p>
+
+<h2>Resource Pools (not yet implemented)</h2>
+
+<p>The second level of resource management is resource pools.&nbsp; The map is divided
+into regions, which define resource availability of the various types.&nbsp; As resources
+are harvested from a given region, its resource level will drop.&nbsp; As this resource
+level drops, the implicit &quot;depletion level&quot; of the region increases.&nbsp; If a
+region's resource level is at 25%, every source of resources within it will be considered
+to be at a 75% depletion level, for example.</p>
+
+<p>As items are destroyed, resources will be returned to the these regional resource
+pools.</p>
+</body>
+</html>

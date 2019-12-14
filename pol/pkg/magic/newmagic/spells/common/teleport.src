@@ -1,0 +1,146 @@
+//**************************************************************************************************
+// Script file teleport.src
+//
+//    implements spell 30 <Teleports> - "Teleportation"
+//
+//  teleports caster to another location
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//
+//  2002/02/19 Shinigami: NoRune-Region eingebaut
+//  2004/08/24 Shinigami: Jedoch in der Arena wieder zugelassen
+//
+//  Vers. 1.1 - 27.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//  2006/12/03       Fox: Man darf nur in Häuser teleportieren in denen man Besitzer/Freund ist
+//  2007/01/31 Turley:    NoRune Check entfernt damit in Dungeons wieder teleportiert werden darf
+//
+//
+//**************************************************************************************************
+
+
+use os;
+
+Include "../magicpergon";
+Include ":housing:house";
+
+Var water := {0xA8, 0xA9, 0x64, 0xAA, 0xAB};
+
+program cast_teleport (params)
+
+  Var caster;
+  Var where;
+
+  Var spells:= ReadConfigFile("::spells");                   // load spelldata
+  Var spell:=  FindConfigElem(spells, SPELLID_COMMON_TELEPORT);
+  Var range:=    spell.range;
+  Var minrange:= spell.rangemin;
+  Var maxrange:= spell.rangemax;
+  Var power;
+
+  if (params[1] == "#MOB")
+    caster:= params[2];
+    power:=  params[3];
+    where:=struct{x,y,z,realm};
+    where.x:=params[4].x;
+    where.y:=params[4].y;
+    where.z:=params[4].z;
+    where.realm:=params[4].realm;
+  elseif (params[1] == "#SCROLL")
+    caster:= params[2];
+    power:=  params[3];
+    where:=  TargetArea(caster);
+    if (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    endif
+  else
+    caster:= params[1];
+
+    power:= GetCastPowerPergon(caster, SPELLID_COMMON_TELEPORT);
+    where:= TargetArea(caster);
+    if (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    endif
+  endif
+
+  TurnCharTo(caster, where);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  If (params[1]<>"#MOB")  // NPC's dürfen überall hin
+    If (PlaceNoEscape(caster) And (!GetObjProperty(caster, ARENABATTLE))) // Darf aus diese Region heraus teleportiert werden?
+      SendSysMessagePergon(caster, "Die Götter unterbinden Euren Versuch, diesen Ort zu verlassen!");
+      PlayObjectCenteredEffect(caster, FX_SPELL_FAIL, 5, 15);
+      PlaySoundEffect(caster, SFX_2C);
+      Return;
+    EndIf
+
+    // Darf in dieser Region teleportiert werden?
+    var house := GetHouseContainingObject(where);
+    If (
+      (house and !IsHouseOwnerOrFriend(house, caster)) or
+      (GetObjProperty(caster, ARENABATTLE))
+    )
+      SendSysMessagePergon(caster,
+        "Die Götter unterbinden Euren Versuch, dorthin zu teleportieren!",
+        "The gods do not let you teleport there"
+      );
+      PlayObjectCenteredEffect(caster, FX_SPELL_FAIL, 5, 15);
+      PlaySoundEffect(caster, SFX_2C);
+      Return;
+    EndIf
+  EndIf
+
+  // ??? Was soll der Gangplanken Check im Umkreis von 4 ??? Sollte das nicht eher an genau der Stelle geschehen?
+  If (GetMapInfo(where.x, where.y,where.realm).landtile in water)
+    If ((ListItemsNearLocationOfType(where.x, where.y, where.z, 4,61457,where.realm ).size()) ||
+      (ListItemsNearLocationOfType(where.x, where.y, where.z, 4,61458,where.realm ).size()))
+      SendSysMessagePergon(caster, "Dorthin könnt Ihr nicht teleportieren", "You cannot teleport there");
+      Return;
+    EndIf
+  EndIf
+
+
+  range:= CInt(power*range/100.0);             // calc spell range according to casting power
+  if (minrange and minrange > range)
+    range:= minrange;
+  elseif (maxrange and maxrange < range)
+    range:= maxrange;
+  endif
+
+  if ((Abs(where.x - caster.x) > range) || (Abs(where.y - caster.y) > range))  // check if caster wants to teleport in range
+    SendSysMessagePergon(caster, "Eure Kräfte reichen nicht aus, um dorthin zu teleportieren",
+    "You do not have enough power to teleport there");
+    return;
+  endif
+
+  if (!CheckLosAt(caster, where.x, where.y, where.z))                  // check if caster has LOS to teleport aim
+    SendSysMessagePergon(caster, "Ihr müsst sehen können, wohin Ihr teleportieren wollt",
+    "You have to be able to see, where you want to teleport");
+    return;
+  endif
+  caster.setprop("#Teleportfrozen",1);
+  var oldfrozen:=caster.frozen;
+  caster.frozen:= 1;         //während des Teleports kann man nichts machen
+  caster.paralyzed:= 1;
+  IncRevision(caster);
+
+  SleepMS(500);
+
+  Var fx:= caster.x;
+  Var fy:= caster.y;
+  Var fz:= caster.z;
+
+  MoveObjectToLocation(caster, where.x, where.y, where.z, caster.realm);             // teleport caster
+
+  caster.frozen:= oldfrozen;
+  caster.paralyzed:= 0;
+  caster.eraseprop("#Teleportfrozen");
+  IncRevision(caster);
+
+  PlaySoundEffect(caster, SFX_SPELL_TELEPORT);
+  PlayStationaryEffect(fx, fy, fz, FX_SMOKE, 10, 10,0,caster.realm);
+  PlayStationaryEffect(caster.x, caster.y, caster.z, FX_SMOKE, 10, 10,0,caster.realm);
+
+endprogram

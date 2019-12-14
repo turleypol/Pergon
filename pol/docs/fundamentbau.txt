@@ -1,0 +1,27 @@
+Jhe'lom {{{
+Siedlungshaus Jhe'lom
+
+- zur Tuer rein, noerdlich hinter Ostwand neben Tuer stellen (Hoehe 7)
+- .pz -15
+- .createmulti 0x6f36 (12x10)
+
+Werkstatt Jhe'lom
+- in obere Ecke laufen
+- 4 Felder nach Suedost gehen (Hoehe 0)
+- .pz -8
+- .createmulti 0x6f0f (8x8)
+
+Herberge Jhe'lom
+TODO
+}}}
+
+Herberge Minoc, 1. OG {{{
+- in obere Ecke laufen
+- 2x nach Suedost, 1x nach Sued gehen
+- .pz -28
+- .createmulti 0x6f03 (6x9)
+}}}
+
+Herberge Yew {{{
+TODO
+}}}

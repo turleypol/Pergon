@@ -1,0 +1,35 @@
+use uo;
+include "include/msgs";
+include "include/npc";
+
+Program Rise(who, param)
+    var arg := SplitWords(param);
+
+    If (CInt(arg[1]) < 0)
+        SendSysMessagePergon(who,
+            "Parameter: <Anzahl> [<NPC-Template>]",
+            "Parameters: <count> [<npc template>]"
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who, "Wählt einen NPC!", "Select a NPC!");
+    var vieh := Target(who);
+    If (!vieh or !vieh.isa(POLCLASS_NPC))
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    If (arg.size() >= 2)
+        var check := GetNPCConfig(arg[2]);
+        If (check == error)
+            SendSysMessagePergon(who,
+                "Fehlerhaftes Template: "+check.errortext,
+                "Errorneous template: "+check.errortext
+            );
+            return;
+        EndIf
+        vieh.setprop("RiseTemplate", arg[2]);
+    EndIf
+    vieh.setprop("RiseTimes", CInt(arg[1]));
+EndProgram

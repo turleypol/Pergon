@@ -1,0 +1,41 @@
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+Use cfgfile;
+Use os;
+Use polsys;
+Use uo;
+Use util;
+Include ":spawnnet_new:spawnnet";
+Include "include/objtype";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program ResetSpawnRunes(who)
+	var change:=0;
+  ForEach rune in (ListObjectsInBox(0,0,-128,Realms(who.realm).width,Realms(who.realm).height,127,who.realm))
+  	change:=0;
+    If (rune.isa(POLCLASS_ITEM))
+      If (rune.objtype==UOBJ_SPAWNRUNE)
+      	Var userdata:=rune.getprop(CPROP_USER);
+        If (userdata)
+          If (userdata.mintime==1000)
+            userdata.mintime:=14;
+            change:=1;
+          EndIf
+          If (userdata.maxtime==1000)
+            userdata.maxtime:=24;
+            change:=1;
+          EndIf
+          If (change)
+          	rune.setprop(CPROP_USER,userdata);
+          	SendSpawnNet(rune,CInt(rune.serial),EVID_SPAWNPOINT_REFRESH);
+          EndIf
+        EndIf
+      EndIf
+    EndIf
+    SleepMS(2);
+  EndForEach
+EndProgram

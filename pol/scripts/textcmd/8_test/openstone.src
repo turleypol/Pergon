@@ -1,0 +1,41 @@
+//////////////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD OpenStone - Listet die abgegebenen Stimmen einer Buergermeisterwahl auf
+//
+//     Author: Turley
+//
+//   Modification
+//
+//////////////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+
+Include "include/msgs";
+Include "include/itemnpc";
+Include "include/modifyskill";
+
+Program TextCMD_OpenStone(me)
+  SendSysMessagePergon(me, "Wählt einen Stadtstein!");
+
+  Var use_on := target(me);
+  If (!use_on)
+    SendSysMessagePergon(me, "Zielen abgebrochen");
+    return;
+  EndIf
+
+  If (!AccessiblePergon( me, use_on))
+    SendSysMessagePergon( me, "Ihr kommt da nicht ran!");
+    return;
+  EndIf
+
+  If (use_on.objtype<>0xa320)
+    SendSysMessagePergon( me, "Das ist kein Stadtstein!");
+    return;
+  EndIf
+
+  ForEach item in EnumerateItemsInContainer(use_on)
+    if (item.objtype == 0xa321)
+      SendSysMessagePergon( me, "Rune "+GetObjProperty(item, "serial"));
+    endif
+  EndForEach
+EndProgram

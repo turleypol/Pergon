@@ -1,0 +1,45 @@
+// $Id: godeathloc.src,v 1.3 2010-07-15 21:47:38 Mentholia Exp $
+// Usage: golastdeath [1..10]
+// is ein bisschen ein blöder Name aber was soll's.
+
+use uo;
+include "include/msgs";
+include "include/place";
+
+Program textcmd_golastdeath(who, which)
+    which := CInt(which);
+    If (which > 10)
+        which := 10;
+    ElseIf (which < 1)
+        which := 1;
+    EndIf
+    SendSysMessagePergon(who, "Character auswählen.");
+    var obj := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!obj)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+    var deathLocs := GetObjProperty(obj, "LastDeathLocation");
+    If (!deathLocs or (deathLocs[which].size() <> 6)) // coordinates + realm?
+        SendSysMessagePergon(who,
+            "Keine Aufzeichnungen vorhanden für History["+which+"]"
+        );
+        return;
+    EndIf
+
+    // nicht wirklich nötig, aber sieht übersichtlicher aus und spart nen
+    // Klammerwald
+    var coords := deathLocs[which];
+
+    JumpLocationAdd(who);
+
+    var res := MoveObjectToLocation(
+        who, coords[1], coords[2], coords[3], coords[4],
+        MOVEOBJECT_FORCELOCATION
+    );
+    If (!res)
+        SendSysMessagePergon(who,
+            "Nicht möglich dorthin zu gehen: "+res.errortext
+        );
+    EndIf
+EndProgram

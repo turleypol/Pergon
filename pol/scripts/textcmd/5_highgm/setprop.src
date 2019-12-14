@@ -1,0 +1,461 @@
+///////////////////////////////////////////////////////////////////////////
+// SETPROP.src
+//
+// Author: DC
+// Date: 2/14/99
+//
+// Description: An GM text command that changes the value
+//      of the given inherent property. Note that
+//      mobiles have more props than items and
+//      some properties are read-only.
+//
+// Syntax: .setprop <propname> <value>
+// Program textcmd_setprop: params: character using
+//                  text
+//              Splits the param text into 2
+//              strings (propname and value)
+//                      passes the given prop and
+//              value to SetObjctProp and
+//              prints the old and new values
+//              If the write was successful.
+//
+// Function SetObjctProp: Matches the given text to one of
+//            the known properties of the
+//            targetted object. If the prop
+//            name could not be matched, it
+//            throws an uninitialized error
+//            which the main Program catches.
+//            only writable props are listed.
+//
+// TODO: Give access to props setable only with
+//   "SetObjectProperty" Function.
+//
+//   ********
+//   **NOTE**: to change an object's name, use "rename" cmd
+//   ********
+//
+///////////////////////////////////////////////////////////////////////////
+
+// Modification
+// 2005/01/09 Shinigami:        Items muessen beim Verschieben nicht mehr
+//                              kuenstlich geloest werden (movable)
+// 2005/01/19 Shinigami:        Bei "Murderer" wird auch die
+//                              CProp(permared) gesetzt (siehe :opt:timers)
+// 2005/02/09 Shinigami:        GM Elmyr darf Schatzkarten veraendern
+// 29.09.2005 Turley:           Paperdollitems
+// 2005/12/12 Shinigami:        TrueColor kann nun auch gesetzt werden
+// 2006/05/22 Shinigami:        Prop Race hinzugefuegt
+// 2007/02/03 Fox:              maxhp für Mobiles setzbar gemacht
+// 2008-04-25 mehdorn:          mehrere Woerter fuer String-Properties
+//                              ermoeglicht
+
+use cfgfile;
+use math;
+use os;
+use uo;
+include "include/logutil";
+include "include/modifyskill";
+include "include/msgs";
+include "include/npc";
+include "include/pergonutil";
+include "include/server";
+include "include/varutil";
+
+Program TextCMD_SetProp(who, text)
+  // ab Gameleader
+  If (who.cmdlevel < CMDLEVEL_GL)
+    SendSysMessagePergon(who,
+      "Ihr seid nicht befugt, diesen Befehl zu benutzen!",
+      "You are not authorized to use this command!"
+    );
+    return;
+  EndIf
+
+  var props := SplitWords(text);
+  If (!props[1])
+    SendSysMessagePergon(who, "Syntax: .setprop [serial] <propname> [wert]");
+    return;
+  EndIf
+  If (!props[2])
+    props.append("");
+  EndIf
+  Var obj;
+  If (props[3])
+    If (CInt(props[1]) > 0)
+      obj := SystemFindObjectBySerial(CInt(props[1]), SYSFIND_SEARCH_OFFLINE_MOBILES);
+      props.erase(1);
+    EndIf
+  EndIf
+
+  var propname  := props[1];
+  var value     := CInt(props[2]);
+  props.erase(1);
+  var value_str := join(" ", props);
+  // If (value<0)
+  //   SendSysMessagePergon(who, "Der neue Wert muss >0 sein!");
+  //   return;
+  // EndIf
+
+  SendSysMessagePergon(who, "Wählt ein Objekt.");
+
+  If (!obj)
+    obj := Target(who, TGTOPT_NOCHECK_LOS);
+    If (!obj)
+      SendSysMessagePergon(who,
+        "Kein normales Item - Wählt ein Paperdoll Item!"
+      );
+      obj := TargetCoordinates(who);
+      If (obj.item)
+        obj := obj.item;
+      EndIf
+    EndIf
+    If (!obj)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+  EndIf
+
+  If (propname == "color")
+    var dye_cfg := ReadConfigFile(":dyeitems:dyeitems");
+    If (dye_cfg)
+      var allowdye := 10;
+
+      var element := FindConfigElem(dye_cfg, obj.objtype);
+      If (element)
+        allowdye := GetConfigInt(element, "player");
+      EndIf
+
+      If ((who.cmdlevel<allowdye) && (who.cmdlevel<CMDLEVEL_HIGHGM))
+        SendSysMessagePergon(who, obj.desc+" könnt Ihr nicht einfärben!");
+        return;
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Kann dyeitems.cfg nicht öffnen!");
+      syslog("SetProp: Kann dyeitems.cfg nicht oeffnen!");
+      return;
+    EndIf
+  EndIf
+
+  var oldvalue := GetObjctProp(obj, propname);
+  If (oldvalue == error)
+    SendSysMessagePergon(who, propname+" ist keine gültige Property!");
+    return;
+  EndIf
+
+  SendSysMessagePergon(who, "Alter Wert von '"+propname+"' = "+oldvalue);
+
+  If (!SetObjctProp(who, obj, propname, value, value_str))
+    SendSysMessagePergon(who, propname+" konnte nicht verändert werden!");
+    return;
+  EndIf
+
+  var newvalue := GetObjctProp(obj, propname);
+  If (newvalue == oldvalue)
+    SendSysMessagePergon(who, "Property wurde nicht verändert.");
+    return;
+  ElseIf (newvalue)
+    SendSysMessagePergon(who, "Neuer Wert von '"+propname+"' = "+newvalue);
+    LogModification(who, obj, propname, oldvalue, newvalue);
+    IncRevision(obj);
+  Else
+    SendSysMessagePergon(who, "Ein Fehler ist aufgetreten!");
+  EndIf
+EndProgram
+
+Function GetObjctProp(obj, propname)
+  var retstr := "<uninitialized object>";
+
+  Case (propname)
+    "acct":             If (obj.acct)                   //   Mobile
+                          retstr := 1;                  //   Mobile
+                        EndIf                           //   Mobile
+    "acctname":         retstr := obj.acctname;         //   Mobile
+    "amount":           retstr := obj.amount;           //   Item
+    "alignment":        retstr := obj.alignment;        // W Mobile
+    "ar":               retstr := obj.ar;               //   Mobile
+    "ar_base":          retstr := obj.ar_base;          //   Armor
+    "ar_mod":           retstr := obj.ar_mod;           // W Mobile
+    "delay_mod":        retstr := obj.delay_mod;        // W Mobile
+    "backpack":         If (obj.backpack)               //   Mobile
+                          retstr := 1;                  //   Mobile
+                        EndIf                           //   Mobile
+    "buyprice":         retstr := obj.buyprice;         // W Item
+    "cmdlevel":         retstr := obj.cmdlevel;         // W Mobile
+    "color":            retstr := obj.color;            // W UObject
+    "concealed":        retstr := obj.concealed;        // W Mobile
+    "container":        retstr := obj.container.serial; //   Item
+    "corpsetype":       retstr := obj.corpsetype;       //   Corpse
+    "criminal":         retstr := obj.criminal;         // ? Mobile
+    "dead":             retstr := obj.dead;             // ? Mobile
+    "decayat":          retstr := obj.decayat;          // W Item
+    "desc":             retstr := obj.desc;             // W Item
+    "dexterity":        retstr := GetDexPergon(obj);    // ? Mobile
+    "dexterity_mod":    retstr := GetDexModPergon(obj); // W Mobile
+    "dmg_mod":          retstr := obj.dmg_mod;          // W Weapon
+    "equipscript":      retstr := obj.equipscript;      // W Item
+    "evasionchance_mod":retstr := obj.evasionchance_mod;// W Mobile
+    "facing":           retstr := obj.facing;           // W UObject
+    "frozen":           retstr := obj.frozen;           // W Mobile
+    "gender":           retstr := obj.gender;           // W Mobile
+    "graphic":          retstr := obj.graphic;          // W UObject
+    "guildid":          retstr := obj.guildid;          // W Mobile
+    "gumpwidth":        retstr := obj.gumpwidth;        // W Map
+    "gumpheight":       retstr := obj.gumpheight;       // W Map
+    "height":           retstr := obj.height;           //   UObject
+    "hidden":           retstr := obj.hidden;           // W Mobile
+    "hitchance_mod":    retstr := obj.hitchance_mod;    // W Mobile
+    "hitscript":        retstr := obj.hitscript;        // W Armor
+    "hp":               If (obj.isa(POLCLASS_MOBILE))
+                          retstr := GetHPPergon(obj)+" (von "+GetMaxHPPergon(obj)+")"; // W Mobile
+                        Else
+                          retstr := obj.hp+" (von "+obj.maxhp+")"; // W Not Mobile
+                        EndIf
+    "intelligence":     retstr := GetIntPergon(obj);    // ? Mobile
+    "intelligence_mod": retstr := GetIntModPergon(obj); // W Mobile
+    "invisible":        retstr := obj.invisible;        // W Item
+    "isopen":           retstr := obj.isopen;           //   Door
+    "layer":            retstr := obj.layer;            //   Item
+    "locked":           retstr := obj.locked;           // W Lockable
+    "mana":             retstr := GetManaPergon(obj)+" (von "+GetMaxManaPergon(obj)+")"; // W Mobile
+    "master":           retstr := obj.master.name;      // W NPC
+    "maxhp":            If (obj.isa(POLCLASS_MOBILE))
+                          retstr := GetMaxHPPergon(obj); // Mobile
+                        Else
+                          retstr := obj.maxhp;           // Not Mobile
+                        EndIf
+    "maxhp_mod":        retstr := obj.maxhp_mod;        // W Equipment
+    "maxmana":          retstr := GetMaxManaPergon(obj); //   Mobile
+    "maxstamina":       retstr := GetMaxStaminaPergon(obj); //   Mobile
+    "movable":          retstr := obj.movable;          // W Item
+    "multi":            If (obj.multi)                  //   UObject
+                          retstr := 1;                  //   UObject
+                        EndIf                           //   UObject
+    "murderer":         retstr := obj.murderer;         // ?
+    "name":             retstr := obj.name;             // W UObject
+    "newbie":           retstr := obj.newbie;           // W Item
+    "npctemplate":      retstr := obj.npctemplate;      //   NPC
+    "objtype":          retstr := obj.objtype+" ("+Hex(obj.objtype)+")"; // ? UObject
+    "paralyzed":        retstr := obj.paralyzed;        // W Mobile
+    "poisoned":         retstr := obj.poisoned;         // W Mobile
+    "quality":          retstr := obj.quality;          // W Equipment
+    "race":             retstr := obj.race;             // W Mobile
+    "run_speed":        retstr := obj.run_speed;        //   NPC
+    "script":           retstr := obj.script;           // W NPC (dann Restart)
+    "sellprice":        retstr := obj.sellprice;        // W Item
+    "serial":           retstr := Hex(obj.serial);      //   UObject
+    "skillid":          retstr := obj.attribute;        //   Weapon
+    "squelched":        retstr := obj.squelched;        //   Mobile
+    "stamina":          retstr := GetStaminaPergon(obj)+" (von "+GetMaxStaminaPergon(obj)+")"; // W Mobile
+    "stealthsteps":     retstr := obj.stealthsteps;     // W Mobile
+    "strength":         retstr := GetStrPergon(obj);    // ? Mobile
+    "strength_mod":     retstr := GetStrModPergon(obj); // W Mobile
+    "title_prefix":     retstr := obj.title_prefix;     //   Mobile
+    "title_suffix":     retstr := obj.title_suffix;     //   Mobile
+    "title_guild":      retstr := obj.title_guild;      //   Mobile
+    "title_race":       retstr := obj.title_race;       //   Mobile
+    "truecolor":        retstr := obj.truecolor;        // W Mobile
+    "trueobjtype":      retstr := obj.trueobjtype;      //   Mobile
+    "unequipscript":    retstr := obj.unequipscript;    // W Item
+    "usescript":        retstr := obj.usescript;        // W Item
+    "warmode":          retstr := obj.warmode;          //   Mobile
+    "weapon":           retstr := obj.weapon.desc;      //   Mobile
+    "weight":           retstr := obj.weight;           //   UObject
+    "x":                retstr := obj.x;                // W UObject
+    "xeast":            retstr := obj.xeast;            // W Map
+    "xwest":            retstr := obj.xwest;            // W Map
+    "y":                retstr := obj.y;                // W UObject
+    "ynorth":           retstr := obj.ynorth;           // W Map
+    "ysouth":           retstr := obj.ysouth;           // W Map
+    "z":                retstr := obj.z;                // W UObject
+  EndCase
+
+  return CStr(retstr);
+EndFunction
+
+// amount_str is only used if the value isn't really an integer
+Function SetObjctProp(who, obj, member, value, value_str)
+  var retstr := 1;
+
+  Case (member)
+    "alignment":        obj.alignment := value;
+    "ar_mod":           obj.ar_mod := value;
+    "delay_mod":        obj.delay_mod := value;
+    "buyprice":         obj.buyprice := value;
+    "cmdlevel":         If ((who.cmdlevel == CMDLEVEL_DEVELOPER) Or (who.cmdlevel>value))
+                          obj.cmdlevel := value;
+                        Else
+                          SendStringAsTipWindow(who, "So viel Frevel wird von den Goettern nicht geduldet!");
+                          (who.acct).ban(1);
+                        EndIf
+    "color":            obj.color := value;
+    "concealed":        Start_ScriptPergon("textcmd/2_quest/concealme", {obj, value});
+    "criminal":         obj.setcriminal(value);
+    "dead":             ResurrectPergon(obj);
+                        ResPenalties(obj);
+    "decayat":          obj.decayat := ReadGameClock()+CInt(value)*60; // quasi Minuten...
+    "desc":             obj.desc := value_str;
+    "dexterity":        If (value <= 210)
+                          SetDexPergon(obj, value);
+                          SetDexModPergon(obj, 0);
+                        Else
+                          SetDexPergon(obj, 210);
+                          SetDexModPergon(obj, value-210);
+                        EndIf
+    "dexterity_mod":    SetDexModPergon(obj, value);
+    "dmg_mod":          obj.dmg_mod := value;
+    "equipscript":      obj.equipscript := value_str;
+    "evasionchance_mod":obj.evasionchance_mod := value;
+    "facing":           If (obj.isA(POLCLASS_MOBILE))
+                          obj.setfacing(value,FACING_FORCE);
+                        Else
+                          obj.facing:=value;
+                        EndIf
+    "frozen":           obj.frozen := value;
+    "gender":           obj.gender := value;
+    "graphic":
+      If (obj.isA(POLCLASS_MOBILE))
+        If (IsValidNPCGraphic(value))
+          obj.graphic := value;
+        Else
+          SendSysMessagePergon(who,
+            "Ungültige 'Graphic' gewaehlt!",
+            "Invalid 'Graphic' selected."
+          );
+          return 0;
+        EndIf
+      Else
+        obj.graphic := value;
+      EndIf
+    "guildid":          obj.guildid := value;
+    "gumpwidth":        obj.gumpwidth := value;
+    "gumpheight":       obj.gumpheight := value;
+    "hidden":           obj.hidden := value;
+    "hitscript":        obj.hitscript := value_str;
+    "hitchance_mod":    obj.hitchance_mod := value;
+    "hp":               If (obj.isa(POLCLASS_MOBILE))
+                          SetHPPergon(obj, value);
+                        Else
+                          obj.hp := value;
+                        EndIf
+    "intelligence":     If (value <= 210)
+                          SetIntPergon(obj, value);
+                          SetIntModPergon(obj, 0);
+                        Else
+                          SetIntPergon(obj, 210);
+                          SetIntModPergon(obj, value-210);
+                        EndIf
+    "intelligence_mod": SetIntModPergon(obj, value);
+    "invisible":        obj.invisible := value;
+    "locked":           obj.locked := value;
+    "mana":             SetManaPergon(obj, value);
+    "maxhp":            If (!obj.isa(POLCLASS_MOBILE))
+                          obj.maxhp := value;
+                        Else
+                          obj.setprop("OverrideHits", value);
+                          RecalcVitalsPergon(obj,VITALID_LIFE);
+                        EndIf
+    "maxhp_mod":        obj.maxhp_mod := value;
+    "movable":          obj.movable := value;
+    "murderer":         // Wegens :opt:timers was sie sonst zuruecksetzen wuerde...
+                        If (value)
+                          SetObjProperty(obj, TYPKILLER, 1);
+                        Else
+                          If (GetObjProperty(obj, TYPKILLER))
+                            EraseObjProperty(obj, TYPKILLER);
+                          EndIf
+                        EndIf
+                        obj.setmurderer(value);
+    "name":             SetNamePergon(obj, value_str, who, 1); // force name
+    "newbie":           obj.newbie := value;
+    "objtype":          obj.objtype := value;
+    "paralyzed":        obj.paralyzed := value;
+    "poisoned":         obj.poisoned := value;
+    "quality":          obj.quality := CDbl(value_str);
+    "race":             obj.race := value;
+    "run_speed":        obj.run_speed := value;
+    "script":           obj.script := value_str;
+                        RestartScript(obj);
+    "sellprice":        obj.sellprice := value;
+    "squelch":          obj.squelch(value);
+    "squelched":        obj.squelch(value);
+    "stamina":          SetStaminaPergon(obj, value);
+    "stealthsteps":     obj.stealthsteps := value;
+    "strength":         If (value <= 210)
+                          SetStrPergon(obj, value);
+                          SetStrModPergon(obj, 0);
+                        Else
+                          SetStrPergon(obj, 210);
+                          SetStrModPergon(obj, value-210);
+                        EndIf
+    "strength_mod":     SetStrModPergon(obj, value);
+    "title_prefix":     obj.title_prefix := value_str;
+    "title_suffix":     obj.title_suffix := value_str;
+    "title_guild":      obj.title_guild := value_str;
+    "title_race":       obj.title_race := value_str;
+    "truecolor":        obj.truecolor := value;
+    "trueobjtype":      obj.trueobjtype := value;
+    "unequipscript":    obj.unequipscript := value;
+    "usescript":        obj.usescript := value;
+
+    "x":                If (obj.isa(POLCLASS_ITEM))
+                          MoveObjectToLocation(obj, value, obj.y, obj.z, obj.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+                        Else
+                          If (obj.isa(POLCLASS_NPC) Or (who.cmdlevel >= CMDLEVEL_GL) Or // Nicht Admins duerfen Spieler nicht in den Knasten summonen
+                             (((value<5248) Or (5311<value)) And ((obj.y<1152) Or (1215<obj.y))))
+                            MoveObjectToLocation(obj, value, obj.y, obj.z, obj.realm, MOVEOBJECT_FORCELOCATION);
+                          Else
+                            SendSysMessagePergon(who, "Euch fehlt die nötige Befugnis!", "You are not authorizied!");
+                          EndIf
+                        EndIf
+
+    "xeast":            obj.xeast := value;
+    "xwest":            obj.xwest := value;
+
+    "y":                If (obj.isa(POLCLASS_ITEM))
+                          MoveObjectToLocation(obj, obj.x, value, obj.z, obj.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+                        Else
+                          If (obj.isa(POLCLASS_NPC) Or (who.cmdlevel >= CMDLEVEL_GL) Or // Nicht Admins duerfen Spieler nicht in den Knasten summonen
+                             (((obj.x<5248) Or (5311<obj.x)) And ((value<1152) Or (1215<value))))
+                            MoveObjectToLocation(obj, obj.x, value, obj.z, obj.realm, MOVEOBJECT_FORCELOCATION);
+                          Else
+                            SendSysMessagePergon(who, "Euch fehlt die nötige Befugnis!", "You are not authorizied!");
+                          EndIf
+                        EndIf
+
+    "ynorth":           obj.ynorth := value;
+    "ysouth":           obj.ysouth := value;
+    "z":                If (obj.isa(POLCLASS_ITEM))
+                          MoveObjectToLocation(obj, obj.x, obj.y, value, obj.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+                        Else
+                          MoveObjectToLocation(obj, obj.x, obj.y, value, obj.realm, MOVEOBJECT_FORCELOCATION);
+                        EndIf
+
+    default:            retstr := 0;
+  EndCase
+
+  return (retstr);
+EndFunction
+
+////////////////////////////////////////////////
+// LogModification - Loggt bestimmte Infos mit
+////////////////////////////////////////////////
+Function LogModification(who, obj, member, oldvalue, newvalue)
+  var addinfo := "";
+
+  If (obj.container)
+    var topcont := GetTopContainer(obj);
+
+    // Befindet sich nicht im Besitz des Aendernden
+    If (!(topcont in array{who, who.backpack}))
+      addinfo := " (Topcontainer "+LHex(topcont.serial)+")";
+    EndIf
+  EndIf
+
+  syslog(
+    CharInfoStr(who)+" aendert "+member+" bei "+
+    CharInfoStr(obj, COORDS_REALM)+addinfo+
+    " von "+oldvalue+" auf "+newvalue
+  );
+EndFunction
+
+// vim: sw=2 sts=2

@@ -1,0 +1,124 @@
+//////////////////////////////////////////
+//
+//   SysHook - Alle benutzten SysHooks
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2002/02/18 Shinigami: First Write
+//
+//////////////////////////////////////////
+
+use uo;
+use attributes;
+
+/////////////
+// Includes
+/////////////
+
+Include "spellbook";
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+Var bookdesc; // Beschreibungen des Buches
+
+/////////////////////////////////////////////////
+// HookOpenSpellbookPergon - Zauberbuch oeffnen
+/////////////////////////////////////////////////
+
+Exported Function HookOpenSpellbookPergon(who)
+  If (!who.dead) // Nur lebendige Spieler...
+    bookdesc:=0; // Beschreibungen des Buches initialisieren
+
+    // Nach Buechern gemaess SkillLevel suchen
+    Var book:=CheckSkillLevelForBook(who, 0, SKILLTYP_BERUF);
+    book:=CheckSkillLevelForBook(who, book, SKILLTYP_HAUPT);
+    book:=CheckSkillLevelForBook(who, book, SKILLTYP_NEBEN);
+    book:=CheckSkillLevelForBook(who, book, SKILLTYP_WEITERE);
+
+    If (book) // Zauberbuch gefunden?
+      If (AccessiblePergon(who, book))
+        Start_ScriptPergon("spellbook", {who, book}); // Zauberbuch oeffnen
+      Else
+        SendSysMessagePergon(who, "Ihr kommt nicht an "+bookdesc[1]+" heran!");
+      EndIf
+    Else
+      If (bookdesc)
+        SendSysMessagePergon(who, "Ihr habt kein "+bookdesc[2]+" in eurem Backpack!");
+      Else
+        SendSysMessagePergon(who, "Ihr wisst nichts mit magischen Dingen anzufangen!");
+      EndIf
+    EndIf
+  EndIf
+
+  Return (1); // Hook wurde behandelt
+EndFunction
+
+Exported Function HookOnCastPergon(who,spellid)
+  If (!who.dead)
+    If (SearchSpellBookInBackpack(who, UOBJ_SPELLBOOK_CLERIC))
+      var partymagic:=0;
+      If (spellid==11)
+        spellid:=SPELLID_CLERIC_CURE;
+        partymagic:=1;
+      ElseIf (spellid==29)
+        spellid:=SPELLID_CLERIC_GREATERHEAL;
+        partymagic:=1;
+      EndIf
+      CastSpell(who, spellid, SKILLID_SEGNEN, partymagic);
+    ElseIf ((spellid==11) || (spellid==29)) // wenn partymagic client Target reservierung loswerden
+      Start_ScriptPergon("cancelpartytarget", {who}); // cancelTarget starten
+    EndIf
+  ElseIf ((spellid==11) || (spellid==29)) // wenn partymagic client Target reservierung loswerden
+    Start_ScriptPergon("cancelpartytarget", {who}); // cancelTarget starten
+  EndIf
+  Return (1); // Hook wurde behandelt
+EndFunction
+
+////////////////////////////////////////////////////////////////////
+// CheckSkillLevelForBook - Sucht nach Buechern gemaess SkillLevel
+////////////////////////////////////////////////////////////////////
+
+Function CheckSkillLevelForBook(who, book, skilllevel)
+  If (!book) // Schon ein Buch gefunden?
+    If (HasPlayerSkill(who, SKILLID_MAGIE)==skilllevel)
+      book:=SearchSpellBookInBackpack(who, UOBJ_SPELLBOOK_MAGE);
+
+      If (!bookdesc)
+        bookdesc:={"euer Grimoire", "kein Grimoire"};
+      EndIf
+    EndIf
+
+    If (!book) // Schon ein Buch gefunden?
+      If (HasPlayerSkill(who, SKILLID_SEGNEN)==skilllevel)
+        book:=SearchSpellBookInBackpack(who, UOBJ_SPELLBOOK_CLERIC);
+
+        If (!bookdesc)
+          bookdesc:={"euren Liber Castus", "keinen Liber Castus"};
+        EndIf
+      EndIf
+
+      If (!book) // Schon ein Buch gefunden?
+        If (HasPlayerSkill(who, SKILLID_FLUCHEN)==skilllevel)
+          book:=SearchSpellBookInBackpack(who, UOBJ_SPELLBOOK_NECRO);
+
+          If (!bookdesc)
+            bookdesc:={"euer paq mu'qaDmey", "kein paq mu'qaDmey"};
+          EndIf
+        EndIf
+      EndIf
+    EndIf
+  EndIf
+
+  Return (book);
+EndFunction
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program Hook()
+  Return (1);
+EndProgram

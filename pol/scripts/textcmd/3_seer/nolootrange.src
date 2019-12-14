@@ -1,0 +1,86 @@
+///////////////////////////////////////////////////////////////////////
+//
+//   TextCMD NoLoot - Schaltet bei NPCs das Loot beim Tod an oder aus
+//
+//     Author: Shinigami
+//
+//   Modification
+//     2005/05/23 Shinigami: MultiRange hinzugefuegt
+//     21.10.2005 Fraggulus: Dateiname angepasst
+//
+///////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_NoLoot(who, text)
+	Var params:=SplitWords(text);
+  Var range := CInt(params[1]);
+  Var bLoot := CINT(params[2]);
+  
+  If (bLoot > 0)
+  	bLoot:=1;
+  	SendSysMessagePergon(who, "Loot wird aktiviert.", "Activate Loot.");
+  Else
+  	bLoot:=0;
+  	SendSysMessagePergon(who, "Loot wird deaktiviert.", "Deactivate Loot.");
+  EndIf
+  
+  If (range > 0)
+    If (range > 10)
+      range := 10;
+    EndIf
+    SendSysMessagePergon(who, "Wählt den zentralen NPC für den Umkreis von " + range + " Feldern aus!",
+                              "Choose a central npc for the circumference of " + range + " fields!");
+  Else
+    range := 0;
+    SendSysMessagePergon(who, "Wählt einen NPC aus!", "Choose an npc!");
+  EndIf
+
+  Var mobiles:=Target(who);
+  If (mobiles.isa(POLCLASS_NPC))
+    If (range)
+      ForEach mobile in ListMobilesNearLocationEx(mobiles.x, mobiles.y, mobiles.z, range, LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN,who.realm)
+        If (mobile.isa(POLCLASS_NPC))
+          NoLoot(who, mobile, bLoot);
+        EndIf
+        SleepMS(2);
+      EndForEach
+    Else
+      NoLoot(who, mobiles, bLoot);
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram
+
+//////////////////////////////////
+// NoLoot - Schaltet das Flag um
+//////////////////////////////////
+
+Function NoLoot(who, mobile, bLoot)
+	If (bLoot==0)
+		If (!(GetObjProperty(mobile, "noloot")))
+			SetObjProperty(mobile, "noloot", 1);
+    	PrintTextAbovePrivatePergon(mobile, "NoLoot", "NoLoot", who);
+		EndIf
+	Else
+		If ((GetObjProperty(mobile, "noloot")))
+			EraseObjProperty(mobile, "noloot");
+    	PrintTextAbovePrivatePergon(mobile, "Loot", "Loot", who);
+		EndIf
+	EndIf
+EndFunction

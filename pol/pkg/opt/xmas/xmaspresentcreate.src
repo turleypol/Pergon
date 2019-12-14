@@ -1,0 +1,29 @@
+///////////////////////////////////////////////////////////////////////////
+// xmaspresentcreate -
+// abhaengig vom Set zu Weihnachtsgeschenk oder Osterei mutieren
+
+include "common";
+
+Const CREATE_OK := 1;
+
+Program XmasOrEaster(gift)
+    var set_type := gift.getprop("set_name");
+    If (!set_type)
+        // kein Set, es entsteht ein normales Geschenk
+        return CREATE_OK;
+    EndIf
+
+    set_type := Lower(set_type);
+    If (set_type["oster"])
+        // befindet sich in einem Osterset -> Ei werden
+        gift.name    := "Osterei";
+        gift.graphic := 0x10d9;
+        gift.setprop(PROP_XMAS_EVENT, EVENT_EASTER);
+    ElseIf (set_type["weihnacht"])
+        // befindet sich in einem Weihnachtsset -> Name anpassen
+        gift.name    := "Weihnachtsgeschenk";
+        gift.setprop(PROP_XMAS_EVENT, EVENT_XMAS);
+    EndIf
+
+    return CREATE_OK;
+EndProgram

@@ -1,0 +1,45 @@
+///////////////////////////////////////////////////////////////////////////
+// Return gate creator
+//
+// Nachdem ein Returngate aufgebaut wurde, kann man per Doppelklick
+// als Cmdlevel ein (weiteres) Quell-Tor erzeugen, was zum gewählten
+// Tor teleportiert
+
+use os;
+use uo;
+include "include/modifyskill";
+include "include/msgs";
+include "common";
+
+Program ReturnGate(who, gate)
+    // nix machen wenn nicht berechtigt
+    If (who.cmdlevel < CMDLEVEL_SEER)
+        return;
+    EndIf
+
+    // neues Tor erzeugen
+    var newgate := CreateItemInBackpack(who, gate.objtype, 1);
+    If (!newgate)
+        SendSysMessagePergon(who,
+            "Fehler beim Erzeugen: "+newgate.errortext,
+            "Error creating gate: "+newgate.errortext
+        );
+        return;
+    EndIf
+    // sonst ist es im Rucksack angetackert
+    newgate.movable := 1;
+
+    // Ziel einstellen
+    // wenn's ein Quelltor ist, steht das Ziel in der CProp
+    var dest := GetObjProperty(gate, DEST_CPROP);
+    If (!dest)
+        // ist ein Zieltor, direkt Serial nutzen
+        dest := gate.serial;
+    EndIf
+    SetObjProperty(newgate, DEST_CPROP, dest);
+
+    SendSysMessagePergon(who,
+        "Ein Quelltor wurde im Rucksack erzeugt",
+        "Created a new source gate in your backpack"
+    );
+EndProgram

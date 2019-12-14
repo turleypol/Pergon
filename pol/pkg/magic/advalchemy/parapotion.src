@@ -1,0 +1,30 @@
+// Made By Charles Haustron
+// Paralyzes Drinker
+use os;
+use uo;
+
+include "drinkpotion";
+include "include/modifyskill";
+
+program drink_blue (character, potion)
+if (!checkifcandrink(character))
+        return;
+endif
+
+
+    if (is_poison(potion))
+        do_poison(character, potion);
+    else
+        empty_bottle(character, potion);
+//        PlayStationaryEffect( character.x , character.y , character.z , FX_CURSE_EFFECT , 10 , 0xa , 0 );
+//        PlaySoundEffect( character , SFX_SPELL_PARALYZE );
+        character.paralyzed := 1;
+        detach();
+        sleep(10);
+        candrink(character);
+	sleep(15);
+        character.paralyzed := 0;
+
+    endif
+
+endprogram

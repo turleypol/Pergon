@@ -1,0 +1,79 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  NecroDungeonWalkOn.src - WalkOn script for Necro Dungeon (fka Wrong)
+//                    damages Chars without Necroskills
+//
+//  Modifications:
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use os;
+use uo;
+
+include "include/modifyskill";
+
+Const WALKOVER_1:= 0.75;
+Const WALKOVER_2:= 0.5;
+
+Program NecroDungeonWalkOver (mobile, tile)
+
+  if (mobile.isa(POLCLASS_NPC))          // do not trigger on npcs
+    return;
+  endif
+
+  if (!mobile.dead)                 // no effect for ghosts
+
+    var wo_type:= GetObjProperty(tile, "WalkOver");
+
+    if (mobile.cmdlevel >= CMDLEVEL_SEER)         // Command Level do not get damaged
+      return;
+    endif
+
+    if (HasPlayerSkill(mobile, SKILLID_FLUCHEN) ||              // check if mobile has Necro-Skills
+      HasPlayerSkill(mobile, SKILLID_VERFLUCHTEGEGENST))
+
+      PlaySoundEffectPrivate(mobile, SFX_101, mobile);
+      PrintTextAbovePrivatePergon(mobile, "Willkommen, Bruder.", "Welcome, Brother.", mobile);
+    else                                          // mobile has no Necro-Skills
+      var newhp;
+      var crumble, fumes;
+      var oldfrozen:=mobile.frozen;
+      If (mobile.getprop("#Teleportfrozen"))
+        // Direkt auf Item teleport, da ist freeze schon vorhanden
+        oldfrozen := 0;
+      EndIf
+      mobile.frozen:= 1;                              // freeze mobile
+      IncRevision(mobile);
+
+      case (wo_type)                                  // calc Walkover damage
+        1:  newhp:= CInt(GetHPPergon(mobile) * WALKOVER_1);
+            PrintTextAbovePrivatePergon(mobile, "Ihr solltet besser wieder umkehren, solange Ihr noch könnt...",
+                                                "You should turn back while you still can...", mobile);
+        2:  newhp:= CInt(GetHPPergon(mobile) * WALKOVER_2);
+            PrintTextAbovePrivatePergon(mobile, "Es war ein großer Fehler, hierherzukommen...",
+                                                "You made a big mistake in coming here...", mobile);
+        default:  newhp:= GetHPPergon(mobile);
+      endcase
+
+      PlaySoundEffectPrivate(mobile, SFX_247, mobile);
+      crumble:= CreateItemAtLocationPergon(tile.x, tile.y, tile.z, 0x11c1, 1,tile.realm); // crumble floor
+      SleepMS(1750);
+      DestroyItem(crumble);
+      SleepMS(250);
+      fumes:= CreateItemAtLocationPergon(tile.x, tile.y, tile.z + 3, 0x11a6, 1,tile.realm);   // puff up cloud
+      SleepMS(1750);
+      DestroyItem(fumes);
+      SleepMS(250);
+
+      if (newhp > 0)                                  // damage mobile, but do not kill
+        SetHPPergon(mobile, newhp);
+      else
+        SetHPPergon(mobile, 1);
+      endif
+
+      mobile.frozen:= oldfrozen;                              // thaw mobile
+      IncRevision(mobile);
+    endif
+  endif
+
+EndProgram

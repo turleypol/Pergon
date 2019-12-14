@@ -1,0 +1,5 @@
+Bei jedem Login erscheint ein Tip, wenn du ihn nicht per ".tip aus" abschaltest.
+
+Mit ".tip <Tipp-Nummer>" kannst du dir einen bestimmten Tip gezielt anzeigen lassen.
+
+".tip an" schaltet Tips wieder ein.

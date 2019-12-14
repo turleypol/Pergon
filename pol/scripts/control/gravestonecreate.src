@@ -1,0 +1,209 @@
+//  Erzeugt den Gravestone (Ueberreste einer Spielerleiche), wenn die
+//  Leiche verschwindet. Die Ueberreste verschwinden (im Allgemeinen) nach
+//  24h (siehe gravestone.src)
+
+use file;
+use os;
+use uo;
+include "include/clock";
+include "include/death";
+include "include/itemnpc";
+include "include/party";
+include "include/poison";
+include "include/resources";
+
+Const DESTROY_NOK := 0;
+Const DESTROY_OK  := 1;
+
+Program GraveStoneCreate(cadaver)
+    // Zeit der Grablegung merken
+    var gravestonetime := ReadGameClock();
+    var master      := CInt(GetObjProperty(cadaver, "master"));
+    var exmaster    := CInt(GetObjProperty(cadaver, "ExMaster"));
+    var lifetime    := GetObjProperty(cadaver, "lifetime");
+    var reportables := GetObjProperty(cadaver, "Reportables");
+
+    // Grabsteine gibt es nur fuer Spielerleichen und gezaehmte/gezuechtete
+    // Tiere
+    If (!lifetime and (master <= 0 or GetObjProperty(cadaver, "guardkill"))
+        && !cadaver.getprop("#domestiziert"))
+        return DESTROY_OK;
+    EndIf
+    // Wenn ehemaliger Besitzer killt keine Überreste
+    If (cadaver.getprop("#domestiziert"))
+        If (exmaster == cadaver.getprop(LOG_LASTDAMAGE)[2][2])
+            return DESTROY_OK;
+        EndIf
+    EndIf
+
+    var myname := GetObjProperty(cadaver, "myname");
+    // Quick and Dirty -- falls kein Name
+    If (!myname)
+        myname := cadaver.name;
+        myname["A corpse of "] := "";
+    EndIf
+
+    var cadaver_loc := {cadaver.x, cadaver.y, cadaver.z, cadaver.realm};
+    var forensicprops := {
+        GetObjProperty(cadaver, EV_POISONER),
+        GetObjProperty(cadaver, EV_CHOPPER),
+        GetObjProperty(cadaver, "vet")
+    };
+
+    // Ueberreste erzeugen zwecks Obduktion
+    // Leichen beim Auf- und Absteigen sind ausgenommen
+    var gravestone := CreateItemAtLocationPergon(
+        cadaver_loc[1], cadaver_loc[2], cadaver_loc[3],
+        0x669a, 1, cadaver_loc[4]
+    );
+    If (gravestone)
+        gravestone.movable := 0;
+        SetName(gravestone,        "Ueberreste von " + myname);
+        SetObjProperty(gravestone, "Reportables", reportables);
+        SetObjProperty(gravestone, "lifetime",    lifetime);
+        SetObjProperty(gravestone, EV_POISONER,   forensicprops[1]);
+        SetObjProperty(gravestone, EV_CHOPPER,    forensicprops[2]);
+        SetObjProperty(gravestone, "vet", forensicprops[3]);
+        SetObjProperty(gravestone, "deathtime",   GetDateTimeStr());
+        SetObjProperty(gravestone, "DeadTime",    ReadGameClock());
+        If (GetObjProperty(cadaver, "packer"))
+            SetObjProperty(gravestone, "packer", 1);
+        EndIf
+        If (GetObjProperty(cadaver, "threats"))
+            SetObjProperty(
+                gravestone, "threats", GetObjProperty(cadaver, "threats")
+            );
+        EndIf
+        If (exmaster)
+            SetObjProperty(gravestone, "ExMaster", exmaster);
+        ElseIf (master)
+            SetObjProperty(gravestone, "ExMaster", master);
+        EndIf
+        If (GetObjProperty(cadaver, LOG_LASTHIT))
+            SetObjProperty(
+                gravestone, LOG_LASTHIT, GetObjProperty(cadaver, LOG_LASTHIT)
+            );
+        EndIf
+        If (GetObjProperty(cadaver, LOG_LASTDAMAGE))
+            SetObjProperty(
+                gravestone, LOG_LASTDAMAGE,
+                GetObjProperty(cadaver, LOG_LASTDAMAGE)
+            );
+        EndIf
+        var template := cadaver.getprop("npctemplate");
+        If (template and !IsElfOrHuman(GetNPCConfig(template).objtype))
+            // domestizierte Tiere haben andere Grafik
+            gravestone.graphic := 0x318c;
+        EndIf
+    EndIf
+
+    // kein Player und auch kein Packtier -> keine Loottasche bauen
+    If (!lifetime and !IsWasPackAnimal(cadaver))
+        return DESTROY_OK;
+    EndIf
+
+    var Cont := CreateItemAtLocationPergon(
+        cadaver.x, cadaver.y, cadaver.z, 0x669e, 1, cadaver.realm
+    );
+    If (!Cont)
+        Syslog(
+            "WARNUNG: Konnte keine Loottasche bei "+cadaver.x+" "+cadaver.y+
+            " "+cadaver.z+" erzeugen!"
+        );
+        return DESTROY_OK;
+    EndIf
+
+    // um beim Looten den Taeter auf dem Skelett vermerken zu können
+    If (gravestone)
+        SetObjProperty(cont, "StoneID", CInt(gravestone.serial));
+    EndIf
+
+    // Fuer CanLoot
+    If (GetObjProperty(cadaver, "npctemplate"))
+        SetObjProperty(
+            cont, "npctemplate", GetObjProperty(cadaver, "npctemplate")
+        );
+    EndIf
+    If (GetObjProperty(cadaver, "master"))
+        SetObjProperty(
+            cont, "master", GetObjProperty(cadaver, "master")
+        );
+    EndIf
+    If (GetObjProperty(cadaver, "myserial"))
+        SetObjProperty(
+            cont, "myserial", GetObjProperty(cadaver, "myserial")
+        );
+    EndIf
+
+    // Fuer Test auf Packtier
+    If (GetObjProperty(cadaver, "packer"))
+        SetObjProperty(
+            cont, "packer", GetObjProperty(cadaver, "packer")
+        );
+    EndIf
+
+    MoveCorpseItems(cadaver, cont);
+
+    // Leere Leiche -> Loottasche wegwerfen
+    If (len(EnumerateItemsInContainer(Cont)) == 0)
+        DestroyItem(Cont);
+    Else
+        Cont.name := "Hinterlassenschaften aus: " + cadaver.name;
+    EndIf
+
+    // Erstmal nur Spieler ueberwachen
+    If (!lifetime)
+        return DESTROY_OK;
+    EndIf
+
+    // Wann wurde der Corpse erzeugt und wem gehoert er?
+    var corpseinfo := GetObjProperty(cadaver, "corpseinfo");
+    If (!corpseinfo)
+        Syslog(
+            "FEHLER: Dem Corpse "+Lower(Hex(cadaver.serial))+
+            " fehlt die CProp 'corpseinfo'!"
+        );
+        // zwecks Debugging liegenlassen
+        return DESTROY_NOK;
+    EndIf
+
+    var ghost := SystemFindObjectBySerial(
+        corpseinfo[1], SYSFIND_SEARCH_OFFLINE_MOBILES
+    );
+    If (!ghost)
+        ghost.+name := "[geloescht]";
+    EndIf
+
+    var text :=
+        "TOD: Der Corpse "+ItemInfoStr(cadaver, COORDS_REALM)+" von "+
+        ghost.name+", erzeugt um "+corpseinfo[2]+", wird nach "+
+        (gravestonetime - corpseinfo[2])+" Sekunden ";
+    If (cont)
+        text += "in einen Grabstein "+ItemInfoStr(cont)+" verwandelt";
+        // Zwecks Protokollierung im GraveStone/-Destroy
+        SetObjProperty(
+            cont, "corpseinfo", {corpseinfo[1], corpseinfo[2], gravestonetime}
+        );
+    Else
+        text += "geloescht (leer)";
+    EndIf
+
+    Syslog(text);
+    LogToFile(
+      "log/corpses.log", corpseinfo[2]+"_"+LHex(corpseinfo[1])+text,
+      LOG_DATETIME
+    );
+
+    If (!gravestone)
+        return DESTROY_OK;
+    EndIf
+
+    // Zwecks Protokollierung im GraveStone
+    SetObjProperty(
+        gravestone, "corpseinfo", {corpseinfo[1], corpseinfo[2],
+        gravestonetime}
+    );
+    return DESTROY_OK;
+EndProgram
+
+// vim: sw=2 sts=2

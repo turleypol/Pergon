@@ -1,0 +1,122 @@
+///////////////////////////////////////////////////////////////
+//
+//   Moon Phases (2000/03/13)
+//
+//   Author: Madman Across the Water
+//
+//   Modifications:
+//     2000/03/20 Whiskey: Translation (English -> German)
+//     2000/03/29 Shinigami: Complete ReWrite
+//
+//
+///////////////////////////////////////////////////////////////
+//
+//   Item-Script
+//
+//     SpyGlass - looks up and sees the position of the moons
+//
+///////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+
+/////////////
+// SpyGlass
+/////////////
+
+Program SpyGlass(who)
+  Var tphase:=GetGlobalProperty("TrammelPhase");
+  Var fphase:=GetGlobalProperty("FeluccaPhase");
+
+  Var outputText  :="Ihr starrt in den Himmel und bemerkt, dass Trammel ";
+  Var outputText_e:="You stare at the sky and notice that Trammel is ";
+
+  Case (tphase)
+    0: outputText  +="neu und Felucca ";
+       outputText_e+="new and Felucca ";
+    1: outputText  +="zunehmender Halbmond und Felucca ";
+       outputText_e+="a waxing half moon and Felucca ";
+    2: outputText  +="im ersten Viertel und Felucca ";
+       outputText_e+="is in its first quarter and Felucca ";
+    3: outputText  +="beinahe voll ist, während Felucca ";
+       outputText_e:="is nearly full, while Felucca ";
+    4: outputText  +="voll und Felucca ";
+       outputText_e+="full and Felucca ";
+    5: outputText  +="abnimmt, während Felucca ";
+       outputText_e+="is waning, while Felucca ";
+    6: outputText  +="sich im letzten Viertel befindet und Felucca ";
+       outputText_e+="is in its last quarter and Felucca ";
+    7: outputText  +="vergehender Halbmond und Felucca ";
+       outputText_e+="is a waning halfmoon and Felucca ";
+  EndCase
+
+  Case (fphase)
+    0: If (tphase==0)
+         outputText  :="Ihr starrt in den Himmel und seht, dass beide Monde neu sind.";
+         outputText_e:="You stare at the sky and notice that both moons are new.";
+       Else
+         outputText  +="neu ist.";
+         outputText_e+="is new.";
+       EndIf
+    1: If (tphase==1)
+         outputText  :="Ihr starrt in den Himmel und seht, dass beide Monde zunehmen.";
+         outputText_e:="You stare at the sky and notice that both moons are waxing.";
+       Else
+         outputText  +="zunehmender Halbmond ist.";
+         outputText_e+="is a waxing half moon.";
+       EndIf
+    2: If (tphase==2)
+         outputText  :="Ihr starrt in den Himmel und seht, dass sich beide Monde im ersten Viertel befinden.";
+         outputText_e:="You stare at the sky and notice that both moons are in their first quarter.";
+       Else
+         outputText  +="im ersten Viertel ist.";
+         outputText_e+="is in its first quarter.";
+       EndIf
+    3: If (tphase==3)
+         outputText  :="Ihr starrt in den Himmel und seht, dass beide Monde fast voll sind.";
+         outputText_e:="You stare at the sky and notice that both moons are nearly full.";
+       Else
+         outputText  +="beinahe voll ist.";
+         outputText_e+="is nearly full.";
+       EndIf
+    4: If (tphase==4)
+         outputText  :="Ihr starrt in den Himmel und seht, dass beide Monde die Nacht stark erhellen.";
+         outputText_e:="You stare at the sky and notice that both moons are lighting the night.";
+       Else
+         outputText  +="voll ist.";
+         outputText_e+="is full";
+       EndIf
+    5: If (tphase==5)
+         outputText  :="Ihr starrt in den Himmel und seht, dass beide Monde abnehmen.";
+         outputText_e:="You stare at the sky and notice that both moons are waning.";
+       Else
+         outputText  +="abnehmend ist.";
+         outputText_e+="is waning.";
+       EndIf
+    6: If (tphase==6)
+         outputText  :="Ihr starrt in den Himmel und seht, dass sich beide Monde im letzten Viertel befinden.";
+         outputText_e:="You stare at the sky and notice that both moons are in their last quarter.";
+       Else
+         outputText  +="im letzten Viertel ist.";
+         outputText_e+="is in its last quarter.";
+       EndIf
+    7: If (tphase==7)
+         outputText  :="Ihr starrt in den Himmel und seht, dass beide Monde fast kraftlos sind.";
+         outputText_e:="You stare at the sky and notice that both moons are nearly worn away.";
+       Else
+         outputText  +="fast vergangen ist.";
+         outputText_e+="is nearly worn away.";
+       EndIf
+  EndCase
+
+  PrintTextAbovePrivatePergon(who, outputText, outputText_e, who);
+EndProgram

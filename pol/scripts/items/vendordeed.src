@@ -1,0 +1,81 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+// - Updated Jan 10, 2000
+// - Players buy this from the Architect.
+// - dclick on the deed to create.
+// - Once the vendor is created the deed is detroyed.
+// - Vendors now can't be placed close to other vendors
+// 04.08.2002 Fraggulus: 'Lohn-Warnung' bei Aufstellung des Vendors
+// 29.08.2005 Fraggulus: Ergaenzung einer weiblichen Haendlerin
+// 17.11.2005 Fraggulus: Verkuerzung der Suchreichweite von 10 auf 2
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use uo;
+
+Include "include/client";
+Include "include/msgs";
+Include "include/pergonutil";
+
+const SEARCH_RANGE := 2;
+
+program makevendor(who, deed)
+
+    ReserveItem(Deed);
+
+    Var male := 0;
+    If (SendYesNoDialog(who, "Moechtet Ihr einen maennlichen Haendler aufgestellt bekommen?", 0, 0))
+      male := 1;
+    EndIf
+
+    If (male)
+      SendSysMessagePergon(who, "Wo moechtet Ihr den Händler plazieren?", "");
+    Else
+      SendSysMessagePergon(who, "Wo moechtet Ihr die Händlerin plazieren?", "");
+    EndIf
+
+    Var where := TargetCoordinates(who);
+    Var place;
+
+    If (!where)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      Return;
+    Else
+      If (!checkfornpcs(where))
+        var parms:=struct{CProps:=dictionary};
+        //parms.+Master:=who.serial; // Wird im Script nie gesetzt deswegen hier auch nicht
+        parms.CProps.insert("master", who.serial);
+        parms.CProps.insert("mn", who.name);
+        parms.CProps.insert("PrevTamed",1);
+        parms.CProps.insert("p", ReadGameClock() + 86400); // naechste Lohnabbuchung
+        If (male)
+          place := CreateNpcFromTemplate("playervendor", where.x, where.y, where.z,parms,where.realm);
+        Else
+          place := CreateNpcFromTemplate("playervendorw", where.x, where.y, where.z,parms,where.realm);
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Ihr könnt Euren Haendler hier nicht aufstellen.", "");
+        Return;
+      EndIf
+
+    EndIf
+
+    If (!place)
+      SendSysMessagePergon(who, "Euer Haendler wurde nicht erzeugt.", "");
+      Return;
+    Else
+      SendSysMessagePergon(who, "Euer Händler steht nun für Euch bereit.", "");
+      SendSysMessagePergon(who, "Der Lohn beträgt pro UO-Tag 0.25% des Verkaufswertes, mindestens jedoch 25 Gold, maximal 2500 Gold!", "", _DEFAULT_TEXT_FONT, FONTCOLOR_RED);
+      DestroyItem (deed);
+    EndIf
+endprogram
+
+function checkfornpcs(place)
+    foreach npc in ListMobilesNearLocation(place.x, place.y,place.z,SEARCH_RANGE,place.realm)
+      If(Getobjproperty(npc, "MerchantType"));
+        Return 1;
+      EndIf
+    endforeach
+
+    Return 0;
+endfunction

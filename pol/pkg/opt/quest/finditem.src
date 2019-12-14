@@ -1,0 +1,61 @@
+///////////////////////////////////////////////////////////////////////////
+// FindItem - Item, das man finden (und doppelklicken) soll
+
+use basic;
+use os;
+use uo;
+use util;
+include "common";
+include "include/itemnpc";
+include "include/msgs";
+
+Program FindItem(who, item)
+    var crit := Is_Critical();
+    Set_Critical(1);
+    var list := GetGlobalProperty(GPROP_FINDITEM_LIST);
+    If (!FindAddToList(list, item, who))
+        // check if already found
+        PrintTextAbovePrivatePergon(
+            item, "Ihr habt mich schon einmal gefunden.",
+            "You found me again.", who
+        );
+    Else
+        SetGlobalProperty(GPROP_FINDITEM_LIST, list);
+    EndIf
+    Set_Critical(crit);
+
+    var count := CInt(list[item.objtype].size());
+    If (count <= 0)
+        SendSysMessagePergon(who,
+            "Seltsamer Fehler. Staff wird informiert.",
+            "Strange error. Informing staff."
+        );
+        syslog(
+            "FEHLER: "+ItemInfoStr(item)+" hat keinen Typ in globaler Liste"
+        );
+        return;
+    EndIf
+
+    var got := 0;
+    var mytype := list[item.objtype];
+    ForEach finderlist in (mytype)
+        SleepMs(2);
+        If (finderlist.exists(who.serial))
+            got += 1;
+        EndIf
+    EndForEach
+
+    var desc := GetItemDescriptor(item.objtype);
+    var name := DescMehrzahl(desc.desc);
+    If (count == got)
+        SendSysMessagePergon(who,
+            "Glückwunsch. Ihr habt alle "+count+" "+name+" gefunden.",
+            "Congratulations. You've found all "+count+" "+name+"."
+        );
+    Else
+        SendSysMessagePergon(who,
+            "Ihr habt "+got+" von "+count+" "+name+" gefunden.",
+            "You've found "+got+" of "+count+" "+name+"."
+        );
+    EndIf
+EndProgram

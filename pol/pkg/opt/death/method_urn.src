@@ -1,0 +1,27 @@
+/////////////////////////////////////////////////////////
+//
+//   method_urn - Für Tooltips
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     14.08.08 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Include ":tooltips:method_include";
+
+Program Install()
+  Return(1);
+EndProgram
+
+Exported Function HasTooltip(object,who)
+  Return(hasTooltipUrn(object));
+  who:=who;
+EndFunction
+
+Exported Function setTooltip(object,byref packet)
+  setTooltipUrn(object,packet);
+EndFunction

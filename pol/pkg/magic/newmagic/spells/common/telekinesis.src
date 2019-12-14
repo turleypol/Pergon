@@ -1,0 +1,117 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file telekinesis.src
+//
+// implements spell 7 <Telekinesis> - "Telekinese"
+//
+// caster gets distant object in backpack
+
+include "../magicpergon";
+use uo;
+
+Program cast_telekinesis(params)
+  var caster;
+  var item;
+  var power;
+  If (params[1] == "#SCROLL")
+    caster := params[2];
+    power := params[3];
+    item := TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+    If (!item)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power := GetCastPowerPergon(caster, SPELLID_COMMON_TELEKINESIS);
+    item := TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+    If (!item)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  If (item.isa(POLCLASS_MOBILE)) // check if cast on player or npc
+    SendSysMessagePergon(caster,
+      "Das könnt Ihr nicht bewegen", "You cannot move this"
+    );
+    return;
+  EndIf
+
+  If (item.multi) // check if cast on multi
+    SendSysMessagePergon(caster,
+      "Die Mauern des Hauses begrenzen Euren Geist. Es funktioniert nicht.",
+      "The walls of the house distract your mind. It does not work."
+    );
+    return;
+  EndIf
+
+  var spells := ReadConfigFile("::spells"); // load spelldata
+  var spell := FindConfigElem(spells, SPELLID_COMMON_TELEKINESIS);
+
+  // calc spell range according to casting power
+  var range := CInt(power*spell.range/100.0);
+  If (spell.rangemin and spell.rangemin > range)
+    range := spell.rangemin;
+  ElseIf (spell.rangemax and spell.rangemax < range)
+    range := spell.rangemax;
+  EndIf
+
+  // check if telekinesis is in range
+  If (Distance(item, caster) > range)
+    SendSysMessagePergon(caster,
+      "Eure Kräfte reichen nicht aus, um das von dort herzuholen",
+      "You do not have enough power to move this here"
+    );
+    return;
+  EndIf
+
+  PlaySoundEffect(caster, SFX_SPELL_TELEKINESIS);
+
+  If (MoveItemToContainer(item, caster.backpack))
+    // move item (if movable)
+    SendSysMessagePergon(caster,
+      "Ihr bewegt "+item.desc+" nur mit Euren Gedanken",
+      "You move "+item.desc+" with your thoughts only"
+    );
+    return;
+  ElseIf (item.isa(POLCLASS_CORPSE))
+  	
+  	var corpseowner;
+  	var corpseserial := GetObjProperty(item, "myserial");
+  	If (corpseserial)
+  		corpseowner := SystemFindObjectBySerial(corpseserial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+  	EndIf
+  	
+  	If (GetObjProperty(item, "npctemplate") or caster.serial == corpseserial or
+  		 (caster.party and caster.party == corpseowner.party)
+  	)	
+      // move npc corpse
+      var moved := MoveObjectToLocation(
+        item, caster.x, caster.y, caster.z, caster.realm,
+        // Caster steht schliesslich im Weg, daher:
+        MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+      );
+      If (moved)
+        SendSysMessagePergon(caster,
+          "Mit Mühe bewegt Ihr die Leiche.",
+          "You try hard and finally move the corpse."
+        );
+      Else
+        SendSysMessagePergon(caster,
+          "Ihr scheitert.",
+          "You fail."
+        );
+        syslog("FEHLER: "+moved.errortext);
+      EndIf
+      return;
+    EndIf
+  EndIf
+  SendSysMessagePergon(caster,
+    "Ihr könnt "+item.desc+" nicht bewegen",
+    "You cannot move "+item.desc
+  );
+EndProgram
+
+// vim: sw=2 sts=2

@@ -1,0 +1,123 @@
+//**************************************************************************************************
+// Script file archprotection.src
+//
+//    implements spell 216 <Arch Protection> - "Erzschutz"
+//
+//	raises AR of several spelltargets simultaneously
+//		[ Resisted (Magic) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 01.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+Include "include/spellcheck";
+Include "../magicpergon";
+
+program cast_archprotection (params)
+
+   Var caster;
+   Var where;
+   Var beneficiaries;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_ARCHPROTECTION);
+   Var difficulty:= spell.skill;
+   Var resist:=   spell.resist;
+   Var amnt;
+   Var baseamnt:= spell.primary;
+   Var minamnt:=  spell.primarymin;
+   Var maxamnt:=  spell.primarymax;
+   Var range:=    spell.range;
+   Var minrange:= spell.rangemin;
+   Var maxrange:= spell.rangemax;
+   Var dur;
+   Var basedur:=  spell.duration;
+   Var mindur:=   spell.durationmin;
+   Var maxdur:=   spell.durationmax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      where:=struct{x,y,z,realm};
+      where.x:=params[4].x;
+      where.y:=params[4].y;
+      where.z:=params[4].z;
+      where.realm:=params[4].realm;
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      where:=  TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+      
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_ARCHPROTECTION);
+      where:= TargetArea(caster);
+      if (!where)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, where);
+   PerformAction(caster, ANIM_CAST_AREA);
+
+   range:= CInt(power*range/100.0);						// calc spell range according to casting power
+   if (minrange and minrange > range)
+      range:= minrange;
+   elseif (maxrange and maxrange < range)
+      range:= maxrange;
+   endif
+
+   beneficiaries:= ListMobilesNearLocation(where.x, where.y, where.z, range,where.realm);		// get spelltargets
+
+   if (beneficiaries)
+
+      Var tag:= array;
+
+      foreach beneficiary in beneficiaries						// for each spelltarget
+         																	// check if spelltarget can be manipulated
+         if (!GetObjProperty(beneficiary, "spell_protect"))	// calc spelleffects according to spelltargets
+            if (resist)													// magic resistance and casting power
+               amnt:= CInt(MagicResistance(beneficiary, difficulty, resist, power*baseamnt/100.0, 1));
+               dur:=  CInt(MagicResistance(beneficiary, difficulty, resist, power*basedur/100.0, 0));
+            else
+               amnt:= CInt(power*baseamnt/100.0);
+               dur:=  CInt(power*basedur/100.0);
+            endif
+
+            if (minamnt and minamnt > amnt)
+               amnt:= minamnt;
+            elseif (maxamnt and maxamnt < amnt)
+               amnt:= maxamnt;
+            endif
+            if (mindur and mindur > dur)
+               dur:= mindur;
+            elseif (maxdur and maxdur < dur)
+               dur:= maxdur;
+            endif
+
+            PlaySoundEffect(beneficiary, SFX_SPELL_PROTECTION);
+            PlayObjectCenteredEffect(beneficiary, FX_BLESS_EFFECT, 7, 7);
+
+            beneficiary.ar_mod:= beneficiary.ar_mod+amnt;  		// deal amount
+
+            tag[1]:= ReadGameClock() + dur;
+            tag[2]:= amnt;
+            tag[3]:= ReadMilliSecondClock(); // UniqueId
+
+            SetObjProperty(beneficiary, "spell_protect", tag);		// tag spelltarget for spellchecker
+            SendSpellWaiter(beneficiary, "spell_protect", dur, tag[3], beneficiary);
+
+         endif
+         SleepMS(2);
+
+      endforeach
+   endif
+
+endprogram

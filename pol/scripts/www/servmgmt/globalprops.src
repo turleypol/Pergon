@@ -1,0 +1,292 @@
+/////////////////////////////////////////////////////////
+// globalprops - Zeigt alle möglichen GlobalenProperties
+//
+// Author: Turley
+
+use http;
+use os;
+use uo;
+include "header";
+include "include/server";
+
+var GlobalProps := {
+  "jail", "forest", PROP_WEAPON_RULES_ACTIVE, "questzonename",
+  "Noloot", "RawTestSammler", GM_PAGE_LIST
+};
+GlobalProps.sort();
+
+var chr22:=CChr(0x22); // "
+var chr5C:=CChr(0x5C); // \
+
+Program HTMLPage()
+  DoHeader("Global Properties");
+  WriteHTML("<div id='container'>");
+  WriteHTML("<div id='header'></div>");
+  WriteHTML("<div id='content'>");
+  TableHeader("GlobalProperties");
+
+  DenyAccess(isALLOWED_STRICT);
+  
+  WriteHTML("<p>");
+  WriteHTML("<a href='globalprops.ecl?"+A_PARAM+"&ALL=1'>Show All</a>");
+  WriteHTML("</p>");
+  //WriteHtml("<br>");
+  var prop:=QueryParam("PROP");
+  If (prop)
+    // Bekommt was schöneres damit man nach Werten sortieren kann
+    If (prop=="RawTestSammler")
+      ShowRawTestSammler();
+    Else
+      ShowProp(prop);
+    EndIf
+  ElseIf (QueryParam("ALL"))
+    ShowEverything();
+  Else
+    ShowAll();
+  EndIf
+EndProgram
+
+Function ShowEverything()
+  WriteHTML("<table>");
+  WriteHTML("<tr>");
+  WriteHTML("<th>Name</th>");
+  WriteHTML("<th>Value</th>");
+  WriteHTML("</tr>");
+
+  var value;
+  ForEach prop in (GetGlobalPropertyNames())
+    WriteHTML("<tr>");
+    value:=GetGlobalproperty(prop);
+    WriteHTML("<td><a href='globalprops.ecl?PROP="+prop+"&"+A_PARAM+"'>"+prop+"</a></td>");
+    WriteHTML("<td>"+value+"</td>");
+    WriteHTML("</tr>");
+    SleepMS(2);
+  EndForEach
+
+  WriteHTML("</table>");
+
+  WriteHTML("</div>");
+
+  DoFooter();
+EndFunction
+
+Function ShowAll()
+  WriteHTML("<table>");
+  WriteHTML("<tr>");
+  WriteHTML("<th>Name</th>");
+  WriteHTML("<th>Value</th>");
+  WriteHTML("</tr>");
+
+  var value;
+  ForEach prop in GlobalProps
+    WriteHTML("<tr>");
+    value:=GetGlobalproperty(prop);
+    WriteHTML("<td><a href='globalprops.ecl?PROP="+prop+"&"+A_PARAM+"'>"+prop+"</a></td>");
+    WriteHTML("<td>"+value+"</td>");
+    WriteHTML("</tr>");
+    SleepMS(2);
+  EndForEach
+
+  WriteHTML("</table>");
+
+  WriteHTML("</div>");
+
+  DoFooter();
+EndFunction
+
+Function ShowProp(property)
+  WriteHTML("<table>");
+  WriteHtml("<tr><th colspan='5' align='left'>"+property+"</th></tr>");
+  WriteHTML("<tr>");
+
+  var value := GetGlobalProperty(property);
+
+  If (TypeOfInt(value) in {OT_ARRAY,OT_DICTIONARY,OT_STRUCT})
+    WriteHTML("<th>Key</th>");
+    WriteHTML("<th>Value</th>");
+    WriteHTML("</tr>");
+    ForEach subvalue in value
+      WriteHTML("<tr>");
+      WriteHTML("<td>"+_subvalue_iter+"</td>");
+      WriteHTML("<td>"+subvalue+"</td>");
+      WriteHTML("</tr>");
+      SleepMS(2);
+    EndForEach
+  Else
+    writehtml("<th>Value</th>");
+    writehtml("</tr>");
+    writehtml("<tr>");
+    writehtml("<td>"+value+"</td>");
+    writehtml("</tr>");
+  EndIf
+
+  WriteHTML("</table>");
+
+  WriteHTML("</div>");
+
+  DoFooter();
+EndFunction
+
+Function ShowRawTestSammler()
+  var daten:=GetGlobalProperty("RawTestSammler");
+
+  WriteHtml("<div id="+chr22+"PropertyTabelle"+chr22+"></div>");
+  WriteHtml("<script type="+chr22+"text/javascript"+chr22+">");
+  WriteHtml("<!--");
+  WriteHtml("var Tabellendaten = new Array(");
+  var i := 1;
+  ForEach value in daten
+    WriteHtmlRaw("Array(");
+    WriteHtmlRaw(chr22+_value_iter+chr22+","
+                +chr22+value.new+chr22+","
+                +chr22+value.org+chr22+","
+                +chr22+value.newround+chr22+",");
+    If ((value.org == 0) || (value.new == 0))
+      WriteHtmlRaw(chr22+"0"+chr22+",");
+    Else
+      WriteHtmlRaw(chr22+((value.org/(1.0*value.new))*100)+chr22+",");
+    EndIf
+    If ((value.org == 0) || (value.newround == 0))
+      WriteHtmlRaw(chr22+"0"+chr22);
+    Else
+      WriteHtmlRaw(chr22+((value.org/(1.0*value.newround))*100)+chr22);
+    EndIf
+    WriteHtmlRaw(")");
+    If (i < daten.size())
+      WriteHtml(",");
+    EndIf
+    i += 1;
+    SleepMS(2);
+  EndForEach
+
+  WriteHtml(");");
+
+  WriteHtml("var sortierte_Tabellendaten = new Array(Tabellendaten.length);");
+
+  WriteHtml("var Spaltenueberschriften = new Array(");
+  WriteHtml(""+chr22+"<B>Skill</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>New</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>Org</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>NewRound</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>Diff %</B>"+chr22+",");
+  WriteHtml(""+chr22+"<B>DiffRound %</B>"+chr22);
+  WriteHtml(");");
+
+  WriteHtml("var Spalten = Spaltenueberschriften.length;");
+
+  WriteHtml("var Spaltensortierungen = new Array(");
+  WriteHtml(""+chr22+"alphabetisch"+chr22+","
+              +chr22+"numerisch"+chr22+","
+              +chr22+"numerisch"+chr22+","
+              +chr22+"numerisch"+chr22+","
+              +chr22+"numerisch"+chr22+","
+              +chr22+"numerisch"+chr22);
+  WriteHtml(");");
+
+  WriteHtml("var Sortierzeile = "+chr22+""+chr22+";");
+
+  WriteHtml("function Erzeuge_Sortierzeile(Nummer,Richtung) {");
+  WriteHtml("  Sortierzeile = "+chr22+"<tr>"+chr22+";");
+  WriteHtml("  for(var j = 0; j < Spalten; ++j) {");
+  WriteHtml("    Sortierzeile += "+chr22+"<th>"+chr22+";");
+  WriteHtml("    if(Richtung == "+chr22+"aufsteigend"+chr22+" && j == Nummer) {");
+  WriteHtml("      Sortierzeile += "+chr22+"auf "+chr22+";");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','absteigend')"+chr5C+""+chr22+">ab</a>"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    else if(Richtung == "+chr22+"absteigend"+chr22+" && j == Nummer) {");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','aufsteigend')"+chr5C+""+chr22+">auf</a>"+chr22+";");
+  WriteHtml("      Sortierzeile += "+chr22+" ab"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    else {");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','aufsteigend')"+chr5C+""+chr22+">auf</a> "+chr22+";");
+  WriteHtml("      Sortierzeile += "+chr22+"<a href="+chr5C+""+chr22+"javascript:Sortiere_nach_Spalte("+chr22+" + j + "+chr22+",'"+chr22+" + Spaltensortierungen[j] + "+chr22+"','absteigend')"+chr5C+""+chr22+">ab</a><"+chr5C+"/td>"+chr22+";");
+  WriteHtml("    }");
+  WriteHtml("    Sortierzeile += "+chr22+"<"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  }");
+  WriteHtml("  Sortierzeile += "+chr22+"</tr>"+chr22+";");
+  WriteHtml("}");
+
+  WriteHtml("function Sortiere_nach_Spalte(Nummer,Art,Richtung) {");
+  WriteHtml("  sortierte_Tabellendaten=Tabellendaten;");
+  WriteHtml("  sortierte_Tabellendaten.sort(cmpWrapper(Nummer,Art,Richtung));");
+  WriteHtml("  Erzeuge_Sortierzeile(Nummer,Richtung);");
+  WriteHtml("  Schreibe_TabelleScript(sortierte_Tabellendaten);");
+  WriteHtml("}");
+
+  WriteHtml("function Schreibe_TabelleScript(Array) {");
+  WriteHtml("  var Tabelleninhalt = "+chr22+""+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<table WIDTH='100%' CELLSPACING='1' CELLPADDING='2'>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<thead>"+chr22+";");
+  WriteHTML("  Tabelleninhalt += "+chr22+"<TR>"+chr22+";");
+  WriteHTML("  Tabelleninhalt += "+chr22+"<TH COLSPAN='6' ALIGN='LEFT'>RawPoint Infos</TH>"+chr22+";");
+  WriteHTML("  Tabelleninhalt += "+chr22+"</TR>"+chr22+";");
+  WriteHtml("  for(var j = 0; j < Spalten; ++j)");
+  WriteHtml("    Tabelleninhalt += "+chr22+"<th>"+chr22+" + Spaltenueberschriften[j] + "+chr22+"<"+chr5C+"/th>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/tr>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += Sortierzeile;");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/thead>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<tbody>"+chr22+";");
+
+  WriteHtml("  for(var i = 0; i < Array.length; ++i) {");
+  WriteHtml("    Tabelleninhalt += "+chr22+"<tr>"+chr22+";");
+  WriteHtml("    for(var j = 0; j < Array[i].length; ++j)");
+  WriteHtml("      Tabelleninhalt += "+chr22+"<td>"+chr22+" + Array[i][j] + "+chr22+"<"+chr5C+"/td>"+chr22+";");
+  WriteHtml("    Tabelleninhalt += "+chr22+"<"+chr5C+"/tr>"+chr22+";");
+  WriteHtml("  }");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/tbody>"+chr22+";");
+  WriteHtml("  Tabelleninhalt += "+chr22+"<"+chr5C+"/table>"+chr22+";");
+  WriteHtml("  if(document.getElementById)");
+  WriteHtml("    document.getElementById("+chr22+"PropertyTabelle"+chr22+").innerHTML = Tabelleninhalt;");
+  WriteHtml("  else if(document.all)");
+  WriteHtml("    document.all.PropertyTabelle.innerHTML = Tabelleninhalt;");
+  WriteHtml("  else if(document.layers) {");
+  WriteHtml("    document.PropertyTabelle.document.open();");
+  WriteHtml("    document.PropertyTabelle.document.write(Tabelleninhalt);");
+  WriteHtml("    document.PropertyTabelle.document.close();");
+  WriteHtml("  }");
+  WriteHtml("}");
+
+  WriteHtml("function Numsort(a,b)");
+  WriteHtml("  { return a-b; }");
+
+  WriteHtml("function cmpWrapper(i,Art,Richtung)");
+  WriteHtml("{");
+  WriteHtml("  return function(a, b) {");
+  WriteHtml("    if (a[i] == b[i])");
+  WriteHtml("    {");
+  WriteHtml("      return 0;");
+  WriteHtml("    }");
+  WriteHtml("    else");
+  WriteHtml("    {");
+  WriteHtml("      var a2 = [a[i], b[i]];");
+  WriteHtml("      if (Art=="+chr22+"alphabetisch"+chr22+")");
+  WriteHtml("      {");
+  WriteHtml("        a2[0]=a2[0].toLowerCase();");
+  WriteHtml("        a2[1]=a2[1].toLowerCase();");
+  WriteHtml("        a2.sort();");
+  WriteHtml("      }");
+  WriteHtml("      else");
+  WriteHtml("        a2.sort(Numsort);");
+  WriteHtml("      if (Richtung=="+chr22+"aufsteigend"+chr22+")");
+  WriteHtml("        a2.reverse();");
+  WriteHtml("      if (a2[0] == a[i].toLowerCase())");
+  WriteHtml("      {");
+  WriteHtml("        return 1;");
+  WriteHtml("      }");
+  WriteHtml("      else");
+  WriteHtml("      {");
+  WriteHtml("        return -1;");
+  WriteHtml("      }");
+  WriteHtml("    }");
+  WriteHtml("  };");
+  WriteHtml("} ");
+
+  WriteHtml("Sortiere_nach_Spalte(0,Spaltensortierungen[0],'aufsteigend');");
+  WriteHtml("//-->");
+
+  WriteHtml("</script>");
+
+  WriteHTML("</div>");
+
+  DoFooter();
+EndFunction

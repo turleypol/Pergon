@@ -1,0 +1,72 @@
+//////////////////////////////////////////////////////////////////////
+// BookCase CanRemove - Kann man das Buch aus dem Regal mitnehmen?
+//
+// based on Bookcase Spawning System v0.3 (2000/12/08)
+// Author: Syzygy, Zulu, Bishop Ebonhand
+//
+// Author: Shinigami
+//
+// Benutzte CProp's
+//   Boolean(book.noremove) - Darf das Buch aus dem Regal entfernt werden?
+
+//////////////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+// Revision 1.6  2008/09/05 14:27:32  mehdorn
+// - auf Konstanten umgestellt
+// - Buecherregale fuellen sich auf auf Multis
+//   (wegen Multipflanzung unter statischen (Rat-)Haeusern wichtig)
+// - Buchauswahl optimiert
+//   + doppelte Buecher werden verhindert
+// + bunte Bucheinbaende
+// + Neubefuell-GProp wird nach neubefuellen wieder geloescht
+// + Buecher werden ordentlich ausgerichtet (keine Ueberlappung)
+//
+// Revision 1.5  2008/09/03 22:21:08  mehdorn
+// - umgestellt auf die neuen Moeglichkeiten von Housing
+//   + Buecherregale nun auch in statischen Haeusern benutzbar
+//
+// 2002/04/25 Shinigami:
+// ReWrite
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+
+use uo;
+
+include ":housing:house";
+include "common";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program BookCaseCanRemove(who, bookcase, book)
+  // Versucht ein Player ein Buch zu entfernen?
+  If (!who)
+    // ... evtl. ein Script
+    return 1;
+  EndIf
+
+  If (!IsBook(book))
+    // Beschraenkung gilt nur fuer Buecher
+    return 1;
+  EndIf
+
+  // GetObjProperty(book, PROP_BOOK_NO_REMOVE)
+
+  var house := GetHouseContainingObject(bookcase);
+  If (
+    (house and IsHouseOwnerOrFriend(house, who)) or
+    (GetObjProperty(who, TYPBIBLIOTHEKAR)) or
+    (who.cmdlevel >= CMDLEVEL_SEER)
+  )
+    return 1;
+  EndIf
+
+  PrintTextAbovePrivatePergon(bookcase,
+    "Ihr könnt dies nicht einfach so mitnehmen!", "", who
+  );
+
+  return 0;
+EndProgram

@@ -1,0 +1,4 @@
+<h3 id="regprice">regprice</h3>
+
+<p>Zeigt den Goldpreis der Reagenzien in einem wählbaren Container
+an.</p>

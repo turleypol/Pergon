@@ -1,0 +1,31 @@
+weight and carrying capacity
+============================
+    Character weight is 10 stones always
+    Maximum weight is Strength * 3.5 + 40
+    Carrying capacity is maximum weight - character weight
+
+stamina
+=======
+[numbers arbitrary]
+    a person w/ 50 dex should be able to walk, carrying 50% of their carrying
+      capacity, forever
+    a person w/ 25 dex should be able to walk carrying 25% of their carrying
+      capacity, forever.
+        - so at 50% of carrying capacity, movement at the normal 
+        movement rate should cost exactly the 
+
+Some measurements
+=================
+    walk rate is 150 tiles per minute
+    run rate is 300 tiles per minute
+    150 tiles per minute is 2.5 tiles per second, or  0.40 seconds per tile
+    300 tiles per minute is 5 tiles per second, or 0.20 seconds per tile
+    regeneration for a 50-dex person standing still should be 1 per 5 seconds
+    in this 5 seconds, they can walk 5*2.5=12.5 steps
+    therefore walking 12.5 steps unencumbered should cost 1 stamina
+    therefore each step should cost 0.08 stamina
+
+    since when running, move-packets are sent faster, running automatically
+      costs double what walking costs.
+
+    

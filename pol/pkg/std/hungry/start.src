@@ -1,0 +1,33 @@
+///////////////////////////////////////////////
+//
+//   Hungry - Start
+//
+//     based on Hungry Pkg
+//       Author: Charles Haustron
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     2000/06/10 Shinigami: Complete ReWrite
+//
+///////////////////////////////////////////////
+
+//////////////
+// Libraries&Includes
+//////////////
+use os;
+use uo;
+include "include/pergonutil";
+include "include/server";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program Hungry_Start()
+  If (GetGlobalProperty(BAUSERVER))
+    return;
+  EndIf
+
+  Start_ScriptPergon("hungrysystem");
+EndProgram

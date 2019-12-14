@@ -1,0 +1,54 @@
+//////////////////////////////////////////////////////////////////////
+// TextCMD ChangeClass - Schaltet zwischen den Klassen hin und her
+//
+// Author: Shinigami
+
+use file;
+use uo;
+include "include/quests";
+include "include/modifyskill";
+
+Program TextCMD_ChangeClass(who, klasse)
+  Case (Lower(klasse))
+  "h": "c": // Handwerker, Craftsman
+    SetObjProperty(who, SKKLASSE, KLASSE_HANDWERKER);
+  "k": "w": // Krieger, Warrior
+    SetObjProperty(who, SKKLASSE, KLASSE_KRIEGER);
+  "m": // Magier, Mage
+    SetObjProperty(who, SKKLASSE, KLASSE_MAGIER);
+
+  default:
+    If (klasse)
+      SendSysMessagePergon(who,
+        "Parameter: 'h'andwerker, 'k'rieger oder 'm'agier",
+        "Parameters: 'c'raftsman, 'w'arrior or 'm'age"
+      );
+      return;
+    EndIf
+
+    // sonst durchwechseln
+    Case (GetObjProperty(who, SKKLASSE))
+      KLASSE_HANDWERKER: SetObjProperty(who, SKKLASSE, KLASSE_KRIEGER);
+      KLASSE_KRIEGER:    SetObjProperty(who, SKKLASSE, KLASSE_MAGIER);
+      KLASSE_MAGIER:     SetObjProperty(who, SKKLASSE, KLASSE_HANDWERKER);
+      default:           SetObjProperty(who, SKKLASSE, KLASSE_KRIEGER);
+    EndCase
+  EndCase
+
+  Case (GetObjProperty(who, SKKLASSE))
+  KLASSE_HANDWERKER:
+    SendSysMessagePergon(who,
+      "Ihr seid ein Handwerker.", "You are a craftsman."
+    );
+  KLASSE_KRIEGER:
+    SendSysMessagePergon(who,
+      "Ihr seid ein Krieger.", "You are a warrior."
+    );
+  KLASSE_MAGIER:
+    SendSysMessagePergon(who,
+      "Ihr seid ein Magier.", "You are a mage."
+    );
+  EndCase
+
+  QuestCharLog(who, "TextCMD ChangeClass");
+EndProgram

@@ -1,0 +1,23 @@
+POL089 Script contributors:
+
+New stuff:
+Sigismund: string functions
+
+Changes:
+Sigismund: math.inc
+
+POL088 Script contributors:
+
+New stuff:
+Cassandra White: console commands
+Louds: Spawnnet system, guildstones
+Zulu: horses, wands
+Preacher: Hand of Dundee GM Tool
+
+Changes:
+Louds: Tamed AI
+Madman Across the Water: doors
+Zulu: tracking, treasuremap
+
+
+

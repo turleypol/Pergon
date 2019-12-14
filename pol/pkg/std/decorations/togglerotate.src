@@ -1,0 +1,47 @@
+///////////////////////////////////////////////////////////////////////////
+// togglerotate - Deko-Items in anderen Zustand schalten/drehen
+// basiert auf lighting:change
+
+// Einstellungen in Itemdesc:
+// change     Grafik [Grafik] [Grafik]
+// changesnd  Sound
+
+use cfgfile;
+use os;
+use uo;
+
+include "include/varutil";
+
+Program ToggleRotate(who, item)
+    If (!item.movable)
+        // nur lose umschaltbar, damit Gaeste die Deko nicht aendern
+        // TODO: Fehlermeldung oder Moeoep-Effekt?
+        return;
+    EndIf
+
+    var cfg := ReadConfigFile("::itemdesc");
+    If (!cfg)
+        syslog("FEHLER: Deco-Itemdesc nicht lesbar: "+cfg.errortext);
+        return;
+    EndIf
+
+    // passende Grafik ermitteln
+    var graphics := CIntArray(SplitWords(cfg[item.objtype].change));
+    // erst mal Standardwert, falls jemand irgendwas gesetzt hat
+    var newgr := graphics[1];
+    // versuchen, zur naechsten Grafik gehen
+    For i := 1 To graphics.size()
+        If (graphics[i] == item.graphic and i+1 <= graphics.size())
+            newgr := graphics[i+1];
+            break;
+        EndIf
+    EndFor
+    syslog(newgr);
+
+    // und wechseln
+    var sound := cfg[item.objtype].changesnd;
+    If (sound)
+        PlaySoundEffect(who, sound);
+    EndIf
+    item.graphic := newgr;
+EndProgram

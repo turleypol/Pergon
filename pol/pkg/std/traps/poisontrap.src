@@ -1,0 +1,15 @@
+// Autot: 		Peter -pJOTTR- Straube
+// kupfert by 		Fraggle
+//
+
+use os;
+
+Include "include/poison";
+Include "traps";
+
+// Program Walk_on_Poison_Trap(mobile, trap)
+Program Walk_on_Poison_Trap(mobile)
+    If (!mobile.dead)
+        syslog(mobile.name + " betritt die Falle!");
+    Endif
+EndProgram

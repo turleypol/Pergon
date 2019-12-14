@@ -1,0 +1,81 @@
+/////////////////////////////////////////////////////////////////////////////
+// xmastreepresents - hands out presents and marks player as gotten present.
+
+use os;
+use uo;
+include "common";
+include "include/animal";
+include "include/itemnpc";
+include "include/msgs";
+include "include/quests";
+
+Program XMasPresent(who, gift)
+    var event  := CInt(gift.getprop(PROP_XMAS_EVENT));
+    var counter := who.getprop(PROP_PRESENT_COUNT);
+    If (counter == error)
+        counter := dictionary{};
+    EndIf
+    If (counter[event] >= 3)
+        SendSysMessagePergon(who,
+            "Ihr findet keine weiteren Geschenke. Schade.", "", 3, 34
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who,
+        "Ihr schaut ins Geschenk und findet eine Kleinigkeit.", "", 3, 70
+    );
+    counter[event] := CInt(counter[event])+1;
+    who.setprop(PROP_PRESENT_COUNT, counter);
+
+    var desc := GetItemDescriptor(0x7034);
+    desc["CProps"] := dictionary;
+    Case (event)
+    EVENT_EASTER:
+        desc.name  := "Ostergeschenk";
+        desc.color := 31; // rosa wie das Ei im Nest
+        desc["CProps"][PROP_XMAS_EVENT] := event;
+        break;
+    EVENT_XMAS:
+        desc.name  := "Weihnachtsgeschenk";
+        desc.color := 42; // mattes Rot
+        desc["CProps"][PROP_XMAS_EVENT] := event;
+        break;
+    EndCase
+    CreateItemInBackpackPergon(who, desc);
+
+    Case (event)
+    EVENT_EASTER:
+        var drink       := CreateItemInBackpackPergon(who, 0x1f7d);
+        drink.color     := 1281;
+        drink.name      := "Glas Eierlikoer";
+        drink.usescript := ":xmas:xmasdrink";
+        break;
+    EVENT_XMAS:
+        If (counter[event] == 1)
+            var letter       := CreateItemInBackpackPergon(who, 0x14ef);
+            letter.name      := "Weihnachtsbrief";
+            letter.usescript := ":xmas:xmasletter";
+        EndIf
+
+        var drink       := CreateItemInBackpackPergon(who, 0xff7f);
+        drink.color     := 332;
+        drink.graphic   := 0x1f7d;
+        drink.name      := "Glas Gluehwein";
+        break;
+    default:
+        If (counter[event] == 1)
+            // Reitdrache zunaechst auf GreenAcres erzeugen ...
+            var pet := CreateNPCFromTemplate(
+                "RidingDragon", 5403, 1108, 0, 0, REALM_BRITANNIA
+            );
+            // zaehmen und ...
+            Tame(who, pet);
+            // und zum Spieler bewegen
+            MoveObjectToLocation(
+                pet, who.x, who.y, who.z, who.realm, MOVEOBJECT_FORCELOCATION
+            );
+        EndIf
+        break;
+    EndCase
+EndProgram

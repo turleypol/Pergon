@@ -1,0 +1,257 @@
+/////////////////////////////////////////////////////////
+// pokergump - TexasHoldem Pokerspiel - das Gump
+//
+// Author: Turley
+
+use math;
+use os;
+use polsys;
+use uo;
+include "include/eventid";
+include "include/urls";
+include "poker";
+
+Program PokerGump(params)
+  Game:=params[1];
+  Var who:=params[2];
+  Var playerNr:=params[3];
+  Var GameMaster:=params[4];
+  Var ende:=params[5];
+  params:=0;
+
+  Var ret;
+  Var layout:={},data:={}, ev:=struct{source:=who,type:=99,raise:=0,nr:=0};
+
+  BuildGump(playerNr,layout,data,ende);
+  While (who.connected)
+    ret:=SendDialogGump(who,layout,data,10,10);
+
+    If (ret[1])  // Fold
+      ev.type:=EVID_POKER_FOLD;
+      SendEvent(GameMaster,ev);
+      Return;
+    ElseIf (ret[2])  // Call/Check
+      ev.type:=EVID_POKER_CALL;
+      SendEvent(GameMaster,ev);
+      Return;
+    ElseIf (ret[3])  // Raise
+      ev.raise:=SendTextEntryGump( who, "Um wieviel Raisen? Minimum "+Game.Blinds+" Maximum "+Game.Players[playerNr].Chips,
+                                   TE_CANCEL_DISABLE, TE_STYLE_NUMERICAL, Game.Players[playerNr].Chips);
+      ev.raise:=Max(Game.Blinds,Min(Game.Players[playerNr].Chips,CInt(ev.raise)));
+      ev.type:=EVID_POKER_RAISE;
+      SendEvent(GameMaster,ev);
+      Return;
+    ElseIf (ret[4])
+      If (YesNo(who))
+        ev.nr:=playerNr;
+        ev.type:=EVID_POKER_LEAVE;
+        SendEvent(GameMaster,ev);
+        Return;
+      EndIf
+    ElseIf (ret[5])
+      ev.type:=EVID_POKER_OK;
+      SendEvent(GameMaster,ev);
+      Return;
+    ElseIf (ret[6])
+      Help(who);
+    Else  // irgendwie beendet zB GumpClose 99
+      Return;
+    EndIf
+  EndWhile
+  ev.type:=EVID_POKER_FOLD;  // Ausgeloggt erst Fold schicken
+  SendEvent(GameMaster,ev);
+  ev.nr:=playerNr;
+  ev.type:=EVID_POKER_LEAVE; // dann Leave damit nix durcheinander kommt
+  SendEvent(GameMaster,ev);
+  Return;
+EndProgram
+
+Function BuildGump(playerNr,byref layout, byref data,ende)
+  Var i;
+  layout:={"nodispose",
+           "noclose",
+           "page 0",
+           "gumppic 180 154 1140 hue=2127",  //table
+           "htmlgump 180 340 393 50 0 0 0",
+           "button 217 360 4011 4011 1 0 6",
+           "tooltip 1061037"}; //hilfe
+  data:={"<basefont color=#FFFFFF size=5><center>BigBlind: "
+         +Game.Blinds+"<br>Pot: "+Game.Pot+"</center></basefont>"};
+
+  If ((ende==SHOWNORMAL) && (Game.CurrentPlayer<>playerNr))
+    layout.append("button 250 300 4020 4022 1 0 4");
+    layout.append("htmlgump 285 300 100 25 1 0 0");
+    data.append("Tisch verlassen");
+  EndIf
+  Var gumppos:={{0,314},  // kurz vor 9
+                {0,150},  //uhrzeigersinn
+                {180,29},
+                {373,29},
+                {582,150},
+                {582,314},
+                {373,450},
+                {180,450}};
+  For (i:=1;i<=Game.Players.size();i+=1)
+    layout.append("gumppic "+gumppos[i][1]+" "+gumppos[i][2]+" 2070");
+  EndFor
+  For (i:=1;i<=Game.Players.size();i+=1)
+    layout.append("htmlgump "+gumppos[i][1]+" "+(gumppos[i][2]-22)+" 180 25 "+data.size()+" 1 0");
+    If (i==Game.CurrentPlayer)
+      data.append("<basefont color=#800000><center>"+Game.Players[i].Player.name+"</center></basefont>");
+    Else
+      data.append("<center>"+Game.Players[i].Player.name+"</center>");
+    EndIf
+    If (i==Game.DealerButton)
+      layout.append("gumppic "+(gumppos[i][1]+76)+" "+(gumppos[i][2]+3)+" 11320");
+    EndIf
+    If (!Game.Players[i].isOut)
+      ShowCard(gumppos[i][1]+45,gumppos[i][2]+25,1,1,layout,data,playerNr,ende,i);
+      ShowCard(gumppos[i][1]+98,gumppos[i][2]+25,2,1,layout,data,playerNr,ende,i);
+    EndIf
+    layout.append("htmlgump "+(gumppos[i][1]+19)+" "+(gumppos[i][2]+74)+" 140 25 "+data.size()+" 0 0");
+    If (Game.Players[i].IsOut)
+      data.append("<center>(" + Game.Players[i].LastAction + "): " + Game.Players[i].Chips+"[]</center>");
+    Else
+      data.append("<center>(" + Game.Players[i].LastAction + "): " + Game.Players[i].Chips+"["+(Game.Currentstakes-Game.Players[i].BetToPot)+"]</center>");
+    EndIf
+    If (i==playerNr)
+      If ((playerNr==Game.CurrentPlayer) && (ende==SHOWNORMAL))
+        PlaySoundEffectPrivate(Game.Players[i].Player,0x043,Game.Players[i].Player);
+        layout+={"button "+(gumppos[i][1]+34)+" "+(gumppos[i][2]+112)+" 4017 4019 1 0 1",   //Fold
+                 "tooltip 3000587",
+                 "button "+(gumppos[i][1]+74)+" "+(gumppos[i][2]+112)+" 4023 4025 1 0 2",   //Call/Check
+                 "tooltip 3000588",
+                 "button "+(gumppos[i][1]+114)+" "+(gumppos[i][2]+112)+" 4026 4028 1 0 3",  // Raise
+                 "tooltip 3000589"};
+      EndIf
+    EndIf
+    SleepMS(2);
+  EndFor
+  If (Game.Flop[1].value<>NoCard)
+    ShowCard(269,211,1,2,layout,data,playerNr);  // Flop
+    ShowCard(309,211,2,2,layout,data,playerNr);
+    ShowCard(349,211,3,2,layout,data,playerNr);
+    ShowBurnCard(1,layout);
+  EndIf
+  If (Game.Turn[1].value<>NoCard)
+    ShowCard(399,211,1,3,layout,data,playerNr);  // Turn
+    ShowBurnCard(2,layout);
+  EndIf
+  If (Game.River[1].value<>NoCard)
+    ShowCard(449,211,1,4,layout,data,playerNr);  // River
+    ShowBurnCard(3,layout);
+  EndIf
+
+  If ((ende) && (playerNr)) // Spectator bekommen es nicht angezeigt
+    layout.append("button 361 265 4023 4025 1 0 5");  // Endbutton
+  EndIf
+EndFunction
+
+
+Function ShowCard(x,y,card,type,byref layout, byref data,playerNr,ende:=0,player:=0)
+  Var col:=0,val:="", hue:=0, offset:=0;
+  Var c;
+  // Alle Karten anzeigen, oder eigene oder Tablecards
+  If (ende==SHOWHANDS || player==playerNr || type>1)
+    Case (type)
+      1: c:=Game.Players[player].Hand[card];
+      2: c:=Game.Flop[card];
+      3: c:=Game.Turn[card];
+      4: c:=Game.River[card];
+    EndCase
+  EndIf
+
+  If (c.value==NoCard)
+    Return;
+  EndIf
+  Case (c.color)
+    Kreuz:   col:=0x21fe;
+             hue:=892;
+             offset:=15;
+    Pik:     col:=0xf83;
+             hue:=892;
+             offset:=20;
+    Herz:    col:=587;
+             offset:=15;
+    Karo:    col:=0x23e;
+             hue:=0;
+             offset:=15;
+    default: col:=0;
+  EndCase
+
+  Case (c.value)
+    Two:
+    Three:
+    Four:
+    Five:
+    Six:
+    Seven:
+    Eight:
+    Nine:
+    Ten:     val:=CStr(c.value);
+    Jester:  val:="J";
+    Queen:   val:="Q";
+    King:    val:="K";
+    Ace:     val:="A";
+    default: val:="";
+  EndCase
+
+  layout+={"resizepic "+x+" "+y+" 2171 35 42",  // Karten
+           "GumpPicTiled "+(x)+" "+(y)+" 35 3 9157",
+           "GumpPicTiled "+(x)+" "+(y+39)+" 35 3 9157",
+           "GumpPicTiled "+(x)+" "+(y)+" 3 42 9153",
+           "GumpPicTiled "+(x+32)+" "+(y)+" 3 42 9155"};
+  If (val<>"")  // false wenn anderer Player und nicht ende
+    layout.append("TilePicHue "+(4+x-offset)+" "+(4+y)+" "+CInt(col)+" "+hue);
+    layout.append("htmlgump "+(x)+" "+(y+23)+" 31 25 "+data.size()+" 0 0");
+    data.append("<basefont size=5><p align=right>"+val+"</p></basefont>");
+  Else  // Rückseite
+    layout+={"GumpPic "+(x+8)+" "+(y+6)+" 9773",
+             "GumpPic "+(x+7)+" "+(y+21)+" 9772"};
+  EndIf
+EndFunction
+
+Function ShowBurnCard(count, byref layout)
+  layout+={"resizepic "+(460+count*2)+" "+(260+count*2)+" 2171 35 42",
+           "GumpPicTiled "+(460+count*2)+" "+(260+count*2)+" 35 3 9151",
+           "GumpPicTiled "+(460+count*2)+" "+(260+count*2+39)+" 35 3 9157",
+           "GumpPicTiled "+(460+count*2)+" "+(260+count*2)+" 3 42 9153",
+           "GumpPicTiled "+(460+count*2+32)+" "+(260+count*2)+" 3 42 9155",
+           "GumpPic "+(460+count*2+8)+" "+(260+count*2+6)+" 9773",
+           "GumpPic "+(460+count*2+7)+" "+(260+count*2+21)+" 9772"};
+EndFunction
+
+Function YesNo(who)
+  If (SendDialogGump( who,
+             {"page 0",
+              "nodispose",
+              "gumppic 180 150 2070",
+              "button 210 225 2130 2129 1 0 1",
+              "button 270 225 2119 2120 1 0 0",
+              "htmlgump 200 175 140 50 0 0 0"},
+             {"<center>Wirklich den Tisch verlassen?</center>"},10,10))
+    Return(1);
+  Else
+    Return(0);
+  EndIf
+EndFunction
+
+Function Help(who)
+  Var chr22:=CChr(0x22); // "
+
+  Var layouth:={"nodispose",
+               "page 0",
+               "resizepic 180 150 9300 300 300",
+               "htmlgump 180 150 300 300 0 1 1"};
+  Var datah:=
+  {"<basefont size=5><center><U>Texas Hold'em No Limit</U></center>"
+  +"<br>Komplette Regeln: "
+  +"<a href="+chr22+URL_WIKIPEDIA_POKER+chr22+">Wikipedia-Artikel</a>"
+  +"<br><br>Aktionsbuttons:"
+  +"<br><U>"+chr22+"X"+chr22+"</U>: Fold"
+  +"<br><U>"+chr22+"OK"+chr22+"</U>: Check/Call"
+  +"<br><U>"+chr22+"E"+chr22+"</U>: Raise"
+  +"<br><br>Roter Stein = Dealerbutton"
+  +"</basefont>"};
+  SendDialogGump(who,layouth,datah,10,10);
+EndFunction

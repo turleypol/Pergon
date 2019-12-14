@@ -1,0 +1,45 @@
+/////////////////////////////////////////////////////////
+//
+//   packethookdrawobject - Wegen möglichem Crash in extra
+//     Script gepackt, wenn innerhalb eines anderen Hooks
+//     Updatepacket geschickt wird dann kann es Crashen
+//
+/////////////////////////////////////////////////////////
+
+Use os;
+Use uo;
+Use polsys;
+
+Const DEBUG_COUNTER := 1;
+
+Program PacketHook()
+  Syslog("PacketHook DrawObject aktiviert ...");
+  Return(1);
+EndProgram
+
+//////////////////////////////////////////////////
+// DrawObject
+// Polymorphte -> keine equippten Items mitschicken sonst Grafikfehler
+//////////////////////////////////////////////////
+Const GPROP_COUNTER18 := "#HookCounter_DrawObject_0x78";
+Exported Function DrawObject_0x78(character, byref packet)
+  If (DEBUG_COUNTER)
+    Var counter := GetGlobalProperty(GPROP_COUNTER18);
+    If (counter)
+      SetGlobalProperty(GPROP_COUNTER18, counter+1);
+    Else
+      SetGlobalProperty(GPROP_COUNTER18, 1);
+    EndIf
+  EndIf
+
+  Var serial := packet.GetInt32(3);
+  Var mob := SystemFindObjectBySerial(serial);
+  //Polymorphte Player dürfen keine Items tragen sonst gibt es Grafikfehler
+  If ((serial<>character.serial) && ((mob.isA(POLCLASS_MOBILE)) && (!mob.isA(POLCLASS_NPC))))
+    If (!(packet.GetInt16(7) in {400,401,402,403,987,605,606,607,608})) //Mensch m/w,,Tot m/w,GMForm,Elf m/w, ToterElf m/w
+      packet.SetSize(19);
+      packet.SetInt32(19,0);
+    EndIf
+  EndIf
+  Return(0); //Verändertes Paket schicken
+EndFunction

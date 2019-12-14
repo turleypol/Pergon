@@ -1,0 +1,1221 @@
+///////////////////////////////////////////////////////////////////////////
+// tamed.src      AI For tamed creatures
+//
+// origional scripter: Dream Weaver 12/98
+
+// TODO:
+// - alle Props in einzelne Fkts umlenken, lesen, schreiben, erhöhen
+// - alles mit Target mit Ausgaben aufpeppen
+// - statt Target alternativ Namensnennung ermöglichen
+
+// ??? = fragwuerdig
+
+use cfgfile;
+use npc;
+use os;
+use storage;
+use uo;
+use util;
+use vitals;
+include ":drinking:common";
+include ":spawnnet_new:spawnnet";
+include "include/animal";
+include "include/eventid";
+include "include/logutil";
+include "include/mobile";
+include "include/modifyskill";
+include "include/names";
+include "include/party";
+include "include/pergonutil";
+include "include/server";
+include "include/vetement";
+
+///////////////
+// Konstanten
+///////////////
+// Const HALT_THRESHOLD := 15;
+// Const MOVING_EFFECT_FIREBALL := FX_FIREBALL;
+
+// Zeit, die das Tier nach dem Zaehmen (zB) treu bleibt, sofern es
+// nicht noch von anderen Faktoren abhaengt
+// fuers Streicheln: 1/60 der Treuezeit bei RoamsFreeAt hinzufuegen
+// fuers Fuettern  : 1/36 der Treuezeit bei RoamsFreeAt hinzufuegen
+Const TREUEZEIT := 57600;
+
+Const STAT_COME   := "c"; // binary flag
+Const STAT_ATTACK := "a"; // mobile to attack
+Const STAT_FOLLOW := "f"; // mobile to follow
+Const STAT_GUARD  := "g"; // mobile to guard
+Const STAT_WAIT   := "w"; // wait time for events (main loop only)
+
+Const SLOW        := 0;
+Const FAST        := 1;
+
+Const LISTENRANGE := 12;
+
+Const PROP_TIME_POOP    := "#nextpoop";
+Const PROP_TIME_SPEW    := "#nextSpew";
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+var saywords := 0;
+var status := struct{
+  c := 0,
+  a := 0,
+  f := 0,
+  g := 0,
+  w := 5
+};
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program TamedAI()
+  Set_Priority(5);
+
+  var me := Self();
+
+  Dress(me);
+
+  If (me.name["<random>"])
+    SetName(me, RandomName(me));
+  EndIf
+
+  /////////////////////
+  // Initialisierung //
+  /////////////////////
+
+  // Entfernt den NPC aus dem SpawnNet
+  SpawnNet_Clear(me);
+  ReleaseAnchor(me);
+
+  // Statistikkram
+  var spawnname := me.getprop("regspawn");
+  If (spawnname)
+    SetGlobalProperty(spawnname, CInt(GetGlobalProperty(spawnname))-1);
+    me.eraseprop("regspawn");
+  EndIf
+
+  SetWarMode(0);
+
+  me.setprop("serial", me.serial);
+  // Master ermitteln
+  var masterserial := me.getprop("master");
+  var master;
+  If (masterserial)
+    master := SystemFindObjectBySerial(
+      masterserial, SYSFIND_SEARCH_OFFLINE_MOBILES
+    );
+    If (master)
+      If (me.master.serial<>master.serial) // nur setzen wenn auch nötig
+        me.setmaster(master);
+      EndIf
+      syslog(
+        CharInfoStr(me, COORDS_REALM)+" gehoere "+CharInfoStr(master)
+      );
+    Else
+      syslog(
+        "FEHLER: "+CharInfoStr(me, COORDS_REALM)+" hat keinen Master!"
+      );
+      Release(me);
+    EndIf
+  Else
+    syslog(
+      "FEHLER: "+CharInfoStr(me, COORDS_REALM)+" hat keine masterserial!"
+    );
+    Release(me);
+  EndIf
+
+  // Damit sie concealten QuestChars und GMs folgen ...
+  me.cmdlevel := master.cmdlevel;
+
+  If (me.getprop("frozen"))
+    me.frozen := 1;
+  Else
+    me.frozen := 0;
+  EndIf
+  IncRevision(me);
+
+  // Events registrieren
+  EnableEvents(SYSEVENT_SPEECH, LISTENRANGE);
+  EnableEvents(SYSEVENT_ENGAGED+SYSEVENT_DAMAGED);
+  EnableEvents(SYSEVENT_DOUBLECLICKED);
+  EnableEvents(SYSEVENT_ITEM_GIVEN);
+
+  // Wenn das Tier angebunden ist, die Zeiten nicht veraendern ...
+  If (me.getprop("parking"))
+    Parking(me);
+  Else
+    If (me.frozen)
+      me.frozen := 0;
+      IncRevision(me);
+    EndIf
+    If (me.getprop("Undead"))
+      me.setprop("RoamsFreeAt", ReadGameClock() + TREUEZEIT);
+    ElseIf (!me.getprop(PROP_SUMMONED))
+      // ??? - Abrichten?
+      me.setprop("RoamsFreeAt",
+        ReadGameClock() +
+        GetSkillPergon(master, SKILLID_ZAEHMEN)*1000+TREUEZEIT
+      );
+    EndIf
+  EndIf
+  If (!me.getprop("RoamsFreeAt"))
+    me.setprop("RoamsFreeAt", ReadGameClock() + TREUEZEIT);
+  EndIf
+
+  If (me.getprop("autofollowmaster") and master and !me.frozen)
+    FollowStart(me, master);
+  EndIf
+
+  // Quasi-Cache
+  var angersound := CInt(GetNPCConfig(me.npctemplate).angersound);
+  var idlesound  := CInt(GetNPCConfig(me.npctemplate).idlesound);
+
+  // fuer Guarding
+  var nextwatch := 0;
+
+  // Verhungern der Tiere
+  var lasthungrycheck := ReadGameClock();
+  If (!me.getprop(PROP_COMPANION))
+    UpdateHunger(me);
+  EndIf
+
+  //////////////////////////////////////////////
+  // Endlosschleife (Initialisierung beendet) //
+  //////////////////////////////////////////////
+  var ev;
+  var color_last_change := 0;
+  var color_change_time := CInt(me.getprop(PROP_CHANGE_COLOR));
+  While (me)
+    SleepMS(2);
+    ev := Wait_for_EventLogging(status[STAT_WAIT]);
+
+    If (color_change_time)
+      If (color_change_time+color_last_change < ReadGameClock())
+        color_last_change := ReadGameClock();
+        // zufaellige Farbe vor den grossen schwarzen Bereichen
+        me.color := RandomInt(1753);
+      EndIf
+    EndIf
+
+    If (lasthungrycheck + 1800 < ReadGameClock())
+      // nicht zu oft nerven
+      If (!me.getprop(PROP_COMPANION))
+        UpdateHunger(me);
+      EndIf
+      lasthungrycheck := ReadGameClock();
+    EndIf
+
+    If (ev.target.serial == me.serial)
+      // Selbstmord/Selbstverfolgung geht nicht, ergibt Endlosschleife
+      // Event verwerfen
+      continue;
+    EndIf
+
+    Case (ev.type)
+    SYSEVENT_SPEECH: // {{{
+      // nur auf Meister hören
+      If (ev.source.serial != masterserial)
+        break;
+      EndIf
+
+      Speak(me, idlesound);
+      PetCount(me);
+
+      var evtext := Lower(ev.text);
+      var mename := Lower(me.name);
+
+      // Kill / Attack
+      If (
+        evtext[mename+" kill"]   or evtext["all kill"] or
+        evtext[mename+" attack"] or evtext["all attack"] or
+        evtext[mename+" toete"]  or evtext["alle toete"] or
+        evtext[mename+" töte"]   or evtext["alle töte"] or
+        evtext[mename+" fass"]   or evtext["alle fass"]
+      )
+        var whom := Target(master, TGTOPT_HARMFUL+TGTOPT_CHECK_LOS);
+        If ((!whom) or (!whom.isa(POLCLASS_MOBILE)))
+          break;
+        EndIf
+
+        var eve := struct;
+        eve.+type   := EVID_ALL_ATTACK_CMD;
+        eve.+source := me;
+        eve.+target := whom;
+        If (evtext["all "] or evtext["alle "])
+          // Auswahlcursor bekommt nur das schnellste Tier,
+          // und das bin ich, daher werde ich die anderen Tiere
+          // informieren
+          InformOtherPets(me, master, eve);
+        Else
+          SendEvent(me, eve);
+        EndIf
+
+      // Stop / All Stop
+      ElseIf (
+        evtext[mename+" stop"] or evtext["all stop"] or evtext["alle stop"]
+      )
+        AllStop(me);
+
+      // Come / All Come
+      ElseIf (
+        evtext[mename+" come"] or evtext["all come"] or
+        evtext[mename+" hier"] or evtext["alle hier"] or
+        evtext[mename+" komm"] or evtext["alle komm"]
+      )
+        var chaseloop := 0; // TimeOut-Zaehler
+        var done := 0;
+        While ((!done) And (chaseloop<50))
+          If (CloseDistance(me, ev.source))
+            // bei true ist das Tier angekommen
+            break;
+          EndIf
+          chaseloop += 1;
+        EndWhile
+
+      // Follow [Me] / All Follow [Me]
+      ElseIf (
+        evtext[mename+" follow"] or evtext["all follow"] or
+        evtext[mename+" folge"]  or evtext["alles folgt"] or
+        evtext[mename+" fuss"]   or evtext["alle fuss"]
+      )
+        var eve := struct;
+        eve.+type   := EVID_ALL_FOLLOW_CMD;
+        eve.+source := me;
+
+        If (
+          evtext["follow me"] or evtext["folgt mir"] or evtext["fuss mir"]
+        )
+          eve.+target := ev.source;
+        Else
+          var whom := Target(master, TGTOPT_CHECK_LOS);
+          If ((!whom) or (!whom.isa(POLCLASS_MOBILE)))
+            break;
+          EndIf
+          eve.+target := whom;
+        EndIf
+
+        If (evtext["all "] or evtext["alle "])
+          // Auswahlcursor bekommt nur das schnellste Tier
+          InformOtherPets(me, master, eve);
+        Else
+          SendEvent(me, eve);
+        EndIf
+
+      // Transfer / All Transfer
+      ElseIf (
+        evtext[mename+" transfer"] or evtext["all transfer"] or
+        evtext["alle transfer"]
+      )
+        AllStop(me);
+        Transfer(me, master);
+
+      // Release / All Release
+      ElseIf (
+        evtext[mename+" release"]    or evtext["all release"] or
+        evtext[mename+" freilassen"] or evtext["alle freilassen"]
+      )
+        If (!me.getprop(PROP_COMPANION))
+          AllStop(me);
+          Release(me);
+        Else
+          SendSysMessagePergon(master, me.name+" will bei Euch bleiben.");
+        EndIf
+
+      // Guard [Me] / All Guard [Me]
+      ElseIf (
+        evtext[mename+" guard"]      or evtext["all guard"] or
+        evtext[mename+" beschuetze"] or evtext["alle beschuetze"] or
+        evtext[mename+" beschütze"]  or evtext["alle beschütze"] or
+        evtext[mename+" schuetze"]   or evtext["alle schuetze"] or
+        evtext[mename+" schütze"]    or evtext["alle schütze"]
+      )
+        var eve := struct;
+        eve.+type   := EVID_ALL_FOLLOW_CMD;
+        eve.+source := me;
+        eve.+guard  := 1;
+
+        If (
+          evtext[" guard me"] or
+          evtext[" beschuetze mich"] or evtext[" beschützen mich"] or
+          evtext[" schuetze mich"]   or evtext[" schützen mich"]
+        )
+          eve.+target := ev.source;
+        Else
+          var whom := Target(master, TGTOPT_NEUTRAL+TGTOPT_CHECK_LOS);
+          If ((!whom) or (!whom.isa(POLCLASS_MOBILE)))
+            break;
+          EndIf
+          eve.+target := whom;
+        EndIf
+
+        If (evtext["all "] or evtext["alle "])
+          // Auswahlcursor bekommt nur das schnellste Tier
+          InformOtherPets(me, master, eve);
+        Else
+          SendEvent(me, eve);
+        EndIf
+
+      // Fetch / Get
+      ElseIf (
+        evtext[mename+" fetch"] or evtext[mename+" get"] or
+        evtext[mename+" hol"]
+      )
+        Fetch(me, master);
+
+      // Drop
+      ElseIf (evtext[mename+" drop"] or evtext[mename+" gib"])
+        Drop(me, master);
+
+      // Speak / All Speak
+      ElseIf (
+        evtext[mename+" speak"] or evtext["all speak"] or
+        evtext[mename+" laut"]  or evtext["alle laut"]
+      )
+        Speak(me, idlesound);
+        PetCount(me);
+
+      // Good
+      ElseIf (
+        evtext["good "+mename]  or evtext["gute "+mename] or
+        evtext["guter "+mename] or evtext["gutes "+mename]
+      )
+        var freeroam := me.getprop("RoamsFreeAt");
+        If (freeroam)
+          // 1/60 der Treuezeit fuers Loben hinzufuegen
+          me.setprop("RoamsFreeAt", freeroam+CInt(TREUEZEIT/60.0));
+          Speak(me, idlesound);
+          PetCount(me);
+        EndIf
+
+        // Move
+      ElseIf (
+        evtext[mename+" move"] or evtext["all move"] or
+        evtext[mename+" geh"]  or evtext["alle geh"] or
+        evtext[mename+" lauf"] or evtext["alle lauf"]
+      )
+        WalkAwayFrom(ev.source);
+      EndIf
+      // }}}
+
+    SYSEVENT_ENGAGED:
+    SYSEVENT_DAMAGED:
+      PlaySoundEffect(me, angersound);
+      If (ev.source and !IsWasPackAnimal(me))
+        FightStart(me, ev.source);
+      EndIf
+
+    SYSEVENT_DOUBLECLICKED:
+      If (ev.source.serial == masterserial)
+        Event_DblClick(me, ev.source);
+      EndIf
+
+    SYSEVENT_ITEM_GIVEN:
+      If (ev.source.serial == masterserial)
+        DraggedItemToAnimal(me, ev);
+      EndIf
+
+    EVID_ALL_ATTACK_CMD:
+      PlaySoundEffect(me, angersound);
+      FollowStop(me);
+      GuardStop(me);
+      FightStart(me, ev.target);
+
+    EVID_ALL_FOLLOW_CMD:
+      FightStop(me);
+      If (ev.guard)
+        // Spezialfall fuer Bewachen
+        FollowStop(me);
+        GuardStart(me, ev.target);
+      Else
+        GuardStop(me);
+        FollowStart(me, ev.target);
+      EndIf
+
+    EVID_TU_NIX:
+      AllStop(me);
+      TuNix(me);
+
+    EVID_PARKING:
+      AllStop(me);
+      Parking(me);
+    EndCase
+
+    If (RandomInt(500) == 1)
+      Poop(me);
+    EndIf
+    If (RandomInt(10) == 1)
+      Spew(me);
+    EndIf
+
+    // zwecks Debugging
+    If (ev)
+      TestMessage("S: "+status+" E: "+ev, 1);
+    EndIf
+
+    If (status[STAT_FOLLOW])
+      If (Distance(me, status[STAT_FOLLOW]) > 50)
+        // Verfolgter ist sehr schnell weit weg, vermutlich Teleporter
+        TeleportAfter(me, status[STAT_FOLLOW]);
+      ElseIf (
+        status[STAT_FOLLOW].dead or
+        Distance(me, status[STAT_FOLLOW]) > 20
+      )
+        FollowStop(me);
+      Else
+        // Ziel verfolgen
+        // TODO: reicht das?
+        If (CloseDistance(me, status[STAT_FOLLOW]) in (array{1, 3}))
+          Sleep(1);
+        EndIf
+      EndIf
+
+    ElseIf (status[STAT_ATTACK])
+      If (
+        !status[STAT_ATTACK] or
+        status[STAT_ATTACK].dead or
+        Distance(me, status[STAT_ATTACK]) > 20
+      )
+        FightStop(me);
+      Else
+        // TODO: Kampfcode
+        If (CloseDistance(me, status[STAT_ATTACK], FAST) in (array{1, 3}))
+          Sleep(1);
+        EndIf
+      EndIf
+
+    ElseIf (status[STAT_GUARD])
+      If (Distance(me, status[STAT_GUARD]) > 50)
+        // Bewachter ist sehr schnell weit weg, vermutlich Teleporter
+        TeleportAfter(me, status[STAT_GUARD]);
+      ElseIf (
+        status[STAT_GUARD].dead or
+        Distance(me, status[STAT_GUARD]) > 20
+      )
+        GuardStop(me);
+      Else
+        If (CloseDistance(me, status[STAT_GUARD], FAST) in (array{1, 3}))
+          Sleep(1);
+        EndIf
+
+        If (nextwatch > ReadGameClock())
+          continue;
+        EndIf
+
+        nextwatch := ReadGameClock()+5;
+        // PrintTextAbovePergon(guarding, me, "*guarding "+guarding.name+"*");
+
+        ForEach mob in ListHostiles(status[STAT_GUARD], 9, 0)
+          FightStart(me, mob);
+          break;
+        EndForEach
+      EndIf
+    Else
+      status[STAT_WAIT] := 120;
+
+      // nur zur Sicherheit
+      If (me.getprop("guard"))
+        me.eraseprop("guard");
+        IncRevision(me);
+      EndIf
+      
+      If (me.getprop("follow"))
+        me.eraseprop("follow");
+        IncRevision(me);
+      EndIf
+
+      If (idlesound)
+        If (RandomInt(101)<=15)
+          PlaySoundEffect(me, idlesound);
+        EndIf
+      EndIf
+
+      If (me.getprop("RoamsFreeAt") < ReadGameClock())
+        If (me.getprop(PROP_COMPANION) or me.getprop(PROP_SUMMONED))
+          me.setprop("RoamsFreeAt", ReadGameClock() + TREUEZEIT);
+        Else
+          AllStop(me);
+          Release(me);
+        EndIf
+      EndIf
+    EndIf
+  EndWhile
+EndProgram
+
+Function AllStop(tier)
+  FightStop(tier);
+  FollowStop(tier);
+  GuardStop(tier);
+EndFunction
+
+// Fight* - Bekaempfe den Gegner {{{
+Function FightStart(tier, who)
+  If (status[STAT_ATTACK] == who)
+    // wurden vom Gegner beschaedigt, einfach weitermachen
+    return;
+  EndIf
+
+  // Gleich wegschmeißen wenn zu weit weg sonst passiert Endlosschleife
+  // -Tier greift an, verwirft es gleich wieder
+  // -Gegner bekommt Angriff und Reagiert
+  // -Tier bekommt Engage greift an und verwirft
+  // -....
+  If (Distance(tier, who) > 20)
+    return;
+  EndIf
+
+  status[STAT_WAIT] := 0;
+  status[STAT_ATTACK] := who;
+  TurnToward(who);
+  SetOpponent(who);
+EndFunction
+
+Function FightStop(tier)
+  If (TypeOfInt(status[STAT_ATTACK]) in {OT_MOBILEREF,OT_OFFLINEMOBILEREF})
+    status[STAT_ATTACK] := 0;
+    SetOpponent(0);
+    SetWarMode(0);
+    Sleep(1);
+  EndIf
+  // Compilerwarnung vermeiden
+  tier := tier;
+EndFunction
+// }}}
+
+// Follow* - Folge einem Mobile {{{
+Function FollowStart(tier, who)
+  status[STAT_WAIT] := 0;
+  If (status[STAT_FOLLOW])
+    If (status[STAT_FOLLOW] == who)
+      // keine Aenderungen, also nichts machen
+      return;
+    EndIf
+    // Folgt bereits, nur Ziel aendern
+    status[STAT_FOLLOW] := who;
+    status[STAT_FOLLOW].followers += 1;
+    
+    var follow := struct;
+    follow.+serial := who.serial;
+    If (GetMaxHPPergon(tier) > 300)
+      status[STAT_FOLLOW].followers_max -= 1;
+      follow.+angry := 1;
+    EndIf
+    
+    tier.setprop("follow", follow);
+    IncRevision(tier);
+
+    // getarnte Questchars etc. nicht verraten
+    If (who.concealed <= 0)
+      PrintTextAboveLocalizedPergon(
+        tier, "*folgt nun "+who.name+"*", "*follows "+who.name+" now*"
+      );
+      return;
+    EndIf
+  EndIf
+
+  // Erstaufruf
+  status[STAT_FOLLOW] := who;
+  status[STAT_FOLLOW].followers += 1;
+  
+  var follow := struct;
+  follow.+serial := who.serial;
+  If (GetMaxHPPergon(tier) > 300)
+    status[STAT_FOLLOW].followers_max -= 1;
+    follow.+angry := 1;
+  EndIf
+  
+  tier.setprop("follow", follow);
+  IncRevision(tier);
+  
+  If (who.concealed <= 0)
+    PrintTextAboveLocalizedPergon(
+      tier, "*folgt "+who.name+"*", "*follows "+who.name+"*"
+    );
+  EndIf
+EndFunction
+
+Function FollowStop(tier)
+  If (status[STAT_FOLLOW])
+    status[STAT_FOLLOW].followers -= 1;
+    If (GetMaxHPPergon(tier) > 300)
+      status[STAT_FOLLOW].followers_max += 1;
+    EndIf
+    status[STAT_FOLLOW] := 0;
+    tier.eraseprop("follow");
+    IncRevision(tier);
+  EndIf
+  // Compilerwarnung vermeiden
+  tier := tier;
+EndFunction
+// }}}
+
+// Guard* - Bewache ein Mobile {{{
+Function GuardStart(tier, who)
+  If (status[STAT_GUARD])
+    If (status[STAT_GUARD] == who)
+      // keine Aenderungen, also nichts machen
+      return;
+    EndIf
+    // bewacht bereits, nur Ziel aendern
+    status[STAT_GUARD] := who;
+    status[STAT_GUARD].followers += 1;
+    
+    var guard := struct;
+    guard.+serial := who.serial;
+    If (GetMaxHPPergon(tier) > 300)
+      status[STAT_GUARD].followers_max -= 1;
+      guard.+angry := 1;
+    EndIf
+    
+    tier.setprop("guard", guard);
+    IncRevision(tier);
+
+    PrintTextAboveLocalizedPergon(
+      tier, "*beschützt jetzt "+who.name+"*", "*guards "+who.name+" now*"
+    );
+    return;
+  EndIf
+
+  // Erstaufruf
+  status[STAT_GUARD] := who;
+  status[STAT_GUARD].followers += 1;
+  
+  var guard := struct;
+  guard.+serial := who.serial;
+  If (GetMaxHPPergon(tier) > 300)
+    status[STAT_GUARD].followers_max -= 1;
+    guard.+angry := 1;
+  EndIf
+
+  status[STAT_WAIT] := 0;
+  tier.setprop("guard", guard);
+  IncRevision(tier);
+
+  PrintTextAboveLocalizedPergon(
+    tier, "*beschützt "+who.name+"*", "*guards "+who.name+"*"
+  );
+EndFunction
+
+Function GuardStop(tier)
+  If (status[STAT_GUARD])
+    status[STAT_GUARD].followers -= 1;
+    If (GetMaxHPPergon(tier) > 300)
+      status[STAT_GUARD].followers_max += 1;
+    EndIf
+    status[STAT_GUARD] := 0;
+    tier.eraseprop("guard");
+    IncRevision(tier);
+  EndIf
+  // Compilerwarnung vermeiden
+  tier := tier;
+EndFunction
+// }}}
+
+// Zielperson hinterherteleportieren
+Function TeleportAfter(tier, tgt) // {{{
+  If (!tgt)
+    return;
+  EndIf
+  If (tier.frozen or tier.paralyzed)
+    // ich kann mich nicht bewegen, also auch nicht hinterherteleportieren
+    return;
+  EndIf
+  MoveObjectToLocation(tier,
+    tgt.x - ConvertDirectionToLocX(tgt.facing),
+    tgt.y - ConvertDirectionToLocY(tgt.facing),
+    tgt.z, tgt.realm, MOVEOBJECT_FORCELOCATION
+  );
+EndFunction // }}}
+
+// Transfer - Uebergebe das Tier seinem neuen Besitzer
+Function Transfer(tier, master) // {{{
+  If (tier.getprop(PROP_COMPANION))
+    SendSysMessagePergon(master, tier.name+" will bei Euch bleiben.");
+    return;
+  EndIf
+
+  SendSysMessagePergon(master, "Transferiere "+tier.name+" an wen?");
+
+  var whom := Target(master, TGTOPT_NOCHECK_LOS);
+  If (!whom.isa(POLCLASS_MOBILE) or (whom.isa(POLCLASS_NPC)))
+    SendSysMessagePergon(master, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  SendSysMessagePergon(master,
+    "Ihr wartet auf "+whom.name+"s Entscheidung, "+tier.name+
+    " anzunehmen oder nicht."
+  );
+
+  If (SendYesNoGump(whom,
+      master.name+" moechte "+tier.name+" an Euch transferieren.<br>"+
+      "Nehmt Ihr an?", 100, 100
+  ))
+    PrintTextAbovePergon(master, tier,
+      tier.name+" akzeptiert "+whom.name+" als neuen Meister."
+    );
+    tier.setprop("master", whom.serial);
+    tier.setmaster(whom);
+    RestartScript(tier);
+  Else
+    SendSysMessagePergon(master,
+      whom.name+" hat "+tier.name+" nicht angenommen."
+    );
+  EndIf
+EndFunction // }}}
+
+// Release - Laesst das Tier wieder frei
+Function Release(tier) // {{{
+  If (tier.getprop(PROP_COMPANION))
+    return;
+  EndIf
+
+  If (tier.getprop(PROP_SUMMONED))
+    PlayStationaryEffect(
+      tier.x, tier.y, tier.z, FX_SMOKE, 0xa, 0xa, 0, tier.realm
+    );
+
+    KillNPC(tier, "enticedanimal-summoned", KILLNPC_NOCORPSE);
+    return;
+  EndIf
+
+  If (tier.getprop("master"))
+    tier.cmdlevel := CMDLEVEL_PLAYER;
+    PrintTextAboveLocalizedPergon(tier,
+      tier.name+" läuft wieder frei herum!",
+      tier.name+" roams free again!"
+    );
+
+    UnparkAnimal(tier);
+
+    var mymaster := tier.getprop("master");
+    If (mymaster)
+      tier.setprop("ExMaster", mymaster);
+    EndIf
+    tier.eraseprop("master");
+    Sleep(1);
+
+    tier.setmaster(0);
+    tier.script := GetNPCConfig(tier.npctemplate).script;
+    // FIXME: sollte das ueberhaupt noch gesetzt werden?
+    tier.eraseprop("script");
+
+    RestartScript(tier);
+    return;
+  EndIf
+
+  syslog(
+    "FEHLER: Kann "+CharInfoStr(tier, COORDS_REALM)+" nicht freilassen"
+  );
+EndFunction // }}}
+
+// Fetch - Nimmt etwas ins Backpack auf
+Function Fetch(tier, master) // {{{
+  var tobj := Target(master);
+  If ((!tobj.isa(POLCLASS_ITEM)) or (tobj.container) or (tobj.errortext))
+    return;
+  EndIf
+
+  // Packtiere nehmen den Kram direkt auf ...
+  If (!IsWasPackAnimal(tier))
+    Drop(tier, master, "zunaechst ");
+  EndIf
+
+  var times := 0;
+  While (
+    // noch zu weit weg
+    (Distance(tier, tobj)>1) and
+    // Objekt in Sicht
+    CheckLineOfSight(tier, tobj) and
+    // ???
+    (times<5)
+  )
+    If (!RunToward(tobj))
+      times += 1;
+      Sleep(1);
+    Else
+      // ??? - potentielle Endlosschleife?
+      times := 0;
+    EndIf
+  EndWhile
+
+  CheckBackpack(tier);
+
+  MoveItemToContainer(tobj, tier.backpack);
+EndFunction // }}}
+
+// Prueft auf Backpack, verpasst notfalls eines
+Function CheckBackpack(tier) // {{{
+  If (tier.backpack)
+    return;
+  EndIf
+
+  var newbackpack := CreateItemAtLocationPergon(
+    tier.x, tier.y, tier.z, 0xe75, 1, tier.realm
+  );
+  If (EquipItem(tier, newbackpack))
+    return;
+  EndIf
+
+  syslog("Animal: "+CharInfoStr(tier, COORDS_REALM)+" mag kein Backpack");
+EndFunction // }}}
+
+// Drop - Entleert das Backpack
+Function Drop(tier, master, text := "") // {{{
+  If (!tier.backpack)
+    return;
+  EndIf
+
+  var items := EnumerateItemsInContainer(tier.backpack, ENUMERATE_ROOT_ONLY);
+  If (items.size())
+    SendSysMessagePergon(master,
+      "Euer Tier lädt "+text+"einige Gegenstände ab."
+    );
+  EndIf
+
+  ForEach item in (items)
+    MoveObjectToLocation(item, tier.x, tier.y, tier.z, tier.realm);
+    SleepMS(100);
+  EndForEach
+EndFunction // }}}
+
+// Speak - Aktionen beim Zureden ausfuehren
+Function Speak(tier, sound) // {{{
+  If (RandomInt(10) == 1)
+    If (sound)
+      PlaySoundEffect(tier, sound);
+    EndIf
+  EndIf
+EndFunction // }}}
+
+// InformOtherPets -
+// Tiere (inklusive sich selbst) des Meisters ueber Ziel informieren
+Function InformOtherPets(tier, master, ev) // {{{
+  var masterserial := tier.getprop("master");
+  If (!masterserial)
+    return;
+  EndIf
+
+  // alle Tiere im Bereich um Meister sollten es gehoert haben
+  ForEach mob in (ListMobilesNearLocationEx(
+      master.x, master.y, LIST_IGNORE_Z, LISTENRANGE,
+      LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN,
+      master.realm
+  ))
+    SleepMs(2);
+    If (
+      // Alle abgerichteten Tiere, die ...
+      (mob.script in {"enticedanimal", "tamed"}) and
+      // meinem Meister gehoeren
+      mob.getprop("master") == masterserial
+    )
+      SendEvent(mob, ev);
+    EndIf
+  EndForEach
+EndFunction // }}}
+
+// PetCount - Zuviele Tiere können nicht abgerichtet sein
+Function PetCount(tier) // {{{
+  var masterserial := tier.getprop("master");
+  If (!masterserial)
+    return;
+  EndIf
+
+  var pets := 0;
+  ForEach mob in (ListMobilesNearLocation(
+      tier.x, tier.y, tier.z, 8, tier.realm
+  ))
+    SleepMs(2);
+    If (!CheckLineOfSight(tier, mob))
+      // was ich nicht sehe, interessiert mich nicht
+      continue;
+    EndIf
+
+    If (
+      (mob.script in {"enticedanimal", "tamed"}) and
+      (mob.getprop("master") == masterserial)
+    )
+      // je "schlimmer" die Tiere rundherum, desto mehr "Angst"
+      If (GetMaxHPPergon(mob) > 300)
+        pets += 2;
+      Else
+        pets += 1;
+      EndIf
+    EndIf
+  EndForEach
+
+  // etwas Zufall, damit nicht alle gleichzeitig weglaufen
+  If (pets > 9 and pets > RandomInt(20)+3)
+    AllStop(tier);
+    Release(tier);
+  EndIf
+EndFunction // }}}
+
+// Event_DblClick - Auf das Vieh wurde doppelgeklickt
+Function Event_DblClick(tier, master) // {{{
+  If (Distance(tier, master) > 2)
+    SendSysMessagePergon(master, "Ihr seid viel zu weit entfernt!");
+    return;
+  EndIf
+
+  If (!CheckLineOfSight(master, tier))
+    SendSysMessagePergon(master, "Ihr habt kein freies Blickfeld darauf!");
+    return;
+  EndIf
+
+  // Falls tier jmdm folgt, enthaelt 'master' den zu folgenden Mobile,
+  // deswegen checken
+  var masterserial := tier.getprop("master");
+  If (master.serial != masterserial)
+    var realmaster := SystemFindObjectBySerial(
+      masterserial, SYSFIND_SEARCH_OFFLINE_MOBILES
+    );
+    SendSysMessagePergon(realmaster,
+      "Euer Tier folgt im Moment jemand anderem!"
+    );
+    return;
+  EndIf
+
+  // Man soll auch an die Packtasche, wenn Tier angebunden ist, deshalb
+  // parking-check erst hinterher
+  If (OpenPetPack(tier, master))
+    return;
+  EndIf
+
+  If (tier.backpack and EnumerateItemsInContainer(tier.backpack).size())
+    SendSysMessagePergon(master, "Euer Tier trägt bereits eine Last!");
+    return;
+  EndIf
+
+  // kein Packtier
+  If (CDbl(master.getprop(PROP_ALCOHOL)) >= ALC_LEVEL_DRUNK)
+    SendSysMessagePergon(master, "Ihr seid zu betrunken um zu reiten!");
+    return;
+  EndIf
+
+  If (tier.getprop("parking"))
+    UnparkAnimal(tier);
+    SendSysMessagePergon(master,
+      "Euer Tier steht Euch nun wieder zur Verfügung.",
+      "The animal is at your disposal again."
+    );
+  EndIf
+
+  AllStop(tier);
+  If (!PetMount(tier, master, master))
+    If (!GetMountType(tier))
+      SendSysMessagePergon(master,
+        "Dies ist kein Tragetier und reiten kann man es auch nicht."
+      );
+    EndIf
+    TurnAwayFrom(master);
+    PerformAction(tier, 0x6);
+  EndIf
+EndFunction // }}}
+
+// OpenPetPack - Oeffnet die Satteltaschen
+Function OpenPetPack(tier, master) // {{{
+  If (IsWasPackAnimal(tier))
+    CheckBackpack(tier);
+    SendOpenSpecialContainer(master, tier.backpack);
+    return (1);
+  EndIf
+EndFunction // }}}
+
+// Poop - Das Pferdchen muss scheissen
+Function Poop(tier) // {{{
+  var nexttime := tier.getprop(PROP_TIME_POOP);
+  If ((nexttime == error) or (ReadGameClock() > nexttime))
+    var pootype;
+    // Pferde
+    If (tier.graphic in array{
+      ot_horse, ot_horse2nightmare, ot_horse4, ot_horse3, ot_packhorse
+    })
+      pootype := 0x0f3c;
+    EndIf
+    // Woelfe
+    // 0xe1 Wolf,0x17 Hoehlenwolf, 0x63 Darkwolf, 0x25 Frostwolf
+    If (tier.graphic in array{0xe1, 0x17, 0x25, 0x63})
+      pootype := 0xf022;
+    EndIf
+
+    If (pootype)
+      var poopoo := CreateItemAtLocationPergon(
+        tier.x, tier.y, tier.z, pootype, 1, tier.realm
+      );
+      // fürs usescript zur Unterscheidung zwischen Deko und Nicht-Deko
+      poopoo.setprop("usable", 1);
+      poopoo.movable := 0;
+      poopoo.decayat := ReadGameClock()+300;
+    EndIf
+    tier.setprop(PROP_TIME_POOP, ReadGameClock()+38400);
+  EndIf
+EndFunction // }}}
+
+// Spew - Das Lama rotzt
+Function Spew(tier) // {{{
+  var nexttime := tier.getprop(PROP_TIME_SPEW);
+  If ((nexttime == error) or (ReadGameClock() > nexttime))
+    //0xdc Lama, Lamahengst, 0x124 Packlama
+    If (!(tier.graphic in array{0xdc, 0x124}))
+      // kein Lama
+      return;
+    EndIf
+
+    var moeglicheOpfer := ListMobilesInLineOfSight(tier, 10);
+    If (moeglicheOpfer.size() > 0)
+      ForEach opfer in (moeglicheOpfer)
+        // Wenn gespuckt wird trotzdem nur jedes zehnte Mobile bespucken.
+        // Is sonst zu viel.
+        If (RandomInt(100) > 10)
+          continue;
+        EndIf
+        Sleep(3);
+
+        // anschauen beim Spucken wirkt besser
+        TurnToward(opfer) ;
+        PlayMovingEffect(tier, opfer, 0x9ea, 5, 1, 0);
+        // bei jedem Mobile erscheint der Text *flatsch*
+        PrintTextAboveLocalizedPergon(tier, "*flatsch*", "*splotch*");
+
+        // nur bei Playern soll auch der zufällig Text kommen
+        If (opfer.isa(POLCLASS_NPC))
+          continue;
+        EndIf
+
+        // FIXME: Uebersetzung fehlt
+        var text_de := "";
+        Case (RandomInt(11))
+        0:
+          text_de :=
+            "Ein gelber Spuckefladen seilt sich langsam von eurem Ohr ab.";
+        1:
+          text_de := "Ihr wurdet bespuckt.";
+        2:
+          text_de := "Irgendetwas hat euch am Ohr getroffen.";
+        3:
+          text_de := "Aua. Genau ins Auge.";
+        4:
+          text_de := "Waahhhh. Es läuft den Hals herunter.";
+        5:
+          text_de :=
+            "Das schleimige Unglück trifft euch mitten ins Gesicht.";
+        6:
+          text_de := "Gelber Schleim klebt euch auf der Nase.";
+        7:
+          text_de := "Das gelbe Unheil hängt euch im Genick.";
+        8:
+          text_de :=
+            "Die Spucke zieht einen langen Faden von eurer Nase herab.";
+        9:
+          text_de := "Ob Keraban das erklären kann?";
+        default:
+          text_de := "Lamaspucke. Wie ekelhaft!";
+        EndCase
+        PrintTextAbovePergon(tier, opfer, text_de);
+      EndForEach
+    EndIf
+    // nicht öfter als alle 5 mins (5 * 60 Sekunden)
+    tier.setprop(PROP_TIME_SPEW, ReadGameClock()+300);
+  EndIf
+EndFunction // }}}
+
+// Endlosschleife für Statue, TuNix ist eine Sackgasse
+Function TuNix(tier) // {{{
+  // solange Statue und Besitzer gesetzt ist
+  While (tier.frozen == 1 and tier.master)
+    SleepMS(500);
+    // prüfen, ob die Statue abgelaufen ist, und dafür sorgen,
+    // dass der Eventstack nicht überläuft
+    Wait_for_EventLogging(2);
+  EndWhile
+
+  // einsam sterben
+  KillNPC(tier, "enticedanimal-statue", KILLNPC_NOCORPSE);
+EndFunction // }}}
+
+// CloseDistance - Verringere den Abstand
+Function CloseDistance(tier, opponent, runtype := SLOW) // {{{
+  If (tier.frozen or tier.paralyzed)
+    // ich kann mich nicht bewegen
+    return 3;
+  EndIf
+  Case (Distance(tier, opponent))
+  1: // oben, weil am haeufigsten
+  0:
+    TurnToward(opponent);
+    return 1;
+  2:
+    If (runtype == FAST)
+      If (!RunToward(opponent))
+        return 2;
+      EndIf
+    Else
+      If (!WalkToward(opponent))
+        return 2;
+      EndIf
+    EndIf
+  default:
+    If (!RunToward(opponent))
+      return 2;
+    EndIf
+  EndCase
+  return 0;
+EndFunction // }}}
+
+// Ruhige Schleife für parkende Tiere
+Function Parking(me) // {{{
+  me.frozen := 1;
+  IncRevision(me);
+  var masterserial := me.getprop("master");
+  DisableEvents(SYSEVENT_ENGAGED+SYSEVENT_DAMAGED);
+  DisableEvents(SYSEVENT_SPEECH);
+  var ev;
+  While (1)
+    SleepMS(2);
+    ev := Wait_for_EventLogging(1800);
+
+    If (!me.getprop(PROP_COMPANION))
+      UpdateHunger(me);
+    EndIf
+
+    If (!ev)
+      continue;
+    EndIf
+
+    Case (ev.type)
+    SYSEVENT_ITEM_GIVEN:
+      If (ev.source.serial == masterserial)
+        DraggedItemToAnimal(me, ev);
+      EndIf
+
+    SYSEVENT_DOUBLECLICKED:
+      If (ev.source.serial == masterserial)
+        Event_DblClick(me, ev.source);
+      EndIf
+
+    EVID_TU_NIX:
+      TuNix(me);
+
+    EVID_PARKING:
+      // Parken beenden
+      EnableEvents(SYSEVENT_ENGAGED+SYSEVENT_DAMAGED);
+      EnableEvents(SYSEVENT_SPEECH, LISTENRANGE);
+      return;
+    EndCase
+  EndWhile
+EndFunction // }}}
+
+// einmalig anziehen, z. B. magilite greift Laterne
+Function Dress(me) // {{{
+  var equip := me.getprop("Equipt");
+  If (equip)
+    Habille(me, equip);
+    // nur einmalig, daher CProp entfernen
+    me.eraseprop("Equipt");
+  EndIf
+EndFunction // }}}
+
+// vim: sts=2 sw=2

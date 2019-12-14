@@ -1,0 +1,10 @@
+<h3 id="status">status</h3>
+
+<h4>Parameter: keine oder <kbd>mute &lt;etwas mit 1&gt;</kbd>,
+<kbd>mute &lt;etwas ohne 1&gt;</kbd>, <kbd>norank &lt;etwas mit 1&gt;</kbd>,
+<kbd>norank &lt;etwas ohne 1&gt;</kbd> oder <kbd>&lt;etwas anderes&gt;</h4>
+
+<p>Zeigt Statusinformationen über den Spieler an, falls kein Parameter
+angegeben wurde. Mit Parametern wird entweder die Ausgabe von
+Waffenregel-Meldungen (mute), die Ranganzeige (norank) umgeschaltet oder
+eine kurze Hilfe ausgegeben.</p>

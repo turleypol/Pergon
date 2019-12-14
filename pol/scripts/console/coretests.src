@@ -1,0 +1,110 @@
+use math;
+use util;
+use uo;
+use os;
+use cfgfile;
+
+Include "include/itemnpc";
+
+Program Console_CoreTests()
+  Var speechconfig:=ReadConfigFile("speech/messageoftheday");
+  If (speechconfig)
+    SysLog("GetConfigIntKeys             -> "+GetConfigIntKeys(speechconfig));                   // keine IntKeys    -> { }
+  Else
+    SysLog("GetConfigIntKeys...          ConfigFile nicht gefunden");
+  EndIf
+
+  Var container:=CreateItemAtLocationPergon(5273+RandomInt(17), 1181+RandomInt(9), 0, 0xe75, 1,REALM_BRITANNIA);
+  If (container)
+    SysLog("EnumerateItemsInContainer    -> "+EnumerateItemsInContainer(container));             // leerer Container -> { }
+    DestroyItem(container);
+  Else
+    SysLog("EnumerateItemsInContainer... konnte den Container nicht erzeugen");
+  EndIf
+
+  container:=CreateItemAtLocationPergon(5273+RandomInt(17), 1181+RandomInt(9), 0, 0xf13, 1,REALM_BRITANNIA);
+  If (container)
+    SysLog("EnumerateItemsInContainer    -> "+EnumerateItemsInContainer(container));             // kein Container   -> <uninitialized object>
+  Else
+    SysLog("EnumerateItemsInContainer... konnte den NICHT-Container nicht erzeugen");
+  EndIf
+
+  SysLog("EnumerateOnlineCharacters    -> "+EnumerateOnlineCharacters());                        // keine Chars      -> { }
+
+  Var mobile:=CreateNpcFromTemplate("dog", 5273+RandomInt(17), 1181+RandomInt(9), 0,0,REALM_BRITANNIA);
+  If (mobile)
+    SysLog("ListEquippedItems            -> "+ListEquippedItems(mobile));                        // kein Item        -> { }
+  Else
+    SysLog("ListEquippedItems...         konnte keinen NPC erzeugen");
+  EndIf
+  SysLog("ListEquippedItems            -> "+ListEquippedItems(container));                       // falscher ObjTyp  -> error{ errortext = "Invalid parameter" }
+
+  SysLog("ListItemsNearLocation        -> "+ListItemsNearLocation(0, 0, 0, 0));                  // kein Item        -> { }
+  SysLog("ListItemsNearLocationOfType  -> "+ListItemsNearLocationOfType(0, 0, 0, 0, 0xf13));     // kein Item        -> { }
+  SysLog("ListMobilesInLineOfSight     -> "+ListMobilesInLineOfSight(mobile, 0));                // kein Mobile      -> { }
+  SysLog("ListMobilesInLineOfSight     -> "+ListMobilesInLineOfSight(container, 0));             // kein Mobile      -> { }
+  SysLog("ListObjectsInBox             -> "+ListObjectsInBox(0, 0, 0, 0, 0, 0));                 // kein Item        -> { }
+  SysLog("GetObjProperty               -> "+GetObjProperty(container, "blubba"));                // keine CProp      -> error{ errortext = "Property not found" }
+  SysLog("GetObjPropertyNames          -> "+GetObjPropertyNames(container));                     // keine CProps     -> { }
+  SysLog("GetGlobalProperty            -> "+GetGlobalProperty("blubba"));                        // keine GlobalProp -> error{ errortext = "Property not found" }
+  DestroyItem(container);
+
+  SysLog("SplitWords                   -> "+SplitWords(""));                                     // Leerstring       -> { }
+  SysLog("SplitWords                   -> "+SplitWords(0));                                      // Zahl             -> { 0 }
+  SysLog("ListItemsAtLocation          -> "+ListItemsAtLocation(0, 0, 0,REALM_BRITANNIA));                       // kein Item        -> { }
+
+  Var elem:=speechconfig["Begruessung"];
+  If (elem)
+    SysLog("GetConfigStringArray         -> "+GetConfigStringArray(elem, "Blubba"));             // kein Element     -> { }
+  Else
+    SysLog("GetConfigStringArray...      konnte das Element nicht finden");
+  EndIf
+
+  Var itemconfig:=ReadConfigFile("itemdesc");
+  If (itemconfig)
+    SysLog("GetConfigStringKeys          -> "+GetConfigIntKeys(itemconfig));                     // keine StringKeys -> { }
+  Else
+    SysLog("GetConfigStringKeys...       ConfigFile nicht gefunden");
+  EndIf
+
+  SysLog("ListMobilesNearLocation        -> "+ListMobilesNearLocation(0, 0, 0, 0));              // kein Mobile      -> { }
+  SysLog("ListMobilesNearLocationEx      -> "+ListMobilesNearLocationEx(0, 0, 0, 0, 0));         // kein Mobile      -> { }
+  SysLog("ListHostiles                   -> "+ListHostiles(mobile));                             // kein Mobile      -> { }
+  SysLog("ListAccounts                   -> "+ListAccounts());                                   // kein Account     -> { }
+  SysLog("ListGhostsNearLocation         -> "+ListGhostsNearLocation(0, 0, 0, 0,REALM_BRITANNIA));               // kein Mobile      -> { }
+
+  SysLog("<ForEach>");
+  Var huhu:="huhu";
+  ForEach blubb in huhu
+    SysLog("  blubb"); // kein Array       -> nix
+    blubb := blubb;
+  EndForEach
+  SysLog("<EndForEach>");
+
+// EnumerateItemsInContainer   -> leerer Container -> { }
+// EnumerateItemsInContainer   -> kein Container   -> <uninitialized object>
+// EnumerateOnlineCharacters   -> keine Chars      -> { }
+// GetConfigIntKeys            -> keine Int-Keys   -> { }
+// GetConfigStringArray        -> kein Element     -> { }
+// GetConfigStringKeys         -> keine StringKeys -> { }
+// GetGlobalProperty           -> keine GlobalProp -> error{ errortext = "Property not found" }
+// GetObjProperty              -> keine CProp      -> error{ errortext = "Property not found" }
+// GetObjPropertyNames         -> keine CProps     -> { }
+// ListAccounts                -> kein Account     -> { }
+// ListEquippedItems           -> kein Item        -> { }
+// ListEquippedItems           -> falscher ObjTyp  -> error{ errortext = "Invalid parameter" }
+// ListGhostsNearLocation      -> kein Mobile      -> { }
+// ListHostiles                -> kein Mobile      -> { }
+// ListItemsAtLocation         -> kein Item        -> { }
+// ListItemsNearLocation       -> kein Item        -> { }
+// ListItemsNearLocationOfType -> kein Item        -> { }
+// ListMobilesInLineOfSight    -> kein Mobile      -> { }
+// ListMobilesInLineOfSight    -> kein Mobile      -> { }
+// ListMobilesNearLocation     -> kein Mobile      -> { }
+// ListMobilesNearLocationEx   -> kein Mobile      -> { }
+// ListObjectsInBox            -> kein Item        -> { }
+// SplitWords                  -> Leerstring       -> { }
+// SplitWords                  -> Zahl             -> { 0 }
+// ForEach                     -> kein Array       -> nix
+
+EndProgram

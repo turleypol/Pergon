@@ -1,0 +1,167 @@
+// 06.02.2001 - Pauker - Farming-Optimierung
+// 29.07.2004 - Commander - Abbruch des Verarbeitens bei Bewegen
+
+use attributes;
+use cfgfile;
+use os;
+use uo;
+include "include/client";
+include "include/modifyskill";
+include "include/objtype";
+
+Const HARV_SUCCESS := 1;
+Const HARV_FAIL    := 0;
+
+Program Clean(who, reg)
+  var cfg   := ReadConfigFile("itemdesc");
+  var what  := cfg[reg.objtype].product;
+  var stroh := 0;
+  If (cfg[reg.objtype].Stroh)
+    stroh := 1;
+  EndIf
+
+  // Messer im Backpack?
+  If (!(FindSubstance(who.backpack, 0x0f51, 1, 0) || FindSubstance(who.backpack, 0x13f6, 1, 0)
+     || FindSubstance(who.backpack, 0x0ec4, 1, 0) || FindSubstance(who.backpack, 0x0ec2, 1, 0)))
+    SendSysMessagePergon(who,
+      "Euch fehlt ein Messer zum Bearbeiten der Pflanzen.",
+      "A knife is missing to process the plants."
+    );
+    return;
+  EndIf
+
+  // Container waehlen, in dem die rohmaterialien liegen
+  SendSysMessagePergon(who,
+    "Wählt den Behälter, in dem sich die Rohpflanzen befinden oder "+
+    "wählt Euren Rucksack, um alle Eure Rohpflanzen zu verarbeiten.",
+    "Choose a container that contains raw plants or "+
+    "choose your backpack to process all raw plants."
+  );
+
+  // Suchcontainer
+  var scont := Target(who);
+  If (!scont)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (!AccessiblePergon(who, scont))
+    SendSysMessagePergon(who,
+      "Der Behälter befindet sich nicht in Eurem Rucksack!",
+      "The container is not in your backpack!"
+    );
+    return;
+  EndIf
+
+  If (!(scont.objtype in (array{
+      0x09ab, 0x09a8, 0x09a9, 0x09aa, 0x09ab, 0x09b0, 0x09b2, 0x0e3c, 0x0e3d,
+      0x0e3e, 0x0e3f, 0x0e40, 0x0e41, 0x0e42, 0x0e43, 0x0e75, 0x0e76, 0x0e77,
+      0x0e79, 0x0e7a, 0x0e7c, 0x0e7d, 0x0e7e, 0x0e7f, 0x0e80, 0x0fae, 0x14e0,
+      0x0e83
+  })))
+    SendSysMessagePergon(who,
+      "Das ist kein zulässiger Kontainer. Euer Rucksack wird durchsucht.",
+      "That's no valid container. Your backpack is searched."
+    );
+    scont := who.backpack;
+  EndIf
+  // ende kontainer-wahl
+
+  // zwischenspeichern, da Pflanze ggf. vernichtet wird
+  var regtype := reg.objtype;
+
+  // Backpack nach Rohmaterialien durchsuchen
+  var toclean := FindSubstance(scont, regtype, 1, 1)[1];
+  If (!toclean)
+    // keine Rohmaterialien im Backpack
+    SendSysMessagePergon(who,
+      "Am Zielort konnten keine Rohpflanzen gefunden werden!",
+      "No raw plants could be found!"
+    );
+    return;
+  EndIf
+
+  // Char-Position merken fuer Abbruch
+  var pos := struct{x := who.x, y := who.y};
+
+  var count      :=  0;
+  var count_succ :=  0;
+  var lastmsg    := -1;
+  var difficulty := CInt(cfg[regtype].Difficulty);
+
+  // So lange es noch Rohmaterialien gibt
+  While (toclean)
+    If (pos.x <> who.x or pos.y <> who.y)
+        // Char hat sich bewegt, Abbruch der Schleife
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      break;
+    EndIf
+
+    count += 1;
+
+    If (CheckSkillPergon(who, SKILLID_ACKERBAU, difficulty, difficulty))
+      // Immer nur eins herstellen bitte
+      var created_item := CreateItemInBackpackPergon(who, what, 1);
+      If (stroh) // Stroh
+        If (RandomInt(2))
+          CreateItemInBackpackPergon(who, 0x1ebd, 1);
+        EndIf
+      EndIf
+      If (!created_item)
+        SendSysMessagePergon(who,
+          "Ihr konntet nichts putzen. Ist Euer Rucksack voll?",
+          "You couldn't clean the plant. Is your backpack full?"
+        );
+        // Ziel-Item fehlt in der Itemdesc.cfg oder Backpack ist voll
+        break;
+      EndIf
+
+      count_succ += 1;
+      created_item.movable := 1;
+      SubtractAmount(toclean, 1);
+
+      If (lastmsg <> HARV_SUCCESS)
+        lastmsg := HARV_SUCCESS;
+        SendSysMessagePergon(who,
+          "Erfolgreich putzt Ihr die Pflanzen.",
+          "You successfully gather some plants."
+        );
+      EndIf
+
+      If (count % 2 == 1)
+        PerformAction(who, 0x0020);
+        PlaySoundEffect(who, 0x57);
+      EndIf
+
+      If (GetSkillPergon(who, SKILLID_ACKERBAU) > 20+difficulty)
+        // doppelsoschnell weil eh Perfekt
+        SleepMS(400);
+      Else
+        SleepMS(800);
+      EndIf
+    Else
+      SubtractAmount(toclean, 1);
+      If (lastmsg <> HARV_FAIL)
+        lastmsg := HARV_FAIL;
+        SendSysMessagePergon(who,
+          "Ihr scheitert beim Putzen der Pflanzen.",
+          "You failed cleaning some plants."
+        );
+      EndIf
+      PlaySoundEffect(who, 0x2b3);
+      SleepMS(500);
+    EndIf
+
+    // existiert es nicht mehr: neu im Backpack suchen mit Reservierung
+    If (!toclean)
+      toclean := FindSubstance(scont, regtype, 1, 1)[1];
+    EndIf
+  EndWhile
+
+  SendSysMessagePergon(who,
+    "Ihr habt "+count_succ+" von "+count+" Pflanzen erfolgreich geputzt.",
+    "You have cleaned "+count_succ+" of "+count+" plants."
+  );
+EndProgram
+
+// vim: sw=2 sts=2

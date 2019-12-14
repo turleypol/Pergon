@@ -1,0 +1,148 @@
+//**************************************************************************************************
+// Script file archcurse.src
+//
+//    implements spell 306 <Arch Curse> - "Erzfluch"
+//
+//  lowers all attributes (INT, DEX, STR) of several spelltargets simultaneously
+//    [ Resisted (Magic) ]
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 04.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+Include "include/spellcheck";
+Include "../magicpergon";
+Include "../spellattack";
+
+Program cast_archcurse (params)
+
+  Var caster;
+  Var where;
+  Var victims;
+
+  Var spells:= ReadConfigFile("::spells");                   // load spelldata
+  Var spell:=  FindConfigElem(spells, SPELLID_NECRO_ARCHCURSE);
+  Var difficulty:= spell.skill;
+  Var resist:=   spell.resist;
+  Var dmg;
+  Var basedmg:=  spell.primary;
+  Var mindmg:=   spell.primarymin;
+  Var maxdmg:=   spell.primarymax;
+  Var dur;
+  Var basedur:=  spell.duration;
+  Var mindur:=   spell.durationmin;
+  Var maxdur:=   spell.durationmax;
+  Var range:=    spell.range;
+  Var minrange:= spell.rangemin;
+  Var maxrange:= spell.rangemax;
+  Var power;
+
+  If (params[1] == "#MOB")
+    caster:= params[2];
+    power:=  params[3];
+    where:=struct{x,y,z,realm};
+    where.x:=params[4].x;
+    where.y:=params[4].y;
+    where.z:=params[4].z;
+    where.realm:=params[4].realm;
+    basedur:=spell.npcduration;
+  ElseIf (params[1] == "#SCROLL")
+    caster:= params[2];
+    power:=  params[3];
+    where:=  TargetArea(caster);
+    If (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      Return;
+    EndIf
+  Else
+    caster:= params[1];
+
+    power:= GetCastPowerPergon(caster, SPELLID_NECRO_ARCHCURSE);
+    where:= TargetArea(caster);
+    If (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      Return;
+    EndIf
+  EndIf
+
+  TurnCharTo(caster, where);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  range:= CInt(power*range/100.0);           // calc spell range according to casting power
+  If (minrange and minrange > range)
+    range:= minrange;
+  ElseIf (maxrange and maxrange < range)
+    range:= maxrange;
+  EndIf
+
+  //Print("Test Power: " + power);
+  //Print("BaseDmg: " + basedmg);
+
+  victims:= ListMobilesNearLocationEx(where.x, where.y, where.z, range, LISTEX_FLAG_NORMAL,where.realm);       // get victims
+
+  If (victims)
+    Var modifystruct:=struct{spelltarget:=0,
+                             int:=0,
+                             dex:=0,
+                             str:=0,
+                             cprop:=struct{name:="",value:={}},
+                             CastPower:={}};
+
+    ForEach victim in victims             // for each victim
+      // check if victim can be cursed, preserve caster and ghosts
+      If (!GetObjProperty(victim, "spell_curse") && victim <> caster && !victim.dead)
+        If (resist)   // calc spelleffects according to victims magic resistance and casting power
+          dmg:= CInt(MagicResistance(victim, difficulty, resist, power*basedmg/100.0, 1));
+          dur:= CInt(MagicResistance(victim, difficulty, resist, power*basedur/100.0, 0));
+        Else
+          dmg:= CInt(power*basedmg/100.0);
+          dur:= CInt(power*basedur/100.0);
+        EndIf
+        If (mindmg and mindmg > dmg)
+          dmg:= mindmg;
+        ElseIf (maxdmg and maxdmg < dmg)
+          dmg:= maxdmg;
+        EndIf
+        If (mindur and mindur > dur)
+          dur:= mindur;
+        ElseIf (maxdur and maxdur < dur)
+          dur:= maxdur;
+        EndIf
+
+        PlaySoundEffect(victim, SFX_SPELL_CURSE);
+        PlayObjectCenteredEffect(victim, FX_CURSE_EFFECT, 5, 15);
+        // get average attribute change for victim
+        If (caster.isa(POLCLASS_NPC))
+          dmg:=CInt((GetIntBasePergon(victim)+GetDexBasePergon(victim)+GetStrBasePergon(victim))*dmg/300);
+        Else
+          dmg:= CInt((GetIntPergon(victim) + GetDexPergon(victim) + GetStrPergon(victim)) * dmg / 300);
+        EndIf
+
+        modifystruct.spelltarget:=victim;
+        modifystruct.int:=-dmg;
+        modifystruct.dex:=-dmg;
+        modifystruct.str:=-dmg;
+        modifystruct.cprop.value:={};
+        modifystruct.cprop.value[1]:= ReadGameClock() + dur;
+        modifystruct.cprop.value[2]:= dmg;
+        modifystruct.cprop.value[3]:= "curse";
+        modifystruct.cprop.value[6]:= ReadMilliSecondClock();
+        modifystruct.cprop.value[7]:= GetSkillPergon(caster, SKILLID_FLUCHEN);
+        modifystruct.cprop.value[8]:= power;
+        modifystruct.cprop.name:="spell_curse";
+        modifystruct.CastPower:={{victim,"Magie",dmg,"","",1}};
+
+        SendSpellWaiter(victim, "spell_curse", dur, modifystruct.cprop.value[6], victim,modifystruct);
+
+        If (victim.isa(POLCLASS_NPC))               // spell has been casted on NPC
+          send_attack(victim, caster, 306);
+        EndIf
+      EndIf
+
+      SleepMS(2);
+
+    EndForEach
+  EndIf
+
+EndProgram

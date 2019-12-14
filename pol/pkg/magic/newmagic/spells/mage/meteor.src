@@ -1,0 +1,127 @@
+//**************************************************************************************************
+// Script file meteor.src
+//
+//    implements spell 111 <Meteor> - "Meteor"
+//
+//	fires meteor on spelltarget - deals more earth damage
+//		 [ Reflected / Resisted (Elemental - Earth) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 30.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//      $Log: not supported by cvs2svn $
+//      Revision 1.16  2010/01/28 11:51:03  Mentholia
+//      ShowDamage von Script auf Core
+//
+//      Revision 1.15  2009/10/13 07:32:37  turley
+//      .randomentry();
+//
+//      Revision 1.14  2008/09/25 10:41:56  turley
+//      EffectCorefunktion
+//
+//      Revision 1.13  2008/08/02 00:32:07  mehdorn
+//      - viele unbenutze Variablen entfernt
+//
+//      Revision 1.12  2007/05/01 12:54:07  seppel
+//      Auslagerung von SKill und Karmacheck auf magicpergon.inc
+//
+//      Revision 1.11  2007/04/26 15:57:18  turley
+//      Neuer MovingEffekt eingebaut um Itemcreates loszuwerden
+//
+//      Revision 1.10  2007/04/20 17:10:36  turley
+//      .realm für createitematlocation
+//
+//      Revision 1.9  2007/04/01 10:46:46  seppel
+//      alle Sprüche auf GetCastPowerPergon umgebaut
+//
+//      Revision 1.8  2007/02/14 23:22:07  turley
+//      debug.log eintrag loswerden
+//
+//      Revision 1.7  2007/02/13 18:11:44  Jennes
+//      verschiedene Steine und "rare effects" eingebastelt
+//
+//**************************************************************************************************
+use vitals;
+use os;
+
+Include "../magicpergon";
+Include "../resistance";
+Include "../spellattack";
+Include "include/packets";
+
+program cast_meteor (params)
+
+   Var caster;
+   Var caston;
+   Var spelltarget;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_MAGE_METEOR);
+   Var resist;
+   Var dmg:=    spell.primary;
+   Var mindmg:= spell.primarymin;
+   Var maxdmg:= spell.primarymax;
+   Var power;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+      send_attack(caston, caster, 111);
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_MAGE_METEOR);
+      caston:= TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+																	// get spelltarget -> possible spell reflection
+   spelltarget:= ReflectSpell(caster, caston, dmg, 1, FX_MARK_EFFECT, 10, 10, 0, 0);
+
+   Const CAT := 0x2119;
+   Var met_obj := {0x1363,0x1771,0x1773,0x1774,0x1775,0x1776,0x1777,0x1779,0x177b};
+   Var met_rare_obj := {0x3660,0x2103,CAT}; // special rare objects
+   Var met_id := met_obj.randomentry();
+   Var easteregg := RandomInt(10000);
+
+   if (easteregg < 20)
+      met_id := met_rare_obj.randomentry();
+   endif
+   if (spelltarget)
+      resist:= 1 - CDbl(GetResistance(spelltarget, "earth"));	// get earth resistance of spelltarget
+      dmg:= CInt(power*resist*dmg/100.0);								// calc and alter spell damage
+      if (mindmg and mindmg > dmg)
+         dmg:= mindmg;
+      elseif (maxdmg and maxdmg < dmg)
+         dmg:= maxdmg;
+      endif
+      if (met_id == CAT) // special sfx
+         PlaySoundEffect(spelltarget, 0x6c);
+      elseif (met_id == 0x3660) // globe
+         PlaySoundEffect(spelltarget, 0x3be);
+      elseif (met_id == 0x2103) // cow
+         PlaySoundEffect(spelltarget, 0x7b);
+      endif
+      PlayMovingEffectXYZEx( spelltarget.x, spelltarget.y, spelltarget.z+50,
+                             spelltarget.x, spelltarget.y, spelltarget.z,
+                             spelltarget.realm, met_id, 1, 0, 0, 0, 1, 0, 5040);
+      PlaySoundEffect(spelltarget, SFX_11E);
+
+      ApplyRawDamagePergon(spelltarget, dmg);			// apply damage to spelltarget
+      
+   endif
+
+endprogram

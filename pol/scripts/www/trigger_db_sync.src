@@ -1,0 +1,17 @@
+use uo;
+use http;
+
+include "include/pergonutil";
+
+Program Trigger_DB_Sync()
+  var giventoken := CInt(QueryParam("token"));
+  var token := GetGlobalProperty("PolAuthToken");
+  If ((token != error && giventoken != error && (token.current == giventoken || token.last == giventoken)) || QueryIP() == "127.0.0.1");
+    var reason := QueryParam("reason");
+    SendSQLManager(0, SQLStatus_Trigger_Sync);
+    SQLDebugLog("trigger_db_sync: successfully triggered from "+QueryIP()+" with reason '"+reason+"'");
+    WriteHTML("<head/><body>done</body>");
+    return;
+  EndIf
+  SysLog("trigger_db_sync: unsuccessfull triggered from "+QueryIP()+" with wrong token '"+giventoken+"'");
+EndProgram

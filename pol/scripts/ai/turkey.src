@@ -1,0 +1,188 @@
+///////////////////////////////////////////////////////////////////////////
+// Turkey-Merchant Script - Control script for NPC Merchants
+//
+
+///////////////////////////////////////////////////////////////////////////
+// A Merchant NPC must have two object property strings:
+//   MerchantType - A MerchantType found in MRCSPAWN.cfg
+//
+// "[MerchantSerial] FS" is the merchant's "for sale" inventory.
+//   This is restocked periodically by MRCSPAWN.src
+// "[MerchantSerial] PB" contains items bought from players, now for-sale.
+//  (this doesn't work yet)
+
+/////////////
+// Bibliotheken&Includes
+/////////////
+use npc;
+use os;
+use storage;
+use uo;
+use util;
+include "include/merchant";
+
+///////////////////////////////
+// Merchant - Initialisierung
+///////////////////////////////
+
+Function SetMerchantType(meprototype)
+  meprototype.merchanttype:="Mage";
+  meprototype.halt_threshold1:=4;
+  meprototype.move_action:=1;
+  meprototype.entered_area:=1;
+  meprototype.left_area:=1;
+  meprototype.item_given_sleeping:=1;
+  meprototype.item_given:=1;
+  meprototype.speech_open:=1;
+  meprototype.speech_name:=1;
+  meprototype.speech_default:=1;
+
+  Return (meprototype);
+EndFunction
+
+/////////////////////
+// Hook_Move_Action
+/////////////////////
+
+Function Hook_Move_Action(me, medata, ev)
+  If (Distance(me, ev.source)>2)
+    NPCSayTextTraditional(me, "Wo wollen Sie denn hin?", "");
+  EndIf
+  RunToward(ev.source);
+  return;
+  medata := 0;
+EndFunction
+
+///////////////////////
+// Hook_Merchant_Sold
+///////////////////////
+
+Function Hook_Merchant_Sold(me, medata, ev)
+  return;
+  me := 0; medata := 0; ev := 0;
+EndFunction
+
+//////////////////////
+// Hook_Entered_Area
+//////////////////////
+
+Function Hook_Entered_Area(me, medata, ev)
+  If (RandomInt(10)<3)
+    NPCSayTextTraditional(me, "Wollen Möhren kaufen?", "");
+    RunToward(ev.source);
+    NPCSayTextTraditional(me, "Nur 6 Gold das Stück.", "");
+    Sleep(2);
+    NPCSayTextTraditional(me, "Möhren sind frisch und knackig.", "");
+  Else
+    NPCSayTextTraditional(me, "Isch mache Euch gut Preis.", "");
+    RunToward(ev.source);
+    NPCSayTextTraditional(me, "Nur schauen, nicht müssen kaufen.", "");
+    Sleep(2);
+    NPCSayTextTraditional(me, "Wirklisch gut Preis, nur für Euch.", "");
+  EndIf
+
+  SetObjProperty(ev.source, "talkto", medata.minename);
+EndFunction
+
+///////////////////
+// Hook_Left_Area
+///////////////////
+
+Function Hook_Left_Area(me, medata, ev)
+  NPCSayTextTraditional(me, "Wartet, ich mache neue Preise fuer Euch.", "");
+  Sleep(2);
+  RunToward(ev.source);
+  return;
+  medata := 0;
+EndFunction
+
+/////////////////////////////
+// Hook_Item_Given_Sleeping
+/////////////////////////////
+
+Function Hook_Item_Given_Sleeping(me, medata, ev)
+  NPCSayTextTraditional(me, "Tut mir Leid, aber isch bin sooo geschafft von meine "+
+    "schwere Arbeit, so ich muss schlafen bis "+medata.open, "");
+  return;
+  ev := 0;
+EndFunction
+
+////////////////////
+// Hook_Item_Given
+////////////////////
+
+Function Hook_Item_Given(me, medata, ev)
+  NPCSayTextTraditional(me, "Oh, was ist das denn? Eine Geschenk für den armen "+medata.minename+".", "");
+  DestroyItem(ev.item);
+
+  Return (1);
+EndFunction
+
+/////////////////////
+// Hook_Speech_Open
+/////////////////////
+
+Function Hook_Speech_Open(me, medata, ev)
+  NPCSayTextTraditional(me, "Zwischen "+medata.open+" und "+medata.close+
+    " habe isch die schönsten und tollsten Sachen für Euch zum kaufen. "+
+    "Niemand sonst wird so lange mit Euch Geschäfte machen.", "");
+  return;
+  ev := 0;
+EndFunction
+
+/////////////////////////
+// Hook_Speech_Sleeping
+/////////////////////////
+
+Function Hook_Speech_Sleeping(me, medata, ev)
+  return;
+  me := 0; medata := 0; ev := 0;
+EndFunction
+
+/////////////////////
+// Hook_Speech_Name
+/////////////////////
+
+Function Hook_Speech_Name(me, medata, ev)
+  NPCSayTextTraditional(me, medata.minename+" machen gute Preise.", "");
+  Sleep(1);
+  NPCSayTextTraditional(me, medata.minename+" machen beste Preise.", "");
+  Sleep(1);
+  NPCSayTextTraditional(me, medata.minename+" handeln fair.", "");
+  return;
+  ev := 0;
+EndFunction
+
+////////////////////////
+// Hook_Speech_Default
+////////////////////////
+
+Function Hook_Speech_Default(me, medata, ev, sayed)
+  Var proceeded:=0;
+
+  If (sayed=="preis")
+    NPCSayTextTraditional(me, "Isch mache gut Preis.", "");
+    Sleep(2);
+    NPCSayTextTraditional(me, "Niemand machen bessere Preis.", "");
+    RunToward(ev.source);
+
+    proceeded:=1;
+  EndIf
+
+  Return (proceeded);
+  medata := 0;
+EndFunction
+
+//////////////////////////////
+// Hook_Ghost_Speech_Default
+//////////////////////////////
+
+Function Hook_Ghost_Speech_Default(me, medata, ev, sayed)
+  return;
+  me := 0; medata := 0; ev := 0; sayed := 0;
+EndFunction
+
+Function Hook_Buy(me, medata, who)
+  return;
+  me := 0; medata := 0; who := 0;
+EndFunction

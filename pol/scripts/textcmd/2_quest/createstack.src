@@ -1,0 +1,94 @@
+////////////////////////////////////////////////////////////////
+// TextCMD CreateStack - Erzeugt einen ItemStack im Backpack
+//
+// Author: Shinigami
+
+use file;
+use os;
+use uo;
+include "include/logutil";
+include "include/msgs";
+include "include/objtype";
+include "include/quests";
+include "include/server";
+
+Program TextCMD_CreateStack(who, text)
+  // Wegen Missbrauch, erstmal nur ab GM
+  If (who.cmdlevel < CMDLEVEL_HIGHGM)
+    SendSysMessagePergon(who,
+      "Ihr seid nicht befugt, diesen Befehl zu benutzen!",
+      "You are not authorizied to use this command!"
+    );
+    return;
+  EndIf
+
+  var params := SplitWords(text);
+  var objtype := CInt(params[1]);
+  If (!objtype)
+    objtype := GetObjtypeByName(params[1]);
+  EndIf
+  var amount := CInt(params[2]);
+  If (!amount)
+    amount := 1;
+  EndIf
+
+
+  If (!objtype)
+    SendSysMessagePergon(who,
+      "'"+params[1]+"' ist kein gültiger Bezeichner für einen ItemStack!",
+      "'"+params[1]+"' is a wrong label for an ItemStack!"
+    );
+    return;
+  EndIf
+
+  // SpawnRune darf nur ueber .CreateSpawnrune createt werden
+  If ((objtype == UOBJ_SPAWNRUNE) or (Lower(objtype) == "spawnrune"))
+    PrintTextAbovePrivatePergon(who,
+      "Benutzt bitte .createspawnrune!",
+      "Please use .createspawnrune !", who
+    );
+    return;
+  EndIf
+
+  var item := CreateItemInBackpack(who, objtype, amount);
+  If (item.errortext == "That item is not stackable.  Create one at a time.")
+    var i;
+    For (i := 1; i <= amount; i += 1)
+      item := CreateItemInBackpack(who, objtype, 1);
+      If (!item)
+        break;
+      EndIf
+      item.movable := 1;
+    EndFor
+  EndIf
+  If (!item)
+    PrintTextAbovePrivatePergon(who,
+      "CreateStack gescheitert: "+item.errortext,
+      "CreateStack failed: "+item.errortext, who
+    );
+    return;
+  EndIf
+
+  item.movable := 1;
+  If (who.cmdlevel == CMDLEVEL_QUESTCHAR)
+    // Item gesondert markieren
+    SetObjProperty(item, TYPQUESTCHAR, who.serial);
+  EndIf
+
+  PrintTextAbovePrivatePergon(who,
+    "Im Rucksack erzeugt: "+item.desc,
+    "Created in backpack: "+item.desc, who
+  );
+
+  // Kleinere Mengen sind sinnlos und wuerden das LogFile fluten...
+  If (amount >= 10)
+    syslog(
+      "HINWEIS: "+CharInfoStr(who, COORDS_REALM)+" erzeugte "+
+      ItemInfoStr(item)
+    );
+  EndIf
+
+  QuestCharLog(who, "TextCMD CreateStack: "+ItemInfoStr(item, COORDS_REALM));
+EndProgram
+
+// vim: sw=2 sts=2

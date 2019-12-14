@@ -1,0 +1,40 @@
+/////////////////////////////////////////////////////////////
+// leaveregion
+//
+// Script wird aufgerufen, wenn eine damit ausgestattete Region
+// verlassen wird
+//
+// Author: Turley
+
+/////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+// Revision 1.4  2008/08/12 16:39:09  mehdorn
+// - flexibler fuer neue Regionen
+//
+// 03.02.2007 Turley: Götterinsel ->PLACE_ATGODPALACE
+// 31.01.2007 Turley: JhelomRegionen ->LeaveNewbieArea
+
+include "include/msgs";
+include "include/pergonutil";
+include "include/server";
+use uo;
+
+Program LeaveRegionZone(who, region_name)
+  If (region_name["Britannia_Jhelom"])
+    If ((!GetObjProperty(who, TYPNEWBIE)) && (who.cmdlevel < CMDLEVEL_SEER))
+      // Newbie-Flag entfernen
+      LeaveNewbieArea(who, "LeaveRegionScript");
+    EndIf
+
+  ElseIf (
+    region_name["Britannia_Goetter"] or
+    region_name["Britannia_Zoo"]
+  )
+    EraseObjProperty(who, PLACE_ATGODPALACE);
+  Endif
+
+  return 1;
+EndProgram
+
+// vim: sw=2 sts=2

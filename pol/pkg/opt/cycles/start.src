@@ -1,0 +1,30 @@
+//////////////////////////////////
+//
+//   Cylces - Start
+//
+//     Author: Shinigami
+//
+//////////////////////////////////
+
+//////////////
+// Libraries
+//////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonutil";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program Cycles()
+  Start_ScriptPergon("time");
+ // Start_ScriptPergon("warnung");
+ // Start_ScriptPergon("weight");
+EndProgram

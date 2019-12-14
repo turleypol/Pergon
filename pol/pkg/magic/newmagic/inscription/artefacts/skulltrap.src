@@ -1,0 +1,160 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Schaedelfallen jeder grösse und Form
+//
+// Schaedelfalle wird an Position geworfen und schwebt dort
+// bis jemand zu nahe kommt und sie auslöst
+
+include ":newspells:magicpergon";
+include ":newspells:resistance";
+include "include/effects";
+include "include/modifyskill";
+include "include/packets";
+include "common";
+use cfgfile;
+use math;
+use os;
+use uo;
+use util;
+
+Program SkullTrap(who, item)
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var delay := artefact.delay;
+  var dist := artefact.distance;       // Auslösedistanz
+  var range := artefact.range;         // Wirkungsradius
+  var lifeTime := artefact.lifetime;   // Zeit die die Falle maximal besteht
+  var difficulty := artefact.useskill; // Benutzungsschwierigkeit
+  var graphic := artefact.graphic;
+  var damage := SplitWords(GetConfigString(artefact, "Damage"));
+  var minDamage := CInt(damage[1]);
+  var maxDamage := CInt(damage[3]);
+  var objType := item.objtype;
+
+  // die niederen Fallen kann jeder nutzen
+  If (difficulty and GetSkillPergon(who, SKILLID_FLUCHEN) < difficulty)
+    SendSysMessagePergon(who,
+      "Ihr könnt das nicht benutzen", "You cannot use this"
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Wohin wollt ihr die Schädelfalle werfen?",
+    "Where do you want to throw the skull trap?"
+  );
+  var where := TargetCoordinates(who);
+  If (!where)
+    SendSysMessagePergon(who, "Zielen abgebrochen");
+    return;
+  ElseIf (Distance(who, where) > 10)
+    SendSysMessagePergon(who, "Zu weit entfernt!");
+    return;
+  ElseIf (!CheckLosAt(who, where.x, where.y, where.z))
+    SendSysMessagePergon(who, "Ihr könnt das nicht sehen.");
+    return;
+  EndIf
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", (ReadGameClock() + delay));
+
+  SubtractAmount(item, 1);
+
+  TurnCharTo(who, where);
+  PerformAction(who, ANIM_CAST_DIR);
+  PlayMovingEffectXYZ(
+    who.x, who.y, 10+who.z, where.x, where.y, 15+where.z,
+    graphic, 1, 0, 0, who.realm
+  );
+  PlaySoundEffectXYZ(where.x, where.y, where.z, 0x02b2, who.realm);
+  SleepMS((Abs(who.x - where.x) + Abs(who.y - where.y))*100);
+
+  var skull := CreateItemAtLocationPergon(
+    where.x, where.y, where.z + 10, objType, 1, where.realm
+  );
+  If (!skull)
+    SendSysMessagePergon(who, "Etwas ging schief", "Something went wrong");
+    return;
+  EndIf
+  skull.movable := 0;
+  ReserveItem(skull);
+
+  Detach();
+
+  var z;
+  var i := -1;
+  var explode := 0;
+
+  // schauen ob Falle weiter an Position bleibt oder explodieren soll
+  While (skull and !explode)
+    // Counter, damit Schaedelfalle nicht ewig umherschwebt
+    i += 1;
+    // neue Z-Koordinate berechnen (Schwebe-Effekt)
+    // z := CInt(where.z + 10 + (5 - i%10));
+    z := CInt(where.z + 10 + 5 * Sin(i/2.0));
+    MoveObjectToLocation(
+      skull, skull.x, skull.y, z, skull.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE
+    );
+    // alle halbe Sekunde neu checken
+    SleepMS(500);
+
+    // erst nach 3 Sekunden kann Falle ausgelöst werden
+    If (i < 6)
+      continue;
+    EndIf
+
+    If (
+      // Lebenszeit abgelaufen
+      i >= 2*lifeTime or
+      // fremdgezuendet
+      GetObjProperty(skull, "explode") or
+      // jemand in der Naehe
+      ListMobilesNearLocationEx(
+        where.x, where.y, where.z, dist,
+        LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN, where.realm
+      ).size() > 0
+    )
+      explode := 1;
+    EndIf
+    If (i == delay*2)
+      // nach dem Delay ist der Benutzer nicht mehr für die Falle
+      // verantwortlich
+      SetScriptController(0);
+    EndIf
+  EndWhile
+
+  DestroyItem(skull);
+  ExplodeInCircle(
+    where.x, where.y, z, who.realm, range, 50, 100, 25,
+    array{FX_EXPLODE_1, FX_EXPLODE_2, FX_EXPLODE_3}
+  );
+  PlaySoundEffectXYZ(where.x, where.y, where.z, 0x011c, who.realm);
+
+  // alle Opfer im Umkreis suchen
+  ForEach victim in (ListMobilesNearLocationEx(
+      where.x, where.y, where.z, range,
+      LISTEX_FLAG_NORMAL+LISTEX_FLAG_HIDDEN, where.realm
+  ))
+    SleepMs(2);
+    var rawDamage := RandomIntMinMax(minDamage, 1+maxDamage);
+    ApplyRawDamagePergon(victim, rawDamage);
+    // TODO: eventuell besondere Wirkungen bei grösseren Fallen
+  EndForEach
+
+  // Schaedelfallen, die mit ausgelöst werden
+  var skullTraps := array{0xe331, 0xe341, 0xe351, 0xe361, 0xe371};
+  ForEach skull in (ListItemsNearLocation(
+      where.x, where.y, 10+where.z, range, where.realm
+  ))
+    SleepMs(2);
+    // Zuenden, wenn es eine Schädelfalle ist
+    If (skull.objtype in skullTraps)
+      SetObjProperty(skull, "explode", 1);
+    EndIf
+  EndForEach
+EndProgram
+
+// vim: sts=2 sw=2

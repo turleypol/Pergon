@@ -1,0 +1,45 @@
+////////////////////////////////////////////////////////////////////
+// TextCMD SetBookCaseName - Setzt den Namen eines Buecherregals
+//
+//     Author: Shinigami
+
+////////////////////////////////////////////////////////////////////
+// Modifications:
+// $Log: not supported by cvs2svn $
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+include "include/msgs";
+include "include/server";
+use os;
+use uo;
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_SetBookCaseName(who, name)
+  If (GetObjProperty(who, TYPBIBLIOTHEKAR) Or (who.cmdlevel >= CMDLEVEL_SEER))
+    If (name)
+      SendSysMessagePergon(who, "Bitte ein Bücherregal auswählen!", "Please choose a bookcase!");
+
+      var bookcase := Target(who);
+      If (bookcase.isa(POLCLASS_ITEM))
+        If (bookcase.objtype in {0xa97, 0xa98, 0xa99, 0xa9a, 0xa9b, 0xa9c})
+          bookcase.name := name;
+
+          SendSysMessagePergon(who, "Das Bücherregal wurde umbenannt.", "The bookcase was renamed.");
+        Else
+          SendSysMessagePergon(who, "Dies ist kein Bücherregal!", "This is not a bookcase!");
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Dies ist kein Gegenstand!", "This is not an item!");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Ihr müsst einen neuen Namen angeben!", "You have to enter a new name!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr seid kein Bibliothekar!", "Your are not a librarian!");
+  EndIf
+EndProgram

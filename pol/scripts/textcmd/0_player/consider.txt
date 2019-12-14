@@ -1,0 +1,4 @@
+<h3 id="consider">consider</h3>
+
+<p>Eigenen Mörderstatus anzeigen, aufgegliedert in kürzliche Morde
+und langfristige Vergehen.</p>

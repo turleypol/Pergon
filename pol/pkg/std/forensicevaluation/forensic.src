@@ -1,0 +1,260 @@
+///////////////////////////////////////////////////////////////////////////
+// forensics -- Beweis zu einem Player-Gravestone (Knochenhaufen) erzeugen
+
+// Modification:
+// 07.07.2004 Fox:              Todesort wird ebenfalls gespeichert im Beweis.
+// 01.11.2005 Fox:              die Looter werden jetzt ebenfalls im Beweis
+//                              vermerkt
+// 20.12.2005 Fox:              Drohende werden jetzt ebenfalls im Beweis
+//                              vermerkt (siehe threatmsg.src)
+// 22.01.2006 Seppel:           Skillgain nur noch bis 52% und Delay eingebaut
+// 2008-04-24 mehdorn:          mal etwas ueberarbeitet und festgestellt, dass
+//                              der Beweis-Bug hier nicht zu suchen ist
+
+use attributes;
+use uo;
+include "include/client";
+include "include/clock";
+include "include/modifyskill";
+include "include/names";
+include "include/varutil";
+
+Const UOBJ_PROOF := 0xbe34;
+
+Program Forensic(who)
+    If (GetObjProperty(who, "#UsesSkill") > ReadGameClock())
+        SendSysMessagePergon(
+            who,
+            "Ihr müsst noch ein wenig warten bevor ihr "+
+            "wieder etwas obduzieren könnt."
+        );
+        return;
+    EndIf
+
+    SendSysMessagePergon(who, "Was wollt Ihr untersuchen?");
+
+    var what := target(who, TGTOPT_CHECK_LOS);
+    If (!what)
+        SendSysMessagePergon(who, "Zielen abgebrochen");
+        return;
+    EndIf
+
+    If (Distance(who, what) > 1)
+        SendSysMessagePergon(
+            who, "Ihr müsst näher heran, um das zu untersuchen."
+        );
+        return;
+    EndIf
+
+    If (what.isa(POLCLASS_MOBILE))
+        If (what.isa(POLCLASS_NPC))
+            SendSysMessagePergon(
+                who,
+                "Besser, Ihr versucht keine Obduktion an lebenden Organismen."
+            );
+            return;
+        Else
+            Start_ScriptPergon(
+                "../itemid/fingerprint", {who, what, "forensic"}
+            );
+            return;
+        EndIf
+    EndIf
+
+    // nur Ueberreste zulassen
+    If (what.isa(POLCLASS_CORPSE))
+        SendSysMessagePergon(
+            who, "Ihr könnt nur Leichenüberreste obduzieren."
+        );
+        return;
+    ElseIf (what.objtype != 0x669a)
+        SendSysMessagePergon(who, "Dies könnt Ihr nicht obduzieren.");
+        return;
+    EndIf
+
+    // Delay bis zur naechsten Nutzung eines Skills
+    SetObjProperty(who, "#UsesSkill", ReadGameClock() + 2);
+
+    var thePoints := 86;    // rawpoints
+
+    // ab 52% kann man nur noch durch Blutzapfen skillen
+    If (GetSkillPergon(who, SKILLID_OBDUKTION) >= 52)
+        thePoints := 0;
+    EndIf
+
+    If (!CheckSkillPergon(who, SKILLID_OBDUKTION, -1, thePoints))
+        SendSysMessagePergon(
+            who, "Ihr findet keine Spuren, doch gebt nicht auf."
+        );
+        return;
+    EndIf
+
+    var strmessage;         // fuer die Beschreibung des Beweises
+    var proofmessage := {}; // fuer das Auslesen des Beweises
+    var staffmessage := {}; // zusaetzliche Werte fuer den Staff
+
+    staffmessage.append("Zeit der Beweisnahme: "+ReadGameClock());
+
+    var poisoner := GetObjProperty(what, EV_POISONER);
+    If (poisoner)
+        // Behandlung alter Beweise
+        If (TypeOfInt(poisoner) <> OT_STRUCT) // {{{
+            // alter Beweis
+            var newpois := struct;
+            If (CInt(poisoner) > 0)
+                // vermutlich Serial
+                newpois.serial := poisoner;
+                newpois.name   := SystemFindObjectBySerial(
+                    CInt(poisoner), SYSFIND_SEARCH_OFFLINE_MOBILES
+                ).name;
+            Else
+                // sonst ist es direkt der Name
+                newpois.name   := poisoner;
+                newpois.serial := "unbekannt";
+            EndIf
+            poisoner := newpois;
+            SetObjProperty(what, EV_POISONER, poisoner);
+        EndIf // }}}
+
+        SendSysMessagePergon(who,
+            "Dies scheint von "+poisoner.name+" vergiftet worden zu sein."
+        );
+        strmessage := what.desc + " von "+poisoner.name+" vergiftet wurde.";
+        proofmessage.append("Vergiftet von: " + poisoner.name);
+        staffmessage.append("Vergifter-Serial: "+LHex(poisoner.serial));
+    EndIf
+
+    var vendor := GetObjProperty(what, EV_VENDOR);
+    If (vendor)
+        SendSysMessagePergon(who, "Das wurde verkauft von " + vendor);
+        strmessage := what.desc + " von " + vendor + " verkauft wurde.";
+        proofmessage.append("Verkauft von: " + vendor);
+    EndIf
+    
+    var vet := GetObjProperty(what, "vet");
+    If (vet)
+      var hero := SystemFindObjectBySerial(vet, SYSFIND_SEARCH_OFFLINE_MOBILES);
+      SendSysMessagePergon(who, "Das wurde von " + hero.name + " wiederbelebt");
+      strmessage := what.desc + " von " + hero.name + " wiederbelebt wurde.";
+      proofmessage.append("Wiederbelebt von: " + hero.name);
+    EndIf
+
+    var droher := GetPossible("threats", what);
+    If (droher && droher != "")
+        SendSysMessagePergon(
+            who, "Diese Person wird von " + droher + " bedroht."
+        );
+        strmessage := what.desc + " von " + droher + " bedroht.";
+        proofmessage.append("Wird bedroht von: " + droher);
+    EndIf
+
+    var chopper := GetObjProperty(what, EV_CHOPPER);
+    If (chopper)
+        SendSysMessagePergon(
+            who, "Diese Leiche wurde von " + chopper + " aufgeschlitzt."
+        );
+        strmessage := what.desc + " von " + chopper + " zerhackt wurde.";
+        proofmessage.append("Geschlitzt von: " + chopper);
+    EndIf
+
+    var looter := GetPossible("looters", what);
+    If (looter && looter != "")
+        SendSysMessagePergon(
+            who, "Dieses Lebewesen wurde von " + looter + " geplündert."
+        );
+        strmessage := what.desc + " von " + looter + " gepluendert wurde.";
+        proofmessage.append("Gepluendert von: " + looter);
+    EndIf
+
+    var killer := GetPossibleMurderers(what);
+    If (killer && killer != "")
+        SendSysMessagePergon(
+            who, "Dieses Lebewesen wurde von " + killer +
+            " niedergestreckt."
+        );
+        strmessage := what.desc + " von " + killer + " getoetet wurde.";
+        proofmessage.append("Wahrscheinlich getoetet von: " + killer);
+    EndIf
+
+    If (!poisoner && !vendor && !chopper && !killer && !looter && !droher)
+        SendSysMessagePergon(who, "Ihr findet keinerlei Spuren.");
+        return;
+    EndIf
+
+    var proof := CreateItemInBackpackPergon(who, UOBJ_PROOF, 1);
+    var deathlocation := struct;
+    deathlocation.+x := what.x;
+    deathlocation.+y := what.y;
+    deathlocation.+z := what.z;
+
+    strmessage["Ueberreste von "] := "";
+    proof.name := "Der Beweis zeigt, dass " + strmessage + "%";
+    SetObjProperty(proof, "serial",        what.serial);
+    SetObjProperty(proof, "proofmsg",      proofmessage);
+    SetObjProperty(proof, "staffmsg",      staffmessage);
+    SetObjProperty(proof, "deathlocation", deathlocation);
+    SetObjProperty(proof, "deathtime",     what.getprop("deathtime"));
+    SetObjProperty(proof, "prooftime",     GetDateTimeStr());
+EndProgram
+
+Function GetPossibleMurderers(corpse)
+    var reports := array{};
+    If (corpse.reportables)
+        reports := corpse.reportables;
+    Else
+        reports := GetObjProperty(corpse, "Reportables");
+    EndIf
+
+    If (reports.size() <= 0)
+        return 0;
+    EndIf
+
+    var murderers := array{};
+    ForEach rep in reports
+        SleepMs(2);
+        If (!rep.serial)
+            syslog(
+                "FEHLER: Report ohne gueltige Serial ("+rep+") bei "+
+                ItemInfoStr(corpse, COORDS_REALM)
+            );
+            continue;
+        EndIf
+        var murderer := SystemFindObjectBySerial(
+            rep.serial, SYSFIND_SEARCH_OFFLINE_MOBILES
+        );
+        murderers.append(GetRealName(murderer));
+    EndForEach
+
+    return join(" oder ", murderers);
+EndFunction
+
+// fuer "looters" und "threats"
+Function GetPossible(what, corpse)
+    var doers := GetObjProperty(corpse, what);
+
+    If (doers.size() <= 0)
+        return 0;
+    EndIf
+
+    var result := array{};
+    ForEach doer in doers
+        SleepMs(2);
+        If (!doer.serial)
+            syslog(
+                "FEHLER: "+what+" ohne gueltige Serial ("+doer+") bei "+
+                ItemInfoStr(corpse, COORDS_REALM)
+            );
+            continue;
+        EndIf
+        var char := SystemFindObjectBySerial(
+            doer.serial, SYSFIND_SEARCH_OFFLINE_MOBILES
+        );
+        var tolog := GetRealName(char);
+        If (what == "threats")
+            tolog += " seit "+doer.times;
+        EndIf
+        result.append(tolog);
+    EndForEach
+
+    return join(" und ", result);
+EndFunction

@@ -1,0 +1,76 @@
+//////////////////////////////////////////////////////////////////////////
+// Backpack offenhalten und danach entfernen (siehe Skill Schnueffeln)
+//
+// Developer Omero - ZuluHotel Italia
+// based on a previous Zulu package
+//
+//////////////////////////////////////////////////////////////////////////
+// Props
+// who.boolean(#snooper) - Schon aktiv?
+
+/////////////////
+// Bibliotheken
+/////////////////
+use os;
+use storage;
+use uo;
+include "include/storage";
+
+Program Snooping_RemovePack(parms)
+  // Wird von ':snooping:snooping' ausgerufen
+  var who        := parms[1];
+  var opfer      := parms[2];
+  var sleepdelay := CInt(parms[3]);
+  var packname   := parms[4];
+
+  // Nach spaetestens 10 Sekunden wird das Flag geloescht
+  var maxwaittime := 10;
+
+  // Tja, das wird nur gebraucht, wenn der Krams ganz unten benutzt wird ...
+  // Alte Position des Opfers merken
+  var oldopferx := opfer.x;
+  var oldopfery := opfer.y;
+
+  Repeat // Max. so lange wie angegeben offenhalten
+    Sleep(1); // Mind. 1 Sekunde ist es offen
+    sleepdelay -= 1;
+
+    maxwaittime -= 1; // Ab wann ist Schnueffeln wieder moeglich?
+    If (maxwaittime == 0)
+      EraseObjProperty(who, "#snooper");
+    EndIf
+
+    If (opfer.ip) // Ist das Opfer noch eingeloggt?
+      // Hat sich das Opfer bewegt?
+      If (
+        oldopferx <> opfer.x or oldopfery <> opfer.y or
+        Distance(who, opfer) > 1
+      )
+        sleepdelay := 0; // Jupp, Backpack schliessen
+      EndIf
+    Else
+      sleepdelay := 0; // Noe, Backpack schliessen
+    EndIf
+  Until (sleepdelay <= 0);
+
+  // Verstecktes Backpack schliessen (netter Trick :o)
+  // funzt scheinbar nicht im 3D-Client
+  MoveObjectToLocation(who, who.x, who.y, who.z+1, who.realm);
+
+  // Jetzt wird wirklich nicht mehr geschnueffelt
+  EraseObjProperty(who, "#snooper");
+
+  // Aufraeumversuch
+  var storage  := FindOrCreateStorage("Thief Storage");
+  var backpack := FindRootItemInStorageArea(storage, packname);
+  If (!backpack)
+    return;
+  EndIf
+
+  // Timer wird bei erneutem Schnueffeln ggf. erhoeht, daher pruefen
+  If (ReadGameClock() > backpack.getprop("duration"))
+    ForEach thing in EnumerateItemsInContainer(backpack, ENUMERATE_ROOT_ONLY)
+      DestroyItem(thing);
+    EndForEach
+  EndIf
+EndProgram

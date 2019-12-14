@@ -1,0 +1,188 @@
+//
+//  02.06.2003 Fraggulus: Neben Waffen und Ruestungen können nun auch Werkzeuge begutachtet werden
+//  22.01.2006 Seppel:    Delay eingebaut
+//  07.08.2006 Fox:       Texte und Berechnungsbasis geändert
+//  29.12.2006 Fox:       Quelle für max_hp geändert für Damage Berechnung von Waffen/Rüstungen
+//  18.01.2008 Fox:       Für die Berechnung von Waffen und Rüsten auf die balancing.inc zurück greifen
+
+use cfgfile;
+use math;
+use attributes;
+use uo;
+
+include "include/client";
+include "include/modifyskill";
+include "include/balancing";
+Include "include/npc";
+
+program do_armslore(character)
+    Var angeln:={0xdbf, 0xdc0};  // Haben type c, sollten aber trotzdem untersuchbar sein
+    Var the_item;
+//    Var max_hp;
+//    Var item_max_hp;
+//    Var cfg_max_hp;
+//    Var hp;
+    Var quality_descr;
+    Var damage_descr;
+    Var quality_nbr;
+    Var damage_nbr;
+
+
+    If (GetObjProperty(character, "#UsesSkill") > ReadGameClock())
+      SendSysMessagePergon(character, "Ihr müsst noch ein wenig warten bevor ihr euch wieder etwas untersuchen könnt");
+      Return(0);
+    EndIf
+
+    SetObjProperty(character, "#UsesSkill", ReadGameClock() + 2);           // Delay bis zur nächsten Nutzung eines Skills 2 Sekunden
+
+    Var thepoints:=GetSkillDefaultPoints(SKILLID_WAFFENKUNDE);
+    SendSysMessagePergon(character, "Wählt ein Objekt zum Untersuchen aus.");
+    the_item := target(character, TGTOPT_CHECK_LOS);
+    if (!the_item)
+        SendSysMessagePergon(character, "Zielen abgebrochen.");
+        return;
+    endif
+
+    if (!(the_item.isa(POLCLASS_WEAPON) Or the_item.isa(POLCLASS_ARMOR) Or the_item.isa(POLCLASS_ITEM)))
+      SendSysMessagePergon(character, "Dies könnt Ihr nicht untersuchen.");
+      return;
+    endif
+
+    if (CheckSkillPergon(character, SKILLID_WAFFENKUNDE, -1, thepoints))
+      If (the_item.isa(POLCLASS_ITEM)) // Gegenstand
+        //Waffenkunde für alle Werkzeuge, die die CProp Werkzeug haben
+        //Bei Werkzeugen zählt nur noch die Quality, HP werden nur für die Anzahl Klopftöne genutzt
+        Var Werkzeug := GetPropertyItem(the_item);
+        If (Werkzeug)
+          if ((Werkzeug.type=="t") || (the_item.objtype in angeln))
+            damage_nbr  := CInt((Werkzeug.quality *100.0) / Werkzeug.qualityorig);
+            quality_nbr := Cint((Werkzeug.qualityorig  * 100.0)/4.7375);
+
+            Quality_Damage_2_String(quality_nbr, damage_nbr, quality_descr, damage_descr);
+
+            SendSysMessagePergon(character, "Dieses Objekt ist von " + quality_descr + " Qualität, und ist in " + damage_descr + " Zustand.");
+            return;
+          endif
+        EndIf
+      endif
+      If (the_item.isa(POLCLASS_WEAPON) Or the_item.isa(POLCLASS_ARMOR)) // Waffe oder Ruestung
+        //weapon.quality wird nach der weapon_werkzeug_prop[1] gesetzt beim reparieren und verändert die weapon.maxhp,
+        //wird aber nicht verwendet für den Schaden sondern nur weapon.hp/itemdesc.maxhp
+
+        //weapon.quality:=weapon.maxhp/itemdesc.maxhp
+        //schaden:=itemdesc.schaden*weapon.hp/weapon.maxhp
+        //akt_quality:=weapon.quality*weapon.hp/weapon.maxhp = weapon.hp/itemdesc.maxhp
+        //quality_gerept:=weapon.werkzeug[2]/itemdesc.maxhp  (maxhp_prop:=weapon_werkzeug_prop[2])
+        //               =weapon.werkzeug[2]/weapon.quality*weapon.maxhp
+
+        Var item_prop:=GetObjProperty(the_item, "Werkzeug");
+        if (item_prop)
+          Var quality_base:=the_item.quality*100.0/GetReferenceQuality(the_item); //Normieren
+          Var hp_faktor:=the_item.hp/CDbl(the_item.maxhp); //Beschädigung des Items berücksichtigen
+          Var quality_item:=hp_faktor*quality_base;
+
+          Var quality_gerept:=( item_prop[2]/(the_item.maxhp/the_item.quality) )*100.0/GetReferenceQuality(the_item);
+
+          if (quality_item > (quality_gerept+5)) //durch Rundungsprobleme beim reppen nen kleinen Sicherheitsbereich von 5%
+            LogToFile("::log/balancing.log", "Error [armslore.src]: Waffe quality_item > quality_gerept (character.serial="+character.serial+" the_item.serial="+the_item.serial+")");
+            quality_item:=0;
+          endif
+
+          damage_nbr:= CInt(the_item.hp*100.0/CDbl(item_prop[2]));
+          quality_nbr:= quality_item;
+
+          Quality_Damage_2_String(quality_nbr, damage_nbr, quality_descr, damage_descr);
+          If (the_item.isa(POLCLASS_WEAPON))
+            SendSysMessagePergon(character, "Diese Waffe ist von " + quality_descr + " Qualität, und ist in " + damage_descr + " Zustand.");
+            return;
+          else
+            SendSysMessagePergon(character, "Dieses Rüstungsteil ist von " + quality_descr + " Qualität und ist in " + damage_descr + " Zustand.");
+            return;
+          endif
+        else //NPC Waffe
+          SendSysMessagePergon(character, "Zu diesem Teil könnt ihr nichts sagen");
+          return;
+        endif
+      endif
+      SendSysMessagePergon(character, "Dies könnt Ihr nicht untersuchen.");
+    Else
+      SendSysMessagePergon(character, "Ihr könnt es wirklich nicht sagen . . .");
+    EndIf
+endprogram
+
+function Quality_Damage_2_String(quality_nbr, damage_nbr, byref quality_descr, byref damage_descr)
+  if (damage_nbr >= 100)
+      damage_descr := "perfektem";
+  elseif (damage_nbr >= 98)
+      damage_descr := "hervorragendem";
+  elseif (damage_nbr >= 96)
+      damage_descr := "ausgezeichnetem";
+  elseif (damage_nbr >= 94)
+      damage_descr := "top";
+  elseif (damage_nbr >= 90)
+      damage_descr := "sehr guten";
+  elseif (damage_nbr >= 85)
+      damage_descr := "guten";
+  elseif (damage_nbr > 80)
+      damage_descr := "weniger guten";
+  elseif (damage_nbr > 70)
+      damage_descr := "nicht mehr so guten";
+  elseif (damage_nbr >= 60)
+      damage_descr := "akzeptablen";
+  elseif (damage_nbr >= 40)
+      damage_descr := "bescheidenen";
+  else
+      damage_descr := "schlechten";
+  endif
+
+  if (quality_nbr > 100)
+      quality_descr := "unmöglicher";
+  elseif (quality_nbr >= 99)
+      quality_descr := "bestmöglicher";
+  elseif (quality_nbr >= 98)
+      quality_descr := "geradeso bestmöglicher";
+  elseif (quality_nbr >= 97)
+      quality_descr := "fast bestmöglicher";
+  elseif (quality_nbr >= 96)
+      quality_descr := "ziemlich außergewöhnlicher";
+  elseif (quality_nbr >= 95)
+      quality_descr := "außergewöhnlicher";
+  elseif (quality_nbr >= 92)
+      quality_descr := "geradeso außergewöhnlicher";
+  elseif (quality_nbr >= 90)
+      quality_descr := "fast außergewöhnlicher";
+  elseif (quality_nbr >= 87)
+      quality_descr := "ziemlich exzellenter";
+  elseif (quality_nbr >= 85)
+      quality_descr := "exzellenter";
+  elseif (quality_nbr >= 82)
+      quality_descr := "geradeso exzellenter";
+  elseif (quality_nbr >= 80)
+      quality_descr := "fast exzellenter";
+  elseif (quality_nbr >= 75)
+      quality_descr := "ziemlich ordentlicher";
+  elseif (quality_nbr >= 70)
+      quality_descr := "ordentlicher";
+  elseif (quality_nbr >= 65)
+      quality_descr := "geradeso ordentlicher";
+  elseif (quality_nbr >= 60)
+      quality_descr := "fast ordentlicher";
+  elseif (quality_nbr >= 55)
+      quality_descr := "ziemlich mittelmäßiger";
+  elseif (quality_nbr >= 50)
+      quality_descr := "mittelmäßiger";
+  elseif (quality_nbr >= 45)
+      quality_descr := "geradeso mittelmäßiger";
+  elseif (quality_nbr >= 40)
+      quality_descr := "fast mittelmäßiger";
+  elseif (quality_nbr >= 30)
+      quality_descr := "schlechter";
+  elseif (quality_nbr >= 20)
+      quality_descr := "lausiger";
+  else
+      quality_descr := "schrott";
+  endif
+endfunction
+
+
+

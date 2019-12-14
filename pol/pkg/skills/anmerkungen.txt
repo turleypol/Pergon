@@ -1,0 +1,326 @@
+ligir.src überarbeitet
+
+*******************************************************************************************
+
+- pol\config\npcdesc.cfg und hatelove.cfg die 3 osti's eingebaut
+- tierzucht\m_domest w_domest die drei ostis + setzt Property "Generation" am Nest ...
+- tierzucht\nest.src kann auch jetzt die 3 osti's + Generation bei den Eiern
+- cooking\itemdesc.cfg + die 3 osti-eier als item's
+- scripts\include\animaldomest.inc mehr Rohpoints beim Füttern, hat ewig gedauert die
+  letzten 5% Skill bis zur nächsten stufe
+
+*******************************************************************************************
+
+- Bug beim Wasser Umfüllen kl. Wasserfass behoben
+- animallore.src gibt jetzt die Tierzucht-Eigenschaften aus essen/hunger/schwanger/Generation
+- taming.src alle Tierzucht-Propertys werden gelöscht, außer Generation
+- m_domest.src und w_domest.src reagieren nicht mehr auf "status" macht jetzt animallore.src
+- farming\itemdesc.cfg manche gewichte von den Item waren viel zu schwer -> angepasst
+- pol\scripts\... mrcspawn.inc gibt jetzt einen Preis-Offset 1..20% = Generation beim VK an den NPC
+
+*******************************************************************************************
+
+- bis zum Lama 70% Tierzucht sind jetzt Viecher eingetragen
+- Bugfix beim Zähmen -> Abrichten -> domestizieren -> Zähmen war noch die Master.serial
+  gesetzt, ist jetzt raus, domestizierte Tiere haben keinen Master und können/müssen erst
+  wieder gezähmt werden
+- Bug, naja, Tiere in der "Schlafschleife" hatten animal.hidden , das hab ich rausgenommen,
+  sieht doof aus, wenn sich Haustiere im Stall verstecken ...
+- beim Nachwuchs wird jetzt Property "Generation" gesetzt 0 ... max. 20, entspricht dem %
+  Offset, also max. 20% zu der Anzahl Rippchen/Felle/... aus der corpses.cfg
+  deshalb hab ich die bladed.src so umgebastelt
+- beim Nachwuchs wird jetzt Property "Young" gesetzt, damit kann man das Tier für 3 stunden
+  leichter zähmen
+
+- dafür in der taming.src eraseproperty ... von der Tierzucht
+- das selbe beim abrichten
+
+ungelöste Problemchen:
+
+- ostis sind erst mal raus, bis mir was einfällt wie ich aus einem Ei "Generation" raushole und
+  das Nest die 4 sorten Eier (huhn/osti's ...) -> Tieren bekommt
+- naja und wenn man "Generation" X beim Stallmeister abgibt, was da rauskommt ...
+
+*******************************************************************************************
+
+tierzucht\w_domest.src
+tierzucht\m_domest.src
+
+schau dir noch mal (wenn du Zeit hast ...) die Event Dingens an
+machen tut das schon was es soll, nur weis ich nicht genau wie und warum :)
+  (hab mir das Zeug halt "zusammengeklaut" aus den anderen scripten)
+
+die scripte laufen an:
+
+- wenn aus einem Nest -> Ei ein Huhn/Hahn wird
+- wenn man auf den "Schäferstab" Doppelklickt und damit auf ein "abgerichtetes" Tier ziehlt (tierzucht\tierzucht.src)
+- wenn ein weibliches domestiziertes Tier Nachwuchs bekommt
+
+Propertys "Animal domestiziert":
+SetObjProperty(me, "hungrylevel", 9.0 );
+SetObjProperty(me, "level_drink", 9.0 );
+SetObjProperty(me, "LastPoppen", ReadGameClock() ); // nur bei weibl. Tieren
+SetObjProperty(me, "Nachwuchs", ReadGameClock() ); // nur bei weibl. Tieren
+
+Befehl für Player:
+"put put put" Tier saust los, wenn ...
+- hungrylevel < 10.0
+- SkillTierzucht Char >= SkillTierzucht Animal cfg -10%
+- das Tier ein auf den Boden gelegtes Item =
+Global UOBJ_TIERFUTTER := {0x0c6e, 0x0c77, 0xd39, 0x0c5c, 0x0c6a, 0x0c81, 0x0c7f, 0x1ebd, 0x0d1a}; // script\include\animaldomest.inc
+findet und das Item.Sattmacher hat
+dann gibt es Rohpoints=cint(SkillTierzucht*2) pro Animal, daß bis hungrylevel > 14.0 gefuettert wurde
+
+"status" ist momentan zur Kontrolle, solange ich die anderen Scripte noch nicht fertig habe ...
+animal say(hungrylevel, level_drink, schwanger)
+
+script\include\animaldomest.inc:
+hungrylevel und level_drink check (ist das selbe wie bei den Playern)
+kommt alles rein an functionen die domestizierte Tiere gemeinsam haben ...
+
+config\itemdesc.cfg Nest nach Tierzucht\itemdesc.cfg verschoben
+
+"Bauanleitung Nest" (tinkering) -> tierzucht\placeitemtierucht.src -> Nest mit kontrolscript nest.src -> Ei wird zu Huhn/Hahn
+"Bauanleitung Wassertrog" (tinkering) -> tierzucht\placeitemtierucht.src -> Wassertrog funzt genau so wie ein Wasserfaß aber mit 700 Litern
+-> deshalb auch drinking\pot.src / pot.cfg entsprechend geändert
+
+config\mrcspawn.cfg:
+"Bauanleitung Nest", "Bauanleitung Wassertrog", Ei eingebaut
+
+combat\itemdesc.cfg "Schäferstab" mit script tierzucht\tierzucht.src
+
+zaehmen\taming.src macht aus einem animal domestiziert wieder ein gezaehmtes Tier
+
+config\hatlove.cfg und config\npcdes.cfg , ... naja bisher nur Huhn/Hahn/dog/dog_w eingetragen ...
+ist aber nun beliebig erweiterbar
+
+*******************************************************************************************
+
+- weben.cfg ist neu und legt das auswahlmenü für teppiche weben und ... (später mal) fest
+- zuschneiden.src abbruch-bug
+- mrcspawn.cfg beim architecten teppiche nur im "buy ..." aufgenommen
+- tailoring\itemdesc.cfg combat\itemdesc.cfg stoff/klamotten preise angepasst
+- config\itemdesc.cfg "kuzärmeliges Hemd" -> combat\itemdesc.cfg propertys gesetzt
+
+*******************************************************************************************
+
+- opt\crafting\materials.cfg die difficulty für skill weben reorganisiert,
+  weben ist nun bis 90% ausgebaut + teppiche dann noch
+- tinkering\tinker.cfg goldfaden wieder rausgenommen
+- tailoring itemdesc preise für spulen/Stoff/tücher (Spinnenseide) angepasst
+- klamotten.cfg defaultitem für schneidern/ledern eingeführt
+- zuschneiden.src abbruchbedingung wenn char sich bewegt stimmte nicht
+- weben.src ist noch nicht final, da fehlt noch teppiche weben, aber das kann noch dauern,
+  stroh zu goldfaden + magie implementiert (da fehlt noch ein lustiger effect falls es schief geht)
+
+*******************************************************************************************
+
+- farming.src Eimer und kl. Fass als container nachgetragen
+- clean.src   Eimer und kl. Fass als container nachgetragen
+- farming\itemdesc.cfg Maiskolben und Weizen geändert für Getreidemühle
+- wasser\detectwater.src plitsch.src Beschädigung der Werkzeuge korrigiert
+- farming\seed.src Wassergefaess war nicht movable nach dem es leer ist
+
+*******************************************************************************************
+
+- pol\pkg\skills\wasser\  ... komplet löschen und durch zip-dateien ersetzen
+- wasserader.src controlscript mit zeitlich "wegfleißendem" Wasser
+- detectwater.src -> plitsch.src -> filled_water.src skill-abhängige Wasserrecoucen
+  werden weitergereicht
+- filled_water.src füllt Glas, Flasche, Kanne, Eimer mit Wasser
+- dazu die tinkering.src/carpentry,src so umgebaut, daß die neuen Gefäße produziert werden
+  können und gleich noch Default-Items für Jeden Skill in den cfg's eingetragen
+- mining\itemdesc.cfg preis für glas-block/obsidian/titan-obsidian wieder an göbis mining
+  angepasst
+- skills\wasser\itemdesc.cfg enthält jetzt alle mit wasser gefüllten item's
+- die pkg\std\drinking\drink.src itemdesc.cfg modifiziert für Gefäße mit Literangabe
+
+- scripts\include\mrcspawn.inc modifiziert / preis-offset für die menge und art des
+  inhaltes eines gefäßes, :) bla, ob wasser oder sonstwas drin ist und wieviel davon und
+  dafür gibts auch geld)
+- dazu die scripts\ai\merchant.src turkey.src neu compiliert um die neue inc zu laden
+  (weiter nix, vorerst)
+
+- die drinking\pot.src will immer noch nicht funzen und ich hab keinen plan warum nicht :(
+- drinking\pot.src funzt nun (erst mal nur für wasser-gefäße) aber ist so angelegt, daß man
+  nur in die pot.cfg ändern (dranhängen) muß, dann kann man praktisch jedes gefäß mit
+  Wasser/bier/wein ... sontwas füllen
+
+*******************************************************************************************
+
+- config\npcdesc.cfg Waldläufer Produktgruppe geändert
+- config\mrcspawn.cfg den ganzen krimskrams mit wasser und zeug verteilt :)
+  paukerli start -> paukerli ende
+
+- Farming:
+  - man braucht nun zusätzlich Wasser zum Anpflanzen außer bei
+    (Zwiebeln, Möhren, Rüben -> Defaultitem und auch Ackerbau-Skill Skill.Pflanze-10%<=char.skill)
+  - die controls-cripte seedling.src und plant.src reichen die Property "Amount" durch, die durch
+    den Ackerbau-Skill des char beim anpflanzen (seed.src) gesetzt wird
+    d.h. default.amount aus der itemdesc + (5 bei char.skill=skill.samen) +
+    (5 bei char.skill>skill.samen*2)
+  - wenn Pflanzen nicht "abgeerntet" werden wird aus der Pflanze "Amount" Samen, damit kann
+    ein Farmer Samen gewinnen bei genügend Skill
+  - Bugfixing -> Mittwoch gibt es die Final dazu denk ich mal :)
+
+- drinking\pot.src
+  den Bug mit den nicht-movablen Gefaessen gefixt
+
+- skills\wasser\itemdesc.cfg
+  der erste WasserFinderStab ist jetzt mit kampfskill=0 und so hoffentlich von allen nutzbar
+  dafuer "Demage" runter gesetzt
+
+-> FarmingFinal 1.0
+
+********************************************************************************************
+
+Farming
+
+Bisher:
+- man konnte alles Anbauen ohne Skillabfrage und ohne Wasser
+
+Nu:
+- Skill Abfrage beim Anbau
+- Wasser (außer bei Zwiebeln/Möhren/Rüben) wird gebraucht in Form von
+Wasserfaß oder Wassereimer
+- der Farming Skill legt die Produktmenge fest (die Spanne etwas erhöt,
+funzt wie beim Häuten ... um die erhöten Kosten durch Wasser Verbrauch
+auszugleichen)
+- Samen Gewinnung durch Anbau->Pflanze nicht abernten->dann fällt Samen aus
+und den kann man dann auf dem Feld wieder einsammeln oder auch nicht :)
+
+********************************************************************************************
+
+Farming:
+  - itemdesc.cfg weizen und mais koerner dazu gibt es beim ernten strohgarben
+  - clean.src hefepilz + "Moerser und Stampfer" gibt "zeriebene Hefepilze" Hefe
+
+Skill Mahlen:
+  - pkg\std\cooking\mahlen.src weizen/mais koerner + getreidemuehle werden zu mehlsaecken
+
+carpentry\itemdesc.cfg:
+- buecherregale aus opt\sysbook\itemdesc.cfg rein verschoben und quality/hp/... gesetzt
+
+combat\itemdesc.cfg:
+- Stoff und Ledersachen SkillRepair von 200 auf 60 gesetzt
+  neu hergestellte sachen sind somit reparierbar
+
+tinkering\tinker.cfg und tailoring\itemdesc.cfg:
+- mit Kunst und Feinschmieden sind jetzt GoldFadenGarnspulen herstellbar, die geben Brokatstoff
+
+naja und noch so bischen "Kleinkram" ... was so in den UO News stand mit "Es geht nüsch :("
+
+config\mrcspawn.cfg
+  itemlisten noch mal auf den neuesten stand gebracht beim Stallmeister (stroh) /
+  Schneider (Goldfadenspule) / Farmer (Weizen/Mais Körner und stroh) / Bäcker (Hefe)
+
+1. Lederverarbeitung/Schneidern
+- neu hergestellte Klamotten sind ab nun reparierbar
+- satteltasche/kl. lederbeutel/rucksack sollten nun problemlos herstellbar
+und verkaufbar sein
+
+2. Holzverarbeitung
+- den Bug bei den Bücherregalen "erlegt" -> funzt aber nur bei neu
+hergestellten teilen, die alten wegwerfen oder bei einem freunlichen "Gott"
+in Gold umtauschen lassen
+
+3. Farming
+- beim Ernten von Weizen und Mais gibt es jetzt einmal Körner und als quasi
+Abfall Strohgarben
+- das Stroh nimmt der freundliche Farmer oder Stallmeister oder später mal
+"gefräßige Tirchen's"
+  *Schmackofatz für das liebe Vieh*
+- geerntete Hefepilze "Doppelklick" + "Moerser und Stampfer" gibt Hefe
+(zeriebene Hefepilze)    und die ist dann später mal für so einiges gut
+
+4. Mehl-Mahlen
+- Skill Mahlen
+- Getreidemühle auf Weizenkorn oder Maiskolben gibt ...mehlsack
+- nun braucht man nicht mehr jedes einzeln zu klicken sondern wie beim
+"Sägen von Brettern"
+  *entlastet den "KlickFinger" an der Maus doch erheblich*
+- die Mehlsäcke kauft/verkauft der Bäcker
+
+********************************************************************************************
+********************************************************************************************
+********************************************************************************************
+
+Na so ganz so einfach hab ich mir das nicht gemacht ...:
+
+- Säge/Hobel/Fein-Hobel sind für Möbel wobei die der reihe nach
+unterschiedliche Grundwerte für Hp bringen
+aus dem richtigen materialien hergestellt, hält so ein teil ca. 50% bis 200%
+mehr als ein NPC-Teil aus und quality von werkzeug kommt zum skill dazu
+
+eigentlich sind alle werkzeuge (die nach Holzverarbeitung aussehen)
+eingetragen, daß heist die machen alle irgendwas. Nur die Feinsäge macht
+momentan noch nach dem alten crafting script.
+
+Dazu kommt das kl. Werkzeug auf Holz Stämme oder Bretter.
+
+********************************************************************************************
+
+- beim Barbier käuflich erwerbbars Haarfärbemittel erfüllt nun seinen
+zweck, eine zweimalige anwendung pro flasche ist möglich
+(btw. weils nich aufer homepage steht, für haare- und bartschneiden
+gibts 'haarschnitt' und 'rasur' als befehle)
+
+- kleine ungereimtheit beim lohn von playerhändlern gefixt, dh ich würd
+nen händler nicht mehr _jahrelang_ rumstehn lassen
+
+********************************************************************************************
+
+Oh man, immer wieder die selben Fragen ! Wie lange gibt es jetzt schon die
+"neuen" Werkzeuge ?
+
+Also alle die handwerklich "Rumwerkeln" stolpern früher oder später über
+"Pauker's" Werkzeuge.
+
+Grund-Idee:
+
+- Werkzeuge werden von "Werkzeugmachern" hergestellt
+- besitzen Hitpoints/Quality und einen Rohmaterialien Preis (Material_1 *
+Menge) + (Material_2 * Menge) + ... beim NPC
+- die Quality des Werkzeuges wird zu 60% vom Skill des Werkzeugmacher's und
+40% vom Material bestimmt
+- die Hitpoints 60% vom Material und 40% Skill Werkzeugmacher
+- Werkzeug Quality kommt zum Skill dazu oder erhöt die Rohstoffausbeute
+- Werkzeug Hipoints verlängert die Lebensdauer des selben (reparierbar
+[außer Leder, wird aber geändert] mit dem Herstellungsskill)
+
+Umsetzung betrifft
+(Mining/Erzeinschmelzen/Schmieden/Holzverarbeitung/Leder'n/Schneider'n/Häute
+n/Schlachten/Fischen/Holzfällen/Farming/ ... hab sicher noch einiges
+vergessen):
+
+Soweit es sich um Rohstoff Scripte handelt, wird durch eine hohe Werkzeug
+Quality+Skill mehr Rohstoffe gefördert. Verarbeitungsscripte (z.B.
+Holzverarbeitung) rechnen Werkzeug Quality + Skill Holzverarbeitung ... zu
+... Produkt Skill + verwendetes Material Skill.
+
+Ergibt sich also:
+
+- mit "schlechten" Werkzeugen (z.B. NPC) + Skill xy -> kann nur wenig
+rauskommen oder verschiedene Produkte gar nicht erst hergestellt werden,
+weil die verwendeten Rohstoffe unterschiedlich (abhängig von ihrer Quality)
+den abgefragten Skill-Wert nach oben treiben oder "stumpfe Axt" die Zeit
+beim Holzhacken nach oben drückt
+- im Gegensatz dazu, ein hochwertiges Werkzeug kann den eigentlichen Skill
+des Char um bis zu 8% anheben und somit ermöglichen, daß dieser Char Sachen
+herstellen kann, die er erst mit CharSkill + 8% herstellen könnte. Mit den
+höherwertigen Endprodukten (Skill%) erhöt sich natürlich auch die Vergabe
+von Rohpoints und somit der Skill% Anstieg !
+- dazu kommt die lange Haltbarkeit und repariebar ist das Werkzeug ja auch
+(wenn es auch bei jeder Reparatur 1 Hitpoint und 0.1 Quality verliehrt)
+
+Die Hauptkreterien eines Werkzeuges sind also:
+
+- wie gut in Skill% war der Werkzeugmacher
+- wie hochwertig sind die Materialien die dazu verwendet wurden (bei
+Werkzeugen aus 2 Materialien läßt sich natürlich auch gut kombinieren, nimmt
+man 2 Rohstoffe mit viel Quality -> erhält man natürlich ein Werkzeug mit
+viel Quality / aber nur sehr wenig Hitpoints - Lebensdauer)
+- wie oft schon repariert
+
+
+Jo, nunja das war dann Alles was dazu zu sagen war, zu den Werkzeugen ... :)

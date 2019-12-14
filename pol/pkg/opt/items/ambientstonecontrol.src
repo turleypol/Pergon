@@ -1,0 +1,71 @@
+// Ambientcontrolscript --
+// Registriert Ambient-Stein, waehlt moegliche Sounds aus der uebergebenen
+// Liste und schickt Sounds an die Steine
+
+// $Log: not supported by cvs2svn $
+
+use math;
+use os;
+use uo;
+use util;
+
+include "ambientstonecommons";
+include "include/eventid";
+include "include/eventwaiter";
+
+
+Const DEBUG := 0;
+
+Program AmbientControl()
+    // eigene PID bekanntmachen
+    var mypid := GetPid();
+    SetGlobalProperty(AMBIENTCTL_PID_PROP, mypid);
+    Set_Event_Queue_Size(200);
+
+    While (1)
+        var ev := Wait_For_Event(300);
+        If (!ev)
+            continue;
+        EndIf
+
+        // ev := struct{
+        //     stone   := <serial>
+        //     wait    := <int>
+        // };
+
+        Case (ev.type)
+        EVID_MASTER_HELLO:
+            // Hauptschleife initialisieren
+            If (DEBUG)
+                syslog("Ambientstein ["+Hex(ev.serial)+"] gefunden");
+            EndIf
+            ev.type := EVID_MASTER_RECALL;
+            SendEventWaiterGeneral(mypid, ev.wait, ev);
+
+        EVID_MASTER_RECALL:
+            var stone  := SystemFindObjectBySerial(ev.serial);
+            If (!stone)
+                // raus, Event nicht erneut senden
+                continue;
+            EndIf
+            var wait   := GetObjProperty(stone, AMBIENT_WAIT);
+            var sounds := GetObjProperty(stone, AMBIENT_SNDLIST);
+            If (!wait)
+                wait := RandomInt(60)+1;
+            EndIf
+            ev.wait := wait;
+
+            var length := 0;
+            If (sounds)
+                // falls Sounds definiert sind, einen abspielen
+                var this_sound := sounds[RandomInt(sounds.size)+1];
+                PlaySoundEffect(stone, this_sound.effect);
+                length := this_sound.length;
+            EndIf
+
+            // nächste Runde vorbereiten
+            SendEventWaiterGeneral(mypid, RandomInt(ev.wait)+length, ev);
+
+        EndCase
+    EndWhile
+EndProgram

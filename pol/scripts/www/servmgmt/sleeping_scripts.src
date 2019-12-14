@@ -1,0 +1,67 @@
+/////////////////////////////////////////////////////////
+// sleeping_scripts - Zeigt alle Scripte mit State Sleeping
+//
+// Author: Turley
+
+use http;
+use os;
+use uo;
+include "header";
+
+Program HTMLPage()
+  DoHeader("Sleeping Scripts");
+  WriteHTML("<div id='container'>");
+  WriteHTML("<div id='header'></div>");
+  WriteHTML("<div id='content'>");
+  TableHeader("Sleeping Scripts");
+  
+  DenyAccess(isALLOWED_STRICT);
+
+  WriteHTML("<table class='dense'>");
+  WriteHTML("<tr>");
+  WriteHTML("<th>PID</th>");
+  WriteHTML("<th>Script Name</th>");
+  WriteHTML("<th>Cycles</th>");
+  WriteHTML("<th>Sleep Cycles</th>");
+  WriteHTML("<th>Prog Counter</th>");
+  WriteHTML("<th>Call Depth</th>");
+  WriteHTML("<th>Globals</th>");
+  WriteHTML("<th>Var Size</th>");
+  WriteHTML("<th>State</th>");
+  WriteHTML("</tr>");
+
+  var scripts := POLCore().all_scripts;
+  var count   := 0;
+  scripts.Sort();
+  ForEach script in (scripts)
+    If (script.state != "Sleeping")
+      continue;
+    EndIf
+
+    count += 1;
+    WriteHTML("<tr>");
+    WriteHTML(
+      "<td class='num'><a href='scriptex.ecl?PID="+script.pid+"&"+
+      A_PARAM+"'>"+script.pid+"</a></td>"
+    );
+    WriteHTML("<td>"+script.name+"</td>");
+    WriteHTML("<td class='num'>"+script.instr_cycles+"</td>");
+    WriteHTML("<td class='num'>"+script.sleep_cycles+"</td>");
+    WriteHTML("<td class='num'>"+script.PC+"</td>");
+    WriteHTML("<td class='num'>"+script.call_depth+"</td>");
+    WriteHTML("<td class='num'>"+script.num_globals+"</td>");
+    WriteHTML("<td class='num'>"+script.var_size+"</td>");
+    WriteHTML("<td>"+script.state+"</td>");
+    WriteHTML("</tr>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</table>");
+
+  WriteHTML("<p>"+count+" sleeping scripts found</p>");
+
+  WriteHTML("</div>");
+
+  DoFooter();
+EndProgram
+
+// vim: sw=2 sts=2

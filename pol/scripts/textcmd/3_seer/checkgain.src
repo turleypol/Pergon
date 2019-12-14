@@ -1,0 +1,283 @@
+///////////////////////////////////////////////////////////////////////////
+// Zeigt Veraenderung der Stats und Skills an
+//
+// Author: AgtMulda
+
+Use file;
+Use uo;
+Include "include/modifyskill";
+
+// Layout vom Gump
+Var layout:={
+  "page 0",                         // Seite 0 (Basisseite)
+  "nodispose",                      // Kein Esc zum Beenden
+  "resizepic 25 25 2620 420 450",   // Hintergrund
+  "checkertrans 30 31 410 438",     // Transparenzbereich
+  "text  40  35 46  0",             // Name des Players
+  "text 310  50 46 21",             // Serial
+  "text  40  50  5  1",             // Zeit
+  "text  40  65  5 20",             // letzter Skill
+  "page 1",                         // Seite 1
+  "button 245 435 2722 2723 1 1 1", // Update
+  "button 310 435 2724 2725 1 1 2", // Reset
+  "button 375 435 2726 2727 1 1 0", // Cancel
+  "text  40  90 46 18",             // Statzeile
+  "text  40 110  5 2",              // Str
+  "text 185 110 38 3",              // Str-Start-Wert
+  "text 235 110  5 4",              // Str+Wert
+  "text 305 110 40 5",              // Str-Raw+Wert
+  "text  40 125  5 6",              // Dex
+  "text 185 125 38 7",              // Dex-Start-Wert
+  "text 235 125  5 8",              // Dex+Wert
+  "text 305 125 40 9",              // Dex-Raw+Wert
+  "text  40 140  5 10",             // Int
+  "text 185 140 38 11",             // Int-Start-Wert
+  "text 235 140  5 12",             // Int+Wert
+  "text 305 140 40 13",             // Int-Raw+Wert
+  "text  40 435 32 14",
+  "text  85 435 66 15",
+  "text 130 435  1 16",
+  "text 175 435 23 17",
+  "text  40 165 46 19"              // Skillzeile
+};
+
+// Textdaten vom Gump
+Var data:={
+  "",             // 1  Name des Players
+  "",             // 2
+  "Strength",     // 3
+  "",             // 4
+  "",             // 5
+  "",             // 6
+  "Dexterity",    // 7
+  "",             // 8
+  "",             // 9
+  "",             // 10
+  "Intelligence", // 11
+  "",             // 12
+  "",             // 13
+  "",             // 14
+  "Beruf",        // 15 Berufskill
+  "Haupt",        // 16 Hauptskill
+  "Neben",        // 17 Nebenskill
+  "Weitere",      // 18 Weiterer Skill
+  "Stats             Wert  Gewinn  Rawpointgewinn",  // 19 Statzeile
+  "Skills             Wert  Gewinn  Rawpointgewinn", // 20 Skillzeile
+  "Zuletzt benutzter Skill: keiner",                 // 21 letzter Skill
+  ""              // 22 Serial
+};
+
+// Nur n paar globale Variablen
+Var Startdata :={};
+Var StartStats :={};
+Var StartTime;
+Var layout2 := {};
+Var data2 := {};
+Var SkillsSorted:=GetSkillsSorted();
+
+Program work(cmdlevelchar)
+  Var who;
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+  // Mobile auswaehlen (kein NPC)
+  SendSysMessagePergon(cmdlevelchar, "Wählt einen Player");
+  who:= Target(cmdlevelchar, TGTOPT_NOCHECK_LOS);
+  If ((!who.isa(POLCLASS_MOBILE)) OR (who.isa(POLCLASS_NPC)))
+    SendSysMessagePergon(cmdlevelchar, "Ungültiges Ziel.");
+    Return;
+  EndIf
+
+  // Startwerte der Stats un Skills auslesen und speichern
+  StartWerte(who);
+
+  // Schleife wird verlassen bei Rechtsklick oder Cancel (buttoncode 0)
+  Var result;
+  Repeat
+    If (!who or !who.connected)
+        SendSysMessagePergon(cmdlevelchar,
+            "Der Beobachtete hat sich offenbar ausgeloggt.",
+            "Apparently the watched player logged off."
+        );
+        Return;
+    EndIf
+
+    // Aktuelle Werte auslesen - Differenz speichern
+    WerteUpdate(who);
+
+    // Gump oeffnen
+    result:= SendDialogGump(cmdlevelchar, layout2, data2);
+    If (result[0] == 2)
+      // Buttoncode 2 = Reset gedrueckt. Neue Messung starten
+      StartWerte(who);
+    EndIf
+  Until !result[0];
+EndProgram
+
+// Startwerte - Speichert/Setzt die Startwerte
+Function StartWerte(who)
+  Var skillid;
+  Var count;
+  // Name
+  data[1]  := "Name des Players: "+who.name;
+  data[22] := "Serial: "+Hex(who.serial);
+
+  // RawWerte der Stats speichern
+  StartStats[1]:= GetObjProperty(who, "St_Strength");
+  StartStats[2]:= GetObjProperty(who, "St_Dexterity");
+  StartStats[3]:= GetObjProperty(who, "St_Intelligence");
+  StartTime := readgameclock();
+
+  // Basewerte der Stats speichern
+  data[4]:= GetStrBasePergon(who);
+  data[8]:= GetDexBasePergon(who);
+  data[12]:= GetIntBasePergon(who);
+
+  // zuletzt benutzter Skill
+  SetLastSkill(who);
+
+  // RawWerte der Skills speichern
+  For (count := 1; count <= SkillsSorted.size(); count+= 1)
+    skillid:= SkillsSorted[count];
+    Startdata[count] := GetRawSkillPergon(who, skillid);
+  EndFor
+EndFunction
+
+// WerteUpdate - Werte aktualisieren
+Function WerteUpdate(who)
+  // erster Skill wird bei y_mod Startwert angezeigt
+  Var y_mod := 185;
+  Var skillid;
+  Var color;
+  Var count;
+
+  // Vergangene Zeit berechnen + Anzeige formatieren
+  Var sekunden := readgameclock() - StartTime;
+
+  Var stunden  := sekunden / 3600;
+  sekunden     -= (stunden * 3600);
+  Var minuten  := sekunden / 60;
+  sekunden     -= (minuten * 60);
+  If (stunden  < 10)
+    stunden   := "0" + stunden;
+  EndIf
+  If (minuten  < 10)
+    minuten   := "0" + minuten;
+  EndIf
+  If (sekunden < 10)
+    sekunden  := "0" + sekunden;
+  EndIf
+
+  // Startgump wird als Grundlage genommen
+  data2 := data;
+  layout2 := layout;
+
+  // Zeit die seit Beginn der Messung vergangen ist
+  data2[2]:= "Vergangene Zeit: " + stunden + ":" + minuten + ":" + sekunden;
+
+  // Veraenderung der Stats berechnen
+  Var strchange    := GetStrBasePergon(who) - data[4];
+  Var dexchange    := GetDexBasePergon(who) - data[8];
+  Var intchange    := GetIntBasePergon(who) - data[12];
+  Var strrawchange := GetObjProperty(who, "St_Strength") - StartStats[1];
+  Var dexrawchange := GetObjProperty(who, "St_Dexterity") - StartStats[2];
+  Var intrawchange := GetObjProperty(who, "St_Intelligence") - StartStats[3];
+  Var skillchange;
+  Var skillrawchange;
+
+  // Anzeige mit Vorzeichen
+  If (strchange < 0)
+    data2[5] := "- " + (strchange * -1);
+  Else
+    data2[5] := "+ " + strchange;
+  EndIf
+  If (dexchange < 0)
+    data2[9] := "- " + (dexchange * -1);
+  Else
+    data2[9] := "+ " + dexchange;
+  EndIf
+  If (intchange < 0)
+    data2[13] := "- " + (intchange * -1);
+  Else
+    data2[13] := "+ " + intchange;
+  EndIf
+  If (strrawchange < 0)
+    data2[6] := "- " + (strrawchange * -1);
+  Else
+    data2[6] := "+ " + strrawchange;
+  EndIf
+  If (dexrawchange < 0)
+    data2[10] := "- " + (dexrawchange * -1);
+  Else
+    data2[10] := "+ " + dexrawchange;
+  EndIf
+  If (intrawchange < 0)
+    data2[14] := "- " + (intrawchange * -1);
+  Else
+    data2[14] := "+ " + intrawchange;
+  EndIf
+
+  SetLastSkill(who);
+
+  // Alle Skills durchlaufen
+  For (count := 1; count <= SkillsSorted.size(); count += 1)
+    skillid:= SkillsSorted[count];
+    skillchange := RawSkillToBaseSkillPergon(GetRawSkillPergon(who, skillid)) / 10.0 - RawSkillToBaseSkillPergon(StartData[count]) / 10.0;
+    skillrawchange := GetRawSkillPergon(who, skillid) - Startdata[count];
+
+    // Farbe fuer die Skillausgabe festlegen
+    Case (GetObjProperty(who, SKILLTYPKENNUNG+skillid))
+      SKILLTYP_BERUF:   color:=" 32 ";
+      SKILLTYP_HAUPT:   color:=" 66 ";
+      SKILLTYP_NEBEN:   color:=" 1 ";
+      SKILLTYP_WEITERE: color:=" 23 ";
+      default:          color:=" 5 ";
+    EndCase
+
+    // Falls sich der Skill geaendert hat wird er angezeigt
+    If (GetRawSkillPergon(who, skillid) - Startdata[count])
+
+      // Skillname
+      Var skillinfo:=GetSkillInfo(skillid);
+      layout2.append("text 40 "+CStr(y_mod)+color+CStr(data2.size()));
+      data2.append(skillinfo.TrainName);
+
+      // StartSkillwert
+      layout2.append("text 185 "+CStr(y_mod)+color+CStr(data2.size()));
+      data2.append(RawSkillToBaseSkillPergon(StartData[count]) / 10.0);
+
+      // SkillGewinn StartSkill
+      layout2.append("text 235 "+CStr(y_mod)+" 5 "+CStr(data2.size()));
+      If (skillchange < 0)
+        data2.append("- " + (skillchange * -1));
+      Else
+        data2.append("+ " + skillchange);
+      EndIf
+
+      // RawSkillGewinn
+      If (!who.isa(POLCLASS_NPC))
+        layout2.append("text 305 "+CStr(y_mod)+" 40 "+CStr(data2.size()));
+        If (skillrawchange < 0)
+          data2.append("- " + (skillrawchange * -1));
+        Else
+          data2.append("+ " + skillrawchange);
+        EndIf
+      EndIf
+
+      // Naechster Skill stehtn bissle weiter unten
+      y_mod += 15;
+    EndIf
+  EndFor
+EndFunction
+
+// zuletzt benutzten Skill eintragen
+Function SetLastSkill(who)
+  Var last := who.getprop(LAST_SKILL);
+  If (last)
+    Var lastskill := GetSkillInfo(last.skill);
+    data[21] :=
+      "Zuletzt benutzter Skill: "+
+      // Skillname
+      lastskill.TrainName+
+      // Zeit der Nutzung (ohne Jahr/Sekunden)
+      " ("+StrFormatTime("%d.%m. %H:%M", last.time)+")";
+  EndIf
+EndFunction

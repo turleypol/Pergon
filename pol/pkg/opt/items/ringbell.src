@@ -1,0 +1,35 @@
+///////////////////////////////////////////////////////////////////////////
+// RingBell - Die Glocke laeuten lassen
+//
+// Author: Mehdorn
+
+use uo;
+include "include/msgs";
+include "include/client";
+
+////////////////
+// Hauptprogramm
+////////////////
+Program Ring(who, bell)
+    If (GetObjProperty(bell, "#NextUse") > ReadGameClock())
+        SendSysMessagePergon(
+            who,
+            "Ihr müsst noch ein wenig warten, bevor wieder "+
+            "geklingelt werden darf.",
+            "Please wait a little before you ring the bell again."
+        );
+        return;
+    EndIf
+    // Sound ist ca. 3,5 Sekunden lang + etwas Reserve
+    SetObjProperty(bell, "#NextUse", ReadGameClock() + 5);
+
+    // Missbrauch ueberpruefbar machen
+    var lastuser := struct;
+    lastuser["serial"] := who.serial;
+    lastuser["name"]   := who.name;
+    SetObjProperty(bell, "lastuser", lastuser);
+
+
+    PlaySoundEffect(bell, SFX_BELL_RING);
+    PrintTextAbovePergon(who, bell, "*klingeling*", "*tingeling*");
+EndProgram

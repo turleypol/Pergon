@@ -1,0 +1,71 @@
+//**************************************************************************************************
+// Script file lockcontrol.src
+//
+//    Herstellung eines Verschlussmechanismus'
+//
+//  Setzt den Skill des Herstellers des Verschlussmechanismus'
+//
+//  26.05.2003 Fraggulus: Erstellung
+//  05.10.2003 Fraggulus: Erweiterung des Skillbereichs
+//
+//
+//**************************************************************************************************
+
+// Umbenennung wegen Tooltips hat die Schwierigkeit entfernt
+// deswegen einmal das Script reaktivieren, kann dann entfernt werde
+
+Use uo;
+Use os;
+Use util;
+
+
+Program lockcontrol(lock)
+  If (polcore().uptime>600)  // Kein restart also frisch erzeugtes
+    Return;
+  EndIf
+  SleepMS(RandomIntMinMax(5000,10000)); // verteilen
+
+  var Skill:=lock.getprop("LockDifficulty");
+  If (!Skill)
+    Return;
+  EndIf
+
+  If (lock.desc["Verschlussmech"])
+    var msg := "unbrauchbares"; // := Namen des Schlosses ermitteln
+    If (Skill >= 130)
+      msg := "perfektes";
+    ElseIf (Skill >= 125)
+      msg := "fast perfektes";
+    ElseIf (Skill >= 120)
+      msg := "uebernatuerlich filigranes";
+    ElseIf (Skill >= 115)
+      msg := "außergewöhnlich filigranes";
+    ElseIf (Skill >= 110)
+      msg := "ungewoehnlich gutes und filigranes";
+    ElseIf (Skill >= 105)
+      msg := "ungewoehnlich filigranes";
+    ElseIf (Skill >= 100)
+      msg := "sehr filigranes";
+    ElseIf (Skill >= 90)
+      msg := "sehr gutes und stabiles";
+    ElseIf (Skill >= 80)
+      msg := "ungewoehnlich schwer zu knackendes";
+    ElseIf (Skill >= 70)
+      msg := "sehr schwer zu knackendes";
+    ElseIf (Skill >= 60)
+      msg := "qualitativ hoeherwertiges";
+    ElseIf (Skill >= 50)
+      msg := "qualitativ mittelmäßiges";
+    ElseIf (Skill >= 40)
+      msg := "gutes";
+    ElseIf (Skill >= 30)
+      msg := "normales";
+    ElseIf (Skill >= 20)
+      msg := "qualitativ minderwertiges";
+    ElseIf (Skill >= 10)
+      msg := "fast unbrauchbares";
+    EndIf
+
+    SetName(lock, "ein "+msg+" Schloss");
+  EndIf
+EndProgram

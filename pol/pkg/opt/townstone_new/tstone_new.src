@@ -1,0 +1,178 @@
+/**
+  * Modification
+  * 2006/09/06 ganz neu �berarbeitet.
+  */
+
+/**
+  * �ltere Korrekturen. Wenn sinnvoll sollten die auf jeden Fall ber�cksichtigt werden.
+  *
+  * 28.04.2003 Fraggulus: Inkognito-Chars erhalten keinen Zugriff zum Stein (um Falschnamen zu vermeiden)
+  * 2004/11/30 Shinigami: Zeit fuer Wahlen in den "Const ZEIT*" festgelegt und von 12h auf 1 Woche hochgesetzt
+  */
+
+// TODO: WICHTIG: gesamt Dokumentation �berarbeiten
+// TODO: bei einigen Befehlen soll das Gump neu aufgerufen werden. 
+// TEST: wenn eine Wahl l�uft, dann darf der Kandidat nicht aus der Stadt gefeuert werden.
+// TEST: w�hren einer Wahl darf ein Kandidat nicht die Stadt verlassen
+// TODO: Nachricht an BM, wenn nen B�rgerantrag anliegt.
+// TODO: Ordentliche Meldung bei Funktion B�rger aufnehmen. B�rger wurde aufgenommen. nachricht versandt
+// TODO: SleepMS(2); bei einigen Schleifen, die gro� werden k�nnen. gegen RunAways
+// TODO: Vertreter f�r den BM
+// TODO: Rechte Seite m�glichst mit �berschrift. damit man wei� was man macht.
+// TODO: Wenn der GL einen BM festlegt, dann muss auch ne meldung kommen. f�r alten evtl und f�r neuen. Eintrag in der B�rgerliste ist nicht korrekt.
+// TODO: B�rger sollen H�user selbst bauen. 1. Liste der Grundst�cke, 2. vergabe genauer machen. 3. char baut statt gm.
+// TODO: Wahl des Stadtrats implementieren. daf�r alle wahldialoge auf page 1?
+// TODO: Alle Wahldialog auf Page 1
+// TODO: eigenes YES/NO Gump
+/**TODO: Auf dem Bauserver einige Sicherheitseinstellungen. Gott kein B�rgermeister
+Itchy (02:47 PM) :
+
+If (!GetGlobalProperty(BAUSERVER))
+
+   If (who.cmdlevel<CMDLEVEL_GM)
+
+    SendSysMessagePergon(who,"Ihr seid nicht befugt diesen Befehl zu nutzen!");
+
+    Return;
+
+   EndIf
+
+  EndIf
+
+Itchy (02:47 PM) :
+
+die konstante ist wie immer in der modifyskill definiert
+  */
+/**
+  * DONE: Namenszusatz anders abbilden
+  * who.title_prefix:="Schueler";
+  * who.title_suffix:=" BM aus Vesper";
+  * who.title_guild:="test";
+  * who.title_race:="Musterschueler";
+  */
+
+// DONE: in der Liste offener Steuern nur die anzeigen, die auch noch keine bezahlt haben.
+// DONE: Steuerh�he bei Namensvergabe auf 60.000
+// DONE: Bei der Abstimmung kann man mehrere Stimmen abgeben! Es fehlt auch ne Meldung.
+// DONE: Ein Gott kann keine Steuern zahlen. In der Meldung steht aber God statt Gott.
+// DONE: nicht gesetzte CProp wird nicht erkannt
+// OBSO: bei bestimmten fehlenden CProps das Script mit Fehlermeldung abbrechen lassen.
+// DONE: Bei der Titeleinrichtung kann man nur 10 Buchstaben beim tippen sehen. gr��er machen
+// DONE: BM soll auch Counselor sein. ein cmdLevel �ber player
+// DONE: SleepMS(5) in die Men�s. Gegen Runaway-Scripts. Oder besser die Men�s nochmals neu machen.
+// DONE: Anz�hl B�rger �ber Size des Arrays
+// DONE: Annahme B�rgerantrag. bei Eintrag unsinniger angaben (zB a statt 1) muss Fehlermeldung kommen
+// DONE: alle funktionen sollen auch erfolgsmeldung per SysMessage senden.
+// DONE: keine g�ltige Auswahl bei Titelvergabe und trotzdem YES/NO Gump
+// DONE: Titel hinzuf�gen geht nicht
+// DONE: Ordentlich SysMessage beim �ffnen der Seer-Gump
+
+/** DONE
+  * DarkPrince (01:17 PM) :
+  * bei der Liste mit den einwohnern, w�re es sinnvoll das Eitrittsdatum noch dazu, wenn das geht
+  */
+
+// Die Includes
+    use uo;
+    include "include/client";
+    include "include/clock";
+    include "include/modifyskill";
+    include "include/msgs";
+    include "include/yesno";
+
+    // eigene Includes
+    include "tstone_new_const";
+    include "tstone_new_menu";
+    include "tstone_new_election";
+    include "tstone_new_town";
+    include "tstone_new_tax";
+    include "tstone_new";
+
+/**
+  * Dies ist der Dialog, der dargestellt wird, wenn man doppelt auf
+  * einen Townstone klickt.
+  *
+  * param who  - der char, der doppelt geklickt hat
+  * param item - der Stadtstein
+  */
+program townstone(who,item)
+    // was auch immer passiert: auf Ende der Wahlen pr�fen
+    pruefeEndeWahlen(item);
+    // Zurzeit ist es nicht m�glich diese Besonderheit zu ber�cksichtigen.
+    // Daher ist es nicht erlaubt mit falschem Namen an den Stein zu gehen.
+    // Diebe k�nnen zurzeit an den Stein, auch wenn Sie eine Robe tragen.
+    if (istInkognito(who) == "ja")
+        SendSysMessagePergon(who, "Ihr steht unter Einfluss eines Inkognitos. Versucht es sp�ter noch einmal.");
+        return;
+    endif
+
+    // das Item f�r mich reservieren
+    if (!reserveitem(item))
+      SendSysMessagePergon(who, "Der Stein ist bereits in Benutzung.");
+      return;
+    EndIf
+
+    var WhoStadt := GetObjProperty(who, CPROP_STADT);
+    var ItemStadt := GetObjProperty(item, CPROP_STADT);
+    var Antrag := GetObjProperty(who, CPROP_ANTRAG);
+    var AntragStadt := GetObjProperty(who, CPROP_ANTRAGSTADT);
+    var BMSerial := GetObjProperty(item, CPROP_BUERGERMEISTERSERIAL);
+    var choice;
+    var TayaIstDa;
+    
+    var GumpReturn := array;
+
+    // da ich keinen GL oder h�her habe
+    // 5142922 Pergon Taya
+    // 6001 Bauserver Taya
+    // 7072 Bauserver Eddy 
+    
+    if (who.serial == 5142922 || who.serial == 6001 || who.serial == 7072)
+        TayaIstDa := YesNo(who, "Hallo Taya. Als BM/GL rein gehen?");
+    else
+        TayaIstDa := 0;
+    endif
+    if (who.cmdlevel > CMDLEVEL_HIGHGM || TayaIstDa)
+        SendSysMessagePergon(who, "Willkommen Gott! Dieses Gump ist ein Zusatzmen�.");
+        if (!ItemStadt)
+            SendSysMessagePergon(who, "Bitte der Stadt ihren Namen geben.");
+        endif
+        if (!BMSerial)
+            SendSysMessagePergon(who, "Es muss noch ein B�rger zum B�rgermeister bestimmt werden.");
+        endif
+        GumpReturn := GumpPage_God(item);
+        choice := SendDialogGump(who, GumpReturn[1], GumpReturn[2]);
+        auswahlDerFunktion(choice, who, item);
+        GumpReturn := GumpPage_Buergermeister(item);
+        choice := SendDialogGump(who, GumpReturn[1], GumpReturn[2]);
+        auswahlDerFunktion(choice, who, item);
+    else
+        if (!ItemStadt)
+            SendSysMessagePergon(who, "Der Stein ist nicht korrekt eingerichtet. Bitte erst einen Gott ansprechen.");
+        endif
+        if (!BMSerial)
+            SendSysMessagePergon(who, "Es gibt noch keinen B�rgermeister. Bitte einen Gott ansprechen.");
+        endif
+        If (!WhoStadt)
+            if (!Antrag)
+                GumpReturn := GumpPage_KeinBuerger(item);
+            elseif (AntragStadt == ItemStadt)
+                GumpReturn := GumpPage_BuergerAntrag(item);
+            else
+                GumpReturn := GumpPage_BuergerAnderswo(who, item);
+            endif
+        Else
+            If (whoStadt == ItemStadt)
+                if ( BMSerial == who.serial)
+                    GumpReturn := GumpPage_Buergermeister(item);
+                else
+                    GumpReturn := GumpPage_Buerger(item);
+                endif
+            else
+                GumpReturn := GumpPage_BuergerAnderswo(who, item);
+            endif
+        endif
+        choice := SendDialogGump(who, GumpReturn[1], GumpReturn[2]);
+        auswahlDerFunktion(choice, who, item);
+    endif
+endprogram

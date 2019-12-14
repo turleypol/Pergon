@@ -1,0 +1,77 @@
+//////////////////////////////////////////////////////
+//
+//   Alchemie: Skript für Wirkungen über Zeit
+//
+//   Modifications:
+//     2007/03/27 Hotny:  Erstellt
+//
+//////////////////////////////////////////////////////
+
+Include "include/modifyskill";
+Include ":hungrysystem:hungrysystem";
+Include ":drinking:common";
+
+Program TimeEffect(Parameter)
+  var oWho:=Parameter[1];
+  var sEffect:=Parameter[2];
+  var lPoints:=Parameter[3];
+  var lTime:=Parameter[4];
+  Var res;
+
+  //Kurze Sicherheitsabfrage
+  If (!oWho || !sEffect || !lPoints || !lTime)
+    Syslog("Wrong TimeEffect Call - Abort");
+    Return;
+  EndIf
+
+  var lPointsPerRoundTrip:=CInt(lPoints/(lTime/5));
+  If (lPointsPerRoundTrip == 0)
+    If (lPoints < 0)
+      lPointsPerRoundTrip:=-1;
+    Else
+      lPointsPerRoundTrip:=1;
+    Endif
+  EndIf
+
+  var lCurrentTime:=0;
+  var lPointsGenerated:=0;
+  var lRoundInt:=0;
+  //Rundungsfehler
+  lRoundInt:=CInt(Max(0,lPoints - lPointsPerRoundTrip*(lTime/5))); // >0
+
+  While ((lCurrentTime<lTime) && (!oWho.dead) && (oWho.ip))
+    Case (sEffect)
+      "heilend":
+          SetHPPergon(oWho,GetHPPergon(oWho)+lPointsPerRoundTrip+lRoundInt);
+      "astralenergetisch":
+          SetManaPergon(oWho,GetManaPergon(oWho)+lPointsPerRoundTrip+lRoundInt);
+      "erfrischend":
+          SetStaminaPergon(oWho,GetStaminaPergon(oWho)+lPointsPerRoundTrip+lRoundInt);
+      "hungrig":
+          Set_Critical(1);
+          oWho.setprop(PROP_HUNGER,oWho.getprop(PROP_HUNGER)-lRoundInt-lPointsPerRoundTrip);
+          Set_Critical(0);
+          res:=GetHungryMsg(oWho.getprop(PROP_HUNGER));
+          SendSysMessagePergon(oWho, res[1], res[2], _DEFAULT_TEXT_FONT, CheckHungryLevel(oWho, oWho.getprop(PROP_HUNGER)));
+      "durstig":
+          Set_Critical(1);
+          oWho.setprop(PROP_THIRST,oWho.getprop(PROP_THIRST)-lRoundInt-lPointsPerRoundTrip);
+          Set_Critical(0);
+          res:=GetDrinkingMsg(oWho.getprop(PROP_THIRST));
+          SendSysMessagePergon(oWho, res[1], res[2], _DEFAULT_TEXT_FONT, CheckDrinkingLevel(oWho, oWho.getprop(PROP_THIRST)));
+      default:
+           Syslog("Unknown TimeEffect: " + sEffect);
+           Return;
+    EndCase
+
+    //Ist bestimmt genauer
+    lPointsGenerated+=lPointsPerRoundTrip+lRoundInt;
+    If (lPointsGenerated >= lPoints)
+      //Ich habe schon alle Punkte aufgebraucht
+      Return;
+    EndIf
+    SleepMs(5000);
+    lCurrentTime+=5;
+    lRoundInt:=0;
+  EndWhile
+EndProgram

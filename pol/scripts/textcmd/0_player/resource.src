@@ -1,0 +1,398 @@
+///////////////////////////////////////////////////////////////////////////
+//  TextCommando "Resource" - Listet Ressourcen
+//  Erze/Metalle/Legierungen
+//  Hölzer/Samen
+//  Reagenzien
+//  Felle
+//  Edelsteine
+//  Ackerbausamen
+//
+// Author: Unforgiven
+
+use cfgfile;
+use os;
+use uo;
+include "include/itemnpc";
+include "include/msgs";
+include "include/objtype";
+
+var wood := {
+  {0xEFF2, 0xEFF3, 0xEFF4, 0xEFF5, 0xEFF6, 0xEFF7, 0xEFF8, 0xEFF9, 0xEFFA},
+  {0xEFFC, 0xEFFD, 0xEFFE, 0xEFFF, 0xEFEC, 0xEFED, 0xEFEE, 0xEFEF, 0xEFF0},
+  {0x1BDD, 0x7013, 0x7014, 0x7012, 0x701c, 0x7017, 0x701d, 0x7018, 0x701b},
+  {0x7011, 0x701a, 0x7016, 0x701e, 0x701f, 0x7019, 0x7010, 0x7015, 0x7020,
+    0x7021}
+};
+
+var reagenzien := {
+  {
+    UOBJ_ALRAUNE, UOBJ_BIMSSTEIN, UOBJ_BLACKROCK, UOBJ_BLUTEGEL,
+    UOBJ_BLUTFLAKON, UOBJ_BLUTMOOS, UOBJ_DAEMONENKNOCHEN, UOBJ_DRACHENBLUT,
+    UOBJ_FEUERSTEIN
+  }, {
+    UOBJ_FLEDERMAUSFLUEGEL, UOBJ_GINSENG, UOBJ_HUMUS, UOBJ_KNOBLAUCH,
+    UOBJ_KNOCHEN, UOBJ_MOLCHAUGE, UOBJ_MORCHEL, UOBJ_OBSIDIAN,
+    UOBJ_ROHEISEN
+  }, {
+    UOBJ_SCHLANGENSCHUPPE, UOBJ_SCHWARZE_PERLE, UOBJ_SCHWEFELASCHE,
+    UOBJ_SPINNENSEIDE, UOBJ_TOLLKIRSCHE, UOBJ_TORF, UOBJ_VULKANASCHE,
+    UOBJ_WURZEL, UOBJ_WYRMHERZ
+  }
+};
+
+var erze := {
+  {
+    UOBJ_EISEN_ERZ, UOBJ_MOLYBDAEN_ERZ, UOBJ_MANGAN_ERZ, UOBJ_IRIDIUM_ERZ,
+    UOBJ_TENERUM_ERZ, UOBJ_INDIUM_ERZ, UOBJ_LANTHAN_ERZ, UOBJ_WOLFRAM_ERZ,
+    UOBJ_PLATIN_ERZ, UOBJ_CHROM_ERZ, UOBJ_TITANIUM_ERZ
+  }, {
+    UOBJ_EISEN_BARREN, UOBJ_MOLYBDAEN_BARREN, UOBJ_MANGAN_BARREN,
+    UOBJ_IRIDIUM_BARREN, UOBJ_TENERUM_BARREN, UOBJ_INDIUM_BARREN,
+    UOBJ_LANTHAN_BARREN, UOBJ_WOLFRAM_BARREN, UOBJ_PLATIN_BARREN,
+    UOBJ_CHROM_BARREN, UOBJ_TITANIUM_BARREN
+  }, {
+    UOBJ_CERIUM_BARREN, UOBJ_PRODYMIUM_BARREN, UOBJ_NEODYMIUM_BARREN,
+    UOBJ_PROMETHIUM_BARREN, UOBJ_SAMARIUM_BARREN, UOBJ_ROPIUM_BARREN,
+    UOBJ_GADONIUM_BARREN, UOBJ_TERBIUM_BARREN, UOBJ_HOLMIUM_BARREN,
+    UOBJ_ERBIUM_BARREN
+  }, {
+    UOBJ_SOLARUM_BARREN, UOBJ_HYDRIUM_BARREN, UOBJ_LAVARIUM_BARREN,
+    UOBJ_TERADIUM_BARREN, UOBJ_TERATUM_BARREN, UOBJ_ENERGIUM_BARREN
+  }
+};
+
+var felle := {
+  {
+    UOBJ_HASENFELL, UOBJ_SCHLANGENHAUT, UOBJ_GREMLINFELL, UOBJ_NORMALFELL,
+    UOBJ_LAMAFELL, UOBJ_WOLFSFELL, UOBJ_PANTHERFELL, UOBJ_BAERENFELL,
+    UOBJ_DARKWOLFFELL, UOBJ_GRIZZLYFELL , UOBJ_ECHSENHAUT,
+    UOBJ_FEUERECHSENHAUT
+  }, {
+    UOBJ_OSTARDFELL, UOBJ_WALDOSTARDFELL, UOBJ_RAUBOSTARDFELL,
+    UOBJ_TROLLFELL, UOBJ_AZURFELL, UOBJ_GROSSSCHLANGENFELL,
+    UOBJ_DRACHENFELL, UOBJ_OLD_DRAGONFELL, UOBJ_ZENTAURENFELL1,
+    UOBJ_ZENTAURENFELL2, UOBJ_ZENTAURENFELL3, UOBJ_ZENTAURENFELL4
+  }, {
+    UOBJ_SCHLANGENSCHUPPE, UOBJ_ECHSENSCHUPPE, UOBJ_ECHSENSCHUPPEBRONZE,
+    UOBJ_ECHSENSCHUPPEGOLD, UOBJ_DRACHENSCHUPPE, UOBJ_DRACHENSCHUPPEBLAU,
+    UOBJ_DRACHENSCHUPPEEISBLAU, UOBJ_DRACHENSCHUPPEGRUEN,
+    UOBJ_DRACHENSCHUPPESILBER
+  }, {
+    UOBJ_KNOCHEN, UOBJ_TROLLKNOCHEN, UOBJ_DAEMONENKNOCHEN,
+    UOBJ_DRACHENKNOCHEN, UOBJ_ZENTAURENKNOCHEN, UOBJ_SCHAEDEL,
+    UOBJ_TROLLSCHAEDEL, UOBJ_DAEMONENSCHAEDEL, UOBJ_DRACHENSCHAEDEL,
+    UOBJ_ZENTAURENSCHAEDEL
+  }
+};
+
+var edelsteine := {
+  {
+    UOBJ_STERNSAPHIR, UOBJ_SMARAGD, UOBJ_SAPHIR, UOBJ_RUBIN, UOBJ_ZITRIN,
+    UOBJ_AMETHYST, UOBJ_TURMALIN, UOBJ_BERNSTEIN, UOBJ_DIAMANT
+  },{
+  }
+};
+
+var ackersamen := {
+  {
+    0xda00, 0xda01, 0xda02, 0xda03, 0xda04, 0xda05, 0xda06, 0xda07, 0xda08,
+    0xda09
+  }, {
+    0xda0a, 0xda0b, 0xda0c, 0xda0d, 0xda0e, 0xda24, 0xda10, 0xda1f, 0xda11,
+    0xda12
+  }, {
+    0xda13, 0xda14, 0xda15, 0xda16, 0xda17, 0xda21, 0xda18, 0xda19, 0xda1a,
+    0xda20
+  }, {
+    0xda1b, 0xda1c, 0xda1d, 0xda1e
+  }
+};
+
+// Seite 0 (Basisseite)
+var layout := {
+  "page 0",
+  "nodispose",
+  "resizepic 10 20 2620 810 320"
+};
+
+// Namen der Buttons
+var data := {
+  "<basefont color=#008000 size=1><p align=right>Pergons Ressourcenübersicht</p>",
+  "Samen",
+  "Metalle",
+  "Felle",
+  "Reags",
+  "Edelsteine",
+  "Schriftfarbe",
+  "Ackerbausamen",
+  "Wird von .grab ignoriert"
+};
+
+//////////////////
+// Hauptprogramm
+//////////////////
+Program TextCMD_resource(who)
+  var BackGroundColor := 0;
+  var grablist := {} ;
+
+  If (GetObjProperty(who, "StandardResource[2]"))
+    BackGroundColor := CInt(GetObjProperty(who, "StandardResource[2]")) ;
+  EndIf
+
+  If (GetObjProperty(who, PROP_GRAB_BLACKLIST))
+    grablist := GetObjProperty(who, PROP_GRAB_BLACKLIST);
+  EndIf;
+
+  If (BackGroundColor> 2000)
+    layout.append("checkertrans 15 27 800 306");
+  EndIf;
+
+  layout += {"HtmlGump 600 44 200 20 0 0 0",
+    "text 35 44 40 1",                 // Hölzer
+    "button 78 41 2640 2641 0 2",
+    "text 127 44 40 2",                // Metalle
+    "button 176 41 2640 2641 0 3",
+    "text 223 44 40 3",                // Felle
+    "button 266 41 2640 2641 0 4",
+    "text 319 44 40 4",                // Reags
+    "button 364 41 2640 2641 0 5",
+    "text 400 44 40 5",                // Edelsteine
+    "button 462 41 2640 2641 0 6",
+    "text 657 315 1102 6",             // Schriftfarbe
+    "button 640 317 2118 2117 1 0 8",
+    "text 500 44 40 7",                // Ackerbausamen
+    "button 592 41 2640 2641 0 7",
+    "text 40 315 1102 8",              // Schriftfarbe
+    "button 28 319 2360 2360 0 0"
+
+    // "gumppic 223 90 2623",
+    // "gumppic 423 90 2623",
+    // "gumppic 623 90 2623"
+  };
+
+  If (BackGroundColor> 2000)
+    layout += {
+      "checkertrans 628 90 17 210",
+      "checkertrans 228 90 17 210",
+      "checkertrans 428 90 17 210"
+    };
+  EndIf
+
+  // Seite 1 Wird ausgelesen
+  layout.append("page 1");
+
+  Case (GetObjProperty(who, "StandardResource"))
+    2:  MakeData(who, wood, 2, grablist);
+    3:  MakeData(who, erze, 3, grablist);
+    4:  MakeData(who, felle, 4, grablist);
+    5:  MakeData(who, reagenzien, 5, grablist);
+    6:  MakeData(who, edelsteine, 6, grablist);
+    7:  MakeData(who, ackersamen, 7, grablist);
+    default:
+        MakeData(who, wood, 2, grablist);
+  EndCase
+
+  // Seite 2 (Hölzer)
+  layout.append("page 2");
+  MakeData(who, wood, 2, grablist);
+
+  // Seite 3 (Metalle)
+  layout.append("page 3");
+  MakeData(who, erze, 3, grablist);
+
+  // Seite 4 (Felle)
+  layout.append("page 4");
+  MakeData(who, felle, 4, grablist);
+
+  // Seite 5 (Reagenzien)
+  layout.append("page 5");
+  MakeData(who, reagenzien, 5, grablist);
+
+  // Seite 6 (Edelsteine)
+  layout.append("page 6");
+  MakeData(who, edelsteine, 6, grablist);
+
+  // Seite 7 (Ackerbausamen)
+  layout.append("page 7");
+  MakeData(who, ackersamen, 7, grablist);
+
+  // Rückmeldung des Buttons bekommen
+  var GumpBack := SendDialogGump(who, layout, data, 50, 50);
+
+  If (GumpBack[0] < 10 )
+    Case (GumpBack[0])
+    2:  SetObjProperty(who, "StandardResource", 2);
+    3:  SetObjProperty(who, "StandardResource", 3);
+    4:  SetObjProperty(who, "StandardResource", 4);
+    5:  SetObjProperty(who, "StandardResource", 5);
+    6:  SetObjProperty(who, "StandardResource", 6);
+    7:  SetObjProperty(who, "StandardResource", 7);
+    8:  GetColor(who);      // Schriftfarbe
+    EndCase
+  ElseIf (GumpBack[0] > 10 )
+    UpdateBlackList(who, GumpBack[0]);
+  EndIf
+EndProgram
+
+///////////////////////////////////////////////////////
+// GetColor - Schriftgrundfarbe für Gump wählen und speichern
+///////////////////////////////////////////////////////
+Function GetColor(who)
+  var layout2 := {
+    // Seite 0 (Basisseite)
+    "page 0",
+    "nodispose",
+    "resizepic 10 20 2620 810 320",
+    "text 657 300 910 0"
+  };
+  var data2 := {"Transparent"};
+  var actcolor := CInt(GetObjProperty(who, "StandardResource[2]"));
+
+  If ( actcolor > 2000 )
+    layout2.append("checkbox 640 300 5540 5541 1 400");
+    actcolor -= 2000 ;
+  Else
+    layout2.append("checkbox 640 300 5540 5541 0 400");
+  EndIf
+
+  var color;
+  var x := 65;
+  var y := 30;
+
+  For (color := 1; color<101; color+=1)
+    layout2.append("text "+(x+15)+" "+y+" "+color+" "+data2.size());
+    layout2.append("button "+x+" "+(y+2)+" 2118 2117 1 0 "+(color+1));
+    If (actcolor == color)
+      data2.append("Farbe: "+color+" [X]");
+    Else
+      data2.append("Farbe: "+color);
+    EndIf
+    y+= 17;
+
+    If (y == 319)
+      x+= 120;
+      y := 30;
+    EndIf
+    SleepMS(2);
+  EndFor
+
+  // Rückmeldung des Buttons bekommen
+  var GumpBack2 := SendDialogGump(who, layout2, data2, 50, 50);
+  var RetColor;
+
+  If (GumpBack2[0] > 1)
+    If (CInt(Gumpback2[400]))
+      RetColor := CInt((Gumpback2[400] * 2000) + GumpBack2[0] - 1);
+    Else
+      RetColor := CInt( GumpBack2[0] - 1);
+    EndIf
+    SetObjProperty(who, "StandardResource[2]", RetColor);
+  EndIf
+
+  // SendSysMessagePergon(who,
+  //   "Gewaehlte Farbe " + CInt(RetColor) +" gespeichtert."
+  // );
+EndFunction
+
+///////////////////////////////////////////////////////
+// MakeData - Daten fürs Gump erstellen
+///////////////////////////////////////////////////////
+Function MakeData(who, ressource, PageNr, grablist)
+  var textc := 1103;
+  var xgrab := 0;
+  var ygrab := 0;
+  const xgrabconst := 12;
+  const ygrabconst := 4;
+
+  If (GetObjProperty(who, "StandardResource[2]"))
+    textc := GetObjProperty(who, "StandardResource[2]") ;
+    If (textc > 1000)
+      textc -= 2000;
+    EndIf
+  EndIf
+
+  var itemdesc := ReadConfigFile("::itemdesc");
+  var x := 40, y := 80, amount;
+  xgrab := x-xgrabconst;
+
+  If (itemdesc)
+    ForEach spalte in ressource
+      ForEach objtype in spalte
+        ygrab := y + ygrabconst;
+        If (itemdesc[objtype])
+          layout.append("text "+x+" "+y+" "+textc+" "+data.size());
+          amount:=Count(who,objtype);
+          data.append(amount);
+
+          // schaut, ob das Item in der Grabliste steht
+          If (GrabListCompare(objtype, grablist) == 1);
+            layout.append("button "+xgrab+" "+ygrab+" 2360 2361 1 0 "+objtype);
+          Else
+            layout.append("button "+xgrab+" "+ygrab+" 2361 2360 1 0 "+objtype);
+          EndIf
+
+          layout.append("text "+(x+50)+" "+y+" "+textc+" "+data.size());
+          data.append(DescFormat(itemdesc[objtype].desc,amount));
+          y+=20;
+        Else
+          SysLog("FEHLER: ressource "+objtype+" ist nicht definiert!");
+        EndIf
+        SleepMS(2);
+      EndForEach
+      y := 80;
+      x += 200;
+      xgrab := x-xgrabconst;
+    EndForEach
+
+  Else
+    SysLog("FEHLER: Kann itemdesc.cfg nicht oeffnen!");
+  EndIf
+
+  layout.append("text 657 295 1102 "+data.size());
+  data.append("als Standardseite");
+  layout.append("button 640 298 2118 2117 1 0 "+ PageNr);
+EndFunction
+
+///////////////////////////////////////////////////////
+// GrabListCompare - Ressourcen auf GrabListe vergleichen
+///////////////////////////////////////////////////////
+Function GrabListCompare(regitemid, grablist)
+  // var listed := 0;
+
+  // ForEach temp in grablist
+  //   If (regitemid == temp);
+  //     listed := 1;
+  //     EndIf
+  //   SleepMS(2);
+  // EndForEach
+  // return (listed);
+
+  If (regitemid in grablist)
+    return 1;
+  Else
+    return 0;
+  EndIf
+EndFunction
+
+///////////////////////////////////////////////////////
+// Count - Ressourcen im Backpack durchzaehlen
+///////////////////////////////////////////////////////
+Function Count(who, regitemid)
+  var amount := 0;
+  Foreach item in FindSubstance(who.backpack,regitemid,1,0,FINDSUBSTANCE_FIND_ALL)
+    amount+=item.amount;
+    SleepMS(2);
+  EndForEach
+  return (amount);
+EndFunction
+
+///////////////////////////////////////////////
+// DescFormat - Plural/Singular Umformung
+///////////////////////////////////////////////
+Function DescFormat(text, amount)
+  If (amount>1)
+    Return(DescMehrzahl(text));
+  Else
+    Return(DescEinzahl(text));
+  EndIf
+EndFunction

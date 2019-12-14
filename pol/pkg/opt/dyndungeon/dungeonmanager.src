@@ -1,0 +1,1312 @@
+//
+//  Autor:    Hotny & Turley
+//  Date:     11.09.2007
+//
+//  Skript für den DungeonManager
+//      Aufgaben:
+//                - Initialisierung des Dungeons (Dungeonaufbau,Spawnen)
+//                - Dungeoncontrolle (Timeouts, Leichenverschiebung)
+//                - Dungeon aufräumen
+//
+//  Modifikation:
+//
+
+Use cfgfile;
+Use os;
+Use uo;
+Use util;
+
+Include ":dyndungeon:dyndungeon";  // Konstanten
+Include "include/eventid";
+Include "include/modifyskill";
+Include "include/set";
+Include "include/starteqp";
+
+Var oDungeonConfig:=ReadConfigFile(":dyndungeon:dungeon");
+Var aDungeonFields:={};
+
+Var aPosStartTeles:={{23,13,4},{24,13,7},{25,13,6}};  // Position der StartTeleporter
+// Wohin werden Player bei Exit und Timeout verschoben
+Var StartPos:={{22,15,5},{23,15,5},{24,15,7},{25,15,6},{26,15,6}};
+
+Program DungeonManager(aParams)
+  // aParams: {oAnmeldePlayer;sStrength;lLength;oNPC}
+  Var restart,oAnmeldePlayer,sStrength,lLength,oNPC;
+  If (!aParams)
+    // Neustart: über start.ecl aufgerufen
+    var dtGlobalDungeons := GetGlobalProperty(CPROPDUNGEONS);
+    If (!dtGlobalDungeons)
+      // leer/nicht initialisiert
+      return;
+    EndIf
+    syslog("Restarting dungeons ...");
+    ForEach id in (dtGlobalDungeons.keys())
+      Start_ScriptPergon(":dyndungeon:dungeonmanager", array{id});
+      Sleep(1);
+    EndForEach
+    return;
+  ElseIf (aParams.size()==1)
+    // Neustart: Param enthält nur DungeonID
+    restart:=aParams[1];
+    syslog("Restarting dungeon ID "+restart);
+  Else
+    oAnmeldePlayer:=aParams[1];  // Player der die Anmeldung gemacht hat -> Bestimmt die Party
+    sStrength:=     aParams[2];  // Stärke des Dungeons
+    lLength:=       aParams[3];  // Länge des Dungeons -> Anzahl der Felder
+    oNpc:=          aParams[4];  // NPCref
+    restart:=0;
+  EndIf
+  aParams:=0; // nicht mehr benötigt
+
+  Var dtDungeon, dtGlobalDungeons, lDungeonID;
+  Var bOK:=0;
+  Var ev;
+  Var TimeOut;
+  Var dtUsedFields:=dictionary;
+  Var refplayer, pos;
+  Var dtPlayerFields:=dictionary;  // Key=fieldid value Array mit Playern die sich dortbefinden
+  Var dtPIDFields:=dictionary;     // Key=fieldid value PID des Bossscriptes
+  Var oFieldConfig;
+  Var bTimeout1:=0,bTimeout5:=0;
+  Var FieldTime:=0;
+
+  If (!restart)  // Dungeon existiert bereits
+    dtDungeon:=dtChooseDungeon(lLength);  // Dungeon Aufbauen
+    If (dtDungeon)
+      Set_Critical(1);
+      dtGlobalDungeons:=GetGlobalProperty(CPROPDUNGEONS);
+      If (!dtGlobalDungeons)
+        dtGlobalDungeons:=dictionary;
+      EndIf
+      lDungeonID:=CInt(GetGlobalProperty(CPROPDUNGEONID))+1;
+      SetGlobalProperty(CPROPDUNGEONID,lDungeonID);
+      var party_serials := array{};
+      ForEach member in (oAnmeldePlayer.party.members)
+        party_serials += member.serial;
+        SleepMS(2);
+      EndForEach
+      // Party, Dungeonfelder und Manager-PID speichern
+      dtGlobalDungeons[lDungeonID]:={party_serials,aDungeonFields,GetPID(),sStrength};
+      SetGlobalProperty(CPROPDUNGEONS,dtGlobalDungeons);
+      MakeStatistik(0,{lLength,sStrength,oAnmeldePlayer.party.members.size(),lCountBossFields()}); //Statistik
+      Set_Critical(0);
+
+      // Felder freiräumen
+      If (bClearDungeon())
+        // Teleporter setzen
+        If (bCreateTeleporter(dtDungeon,aDungeonFields[1],aDungeonFields[aDungeonFields.size()], sStrength))
+          // Spawnen
+          If (bSpawnDungeon(sStrength,dtPIDFields, oAnmeldePlayer.party.members.size()))
+            // Start-Teleportern Bescheid geben
+            If (bTellStartTeleporters(aDungeonFields[1],lDungeonID))
+              bOK:=1; // Alles OK
+              // NPC bescheidgeben das alles Ok ist
+              SendEvent(oNPC, struct{type := EVID_DUNGEONASKFORPLAYER, pid := GetPID(), state := 1});
+            EndIf
+          EndIf
+        EndIf
+      EndIf
+    EndIf
+
+    If (!bOK)
+      Set_Critical(1);  // Dungeon wieder aus der Globalen Löschen
+      dtGlobalDungeons:=GetGlobalProperty(CPROPDUNGEONS);
+      dtGlobalDungeons.erase(lDungeonID);
+      SetGlobalProperty(CPROPDUNGEONS,dtGlobalDungeons);
+      Set_Critical(0);
+      SendEvent(oNPC, struct{type := EVID_DUNGEONASKFORPLAYER, pid := GetPID(), state := 0});
+      Return;
+    EndIf
+
+  Else  // Server restart
+    lDungeonID:=restart;
+    Set_Critical(1);
+    dtGlobalDungeons:=GetGlobalProperty(CPROPDUNGEONS);
+    dtGlobalDungeons[lDungeonID][3]:=GetPID();  // Neue PID speichern
+    SetGlobalProperty(CPROPDUNGEONS,dtGlobalDungeons);
+    Set_Critical(0);
+    aDungeonFields:=dtGlobalDungeons[lDungeonID][2];
+    // Bossscripte starten:
+    ForEach i in aDungeonFields
+      oFieldConfig := FindConfigElem(oDungeonConfig,i);
+      If (oDungeonConfig[aDungeonFields[i]].Script)
+        pos:=Start_ScriptPergon(oFieldConfig.Script,
+                                {dtGlobalDungeons[lDungeonID][4],GetProcess(GetPID()),1});
+        dtPIDFields[aDungeonFields[i]]:=pos.pid;  // PID merken
+      Else
+        dtPIDFields[aDungeonFields[i]]:=0;
+      EndIf
+      SleepMS(2);
+    EndForEach
+  EndIf
+
+  If (!restart)
+    TimeOut:=ReadGameClock()+10*60; // 10Minuten hat man Zeit das erste Feld zu betreten
+  Else
+    TimeOut:=ReadGameClock()+60*60; // 60Minuten wenn nen Restart war
+  EndIf
+
+  ForEach id in aDungeonFields  // Initalisierung für Check ob Timeout erreicht
+    dtUsedFields[id]:=0;        // (bei Serverrestart passt das zwar nicht mehr aber egal)
+    dtPlayerFields[id]:={};
+    SleepMS(2);
+  EndForEach
+
+  If (restart)  // Wo befinden sich die Player
+    ForEach serial in (dtGlobalDungeons[lDungeonID][1])
+      ForEach id in aDungeonFields
+        refplayer:=SystemFindObjectBySerial(serial,SYSFIND_SEARCH_OFFLINE_MOBILES);
+        oFieldConfig:=FindConfigElem(oDungeonConfig,id);
+        pos:=SplitWords(oFieldConfig.Corner1);
+        If ((CInt(pos[1])<=refplayer.x) && (CInt(pos[2])<=refplayer.y))
+          pos:=SplitWords(oFieldConfig.Corner2);
+          If ((CInt(pos[1])>refplayer.x) && (CInt(pos[2])>refplayer.y))
+            dtPlayerFields[id].append(serial);
+          EndIf
+        EndIf
+        SleepMS(2);
+      EndForEach
+    EndForEach
+  EndIf
+
+  While (1)  // Endlosschleife zur Überwachung des Dungeons
+    ev:=Wait_For_Event(60);  // 5min damit Timeout funzt (1minuten genau reicht)
+    If (ev)
+      Case (ev.type)
+        EVID_DUNGEONTELEPORT:
+          If (ev.exitTele)
+            // Ist nen ExitTele also schaun ob alle Player draußen
+            bOk:=1;
+            ForEach player in (dtGlobalDungeons[lDungeonID][1])
+              refplayer:=SystemFindObjectBySerial(player,SYSFIND_SEARCH_OFFLINE_MOBILES);
+              If (refplayer.realm==REALM_MALAS)
+                If ((refplayer.x>70) || (refplayer.y>50)) // Grenzen des Eingangsfeldes
+                  bOk:=0;
+                  Break;
+                EndIf
+              EndIf
+              SleepMS(2);
+            EndForEach
+            If (bOk)  // Alle Player befinden sich nicht mehr im innerhalb des dungeons
+              bClearDungeon(lDungeonID);  // Dungeonbereinigen und bei StartTeles ID löschen
+              Return;
+            EndIf
+
+          ElseIf (ev.fieldId and !dtUsedFields[ev.fieldId])
+            // Normalfall: falls noch nicht betreten, dann Timeout
+            // erhöhen (aber Eingang ignorieren)
+            dtUsedFields[ev.fieldId]:=1;
+            Timeout:=ReadGameClock()+CInt(oDungeonConfig[ev.fieldID].Timeout)*60;
+            If (FieldTime)  // Statistik wie lange gebraucht
+              MakeStatistik(1,{sStrength,ReadGameClock()-FieldTime});
+            EndIf
+            FieldTime:=ReadGameClock();
+          EndIf
+
+          Foreach player in (dtPlayerFields[ev.telefrom])
+            If (player==ev.serial)
+              dtPlayerFields[ev.telefrom].erase(_player_iter);
+              Break;
+            EndIf
+          EndForEach
+
+          If (ev.fieldId)  // =0 bei Tele zu start
+            dtPlayerFields[ev.fieldId].append(ev.serial);
+          EndIf
+
+          // Bossscript-Sonderbehandlungen
+          // Boss-Feld verlassen
+          If (dtPIDFields[ev.telefrom])
+            If (GetProcess(dtPIDFields[ev.telefrom]))
+              // Script noch aktiv?
+              If (dtPlayerFields[ev.telefrom].size()==0) // Jetzt leer?
+                GetProcess(dtPIDFields[ev.telefrom]).sendevent(struct{type:=EVID_DUNGEONFIELDRESET});
+              EndIf
+            EndIf
+          EndIf
+          // Boss-Feld betreten
+          If (dtPIDFields[ev.fieldId])
+            If (GetProcess(dtPIDFields[ev.fieldId]))
+              // Script noch aktiv? dann bescheidgeben das Besuch da ist
+              GetProcess(dtPIDFields[ev.fieldId]).sendevent(struct{type:=EVID_DUNGEONBOSSFIELDAKTIV});
+              // und (mindestens bei Feld 30) Initialisierung starten
+              GetProcess(dtPIDFields[ev.fieldId]).sendevent(struct{type:=EVID_DUNGEONBOSSATTACKED});
+            EndIf
+          EndIf
+
+        EVID_DUNGEONASKFORPLAYER:  // Controlscript fragt nach den Playern im Feld
+          ev.source.sendevent(struct{
+              type:=EVID_DUNGEONASKFORPLAYER,
+              players:=dtPlayerFields[ev.fieldid]
+          });
+
+        default:  Syslog("WARNUNG: bekomme komisches Event: "+ev);
+
+      EndCase
+    EndIf
+
+    If (ReadGameClock()>Timeout)  // Timeout erreicht
+      ForEach player in (dtGlobalDungeons[lDungeonID][1])
+        refplayer:=SystemFindObjectBySerial(player,SYSFIND_SEARCH_OFFLINE_MOBILES);
+        If (refplayer.connected)
+          SendSysMessagePergon(refplayer,"Ihr habt versagt!");
+        EndIf
+        If (refplayer.realm==REALM_MALAS)  // Befindet er sich noch Innerhalb des Dungeons?
+          If ((refplayer.x>70) || (refplayer.y>50)) // Grenzen des Eingangsfeldes
+            pos:=StartPos.randomentry();
+            MoveObjectToLocation(refplayer,pos[1],pos[2],pos[3],REALM_MALAS,MOVEOBJECT_FORCELOCATION);
+          EndIf
+        EndIf
+        SleepMS(2);
+      EndForEach
+      // Alle Player sind draußen also aufräumen und winke winke sagen
+      bClearDungeon(lDungeonID);  // Dungeonbereinigen und bei StartTeles ID löschen
+      Return;
+
+    ElseIf (ReadGameClock()>=(Timeout-60))  // Warnung wenn nurnoch 1Min
+      If (!bTimeout1)
+        ForEach player in (dtGlobalDungeons[lDungeonID][1])
+          refplayer:=SystemFindObjectBySerial(player);
+          If (refplayer.connected)
+            SendSysMessagePergon(refplayer,"Beeilt Euch!");
+          EndIf
+          SleepMS(2);
+        EndForEach
+        bTimeout1:=1;
+      EndIf
+    ElseIf (ReadGameClock()>=(Timeout-60*5))  // Warnung wenn nurnoch 5Min
+      If (!bTimeout5)
+        ForEach player in (dtGlobalDungeons[lDungeonID][1])
+          refplayer:=SystemFindObjectBySerial(player);
+          If (refplayer.connected)
+            SendSysMessagePergon(refplayer,"Ihr seid langsam!");
+          EndIf
+          SleepMS(2);
+        EndForEach
+        bTimeout5:=1;
+      EndIf
+    EndIf
+    SleepMS(2);
+  EndWhile
+EndProgram
+
+Function dtChooseDungeon(lLength)
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  //  Baut den Dungeon aus den Dungeonfeldern zusammen
+  //
+  //  Parameter: lLength -> Dungeonlänge
+  //  Returnwert im Fehlerfall: 0
+  //  Returnwert: Dictionary -> Dungeonfelderfolge
+  //                Schlüssel:  DungeonFeldID
+  //                Value:  Array -> {};{DungeonFeldID};{DungeonFeldID;DungeonFeldID}
+  //
+  ////////////////////////////////////////////////////////////////////////////
+  var aFreeFields:=aGetFreeFields();
+
+  var aBossgaenge:=    aFreeFields[1];
+  var aBosssackgassen:=aFreeFields[2];
+  var aBosststuecke:=  aFreeFields[3];
+  var aGaenge:=        aFreeFields[4];
+  var aSackgassen:=    aFreeFields[5];
+  var aTstuecke:=      aFreeFields[6];
+
+//  Print("Bossgänge: " + aBossgaenge);
+//  Print("Bosssackgassen: " + aBosssackgassen);
+//  Print("Bosststücke: " + aBosststuecke );
+//  Print("Gänge: " + aGaenge);
+//  Print("Sackgassen: " + aSackgassen);
+//  Print("Tstücke: " + aTstuecke);
+
+  var dtDungeon:=dictionary;
+  var i;
+
+  If ((aBossgaenge.size() + aBosssackgassen.size() + aBosststuecke.size() + aGaenge.size() + aSackgassen.size() +  aTstuecke.size()) < lLength)
+    //Das geht schonmal rein rechnerisch nicht
+    //Print("Nicht genügend Felder");
+    Return 0;
+  EndIf
+
+  //Dungeon Eingang -> Darf kein Bossfeld sein
+  Var lPrevField;
+  Var aPosFields;
+  Var lField;
+  aPosFields:=aGaenge;
+  lPrevField:=aPosFields.randomentry();
+  aDungeonFields.append(lPrevField);
+  // Gleich das ausgewählte Feld löschen, damit es in der weiteren Bearbeitung nicht berücksichtigt wird
+  bDeleteField(lPrevField,aGaenge,aTStuecke,aSackgassen,aBossGaenge,aBossTStuecke,aBossSackgassen);
+  // Print("Eingangsfeld: " + lPrevField);
+  For (i:=2;i<lLength;i+=1)
+    //Wenn ich hier bin, darf ich zufällig ein Feld auswählen -> Gang oder T-Stück weil im roten Faden
+    //Schauen wir mal ob noch ein Bossfeld mit auftauchen darf
+    Var lBossFields:=lCountBossFields();
+    If (lLength==SMALL)
+      If (lBossFields < 1)
+        //Noch kein Bossfeld vorhanden, dann darf vielleicht noch eins auftauchen
+        If (i<lLength-3)
+          aPosFields:=aGaenge+aBossgaenge+aTstuecke+aBosststuecke;
+        Else
+          aPosFields:=aGaenge+aBossgaenge;
+        EndIf
+      Else
+        If (i<lLength-3)
+          aPosFields:=aGaenge+aTstuecke;
+        Else
+          aPosFields:=aGaenge;
+        EndIf
+      EndIf
+    ElseIf (lLength==MID)
+      If (lBossFields < 2)//Es dürfen noch Bossfelder erzeugt werden
+        if (i<lLength-3)
+          aPosFields:=aGaenge+aBossgaenge+aTstuecke+aBosststuecke;//noch ist alles möglich
+        else
+          aPosFields:=aGaenge+aBossgaenge;
+        endif
+      Else
+        If (i<lLength-3)
+          aPosFields:=aGaenge+aTstuecke;
+        Else
+          aPosFields:=aGaenge;
+        EndIf
+      EndIf
+    ElseIf (lLength==LARGE)
+      If (lBossFields < 4)
+        If ( (lBossFields < 1)&&(i>=lLength-11) )//Jetzt muss ein Bossfeld kommen
+          If (i<lLength-3)
+            aPosFields:=aBossgaenge+aBosststuecke;
+          Else
+            aPosFields:=aBossgaenge;
+          Endif
+        ElseIf ( (lBossFields < 2)&&(i>=lLength-6) )//Jetzt muss ein Bossfeld kommen
+          If (i<lLength-3)
+            aPosFields:=aBossgaenge+aBosststuecke;
+          Else
+            aPosFields:=aBossgaenge;
+          EndIf
+        Else
+          If (i<lLength-3)
+            aPosFields:=aGaenge+aBossgaenge+aTstuecke+aBosststuecke;//noch ist alles möglich
+          Else
+            aPosFields:=aGaenge+aBossgaenge;
+          EndIf
+        EndIf
+      Else
+        If (i<lLength-3)
+          aPosFields:=aGaenge+aTstuecke;
+        Else
+          aPosFields:=aGaenge;
+        EndIf
+      EndIf
+    Else
+      //Fehler - Längendefinition stimmt nicht
+//      Print("Laenge stimmt nicht");
+      Return 0;
+    EndIf
+    lField:=aPosFields.randomentry();
+    If (!lField)
+      Return 0;
+    EndIf
+    aDungeonFields.append(lField);
+    //Gleich das ausgewählte Feld löschen, damit es in der weiteren Bearbeitung nicht berücksichtigt wird
+    bDeleteField(lField,aGaenge,aTStuecke,aSackgassen,aBossGaenge,aBossTStuecke,aBossSackgassen);
+    //Jetzt nach Kreuzung filtern und Sackgassenbau veranlassen
+    If ( (lGetFieldType(lPrevField)==BOSSTSTUECK) || (lGetFieldType(lPrevField)==TSTUECK) )
+      //Es ist eine Kreuzung gewählt worden, ein Teil führt jetzt in eine Sackgasse der andere ist roter Faden
+      var FirstSackField:=lBuildSackgasse(dtDungeon,lLength,lLength-i-2,i,aBossgaenge,aBosssackgassen,aBosststuecke,aGaenge,aSackgassen,aTstuecke);
+      If(!FirstSackField)
+        Return 0;
+      EndIf
+      If (!RandomInt(2))
+        dtDungeon[lPrevField]:={lField,FirstSackField};
+      Else
+        dtDungeon[lPrevField]:={FirstSackField,lField};
+      EndIf
+    Else
+      //Dann ist es ein Gang
+      dtDungeon[lPrevField]:={lField};
+    EndIf
+    lPrevField:=lField;
+    SleepMs(10);
+  EndFor
+
+  //Jetzt noch das Ausgangsfeld anbauen
+  var lBossFields:=lCountBossFields();
+  If (lLength==SMALL)
+    If (lBossFields < 1)
+      aPosFields:=aGaenge + aBossGaenge;
+    Else
+      aPosFields:=aGaenge;
+    EndIf
+  ElseIf (lLength==MID)
+    If (lBossFields < 2)
+      If (lBossFields < 1)
+        aPosFields:=aBossGaenge;
+      Else
+        aPosFields:=aGaenge + aBossGaenge;
+      EndIf
+    Else
+      aPosFields:=aGaenge;
+    EndIf
+  ElseIf (lLength==LARGE)
+    If (lBossFields < 4)
+      If (lBossFields < 3)
+        aPosFields:=aBossGaenge;
+      Else
+        aPosFields:=aGaenge + aBossGaenge;
+      EndIf
+    Else
+      aPosFields:=aGaenge;
+    EndIf
+  EndIf
+  lField:=aPosFields.randomentry();
+  if (!lField)
+    Return 0;
+  endif
+  aDungeonFields.append(lField);
+  dtDungeon[lPrevField]:={lField};
+  dtDungeon[lField]:={};
+//  Print("Ausgangsfeld: " + lField);
+//  Print("DungeonArray: " + aDungeonFields);
+  Return dtDungeon;
+EndFunction
+
+////////////////////////////////////////////////////////////////////////////////////////////
+//
+//  Baut eine Sackgasse zusammen
+//
+//  Return: Anzahl verbauter Felder (automatische Speicherung in dtDungeon und aDungeon)
+////////////////////////////////////////////////////////////////////////////////////////////
+Function lBuildSackgasse(byRef dtDungeon,lLength,MaxLaenge,byRef aktLaenge,byRef aBossgaenge,byRef aBosssackgassen,byRef aBosststuecke, byRef aGaenge,byRef aSackgassen,byRef aTstuecke)
+  var aPosFields;
+  var FirstField:=0;
+  //Abfrage wie lang sie seien darf
+  //Print("Sackgasse - dtDungeon: " + dtDungeon);
+  //Print("Sackgasse - lLength: " + lLength);
+  //Print("Sackgasse - MaxLänge: " + MaxLaenge);
+  //Print("Sackgasse - aktLänge: " + aktLaenge);
+  If (MaxLaenge == 0)
+    //Eine Sackgasse aus 0 Elementen? Das geht nicht
+    //Print("MaxLänge==0");
+    Return 0;
+  ElseIf (MaxLaenge == 1)
+    //Jetzt darf es nur eine Sackgasse sein, sonst zu lang
+    var lBossFields:=lCountBossFields();
+    If (lLength==SMALL)
+      If (lBossFields < 1)
+        aPosFields:=aSackgassen + aBossSackgassen;
+      Else
+        aPosFields:=aSackgassen;
+      EndIf
+    ElseIf (lLength==MID)
+      If (lBossFields < 2)
+        aPosFields:=aSackgassen + aBossSackgassen;
+      Else
+        aPosFields:=aSackgassen;
+      EndIf
+    ElseIf (lLength==LARGE)
+      If (lBossFields < 4)
+        If ( (lBossFields < 1)&&(aktLaenge>=lLength-11) )//Jetzt muss ein Bossfeld kommen
+          aPosFields:=aBossSackgassen;
+        ElseIf ( (lBossFields < 2)&&(aktLaenge>=lLength-6) )//Jetzt muss ein Bossfeld kommen
+          aPosFields:=aBossSackgassen;
+        Else
+          aPosFields:=aSackgassen+aBossSackgassen;//noch ist alles möglich
+        EndIf
+      Else
+        aPosFields:=aSackgassen;
+      EndIf
+    EndIf
+    FirstField:=aPosFields.randomentry();
+  ElseIf (MaxLaenge == 2)
+    //Jetzt darf nur Gang oder Sackgasse kommen
+    var lBossFields:=lCountBossFields();
+    If (lLength==SMALL)
+      If (lBossFields < 1)
+        aPosFields:=aSackgassen + aBossSackgassen + aGaenge + aBossGaenge;
+      Else
+        aPosFields:=aSackgassen + aGaenge;
+      EndIf
+    ElseIf (lLength==MID)
+      If (lBossFields < 2)
+        aPosFields:=aSackgassen + aBossSackgassen + aGaenge + aBossGaenge;
+      Else
+        aPosFields:=aSackgassen + aGaenge;
+      EndIf
+    ElseIf (lLength==LARGE)
+      If (lBossFields < 4)
+        If ( (lBossFields < 1)&&(aktLaenge>=lLength-11) )//Jetzt muss ein Bossfeld kommen
+          aPosFields:=aBossSackgassen + aBossGaenge;
+        ElseIf ( (lBossFields < 2)&&(aktLaenge>=lLength-6) )//Jetzt muss ein Bossfeld kommen
+          aPosFields:=aBossSackgassen + aBossGaenge;
+        Else
+          aPosFields:=aSackgassen+aBossSackgassen + aGaenge + aBossGaenge;//noch ist alles möglich
+        EndIf
+      Else
+        aPosFields:=aSackgassen + aGaenge;
+      EndIf
+    EndIf
+    FirstField:=aPosFields.randomentry();
+  Else
+    //Noch ist alles möglich
+    FirstField:=lFindSackgassenField(lLength,aktLaenge,aGaenge,aTStuecke,aSackgassen,aBossGaenge,aBossTStuecke,aBossSackgassen);
+    //Print("Sackgasse - FirstField gewaehlt: " + FirstField);
+  EndIf
+
+  If (!FirstField)
+    //Es wurde kein Feld gewählt bzw. war nicht möglich -> Abbruch
+    Return 0;
+  EndIf
+
+  bDeleteField(FirstField,aGaenge,aTStuecke,aSackgassen,aBossGaenge,aBossTStuecke,aBossSackgassen);
+  aDungeonFields.append(FirstField);
+  aktLaenge+=1;
+
+  If ( (lGetFieldType(FirstField)==BOSSGANG)||(lGetFieldType(FirstField)==GANG) )
+    //Jetzt muss eine Sackgasse kommen nach Aufbauregel -> Danach Fertig
+    var lBossFields:=lCountBossFields();
+    If (lLength==SMALL)
+      If (lBossFields < 1)
+        aPosFields:=aSackgassen + aBossSackgassen;
+      Else
+        aPosFields:=aSackgassen;
+      EndIf
+    ElseIf (lLength==MID)
+      If (lBossFields < 2)
+        aPosFields:=aSackgassen + aBossSackgassen;
+      Else
+        aPosFields:=aSackgassen;
+      EndIf
+    ElseIf (lLength==LARGE)
+      If (lBossFields < 4)
+        If ( (lBossFields < 1)&&(aktLaenge>=lLength-11) )//Jetzt muss ein Bossfeld kommen
+          aPosFields:=aBossSackgassen;
+        ElseIf ( (lBossFields < 2)&&(aktLaenge>=lLength-6) )//Jetzt muss ein Bossfeld kommen
+          aPosFields:=aBossSackgassen;
+        Else
+          aPosFields:=aSackgassen+aBossSackgassen;//noch ist alles möglich
+        EndIf
+      Else
+        aPosFields:=aSackgassen;
+      EndIf
+    EndIf
+    var SecondField:=aPosFields.randomentry();
+    bDeleteField(SecondField,aGaenge,aTStuecke,aSackgassen,aBossGaenge,aBossTStuecke,aBossSackgassen);
+    aDungeonFields.append(SecondField);
+    dtDungeon[FirstField]:={SecondField};
+    dtDungeon[SecondField]:={};
+    aktLaenge+=1;
+  ElseIf( (lGetFieldType(FirstField)==BOSSTSTUECK)||(lGetFieldType(FirstField)==TSTUECK) )
+    //Jetzt für beide Teile eine Sackgasse bauen lassen
+    var SackOne:=lBuildSackgasse(dtDungeon,lLength,lLength-aktLaenge-3,aktLaenge,aBossgaenge,aBosssackgassen,aBosststuecke,aGaenge,aSackgassen,aTstuecke);
+    SleepMS(2);
+    var SackTwo:=lBuildSackgasse(dtDungeon,lLength,lLength-aktLaenge-2,aktLaenge,aBossgaenge,aBosssackgassen,aBosststuecke,aGaenge,aSackgassen,aTstuecke);
+    SleepMS(2);
+    If (!SackOne)
+      //Irgendwas ist schiefgelaufen -> Abbruch
+      Return 0;
+    EndIf
+    If (!SackTwo)
+      //Irgendwas ist schiefgelaufen -> Abbruch
+      Return 0;
+    EndIf
+    //Print("Sackgassenfeld1: " + SackOne);
+    //Print("Sackgassenfeld2: " + SackTwo);
+    If (!RandomInt(2))
+      dtDungeon[FirstField]:={SackOne,SackTwo};
+    Else
+      dtDungeon[FirstField]:={SackTwo,SackOne};
+    EndIf
+  Else
+    //Jetzt kann es nur eine Sackgasse gewesen sein -> Fertig
+    dtDungeon[FirstField]:={};
+  EndIf
+  //Print("Sackgasse - FirstField: " + FirstField);
+  Return FirstField;
+EndFunction
+
+Function bSpawnDungeon(difficulty, byref dtPIDFields, playeramount)
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  //  Spawnt alles was im Dungeon sein soll (Monster,Schatzkisten,etc)
+  //        Erschwerniss alle 20% der Felder
+  //
+  //  Parameter:  difficulty -> Difficulty des Dungeons
+  //  Returnwert: 1, wenn alles gespawnt werden konnte
+  //  Returnwert im Fehlerfall: 0
+  //
+  ////////////////////////////////////////////////////////////////////////////
+
+  var i;
+  Var pid;
+  For (i:=1;i<=aDungeonFields.size();i+=1)
+    Var oFieldConfig := FindConfigElem(oDungeonConfig, aDungeonFields[i]);
+    If (oFieldConfig.Script)
+      // ControlScript vorhanden -> nur Skript starten
+      pid := Start_ScriptPergon(
+        oFieldConfig.Script, {difficulty, GetProcess(GetPID()), 0}
+      );
+      dtPIDFields[aDungeonFields[i]] := pid.pid; // PID merken
+    Else
+      var SpawnNPCs:=GetConfigStringArray(oFieldConfig,"SpawnNPC");
+      ForEach spawnNPC In SpawnNPCs
+        For npc := 1 To playeramount
+          Spawn(spawnNPC, difficulty);
+          SleepMS(2);
+        EndFor
+      EndForEach
+      var SpawnSpecials:=GetConfigStringArray(oFieldConfig,"SpawnSpecial");
+      ForEach Special in SpawnSpecials
+        SpawnSpecial(Special,difficulty);
+        SleepMS(2);
+      EndForEach
+    EndIf
+    SleepMS(2);
+  EndFor
+  Return(1);
+EndFunction
+
+Function bClearDungeon(lClearID:=0)
+  //////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //  Den Dungeon und seine Felder clearen
+  //
+  //  Parameter: lClearID -> Dungeon komplett auflösen? (DungeonId)
+  //  Returnwert: 1, wenn alles erfolgreich gelöscht werden konnte
+  //  Returnwert im Fehlerfall: 0
+  //
+  ////////////////////////////////////////////////////////////////////////////////////////////////
+  Var fieldcfg;
+  Var temp;
+  Var corner1x, corner1y, corner2x, corner2y;
+
+  If (lClearID)  // erst Global reinigen mit Startteles dann erst intern reinigen
+    Var dtGlobalDungeons, startTele, startcprop;
+    Set_Critical(1);  // Dungeon wieder aus der Globalen Löschen
+    dtGlobalDungeons:=GetGlobalProperty(CPROPDUNGEONS);
+    dtGlobalDungeons.erase(lClearID);
+    SetGlobalProperty(CPROPDUNGEONS,dtGlobalDungeons);
+    Set_Critical(0);
+
+    // Startteleporter die DungeonID verlernen lassen
+    ForEach start in aPosStartTeles
+      startTele:=ListItemsNearLocationOfType(start[1], start[2], LIST_IGNORE_Z, 0, 0x6698, REALM_MALAS )[1];
+      If (startTele)
+        Set_Critical(1);
+        startcprop:=startTele.getprop(CPTELE_PARTY);
+        startcprop.erase(lClearID);
+        startTele.setprop(CPTELE_PARTY,startcprop);
+        Set_Critical(0);
+      EndIf
+    EndForEach
+  EndIf
+
+  ForEach fieldid in aDungeonFields
+    fieldcfg:= FindConfigElem(oDungeonConfig, fieldid);
+    temp:=SplitWords(fieldcfg.Corner1);
+    corner1x:=CInt(temp[1]);
+    corner1y:=CInt(temp[2]);
+    temp:=SplitWords(fieldcfg.Corner2);
+    corner2x:=CInt(temp[1]);
+    corner2y:=CInt(temp[2]);
+    ForEach object in (ListObjectsInBox(corner1x,corner1y,-127, corner2x,corner2y,128, REALM_MALAS ))
+      If (object.isA(POLCLASS_ITEM))  // Erstmal Items
+        If ((object.isA(POLCLASS_CORPSE)) || (object.objtype==0x669E)) // Leichen auf den Friedhof packen
+          If (!bMoveCorpseToGraveyard(object))  // Falls irgendwas nicht stimmt doch löschen (keine Playerleiche)
+            DestroyItem(object);
+          EndIf
+        ElseIf (!object.isA(POLCLASS_DOOR))  // Türen sind dekoelemente
+          If (!object.getprop("dyndungeondeko")) // spezielle DekoItems
+            DestroyItem(object);
+          EndIf
+        EndIf
+      ElseIf (object.isA(POLCLASS_MOBILE))  // Mobiles
+        If (object.isA(POLCLASS_NPC)) // Nur NPCs
+          object.disable("invul");
+          object.setprop("guardkill",1); // Leiche benötigen wir nicht
+          KillMobile(object,"dyndungeon-CleanUP");
+        EndIf
+      EndIf
+      SleepMS(2);
+    EndForEach
+  EndForEach
+  Return(1);
+EndFunction
+
+Function bCreateTeleporter(byref dtDungeon,lAnfang,lEnde, difficulty)
+  ////////////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //  Die Teleporter innerhalb des Dungeons erzeugen
+  //
+  //  Parameter: dtDungeon -> Dictionary-Dungeonfelderfolger, lAnfang,lEnde ->FeldID für Start/Endfeld
+  //  Returnwert: 1, wenn alle erzeugt werden konnten
+  //  Returnwert im Fehlerfall: 0
+  //
+  //  cprop CPTELE_TELETO an den Teleportern setzen
+  //  cprop CPTELE_START,CPTELE_EXIT
+  //////////////////////////////////////////////////////////////////////////////////////////////////
+
+  Var cfgField, cfgZielField;
+  Var endTeles,zielTeles;
+  Var endKoords, zielKoords;
+  Var teleporter, choosedExit;
+  Var intKoords;
+
+  ForEach field in dtDungeon  // Dict Durchgehen
+    cfgField:=FindConfigElem(oDungeonConfig,_field_iter);
+    If (!cfgField)
+      Syslog("Fehler in der Cfg bei FieldID "+_field_iter);
+      Return(0);
+    EndIf
+
+    If (_field_iter==lEnde) // Endfeld bekommt Sonderbehandlung
+
+      endTeles:=GetConfigStringArray( cfgField, "Exitkoords1" );
+      var teles := array{};
+      ForEach tele in endTeles  // Alle Exitkoords Teleporter erzeugen und mit Starposverknüpfen
+        endKoords:=SplitWords(tele);
+        teleporter:=CreateItemAtLocationPergon(CInt(endKoords[1]), CInt(endKoords[2]), CInt(endKoords[3]),
+                                               0x6698, 1, REALM_MALAS);
+        choosedExit:=StartPos.randomentry();
+        teleporter.color := 50;
+        teleporter.setprop(CPITEM_DIFFICULTY, DiffToAmount(difficulty));
+        teleporter.setprop(CPTELE_EXIT,1);
+        teleporter.setprop(CPTELE_FIELDID,0);
+        teleporter.setprop(CPTELE_TELEFROM,_field_iter);
+        teleporter.setprop(CPTELE_TELETO,choosedExit);
+        teles.append(teleporter);
+      EndForEach
+      BautoolMark(teles);
+
+
+    ElseIf (field.size())  // Keine Sackgasse
+
+      ForEach zielfield in field  // 1 oder 2 Ausgänge
+        cfgZielField:=FindConfigElem(oDungeonConfig,zielfield);  // Zielpunkt besorgen
+        If (!cfgZielField)
+          Syslog("Fehler in der Cfg bei FieldID "+zielfield);
+          Return(0);
+        EndIf
+        endTeles:=GetConfigStringArray( cfgField, "Exitkoords"+_zielfield_iter );
+        zielTeles:=GetConfigStringArray( cfgZielField, "Entrykoords" );
+        var teles := array{};
+        ForEach tele in endTeles  // An exitkoords Teleporter erzeugen
+          endKoords:=SplitWords(tele);
+          teleporter:=CreateItemAtLocationPergon(CInt(endKoords[1]), CInt(endKoords[2]), CInt(endKoords[3]),
+                                                 0x6698, 1, REALM_MALAS);
+          choosedExit:=zielTeles.randomentry();  // Zufällig verknüpfen
+          intKoords:=SplitWords(choosedExit);
+          intKoords[1]:=CInt(intKoords[1]);
+          intKoords[2]:=CInt(intKoords[2]);
+          intKoords[3]:=CInt(intKoords[3]);
+          teleporter.setprop(CPTELE_TELETO,intKoords);
+          teleporter.setprop(CPTELE_FIELDID,zielfield);  // ID wo man landet
+          teleporter.setprop(CPTELE_TELEFROM,_field_iter);
+          teles.append(teleporter);
+        EndForEach
+        BautoolMark(teles);
+
+        teles := array{};
+        ForEach tele in zielTeles  // An Zielkoords Teleporter erzeugen
+          zielKoords:=SplitWords(tele);
+          teleporter:=CreateItemAtLocationPergon(CInt(zielKoords[1]), CInt(zielKoords[2]), CInt(zielKoords[3]),
+                                                 0x6698, 1, REALM_MALAS);
+          choosedExit:=endTeles.randomentry();  // Zufällig verknüpfen
+          intKoords:=SplitWords(choosedExit);
+          intKoords[1]:=CInt(intKoords[1]);
+          intKoords[2]:=CInt(intKoords[2]);
+          intKoords[3]:=CInt(intKoords[3]);
+          teleporter.setprop(CPTELE_TELETO,intKoords);
+          teleporter.setprop(CPTELE_FIELDID,_field_iter);  // ID wo man landet
+          teleporter.setprop(CPTELE_TELEFROM,zielfield);
+          teles.append(teleporter);
+        EndForEach
+        BautoolMark(teles);
+
+      EndForEach
+    EndIf
+
+    If (_field_iter==lAnfang) // Anfangsfeld bekommt Sonderbehandlung
+
+      endTeles:=GetConfigStringArray( cfgField, "Entrykoords");
+      var teles := array{};
+      ForEach tele in endTeles  // Alle Ausgänge mit Startpos verknüpfen
+        endKoords:=SplitWords(tele);
+        teleporter:=CreateItemAtLocationPergon(CInt(endKoords[1]), CInt(endKoords[2]), CInt(endKoords[3]),
+                                               0x6698, 1, REALM_MALAS);
+        choosedExit:=StartPos.randomentry();
+        teleporter.setprop(CPTELE_TELETO,choosedExit);
+        teleporter.setprop(CPTELE_FIELDID,0);
+        teleporter.setprop(CPTELE_START,1);
+        teleporter.setprop(CPTELE_TELEFROM,_field_iter);
+        teles.append(teleporter);
+      EndForEach
+      BautoolMark(teles);
+    EndIf
+    SleepMS(2);
+  EndForEach
+
+  Return(1);
+EndFunction
+
+
+Function lCountBossFields()
+  /////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //  Ermittelt wieviele Bossfelder im aktuellen Dungeon schon verbaut sind
+  //
+  //  Returnwert im Fehlerfall: -1
+  //  Returnwert: Integer - Anzahl Bossfelder
+  //
+  ///////////////////////////////////////////////////////////////////////////////////////////
+  var i:=0;
+  Foreach lField in aDungeonFields
+    var lFieldType:=lGetFieldType(lField);
+    If ( (lFieldType==BOSSGANG) || (lFieldType==BOSSSACKGASSE) || (lFieldType==BOSSTSTUECK) )
+      i+=1;
+    EndIf
+    SleepMS(2);
+  EndForEach
+  Return i;
+EndFunction
+
+Function bDeleteField(lField,byRef aGaenge,byRef aTStuecke,byRef aSackgassen,byRef aBossGaenge,byRef aBossTStuecke,byRef aBossSackgassen)
+  var i;
+  If (lField In aGaenge)
+    For (i:=1;i<=aGaenge.size();i+=1)
+      If (lField==aGaenge[i])
+        aGaenge.erase(i);
+        Return 1;
+      EndIf
+    EndFor
+  ElseIf (lField In aTStuecke)
+    For (i:=1;i<=aTStuecke.size();i+=1)
+      If (lField==aTStuecke[i])
+        aTStuecke.erase(i);
+        Return 1;
+      EndIf
+    EndFor
+  ElseIf (lField In aSackgassen)
+    For (i:=1;i<=aSackgassen.size();i+=1)
+      If (lField==aSackgassen[i])
+        aSackgassen.erase(i);
+        Return 1;
+      EndIf
+    EndFor
+  ElseIf (lField In aBossGaenge)
+    For (i:=1;i<=aBossGaenge.size();i+=1)
+      If (lField==aBossGaenge[i])
+        aBossGaenge.erase(i);
+        Return 1;
+      EndIf
+    EndFor
+  ElseIf (lField In aBossTStuecke)
+    For (i:=1;i<=aBossTStuecke.size();i+=1)
+      If (lField==aBossTStuecke[i])
+        aBossTStuecke.erase(i);
+        Return 1;
+      EndIf
+    EndFor
+  ElseIf (lField In aBossSackgassen)
+    For (i:=1;i<=aBossSackgassen.size();i+=1)
+      If (lField==aBossSackgassen[i])
+        aBossSackgassen.erase(i);
+        Return 1;
+      EndIf
+    EndFor
+  Else
+    Return 1;
+  EndIf
+EndFunction
+
+Function aGetFreeFields()
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  //  Ermittelt alle freien Felder und Typus dieser
+  //
+  //  Parameter:  -
+  //  Returnwert: Array aller freien FeldIDs sortiert nach Typ
+  //
+  ////////////////////////////////////////////////////////////////////////////
+
+  Var dDungeons:=GetGlobalProperty(CPROPDUNGEONS);
+  Var aAllFields:=GetConfigIntKeys(oDungeonConfig);
+  Var aBossgaenge:={},aBosssackgassen:={},aBosststuecke:={};
+  Var aGaenge:={},aTstuecke:={},aSackgassen:={};
+  Var bFree;
+
+  Foreach lField in aAllFields
+    bFree:=1;
+    ForEach aDungeon in dDungeons
+      If (lField in aDungeon[2])
+        bFree:=0;
+        Break;
+      EndIf
+      SleepMS(2);
+    EndForEach
+    If (bFree)
+      Case (lGetFieldType(lField))
+        BOSSGANG:      aBossgaenge.append(lField);
+        BOSSSACKGASSE: aBosssackgassen.append(lField);
+        BOSSTSTUECK:   aBosststuecke.append(lField);
+        GANG:          aGaenge.append(lField);
+        SACKGASSE:     aSackgassen.append(lField);
+        TSTUECK:       aTstuecke.append(lField);
+        default:       Syslog("Fehler in der Cfg bei FieldID "+lField);
+      EndCase
+    EndIf
+    SleepMS(2);
+  EndForEach
+
+  Return({aBossgaenge,aBosssackgassen,aBosststuecke,aGaenge,aSackgassen,aTstuecke});
+EndFunction
+
+Function lGetFieldType(lField)
+  /////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //  Liefert den Feldtyp
+  //
+  //  Parameter:  Feldid
+  //  Returnwert: Feldtypkonstante
+  //  Returnwert im Fehlerfall: 0
+  //
+  //
+  ///////////////////////////////////////////////////////////////////////////////////////////
+  Var cfgField:=FindConfigElem(oDungeonConfig,lField);
+  If (!cfgField)
+    Return(0);
+  EndIf
+
+  Case (cfgField.Type)
+    "G":  If (cfgField.Boss)
+            Return(BOSSGANG);
+          Else
+            Return(GANG);
+          EndIf
+    "S":  If (cfgField.Boss)
+            Return(BOSSSACKGASSE);
+          Else
+            Return(SACKGASSE);
+          EndIf
+    "T":  If (cfgField.Boss)
+            Return(BOSSTSTUECK);
+          Else
+            Return(TSTUECK);
+          EndIf
+
+    default:
+          Return(0);
+  EndCase
+EndFunction
+
+Function bMoveCorpseToGraveyard(objCorpse)
+  /////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //  Bewegt Playerleichen zum Friedhof
+  //
+  //  Parameter:  ObjRef der Leiche
+  //  Returnwert: Bool
+  //
+  ///////////////////////////////////////////////////////////////////////////////////////////
+  Var aPossibleLocs:={{40,19,6},{42,19,6},{44,19,6},{46,19,6},{48,19,6},
+                     {39,23,6},{41,23,6},{43,23,6},{45,23,6},{47,23,6}};  // mögliche Position von Leichen
+  Var aMinAnz:={100,0}, lAnz:=0;
+  If ((objCorpse.getprop("lifetime")) || (objCorpse.objtype==0x669e))  // Playerleiche?
+    ForEach locs in aPossibleLocs
+      lAnz:=(ListItemsNearLocationOfType( locs[1], locs[2], LIST_IGNORE_Z, 0, 0x2006, REALM_MALAS )+
+             ListItemsNearLocationOfType( locs[1], locs[2], LIST_IGNORE_Z, 0, 0x669e, REALM_MALAS )).size();
+      If (lAnz<aMinAnz[1])
+        aMinAnz[1]:=lAnz;
+        aMinAnz[2]:=_locs_iter;
+        If (aMinAnz[1]==0)  // Erstes Feld mit 0 Leichen also nehmen wir das
+          Break;
+        EndIf
+      EndIf
+      SleepMS(2);
+    EndForEach
+    MoveObjectToLocation(objCorpse,aPossibleLocs[aMinAnz[2]][1],
+                                   aPossibleLocs[aMinAnz[2]][2],
+                                   aPossibleLocs[aMinAnz[2]][3], REALM_MALAS,
+                                   MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+    Return(1);
+  Else
+    Return(0);
+  EndIf
+EndFunction
+
+Function lFindSackgassenField(lLength,aktLaenge,byRef aGaenge,byRef aTStuecke,byRef aSackgassen,byRef aBossGaenge,byRef aBossTStuecke,byRef aBossSackgassen)
+  var aktField;
+  var lRnd:=RandomInt(100);
+  var aPosFields;
+
+  //Anfangsfeld suchen
+  If (lLength==SMALL)
+      If (lCountBossFields() < 1)
+        //Noch kein Bossfeld vorhanden, dann darf vielleicht noch eins auftauchen
+        If (lRnd<25)
+          //Jetzt kommt ein Sackgassen-Element
+          aPosFields:=aBosssackgassen+aSackgassen;
+        ElseIf (lRnd<50)
+          //Jetzt kommt ein T-Stueck
+          aPosFields:=aTstuecke+aBosststuecke;
+        Else
+          //Jetzt kommt ein Gang
+          aPosFields:=aGaenge+aBossgaenge;
+        EndIf
+      Else
+        If (lRnd<25)
+          //Jetzt kommt ein Sackgassen-Element
+          aPosFields:=aSackgassen;
+        ElseIf (lRnd<50)
+          //Jetzt kommt ein T-Stueck
+          aPosFields:=aTstuecke;
+        Else
+          //Jetzt kommt ein Gang
+          aPosFields:=aGaenge;
+        EndIf
+      EndIf
+    ElseIf (lLength==MID)
+      If (lCountBossFields() < 2)//Es dürfen noch Bossfelder erzeugt werden
+        If ( (lCountBossFields() < 1)&&(aktLaenge>=lLength-3) )//Jetzt muss ein Bossfeld kommen
+          If (lRnd<25)
+            //Jetzt kommt ein Sackgassen-Element
+            aPosFields:=aBosssackgassen;
+          ElseIf (lRnd<50)
+            //Jetzt kommt ein T-Stueck
+            aPosFields:=aBosststuecke;
+          Else
+            //Jetzt kommt ein Gang
+            aPosFields:=aBossgaenge;
+          EndIf
+        Else //noch ist alles möglich
+          If (lRnd<25)
+            //Jetzt kommt ein Sackgassen-Element
+            aPosFields:=aBosssackgassen+aSackgassen;
+          ElseIf (lRnd<50)
+            //Jetzt kommt ein T-Stueck
+            aPosFields:=aTstuecke+aBosststuecke;
+          Else
+            //Jetzt kommt ein Gang
+            aPosFields:=aGaenge+aBossgaenge;
+          EndIf
+        EndIf
+      Else //keine Bosfelder mehr
+        If (lRnd<25)
+          //Jetzt kommt ein Sackgassen-Element
+          aPosFields:=aSackgassen;
+        ElseIf (lRnd<50)
+          //Jetzt kommt ein T-Stueck
+          aPosFields:=aTstuecke;
+        Else
+          //Jetzt kommt ein Gang
+          aPosFields:=aGaenge;
+        EndIf
+      EndIf
+    ElseIf (lLength==LARGE)
+      If (lCountBossFields() < 4)
+        If ( (lCountBossFields() < 1)&&(aktLaenge>=lLength-11) )//Jetzt muss ein Bossfeld kommen
+          If (lRnd<25)
+            //Jetzt kommt ein Sackgassen-Element
+            aPosFields:=aBosssackgassen;
+          ElseIf (lRnd<50)
+            //Jetzt kommt ein T-Stueck
+            aPosFields:=aBosststuecke;
+          Else
+            //Jetzt kommt ein Gang
+            aPosFields:=aBossgaenge;
+          EndIf
+        ElseIf ( (lCountBossFields() < 2)&&(aktLaenge>=lLength-6) )//Jetzt muss ein Bossfeld kommen
+          If (lRnd<25)
+            //Jetzt kommt ein Sackgassen-Element
+            aPosFields:=aBosssackgassen;
+          ElseIf (lRnd<50)
+            //Jetzt kommt ein T-Stueck
+            aPosFields:=aBosststuecke;
+          Else
+            //Jetzt kommt ein Gang
+            aPosFields:=aBossgaenge;
+          EndIf
+        ElseIf ( (lCountBossFields() < 3)&&(aktLaenge>=lLength-3) )//Jetzt muss ein Bossfeld kommen
+          If (lRnd<25)
+            //Jetzt kommt ein Sackgassen-Element
+            aPosFields:=aBosssackgassen;
+          ElseIf (lRnd<50)
+            //Jetzt kommt ein T-Stueck
+            aPosFields:=aBosststuecke;
+          Else
+            //Jetzt kommt ein Gang
+            aPosFields:=aBossgaenge;
+          EndIf
+        Else
+          If (lRnd<25)
+            //Jetzt kommt ein Sackgassen-Element
+            aPosFields:=aBosssackgassen+aSackgassen;
+          ElseIf (lRnd<50)
+            //Jetzt kommt ein T-Stueck
+            aPosFields:=aTstuecke+aBosststuecke;
+          Else
+            //Jetzt kommt ein Gang
+            aPosFields:=aGaenge+aBossgaenge;
+          EndIf
+        EndIf
+      Else
+        If (lRnd<25)
+          //Jetzt kommt ein Sackgassen-Element
+          aPosFields:=aSackgassen;
+        ElseIf (lRnd<50)
+          //Jetzt kommt ein T-Stueck
+          aPosFields:=aTstuecke;
+        Else
+          //Jetzt kommt ein Gang
+          aPosFields:=aGaenge;
+        EndIf
+      EndIf
+    EndIf
+    If (aPosFields.size() < 1)
+      Return 0;
+    EndIf
+    aktField:=aPosFields.randomentry();
+    Return aktField;
+EndFunction
+
+
+Function bTellStartTeleporters(lAnfang, lDungeonID)
+  /////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //  Setzt CProp bei den StartTeleportern damit Party durchgelassen wird
+  //
+  //  Parameter:  Anfangsfeld, DungeonID, PartyLeader
+  //  Returnwert: Bool
+  //
+  ///////////////////////////////////////////////////////////////////////////////////////////
+  Var startTele,cfgAnfangField, anfangTeles, choosedExit, intKoords, startcprop;
+
+  cfgAnfangField:=FindConfigElem(oDungeonConfig,lAnfang);  // Zielpunkt besorgen
+  If (!cfgAnfangField)
+    Syslog("Fehler in der Cfg bei FieldID "+lAnfang);
+    Return(0);
+  EndIf
+  anfangTeles:=GetConfigStringArray( cfgAnfangField, "Entrykoords" );
+
+  ForEach start in aPosStartTeles
+    startTele:=ListItemsNearLocationOfType(start[1], start[2], LIST_IGNORE_Z, 0, 0x6698, REALM_MALAS )[1];
+    choosedExit:=anfangTeles.randomentry();  // Zufällig verknüpfen
+    intKoords:=SplitWords(choosedExit);
+    intKoords[1]:=CInt(intKoords[1]);
+    intKoords[2]:=CInt(intKoords[2]);
+    intKoords[3]:=CInt(intKoords[3]);
+    intKoords[4]:=lAnfang;  // Wo lande ich
+    If (startTele)
+      Set_Critical(1);
+      startcprop:=startTele.getprop(CPTELE_PARTY);
+      If (!startcprop)
+        startcprop:=dictionary;
+      EndIf
+      startcprop[lDungeonID]:=intKoords;
+      startTele.setprop(CPTELE_PARTY,startcprop);
+      Set_Critical(0);
+    Else
+      startTele:=CreateItemAtLocationPergon(start[1], start[2], start[3], 0x6698, 1, REALM_MALAS);
+      startcprop:=dictionary;
+      startcprop[lDungeonID]:=intKoords;
+      startTele.setprop(CPTELE_PARTY,startcprop);
+    EndIf
+    SleepMS(2);
+  EndForEach
+  Return(1);
+
+EndFunction
+
+
+Function MakeStatistik(type,param)
+  /////////////////////////////////////////////////////////////////////////////////////////
+  //
+  //  Macht den ganzen Statistikkram an der GlobalenProp
+  //
+  //  Parameter:  type, param
+  //              type 0 - param: lLength,sStrength,lParty,BossFields
+  //              type 1 - param: sStrength,Zeit
+  //  Returnwert: -
+  //
+  ///////////////////////////////////////////////////////////////////////////////////////////
+  var old:=Is_Critical();
+  Set_Critical(1);
+  var dtGlobalStatistik:=GetGlobalProperty(CPROPSTATISTIK);
+  If (!dtGlobalStatistik)
+    dtGlobalStatistik:=struct{Anz_Dungeons:=0,
+                              Durch_Zeit_Feld:=struct{Nov:=0.0,Kory:=0.0,Leg:=0.0},
+                              Sum_Zeit_Feld:=struct{Nov:=0.0,Kory:=0.0,Leg:=0.0},
+                              Anz_Kombis:=struct{Nov_Kurz:=0,
+                                                 Nov_Mid:=0,
+                                                 Nov_Lang:=0,
+                                                 Kory_Kurz:=0,
+                                                 Kory_Mid:=0,
+                                                 Kory_Lang:=0,
+                                                 Leg_Kurz:=0,
+                                                 Leg_Mid:=0,
+                                                 Leg_Lang:=0},
+                              Anz_BossFelder:=struct{Kurz:=0,Mid:=0,Lang:=0},
+                              Durch_Party:=0.0,
+                              Sum_Party:=0};
+  EndIf
+
+  If (!type) // Start Statistik
+    // param: lLength,sStrength,lParty,BossFields
+    dtGlobalStatistik.Anz_Dungeons+=1;  // Wieviel Dungeons gab es schon
+    If (param[2]==NOVICE)  // Welche Kombi gewählt
+      If (param[1]==SMALL)
+        dtGlobalStatistik.Anz_Kombis.Nov_Kurz+=1;
+      ElseIf (param[1]==MID)
+        dtGlobalStatistik.Anz_Kombis.Nov_Mid+=1;
+      Else
+        dtGlobalStatistik.Anz_Kombis.Nov_Lang+=1;
+      EndIf
+    ElseIf (param[2]==KORY)
+      If (param[1]==SMALL)
+        dtGlobalStatistik.Anz_Kombis.Kory_Kurz+=1;
+      ElseIf (param[1]==MID)
+        dtGlobalStatistik.Anz_Kombis.Kory_Mid+=1;
+      Else
+        dtGlobalStatistik.Anz_Kombis.Kory_Lang+=1;
+      EndIf
+    Else
+      If (param[1]==SMALL)
+        dtGlobalStatistik.Anz_Kombis.Leg_Kurz+=1;
+      ElseIf (param[1]==MID)
+        dtGlobalStatistik.Anz_Kombis.Leg_Mid+=1;
+      Else
+        dtGlobalStatistik.Anz_Kombis.Leg_Lang+=1;
+      EndIf
+    EndIf
+    // Durchschnittliche Partygröße
+    dtGlobalStatistik.Sum_Party+=param[3];
+    dtGlobalStatistik.Durch_Party:=
+      dtGlobalStatistik.Sum_Party/(dtGlobalStatistik.Anz_Dungeons*1.0);
+
+    If (param[1]==SMALL)  // Wieviel Bossfelder
+      dtGlobalStatistik.Anz_BossFelder.Kurz+=param[4];
+    ElseIf (param[1]==MID)
+      dtGlobalStatistik.Anz_BossFelder.Mid+=param[4];
+    Else
+      dtGlobalStatistik.Anz_BossFelder.Lang+=param[4];
+    EndIf
+
+  ElseIf (type) // Durchnittliche Zeit
+    // param: sStrength,Zeit
+    If (param[1]==NOVICE)
+      dtGlobalStatistik.Sum_Zeit_Feld.Nov+=param[2];
+      dtGlobalStatistik.Durch_Zeit_Feld.Nov:=
+        dtGlobalStatistik.Sum_Zeit_Feld.Nov/(dtGlobalStatistik.Anz_Dungeons*1.0);
+    ElseIf (param[1]==KORY)
+      dtGlobalStatistik.Sum_Zeit_Feld.Kory+=param[2];
+      dtGlobalStatistik.Durch_Zeit_Feld.Kory:=
+        dtGlobalStatistik.Sum_Zeit_Feld.Kory/(dtGlobalStatistik.Anz_Dungeons*1.0);
+    Else
+      dtGlobalStatistik.Sum_Zeit_Feld.Leg+=param[2];
+      dtGlobalStatistik.Durch_Zeit_Feld.Leg:=
+        dtGlobalStatistik.Sum_Zeit_Feld.Leg/(dtGlobalStatistik.Anz_Dungeons*1.0);
+    EndIf
+  EndIf
+  SetGlobalProperty(CPROPSTATISTIK,dtGlobalStatistik);
+  Set_Critical(old);
+EndFunction

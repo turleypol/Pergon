@@ -1,0 +1,61 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//  firefield.src - Walkover Script for FireFields
+//
+//  Modifications:
+//
+//  17.11.2000 - Fraggulus - Feuerresistenz
+//  21.01.2002 - Bihinos - Rewrite for new Magic
+//  09.02.2004 - Bihinos - removed creator as scriptcontroller (misused by players)
+//                         minor changes
+//
+/////////////////////////////////////////////////////////////////////////////
+
+use vitals;
+use os;
+use uo;
+use cfgfile;
+use math;
+
+Include ":newspells:resistance";
+Include "include/packets";
+
+Program FireField (mobile, tile)
+  If (mobile.getprop("ignorefields"))  // DynDungeon Vieh ignoriert alle Felder
+    Return;
+  EndIf
+  If (mobile.cmdlevel>=CMDLEVEL_SEER)
+    Return;
+  EndIf
+  If (!mobile.dead) // Wenn schon tod, waers ja sinnfrei
+    Var fields:= ReadConfigFile("magicfields"); // read Config-File for magic fields
+    if (fields)     
+     // Shinigami: ist kein sinnvoller Angriffszauber gegen Spieler (kann ja rumrennen), wird aber oft gegen die Magier ausgenutzt (krimell markieren)
+        Var boss:= SystemFindObjectBySerial(CInt(GetObjProperty(tile, "creator"))); // get creator of field
+      if (boss) // make creator attacker
+        SetScriptController(boss);
+      endif
+
+      Var fielddata:= FindConfigElem(fields, "fire"); // get field data from Config
+      Var dmg:= CInt(GetObjProperty(tile, "f") * fielddata.dmg / 100); // read and calc fields base damage
+      Var int:= CInt(fielddata.int); // read interval of attack
+      Var res;
+      Var hit;
+
+      Set_Priority(1);
+
+      Repeat
+        If (GetObjProperty(mobile, "#lastFireFieldDamage") > (ReadGameClock() - 1))       // bie sehr schneller Monstern konnte es passieren das mehrere Walkoverscripte liefen
+          break;
+        EndIf
+        res:= 1 - CDbl(GetResistance(mobile, "fire")); // get fire resistance of mobile
+        hit:= CInt(dmg * res);                         // alter damage
+        ApplyRawDamagePergon(mobile, hit, DAMAGE_NO_REPSYS);                   // apply damage to mobile
+        SetObjProperty(mobile, "#lastFireFieldDamage", ReadGameClock());
+        SleepMS(int); // sleep interval
+      Until ((!mobile) Or (mobile.x<>tile.x) Or (mobile.y<>tile.y) Or (mobile.dead)); // check if mobile has left field
+    else
+      SysLog("FEHLER: MagicFields-ConfigFile nicht gefunden!");
+    endif
+  EndIf
+EndProgram

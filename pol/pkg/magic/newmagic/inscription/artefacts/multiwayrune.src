@@ -1,0 +1,79 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Einwegrune/Mehrwegrune
+//
+// Rune wird an Punkt markiert und beim Recall wird sie evtl. zerstört
+
+//////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// 2007-03-12 Seppel
+// Ausbau auf Mehrwegrune (%Chance zur Zerstörung)
+//
+// 2006-01-29 Seppel
+// erbaut
+
+include ":runebook:rune";
+include "common";
+include "include/modifyskill";
+include "include/objtype";
+use cfgfile;
+use uo;
+
+Program OneWayRune(who, item)
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var delay := artefact.delay;
+  var destroyChance := artefact.DestroyChance;
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", (ReadGameClock() + delay));
+
+  If (IsRuneMarked(item))
+    // wenn schon markiert, dann zurueckkehren
+    ReserveItem(item);
+    var realm := GetObjProperty(item, "realm");
+    If (!realm)
+      realm := _DEFAULT_REALM;
+    EndIf
+
+    var result := CastRecall(who,
+      GetObjProperty(item, "x"),
+      GetObjProperty(item, "y"),
+      GetObjProperty(item, "z"), 0, realm
+    );
+
+    If (result == 1)         // wenn erfolgreich gebeamt
+      If ((RandomInt(100)+1) < destroyChance)
+        DestroyItem(item);     // Rune zerstören
+        SendSysMessagePergon(who,
+          "Die Rune wird zerstört!", "The rune is destroyed!"
+        );
+      Else
+        SendSysMessagePergon(who,
+          "Die Rune bleibt unversehrt", "The rune stays intact"
+        );
+      EndIf
+    EndIf
+    ReleaseItem(item);
+
+  Else
+    // ansonsten markieren
+    PerformAction(who, ANIM_CAST_AREA);
+    PlayObjectCenteredEffect(who, FX_MARK_EFFECT, 10, 10);
+    PlaySoundEffect(who, SFX_SPELL_MARK);
+
+    If (MarkRune(who, item) == 1)
+      // wenn erfolgreich markiert dann Namen ändern
+      SendSysMessagePergon(who,
+        "Ihr markiert erfolgreich die Rune", "You mark the rune successful"
+      );
+      SetName(item, "Markierte Rune [" + PlaceName(who)+ "]");
+    EndIf
+  EndIf
+EndProgram
+
+// vim: sw=2 sts=2

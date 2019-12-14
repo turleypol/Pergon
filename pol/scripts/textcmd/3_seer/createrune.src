@@ -1,0 +1,64 @@
+//
+//  .CreateSpawnRune
+//
+//  Erzeugt eine Spawnrune (0xA300), deren Typ man optional per Parameter bestimmen kann
+//
+//  Parameter:
+//    npc  - Erzeugt eine Rune, deren Type auf Npc eingestellt ist
+//
+//    item - Erzeugt eine Rune, deren Type auf Item eingestellt ist
+//
+//    container
+//    cont - Erzeugt eine Rune, deren Type auf Container eingestellt ist
+//
+//
+//  23.03.2003 Fraggulus: Erstellung
+//
+//
+
+use uo;
+include ":spawnnet_new:spawnnet";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/msgs";
+include "include/objtype";
+include "include/permissions";
+
+Program TextCMD_CreateRune(who, param)
+  If (AllowedToRune(who))
+    param := lower(param);
+    If (param[1] == "?")
+      SendSysMessagePergon(who, "USAGE: .CreateSpawnRune [npc|item|container]");
+      Return;
+    EndIf
+
+    Var rune := CreateItemAtLocationPergon(who.x, who.y, who.z, UOBJ_SPAWNRUNE, 1,who.realm);
+    If (rune)
+    	var userdata:=struct{spawntype:=TYPE_NPC,
+                           mintime:=14,
+                           maxtime:=24,
+                           template:="<keins>",
+                           amount:=1,
+                           group:=1,
+                           range:=1,
+                           stackamount:=1,
+                           containertype:="<keiner>",
+                           note:="<keiner>",
+                           flags:=0x0,
+                           questnr:=0};
+    
+      If ((param["npc"]) || !param)
+        userdata.spawntype:=TYPE_NPC;
+      ElseIf (param["item"])
+        userdata.spawntype:=TYPE_ITEM;
+      ElseIf (param["cont"])
+        userdata.spawntype:=TYPE_CONTAINER;
+      EndIf
+      rune.setprop(CPROP_USER,userdata);
+    Else
+      SendSysMessagePergon(who, "Konnte die Spawnrune nicht erzeugen!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Ihr seid nicht befugt, diesen Befehl zu benutzen!", "You are not authorizied to use this command!");
+  EndIf
+EndProgram

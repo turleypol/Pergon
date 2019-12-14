@@ -1,0 +1,28 @@
+///////////////////////////////////////////////////////////////////////////
+// teletemple --
+//
+// Teleport von der Goetterinsel zu den Portaltempeln
+
+include "include/server";
+include "common";
+use uo;
+
+Program TeleTemple(p)
+    If (p.who.isa(POLCLASS_NPC))
+        // NPC soll nicht im Teleporter stehen
+        StepBack(p);
+        return;
+    EndIf
+
+    If (GetObjProperty(p.who, TYPNEWBIE))
+        // Newbies zurück nach Jhelom
+        MoveObjectToLocation(p.who,
+            1152, 3638,  5, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+        );
+    Else
+        // Der Rest zum Portaltempel
+        MoveObjectToLocation(p.who,
+            2702,  512, 35, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+        );
+    EndIf
+EndProgram

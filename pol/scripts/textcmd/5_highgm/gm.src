@@ -1,0 +1,16 @@
+use uo;
+
+Include "include/msgs";
+
+Program gm(who, help)
+
+  If (help)
+    SendSysMessagePergon(who, "Dieses Kommando gibt die GM-Form. Benutze .myform um zurückzuwechseln.");
+  Else
+  	If (who.graphic != 0x3db)
+  	  SetObjProperty(who, "myform", who.graphic);
+  	EndIf
+    who.graphic := 0x3db;
+  EndIf
+  
+EndProgram

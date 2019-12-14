@@ -1,0 +1,246 @@
+///////////////////////////////////////////////////////////////////////////////
+//
+//   TextCMD SetQuests - Erlaubt das Verwalten bestimmter Meldungen fuer NPCs
+//
+//     Author: Shinigami
+//
+//   Modification:
+//     2004/06/18 Shinigami: Auslagerung von PlaceNames()
+//
+///////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken&Include
+/////////////////
+Use cfgfile;
+Use os;
+Use uo;
+Include "include/gumputil";
+Include "include/npc";
+Include "include/place";
+
+/////////////
+// Programm
+/////////////
+
+Program TextCMD_SetQuests(who)
+  SetQuestInfos(Show_Dialog(who, GetQuestInfos(PlaceNames(who.realm)), 10, 10, 500));
+EndProgram
+
+/////////////////////////////////////
+// Liefert alle noetigen Questinfos
+/////////////////////////////////////
+
+Function GetQuestInfos(Locations)
+  Var QuestInfos:={ };
+
+  ForEach Location in Locations
+    Var QuestFilePath:=Lower("speech/location/"+Location+"/quest");
+
+    Var QuestFile:=ReadConfigFile(QuestFilePath);
+    If (QuestFile)
+      Var QuestInfo:=FindConfigElem(QuestFile, "Town");
+      If (QuestInfo)
+        Var QuestInfoEntry:=struct;
+        QuestInfoEntry.+Location:=Location;
+
+        QuestInfoEntry.+GlobalProperty:="";
+        Var GlobalProperty:=UnComment(GetConfigString(QuestInfo, "GlobalProperty"));
+        If (GlobalProperty)
+          QuestInfoEntry.globalproperty:=globalproperty;
+
+          QuestInfoEntry.+Changed:=1;
+          QuestInfoEntry.+ActiveQuest:="nil";
+          Var ActiveQuest:=GetGlobalProperty(GlobalProperty);
+          If (!ActiveQuest)
+            ActiveQuest:=QuestInfoEntry.activequest;
+          EndIf
+
+          QuestInfoEntry.+desc:="";
+          If ((ActiveQuest<>"") And (ActiveQuest<>"nil"))
+            Var ActiveQuestInfo:=FindConfigElem(QuestFile, ActiveQuest);
+            If (ActiveQuestInfo)
+              QuestInfoEntry.activequest:=ActiveQuest;
+              QuestInfoEntry.changed:=0;
+
+              Var Desc:=UnComment(GetConfigString(ActiveQuestInfo, "Desc"));
+              If (Desc)
+                QuestInfoEntry.desc:=Desc;
+              EndIf
+            EndIf
+          EndIf
+
+          Var QuestElems:={ };
+          ForEach QuestElem in GetConfigStringArray(QuestInfo, "QuestElem")
+            QuestElem:=UnComment(QuestElem);
+
+            Var QuestElemInfo:=FindConfigElem(QuestFile, QuestElem);
+            If (QuestElemInfo)
+              Var QuestElemEntry:={ };
+              QuestElemEntry.+QuestElem:=QuestElem;
+              QuestElemEntry.+desc:="";
+
+              Var Desc:=UnComment(GetConfigString(QuestElemInfo, "Desc"));
+              If (Desc)
+                QuestElemEntry.desc:=Desc;
+              EndIf
+
+              QuestElems.append(QuestElemEntry);
+            EndIf
+          EndForEach
+          QuestInfoEntry.+QuestElems:=QuestElems;
+
+          QuestInfos.append(QuestInfoEntry);
+        EndIf
+      EndIf
+    EndIf
+    UnloadConfigFile(QuestFilePath);
+  EndForeach
+
+  Return (QuestInfos);
+EndFunction
+
+///////////////////////////
+// Dialogfenster anzeigen
+///////////////////////////
+
+Function Show_Dialog(who, QuestInfos, x, y, width)
+  Var bttn;
+  Repeat
+    Var gump:=Create_Dialog(QuestInfos, x, y, width);
+    bttn:=CInt(SendDialogGump(who, gump.layout, gump.data)[0]);
+
+    If (bttn<>0)
+      Var Town:=CInt((bttn+1)/2);
+      If ((bttn+1)-Town*2==0)
+        QuestInfos[Town].activequest:="nil";
+        QuestInfos[Town].desc:="";
+        QuestInfos[Town].changed:=1;
+      Else
+        QuestInfos:=Show_TownDialog(who, QuestInfos, Town, x+30, y+30, width);
+      EndIf
+    EndIf
+  Until (bttn==0);
+
+  Return (QuestInfos);
+EndFunction
+
+///////////////////////////////////////
+// Dialogfenster-Gump zusammenbasteln
+///////////////////////////////////////
+
+Function Create_Dialog(QuestInfos, x, y, width)
+  Var layout:={"page 0", "nodispose"};
+  Var data:={""};
+
+  layout.append("resizepic "+CStr(x)+" "+CStr(y)+" 2600 "+
+    CStr(width)+" "+CStr(Len(QuestInfos)*40+100));
+
+  Var title:="Town-Quests festlegen";
+  layout.append("text "+CStr(GumpTextMid(title, x+20, width-40))+" "+
+    CStr(y+20)+" 4 "+CStr(Len(data)));
+  data.append(title);
+
+  Var y_pos:=y+55;
+  Var bttn_idx:=1;
+  ForEach QuestInfoEntry in QuestInfos
+    layout.append("gumppic "+CStr(x+30)+" "+CStr(y_pos+5)+" 5032");
+    layout.append("text "+CStr(x+47)+" "+CStr(y_pos)+" 50 "+CStr(Len(data)));
+    data.append(QuestInfoEntry.location);
+
+    Var ActiveQuest:=QuestInfoEntry.activequest;
+    If (ActiveQuest<>"nil")
+      layout.append("text "+CStr(GumpTextRight(ActiveQuest, x+width-248,
+        150))+" "+CStr(y_pos)+" 50 "+CStr(Len(data)));
+      data.append(ActiveQuest);
+      layout.append("button "+CStr(x+width-90)+" "+CStr(y_pos-1)+
+        " 4017 4019 1 0 "+CStr(bttn_idx));
+      layout.append("text "+CStr(x+57)+" "+CStr(y_pos+20)+" 73 "+
+        CStr(Len(data)));
+      data.append(QuestInfoEntry.desc);
+    Else
+      layout.append("text "+CStr(x+57)+" "+CStr(y_pos+20)+" 32 "+
+        CStr(Len(data)));
+      data.append("kein Quest festgelegt");
+    EndIf
+    layout.append("button "+CStr(x+width-60)+" "+CStr(y_pos-1)+
+      " 4011 4013 1 0 "+CStr(bttn_idx+1));
+
+    bttn_idx+=2;
+    y_pos+=40;
+  EndForEach
+
+  Var gump:=struct;
+  gump.+layout:=layout;
+  gump.+data:=data;
+
+  Return (gump);
+EndFunction
+
+///////////////////////////////
+// Einzelnen Quest auswaehlen
+///////////////////////////////
+
+Function Show_TownDialog(who, QuestInfos, Town, x, y, width)
+  Var gump:=Create_TownDialog(QuestInfos[Town], x, y, width);
+
+  Var bttn:=CInt(SendDialogGump(who, gump.layout, gump.data)[0]);
+  If (bttn<>0)
+    QuestInfos[Town].activequest:=QuestInfos[Town].questelems[bttn].questelem;
+    QuestInfos[Town].desc:=QuestInfos[Town].questelems[bttn].desc;
+    QuestInfos[Town].changed:=1;
+  EndIf
+
+  Return (QuestInfos);
+EndFunction
+
+///////////////////////////////////////////
+// TownDialogfenster-Gump zusammenbasteln
+///////////////////////////////////////////
+
+Function Create_TownDialog(QuestInfoEntry, x, y, width)
+  Var layout:={"page 0", "nodispose"};
+  Var data:={""};
+
+  layout.append("resizepic "+CStr(x)+" "+CStr(y)+" 2600 "+
+    CStr(width)+" "+CStr(Len(QuestInfoEntry.questelems)*40+100));
+
+  Var title:="Quest fuer "+QuestInfoEntry.location+" auswaehlen";
+  layout.append("text "+CStr(GumpTextMid(title, x+20, width-40))+" "+
+    CStr(y+20)+" 4 "+CStr(Len(data)));
+  data.append(title);
+
+  Var y_pos:=y+55;
+  Var bttn_idx:=1;
+  ForEach QuestElemEntry in (QuestInfoEntry.questelems)
+    layout.append("button "+CStr(x+30)+" "+CStr(y_pos-1)+
+      " 4005 4007 1 0 "+CStr(bttn_idx));
+    layout.append("text "+CStr(x+67)+" "+CStr(y_pos)+" 50 "+CStr(Len(data)));
+    data.append(QuestElemEntry.questelem);
+    layout.append("text "+CStr(x+77)+" "+CStr(y_pos+20)+" 73 "+
+      CStr(Len(data)));
+    data.append(QuestElemEntry.desc);
+
+    bttn_idx+=1;
+    y_pos+=40;
+  EndForEach
+
+  Var gump:={ };
+  gump.+layout:=layout;
+  gump.+data:=data;
+
+  Return (gump);
+EndFunction
+
+///////////////////////////////////
+// Schreibt die Questinfos zurÅck
+///////////////////////////////////
+
+Function SetQuestInfos(QuestInfos)
+  ForEach QuestInfoEntry in QuestInfos
+    If (QuestInfoEntry.changed==1)
+      SetGlobalProperty(QuestInfoEntry.globalproperty,
+        QuestInfoEntry.activequest);
+    EndIf
+  EndForeach
+EndFunction

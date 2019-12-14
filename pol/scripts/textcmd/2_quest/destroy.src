@@ -1,0 +1,96 @@
+/////////////////////////////////////////////////////
+// TextCMD Destroy - Entfernt ein gewaehltes Item
+//
+// Author: Shinigami
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use file;
+use uo;
+include "include/logutil";
+include "include/msgs";
+include "include/objtype";
+include "include/quests";
+include "include/server";
+include "include/varutil";
+
+Const INTERRUPT := 0;
+Const KEEPGOING := 1;
+
+Program TextCMD_Destroy(who, param)
+  param := GetOptions(param);
+
+  If (!param["serial"])
+    SendSysMessagePergon(who,
+      "Ziel zum Zerstören wählen.", "Choose target to destroy."
+    );
+  EndIf
+
+  var result := SelectAndDestroy(who, param);
+
+  While (result == KEEPGOING and param["m"])
+    result := SelectAndDestroy(who, param);
+  EndWhile
+EndProgram
+
+Function SelectAndDestroy(who, param)
+  // ans Erfolg glauben
+  var result := KEEPGOING;
+
+  var object;
+  If (param["serial"])
+    object := SystemFindObjectBySerial(CInt(param["serial"]));
+    // Serials kann man nur einmal killen
+    result := INTERRUPT;
+  Else
+    object := Target(who, TGTOPT_NOCHECK_LOS);
+  EndIf
+
+  If (!object)
+    SendSysMessagePergon(who, "Abbruch", "Cancelled");
+    // gezielt abgebrochen
+    return INTERRUPT;
+  EndIf
+
+  If (!object.isa(POLCLASS_ITEM))
+    SendSysMessagePergon(who,
+      "Ihr könnt nur Items zerstören!", "You can destroy items only!"
+    );
+    // nur verklickt, ggf. weiter
+    return result;
+  EndIf
+
+  // bei Nichtleeren Containern Abbruch (Ausnahme: Leiche)
+  If (
+    object.isa(POLCLASS_CONTAINER) and object.objtype != UOBJ_CORPSE and
+    EnumerateItemsInContainer(object, ENUMERATE_IGNORE_LOCKED).size()
+  )
+    SendSysMessagePergon(who,
+      "Dieser Container ist nicht leer!",
+      "This container is not empty!"
+    );
+    // Abbruch, da man zum Nachgucken meist Doppelklicken will
+    If (!param["f"])
+      return INTERRUPT;
+    EndIf
+  EndIf
+
+  QuestCharLog(
+    who, "TextCMD Destroy: '"+ItemInfoStr(object, COORDS_REALM)
+  );
+
+  If (!DestroyItem(object))
+    SendSysMessagePergon(who,
+      "Destroy gescheitert: "+object.errortext,
+      "Destroy failed: "+object.errortext
+    );
+    // TODO: eventuell vom Fehler abhaengig machen
+    return INTERRUPT;
+  EndIf
+
+  // alles hat geklappt, ggf. weiter
+  return result;
+EndFunction
+
+// vim: sw=2 sts=2

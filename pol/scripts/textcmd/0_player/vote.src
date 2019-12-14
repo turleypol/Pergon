@@ -1,0 +1,13 @@
+////////////////////////////////////////////////////////
+// Vote TextCMD - Oeffnet eine Vote-Seite im Browser
+//
+// Author: Shinigami
+
+Use uo;
+Include "include/msgs";
+Include "include/urls";
+
+Program TextCMD_Vote(who)
+    SendSysMessagePergon(who, "Die Vote-Seite wird im Browser geöffnet ...");
+    OpenURL(who, URL_VOTE);
+EndProgram

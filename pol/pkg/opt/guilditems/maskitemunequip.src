@@ -1,0 +1,44 @@
+//**************************************************************************************************
+//
+//   Ausziehen der InkognitoMaske
+//
+//	   Setzt den Namen wieder zurueck.
+//		 Basiert auf incogitemunequip
+//
+//		 21.11.2005 Fox: Erstellung
+//
+//**************************************************************************************************
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/pergonutil";
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program IncognitoMask_UnEquip(who, incogitem)
+  Var oldname:=GetObjProperty(who, "realrname");
+  If (oldname)
+    EraseObjProperty(incogitem, "incogmasterserial");
+    EraseObjProperty(who, "realrname");
+
+    SetNamePergon(who, oldname, "IncognitoMaske - Reset");
+    PrintTextAbovePrivatePergon(who, "Euer Name lautet wieder "+who.name, "Your name is "+who.name+" again.", who);
+  Else
+    SendSysMessagePergon(who, "Beim Zurücksetzen Eures Namens ist ein Fehler aufgetreten. Wendet Euch an einen GM.",
+      "Resetting your name was not successful. Please call a GM.");
+    Syslog("FEHLER: Name von '"+who.name+"' ["+Lower(Hex(who.serial))+"] konnte aufgrund fehlender CProp 'realrname' nicht zurueckgesetzt werden!");
+  EndIf
+  
+  Return (1);
+EndProgram

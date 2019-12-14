@@ -1,0 +1,203 @@
+//**************************************************************************************************
+// Script file holywarrior.src
+//
+//    implements spell 227 <Holy Warrior> - "Heiliger Krieger"
+//
+//	raises all attributes (INT, DEX, STR) and greatly increases AR of spelltarget
+//	grants damage bonus to spelltarget
+//		[ Resisted (Magic) ]
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 02.10.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//  2005/02/26 Shinigami: NoHolyWarrior-Region eingebaut
+//   						22.09.2005 - Seppel - HK nur noch auf Krieger möglich
+//
+//**************************************************************************************************
+
+Include "include/thaumaturgy";
+Include "../magicpergon";
+Include "../resistance";
+Include "include/spellcheck";
+
+program cast_holywarrior (params)
+
+   Var caster;
+   Var caston;
+   Var weapon;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_CLERIC_HOLYWARRIOR);
+   Var difficulty:= spell.skill;
+   Var resist:=   spell.resist;
+   Var stat:=     spell.primary;
+   Var minstat:=  spell.primarymin;
+   Var maxstat:=  spell.primarymax;
+   Var equip:=    spell.secondary;
+   Var minequip:= spell.secondarymin;
+   Var maxequip:= spell.secondarymax;
+   Var dur:=      spell.duration;
+   Var mindur:=   spell.durationmin;
+   Var maxdur:=   spell.durationmax;
+   Var power;
+   Var amnt;
+
+   if (params[1] == "#MOB")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= params[4];
+   elseif (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_CLERIC_HOLYWARRIOR);
+      caston:= TargetSpell(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+
+   TurnCharTo(caster, caston);
+   PerformAction(caster, ANIM_CAST_DIR);
+
+   If (PlaceNoHolyWarrior(caster) And (!GetObjProperty(caster, ARENABATTLE))) // Darf in dieser Region der Heilige Krieger benutzt werden?
+     SendSysMessagePergon(caster, "Die Götter unterbinden Euren Versuch, den Heiligen Krieger zu casten!");
+     PlayObjectCenteredEffect(caster, FX_SPELL_FAIL, 5, 15);
+     PlaySoundEffect(caster, SFX_2C);
+     Return;
+   EndIf
+
+   PlaySoundEffect(caston, SFX_246);
+   PlayObjectCenteredEffect(caston, FX_SPARK_EFFECT, 10, 20);
+
+	 //if (GetObjProperty(caston, SKKLASSE) <> KLASSE_KRIEGER)		//check if spelltarget is a warrior
+	 //		SendSysMessagePergon(caster, "Nur Krieger können zum Heiligen Krieger werden!", "Only a warrior can become a Holy Warrior");
+	 //		return;
+	 //endif
+
+   if (GetObjProperty(caston, "spell_bless"))						// check if spelltarget is already blessed
+      SendSysMessagePergon(caster, "Euer Ziel ist bereits gesegnet", "Your target already has been blessed");
+      return;
+   endif
+
+   if (GetObjProperty(caston, "spell_curse")[3] == "dead knight")			// check if target is Dead Knight
+      SendSysMessagePergon(caster, "Euer Ziel ist dem Tode geweiht und kann nicht zum Heiligen Krieger werden",
+          	                   	  "Your target is doomed to death and cannot become a Holy Warrior");
+      return;
+   endif
+
+   if (caston.isa(POLCLASS_NPC))														// check if spelltarget is npc
+      SendSysMessagePergon(caster, "Euer Ziel kann nicht zum Heiligen Krieger werden",
+      				   				  "Your target cannot become a Holy Warrior");
+      return;
+   endif
+
+   if (resist)				// calc spelleffects according to spelltargets magic resistance and casting power
+      stat:= CInt(MagicResistance(caston, difficulty, resist, power*stat/100.0, 1));
+      dur:=  CInt(MagicResistance(caston, difficulty, resist, power*dur/100.0, 0));
+   else
+      stat:= CInt(power*stat/100.0);
+      dur:=  CInt(power*dur/100.0);
+   endif
+
+   if (minstat and minstat > stat)
+      stat:= minstat;
+   elseif (maxstat and maxstat < stat)
+      stat:= maxstat;
+   endif
+   if (mindur and mindur > dur)
+      dur:= mindur;
+   elseif (maxdur and maxdur < dur)
+      dur:= maxdur;
+   endif
+
+   equip:= CInt(power * equip / 100.0);									// calc bless amount for equipment
+
+   if (minequip and minequip > equip)
+      equip:= minequip;
+   elseif (maxequip and maxequip < equip)
+      equip:= maxequip;
+   endif
+																						// calc stat changes
+   amnt:= CInt((GetIntPergon(caston) + GetDexPergon(caston) + GetStrPergon(caston)) * stat / 300);
+
+   AlterIntModPergon(caston, amnt);			// bless spelltarget - set new attributes
+   AlterDexModPergon(caston, amnt);
+   AlterStrModPergon(caston, amnt);
+
+   SetCastPowerProperty(caston,"Magie",amnt,"Cleric","",0);
+   SetCastPowerProperty(caston,"Magie",amnt,"",spell.SubClass,0);
+   SetCastPowerProperty(caston,"Magie",CInt(amnt/5),"","Common",0); //20% auf alles
+   RefreshSpellPowerGump(caston);
+
+   Var tag:= array;
+
+   tag[1]:= ReadGameClock() + dur;
+   tag[2]:= amnt;
+   tag[3]:= "holy warrior";
+   tag[4]:= caston.truecolor;											// preserve spelltargets color
+   tag[5]:= ReadMilliSecondClock();
+   SetObjProperty(caston, "spell_bless", tag);				// tag spelltarget for spellchecker
+   SendSpellWaiter(caston, "spell_bless", dur, tag[5], caston);
+
+   caston.color:= 0;													// set spelltargets new color
+   SendSysMessagePergon(caston, "Heiliger Wahn durchflutet Euch, Ihr spürt Eure Wunden kaum und schlagt mit nie geahnter Kraft",
+   									  "Holy zeal flows through you, you barely feel your wounds and you strike with unimagined power");
+
+   weapon:= caston.weapon;								// get spelltargets weapon
+   if (weapon.objtype <> 0xf020)							// tag only if caston is armed
+      TagEquipment(weapon, tag, equip, dur, caston);				// modify and tag weapon
+   endif
+
+   Var equipped:= ListEquippedItems(caston);		// get spelltargets equipped items
+
+   foreach item in equipped							// for each equipped item
+      if (item.isa(POLCLASS_ARMOR))						// check if item is armor piece
+         TagEquipment(item, tag, equip, dur, caston);				// modify and tag armor
+      endif
+   endforeach
+      														// spelltarget should be completely white now
+   SendStatus(caston);												//Update Statuswindow
+   
+EndProgram
+
+
+
+Function TagEquipment (item, tag, change, dur, caston)			// modifies and tags equipment
+
+   Var blesstag:= GetObjProperty(item, "spell_bless");		// get possible blessing
+   Var cursetag:= GetObjproperty(item, "spell_curse");		// get possible curse
+
+   tag[2]:= change;														// preserve change
+   tag[4]:= item.color;													// preserve item color
+   tag[5]:= ReadMilliSecondClock();
+
+   if (cursetag and cursetag[3] == "dead knight")			// check if item is deadly cursed
+      tag[4]:= cursetag[4];											// get and preserve original color
+      cursetag[1]:= -1;													// change deadly curse to ordinary one
+      cursetag[3]:= "curse";
+      cursetag.erase(4);
+      if (item.isa(POLCLASS_WEAPON))								// check if item is a weapon
+         cursetag.erase(5);
+      endif
+      SetObjProperty(item, "spell_curse", cursetag);			// tag item
+   endif
+
+   if (blesstag and blesstag[3] == "holy warrior")			// check if item is holy blessed
+      tag[4]:= blesstag[4];											// get and preserve original color
+   endif
+
+   item.color:= 1153;												// set new item color
+
+   SetObjProperty(item, "spell_bless", tag);					// tag item as blessed
+   SendSpellWaiter(item, "spell_bless", dur, tag[5], caston);
+   CalcItemQualityBonus(item);									// calcs new item bonus
+   IncRevision(item);
+EndFunction

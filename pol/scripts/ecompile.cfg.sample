@@ -1,0 +1,43 @@
+##
+## ecompile.cfg: must be in the same directory as ecompile.exe
+##
+
+#
+# ModuleDirectory: Location of *.em files
+#
+ModuleDirectory E:\Spiele\Ultima Online\Server\Pol\scripts\modules
+
+#
+# IncludeDirectory: Location of *.inc files, if not found relative
+#                   or with a specified package
+#
+IncludeDirectory E:\Spiele\Ultima Online\Server\Pol\scripts
+
+#
+# PolScriptRoot: Location of "::file" includes
+#
+PolScriptRoot E:\Spiele\Ultima Online\Server\Pol\scripts
+
+#
+# PackageRoot: root directories where packages are stored
+#              This can be specified multiple times.
+#
+PackageRoot E:\Spiele\Ultima Online\Server\Pol\pkg
+
+GenerateListing           0
+GenerateDebugInfo         0
+GenerateDebugTextInfo     0
+
+DisplayWarnings           0   # same as -w flag
+CompileAspPages           1   # same as -a flag
+AutoCompileByDefault      1   # If set, and you don't pass any script names or -r or -A, will perform an auto compile.
+UpdateOnlyOnAutoCompile   1   # If set, autocompile will only update modified scripts.
+OnlyCompileUpdatedScripts 0   # same as -u flag
+DisplaySummary            1   # Displays overall totals after compilation, unless compilation aborted due to a compile error.
+GenerateDependencyInfo    0   # Generate .dep files whether or not updating
+DisplayUpToDateScripts    1   # Display the "xxx/script.ecl is up-to-date" message, or not.
+
+OptimizeObjectMembers     1
+
+ThreadedCompilation 1
+ParanoiaWarnings 0

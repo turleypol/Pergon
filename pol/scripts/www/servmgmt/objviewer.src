@@ -1,0 +1,1531 @@
+/////////////////////////////////////////////////////////
+//
+//   objviewer - Macht den ganzen Such/Anzeige Kram
+//
+//
+//     Author: Turley
+//
+/////////////////////////////////////////////////////////
+
+Use http;
+Use os;
+Use polsys;
+Use storage;
+Use uo;
+Include "header";
+Include "include/balancing";
+Include "include/bank";
+Include "include/modifyskill";
+Include "include/onlinesearch";
+Include "include/storage";
+
+Const BASE := "objviewer.ecl";
+Var chr22:=CChr(0x22); // "
+
+Program HTMLPage()
+  DoHeader("Object Viewer");
+  WriteHTML("<DIV ID='container'>");
+  WriteHTML("<DIV ID='header'></DIV>");
+  WriteHTML("<DIV ID='content'>");
+  TableHeader("Object Viewer");
+  
+  DenyAccess(isALLOWED_STRICT);
+
+  Var list := QueryParam("List");
+  Var serial := CInt(QueryParam("Serial"));
+  Var acct_name := QueryParam("Account");
+  Var search := QueryParam("SubmitSearch");
+  If (search)
+    ShowSearchResults();
+  ElseIf (acct_name)
+    ShowAccountInfo(acct_name);
+  ElseIf (serial)
+    ShowSerialInfo(serial);
+  ElseIf (list)
+    Case (list)
+      "Accounts":
+        AcctLister();
+      "Online":
+        OnlineLister();
+      "Storage":
+        StorageLister(QueryParam("StorageArea"));
+      "Multis":
+        MultiLister();
+      default:
+        DoError("Unknown 'List' type!");
+    EndCase
+  Else
+    StartPoint();
+  EndIf
+
+  DoFooter();
+EndProgram
+
+Function StartPoint()
+  WriteHTML("<BR>");
+
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH ALIGN='LEFT'>Select a start point.</TH>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD>");
+  WriteHTML("<LI><A HREF='"+BASE+"?List=Accounts&"+A_PARAM+"'>Accounts</A></LI>");
+  WriteHTML("<LI><A HREF='"+BASE+"?List=Online&"+A_PARAM+"'>Online Characters</A></LI>");
+  WriteHTML("<LI><A HREF='"+BASE+"?List=Storage&"+A_PARAM+"'>Storage Areas</A></LI>");
+  WriteHTML("<LI><A HREF='"+BASE+"?List=Multis&"+A_PARAM+"'>Multis</A></LI>");
+  WriteHTML("<BR>");
+  WriteHTML("</TD>");
+  WriteHTML("</TR>");
+  WriteHTML("</TABLE>");
+
+  WriteHTML("<BR>");
+
+  SearchForms();
+EndFunction
+
+Function SearchForms()
+  WriteHTML("<FORM METHOD='GET'>");
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='2' ALIGN='LEFT'>Search</TH>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD>Search Text</TD><TD><INPUT TYPE='TEXT' SIZE='45' NAME='SearchText'></TD>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD>Container Serial</TD><TD><INPUT TYPE='TEXT' SIZE='45' NAME='SearchRootCont'></TD>");
+  WriteHTML("</TR>");
+
+  WriteHTML("<TR>");
+  WriteHTML("<TD>Search Where</TD><TD><SELECT NAME='SearchWhere'>");
+  WriteHTML("<OPTION VALUE='Accounts'>Accounts</OPTION>");
+  WriteHTML("<OPTION VALUE='TLIs'>Top Level Items</OPTION>");
+//  WriteHTML("<OPTION VALUE='Storage'>Storage Areas</OPTION>");
+  WriteHTML("<OPTION VALUE='Online'>Online Players</OPTION>");
+  WriteHTML("<OPTION VALUE='AllPlayers'>All Player-Characters</OPTION>");
+  WriteHTML("<OPTION VALUE='NPCs'>NonPlayer Characters</OPTION>");
+  WriteHTML("<OPTION VALUE='CommandLevel'>Command Level</OPTION>");
+  WriteHTML("<OPTION VALUE='RootCont'>Root Container</OPTION>");
+  WriteHTML("</SELECT>");
+  WriteHTML("</TD>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD>Search What</TD><TD><SELECT NAME='SearchWhat'>");
+  WriteHTML("<OPTION VALUE='Name'>Name</OPTION>");
+  WriteHTML("<OPTION VALUE='Desc'>Desc</OPTION>");
+  WriteHTML("<OPTION VALUE='Graphic'>Graphic</OPTION>");
+  WriteHTML("<OPTION VALUE='ObjType'>Object Type</OPTION>");
+  WriteHTML("<OPTION VALUE='Realm'>Realm</OPTION>");
+  WriteHTML("<OPTION VALUE='Serial'>Serial Number</OPTION>");
+  WriteHTML("<OPTION VALUE='NPCTemplate'>NPC Template</OPTION>");
+  WriteHTML("<OPTION VALUE='Members'>Members (m_iX,m_sY,cprop_n_iv)</OPTION>");
+  WriteHTML("</SELECT>");
+  WriteHTML("</TD>");
+
+  WriteHTML("<TR>");
+  WriteHTML("<TD COLSPAN='2' ALIGN='CENTER'><INPUT TYPE='SUBMIT' NAME='SubmitSearch' VALUE='Submit'></TD>");
+  WriteHTML("</TR>");
+  WriteHTML("<input type=hidden name=user value="+user+">");
+  WriteHTML("<input type=hidden name=pass value="+pass+">");
+  WriteHTML("</FORM>");
+  WriteHTML("</TABLE>");
+EndFunction
+
+Function DoError(text)
+  WriteHTML("<TABLE>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD><B>!! ERROR !!</B></TD>");
+  WriteHTML("</TR>");
+  WriteHTML("<TD><FONT COLOR='RED'>"+text+"</FONT></TD>");
+  WriteHTML("</TR>");
+  WriteHTML("</TABLE>");
+EndFunction
+
+Function LocationBar(tree := 0)
+  WriteHTML("<TABLE WIDTH='100%' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTMLRaw("<TD>");
+  WriteHTMLRaw("<A HREF='"+BASE+"?"+A_PARAM+"'>Index</A>");
+
+  Var tree_size := tree.Size();
+  Var i := 1;
+  For (i := 1; i<=tree_size; i += 2)
+    WriteHTMLRaw("<B> -&gt; </B>");
+    WriteHTMLRaw(" <A HREF='"+BASE+"?"+tree[i]+"&"+A_PARAM+"'>"+tree[i+1]+"</A>");
+    SleepMS(2);
+  EndFor
+  WriteHTML("</TD>");
+  WriteHTML("</TR>");
+  WriteHTML("</TABLE>");
+  WriteHTML("<BR>");
+EndFunction
+
+Function FilterBar(selected)
+  WriteHTML("<TABLE WIDTH='100%' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTMLRaw("<TD>");
+  Var link := "<A HREF='"+BASE+"?List=Accounts&Ext=%23&"+A_PARAM+"'>#</A> ";
+  If (selected == "#")
+    link := "<B><I>"+link+"</I></B>";
+  EndIf
+  WriteHTMLRaw(link);
+  Var i;
+  For (i := 65; i<=90; i += 1)
+    Var letter := CChr(i);
+    link := "<A HREF='"+BASE+"?List=Accounts&Ext="+letter+"&"+A_PARAM+"'>"+letter+"</A>";
+    If (letter == selected)
+      link := "<B><I>"+link+"</I></B>";
+    EndIf
+    WriteHTMLRaw(link+" ");
+    SleepMS(2);
+  EndFor
+  link := "<A HREF='"+BASE+"?List=Accounts&Ext=All&"+A_PARAM+"'>All</A> ";
+  If (selected == "All")
+    link := "<B><I>"+link+"</I></B>";
+  EndIf
+  WriteHTMLRaw(link);
+  WriteHTML("</TD>");
+  WriteHTML("</TR>");
+  WriteHTML("</TABLE>");
+
+  WriteHTML("<BR>");
+EndFunction
+
+Function MakeSafeLink(url, name)
+  url:=CStr(url);
+  If (Len(url)>0)
+    url:=StrReplace(url,"'","&#39;");
+  EndIf
+
+  Return("<A HREF='"+url+"'>"+name+"</A>");
+EndFunction
+
+Function GroupList(byref string_array, letter := "")
+  string_array.sort();
+  letter := Upper(letter);
+  Var dict := dictionary;
+
+  ForEach entry in (string_array)
+    entry[1] := Upper(entry[1]);
+    Var first_letter := entry[1];
+    If (first_letter == letter)
+      If (!dict.Exists(first_letter))
+        dict[first_letter] := array;
+      EndIf
+      dict[first_letter].Append(entry);
+    ElseIf (letter == "#")
+      first_letter := CAsc(entry[1]);
+      If (first_letter >= CAsc("0") && first_letter <= CAsc("9"))
+        If (!dict.Exists(first_letter))
+          dict["#"] := array;
+        EndIf
+        dict["#"].Append(entry);
+      EndIf
+    ElseIf (letter == "ALL")
+      If (CAsc(first_letter) >= CAsc("0") && CAsc(first_letter) <= CAsc("9"))
+        first_letter := "#";
+      EndIf
+
+      If (!dict.Exists(first_letter))
+        dict[first_letter] := array;
+      EndIf
+
+      dict[first_letter].Append(entry);
+    EndIf
+
+    SleepMS(2);
+  EndForEach
+
+  Return(dict);
+EndFunction
+
+Function DoSearch(where, what, text, rootcont)
+  Var matches := array;
+  If (what == "Members")
+    Var whatarray:=SplitWords(text,chr22);
+    
+    Case (where)
+      "AllPlayers":
+        ForEach acct_name in (ListAccounts())
+          Var account := FindAccount(acct_name);
+          For i := 1 to 6
+            Var character := account.GetCharacter(i);
+            If (!character)
+              Continue;
+            Else
+              Var ok:=1;
+              Var search;
+              ForEach tofind in whatarray
+                search:=SplitWords(tofind,"_");
+                If (search.size()>3)
+                  var i;
+                  For (i:=4;i<=search.size();i+=1)
+                    search[3]+="_"+search[i];
+                  EndFor
+                EndIf
+                If (Len(search[3])>0)
+                EndIf
+                If (search[1]=="cprop")
+                  search[3]:=UnPack(search[3]);
+                  If (character.getprop(search[2])<>search[3])
+                    ok:=0;
+                    Break;
+                  EndIf
+                Else
+                  search[2]:=UnPack(search[2]);
+                  If (character.Get_Member(search[1])<>search[2])
+                    ok:=0;
+                    Break;
+                  EndIf
+                EndIf
+              EndForEach
+              If (ok)
+                matches.Append(character);
+              EndIf
+            EndIf
+            SleepMS(2);
+          EndFor
+          SleepMS(2);
+        EndForEach
+
+      "NPCs":
+      "TLIs":
+        ForEach realm in (Realms())
+          ForEach object in (ListObjectsInBox(0, 0, -130, realm.width, realm.height, 130, _realm_iter))
+            SleepMS(2);
+            If ((!object.IsA(POLCLASS_ITEM)) && (where=="TLIs"))
+              Continue;
+            ElseIf ((!object.IsA(POLCLASS_NPC)) && (where=="NPCs"))
+              Continue;
+            Else
+              Var ok:=1;
+              Var search;
+              ForEach tofind in whatarray
+                search:=SplitWords(tofind,"_");
+                If (search.size()>3)
+                  var i;
+                  For (i:=4;i<=search.size();i+=1)
+                    search[3]+="_"+search[i];
+                  EndFor
+                EndIf
+                If (Len(search[3])>0)
+                EndIf
+                If (search[1]=="cprop")
+                  search[3]:=UnPack(search[3]);
+                  If (object.getprop(search[2])<>search[3])
+                    ok:=0;
+                    Break;
+                  EndIf
+                Else
+                  search[2]:=UnPack(search[2]);
+                  If (object.Get_Member(search[1])<>search[2])
+                    ok:=0;
+                    Break;
+                  EndIf
+                EndIf
+              EndForEach
+              If (ok)
+                matches.Append(object);
+              EndIf
+            EndIf
+          EndForEach
+        EndForEach
+        
+      "Accounts":
+        ForEach acct_name in (ListAccounts())
+          Var account := FindAccount(acct_name);
+          Var ok:=1;
+          Var search;
+          ForEach tofind in whatarray
+            search:=SplitWords(tofind,"_");
+            If (search.size()>3)
+              var i;
+              For (i:=4;i<=search.size();i+=1)
+                search[3]+="_"+search[i];
+              EndFor
+            EndIf
+            If (Len(search[3])>0)
+            EndIf
+            If (search[1]=="cprop")
+              search[3]:=UnPack(search[3]);
+              If (account.getprop(search[2])<>search[3])
+                ok:=0;
+                Break;
+              EndIf
+            Else
+              search[2]:=UnPack(search[2]);
+              If (account.Get_Member(search[1])<>search[2])
+                ok:=0;
+                Break;
+              EndIf
+            EndIf
+          EndForEach
+          If (ok)
+            matches.Append(acct_name);
+          EndIf
+          SleepMS(2);
+        EndForEach
+      default:
+        Return({});
+    EndCase
+  EndIf
+  text := Lower(text);
+  If (what == "Serial")
+    Var object := SystemFindObjectBySerial(CInt(text),SYSFIND_SEARCH_OFFLINE_MOBILES);
+    If (object)
+      return array{object};
+    Else
+      return {};
+    EndIf
+  ElseIf (where == "Accounts")
+    ForEach acct_name in (ListAccounts())
+      If (Lower(acct_name)[text])
+        matches.Append(acct_name);
+      EndIf
+      SleepMS(2);
+    EndForEach
+  ElseIf (where == "AllPlayers")
+    ForEach acct_name in (ListAccounts())
+      Var account := FindAccount(acct_name);
+      For i := 1 to 6
+        Var character := account.GetCharacter(i);
+        If (!character)
+          Continue;
+        ElseIf (Lower(character.Get_Member(what))[text])
+          matches.Append(character);
+        EndIf
+        SleepMS(2);
+      EndFor
+      SleepMS(2);
+    EndForEach
+  ElseIf (where == "CommandLevel")
+  	ForEach acct_name in (ListAccounts())
+      Var account := FindAccount(acct_name);
+      For i := 1 to 6
+        Var character := account.GetCharacter(i);
+        If (!character)
+          Continue;
+        ElseIf (IsNumeric(text))
+        	If (character.cmdlevel == CInt(text))
+        		matches.Append(character);
+        	EndIf
+        Else
+        	If (Lower(GetCMDLevelTitle(character.cmdlevel))[text])
+        		matches.Append(character);
+        	EndIf
+        EndIf
+        SleepMS(2);
+      EndFor
+      SleepMS(2);
+    EndForEach  	
+  ElseIf (where == "Online")
+    ForEach player in (EnumerateVisibleOnlineCharacters(developertemplate, LIST_ME))
+      If (Lower(player.Get_Member(what))[text])
+        matches.Append(player);
+      EndIf
+      SleepMS(2);
+    EndForEach
+  ElseIf (where == "TLIs")
+    ForEach realm in (Realms())
+      ForEach object in (ListObjectsInBox(0, 0, -130, realm.width, realm.height, 130, _realm_iter))
+        SleepMS(2);
+        If (!object.IsA(POLCLASS_ITEM))
+          Continue;
+        ElseIf (Lower(object.Get_Member(what))[text])
+          matches.Append(object);
+        EndIf
+      EndForEach
+      SleepMS(2);
+    EndForEach
+  ElseIf (where == "NPCs")
+    ForEach realm in (Realms())
+      ForEach object in (ListObjectsInBox(0, 0, -130, realm.width, realm.height, 130, _realm_iter))
+        SleepMS(2);
+        If (!object.IsA(POLCLASS_NPC))
+          Continue;
+        ElseIf (Lower(object.Get_Member(what))[text])
+          matches.Append(object);
+        EndIf
+      EndForEach
+      SleepMS(2);
+    EndForEach
+  ElseIf (where == "RootCont")
+    Var object := SystemFindObjectBySerial(rootcont,SYSFIND_SEARCH_OFFLINE_MOBILES);
+    If ((object) && (object.isA(POLCLASS_CONTAINER)))
+      ForEach obj in (EnumerateItemsInContainer(object))
+        SleepMS(2);
+        If (Lower(obj.Get_Member(what))[text])
+          matches.Append(obj);
+        EndIf
+      EndForEach
+    Else
+      return {};
+    EndIf
+//  ElseIf (where == "Storage")
+//    ForEach storage_area in (StorageAreas())
+//      If (Lower(_storage_area_iter)[text])
+//        matches.Append(_storage_area_iter);
+//      EndIf
+//      ForEach root_item in (storage_area)
+//        If (Lower(root_item.Get_Member(what))[text])
+//          matches.Append(root_item);
+//        EndIf
+//        /* Searching inside the root containers...
+//         * This may need to be commented out as this search type could
+//         * end up taking a long time! - Austin
+//         */
+//        ForEach item in (EnumerateItemsInContainer(root_item))
+//          If (Lower(item.Get_member(what))[text])
+//            matches.Append(item);
+//          EndIf
+//          SleepMS(2);
+//        EndForEach
+//        SleepMS(2);
+//      EndForEach
+//      SleepMS(2);
+//    EndForEach
+  Else
+    DoError("Invalid search!<BR>Where = "+where+"<BR>What = "+what+"<BR>Text = "+text);
+    Return(0);
+  EndIf
+
+  Return(matches);
+EndFunction
+
+Function ShowSearchResults()
+  Var search_where := QueryParam("SearchWhere");
+  Var search_what := QueryParam("SearchWhat");
+  Var search_text := QueryParam("SearchText");
+  Var search_root := CInt(QueryParam("SearchRootCont"));
+  If (search_what == "Serial")
+    search_where := 0;
+  EndIf
+  If (search_what in {"ObjType","Graphic"})  // Hexwerte in Int
+    search_text := Lower(CInt(search_text));
+  EndIf
+
+  Var matches := DoSearch(search_where, search_what, search_text,search_root);
+
+  LocationBar();
+
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR><TH>Search Results ("+matches.Size()+" matches)</TH></TR>");
+  ForEach entry in (matches)
+    If (search_where == "Accounts")
+      WriteHTML("<TR><TD><A HREF='"+BASE+"?Account="+entry+"&"+A_PARAM+"'>"+entry+"</A></TD></TR>");
+    ElseIf (search_where == "Storage" && TypeOfInt(entry) == OT_STRING)
+      WriteHTML("<TR><TD><A HREF='"+BASE+"?List=Storage&StorageArea="+entry+"&"+A_PARAM+"'>"+entry+"</A></TD></TR>");
+    Else
+      If (entry.desc)
+        WriteHTML("<TR><TD><A HREF='"+BASE+"?Serial="+entry.serial+"&"+A_PARAM+"'>"+entry.desc+" ("+entry.x+","+entry.y+","+entry.z+")</A></TD></TR>");
+      Else
+        WriteHTML("<TR><TD><A HREF='"+BASE+"?Serial="+entry.serial+"&"+A_PARAM+"'>"+entry.name+" ("+entry.x+","+entry.y+","+entry.z+")</A></TD></TR>");
+      EndIf
+    EndIf
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</TABLE>");
+EndFunction
+
+Function AcctLister()
+  LocationBar();
+
+  Var selected := QueryParam("Ext");
+  If (!selected)
+    selected := "All";
+  EndIf
+  FilterBar(selected);
+  Var acct_list := GroupList(ListAccounts(), selected);
+
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTMLRaw("<TH>");
+  var count:=0;
+  ForEach list in (acct_list)
+  	count+=list.size();
+  EndForEach
+  WriteHTMLRaw("Accounts ("+count+")");
+  WriteHTML("</TH>");
+  WriteHTML("</TR>");
+  ForEach list in (acct_list)
+    WriteHTML("<TR>");
+    WriteHTML("<TD>");
+    WriteHTML("<B>"+_list_iter+"</B><BR>");
+
+    ForEach account in (list)
+      WriteHTML("<LI>"+MakeSafeLink(BASE+"?Account="+account+"&"+A_PARAM, account)+"</LI>");
+      SleepMS(2);
+    EndForEach
+    WriteHTML("</TD>");
+    WriteHTML("</TR>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</TABLE>");
+EndFunction
+
+Function ShowAccountInfo(acct_name)
+  LocationBar(array{"List=Accounts", "Accounts"});
+
+  Var account := FindAccount(acct_name);
+  If (!account)
+    DoError("Could not get account "+acct_name+"<BR> "+account.errortext);
+    Return(0);
+  EndIf
+
+  AccountCharacters(account);
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR><TH COLSPAN='2'>General Info</TH></TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH>Name</TH><TH>Value</TH>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR><TD>Enabled</TD><TD>"+account.enabled+"</TD></TR>");
+  WriteHTML("<TR><TD>Banned</TD><TD>"+account.banned+"</TD></TR>");
+  WriteHTML("<TR><TD>UO Expansion</TD><TD>"+account.uo_expansion+"</TD></TR>");
+  WriteHTML("<TR><TD>DefaultCMDlevel</TD><TD>"+account.defaultcmdlevel+"</TD></TR>");
+  WriteHTML("</TABLE>");
+  WriteHTML("<BR><BR>");
+  ShowCPropInfo(account);
+EndFunction
+
+Function AccountCharacters(account, highlight := 0)
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH>Characters on account "+account.name+"</TH>");
+  WriteHTML("</TR>");
+
+  For i := 1 to 6
+    Var character := account.GetCharacter(i);
+    WriteHTMLRaw("<TR>");
+    WriteHTMLRaw("<TD>");
+    If (character)
+      Var line := "<A HREF='"+BASE+"?Serial="+character.serial+"&"+A_PARAM+"'>"+character.name+"</A>";
+      If (highlight == character)
+        line := "<B><I>"+line+"</I></B>";
+      EndIf
+      WriteHTMLRaw(line);
+    Else
+      WriteHTMLRaw("Empty Slot");
+    EndIf
+    WriteHTMLRaw("</TD>");
+    WriteHTML("</TR>");
+    SleepMS(2);
+  EndFor
+  WriteHTML("</TABLE>");
+
+  WriteHTML("<BR><BR>");
+EndFunction
+
+Function OnlineLister()
+  LocationBar();
+
+  Var online := EnumerateVisibleOnlineCharacters(developertemplate, LIST_ME);
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD>");
+  WriteHTML("Online Characters ("+online.Size()+")");
+  WriteHTML("</TD>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TD>");
+  ForEach player in (online)
+    WriteHTML("<LI><A HREF='"+BASE+"?Serial="+player[2].serial+"&"+A_PARAM+"'>"+player[2].name+"</A></LI>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</TD>");
+  WriteHTML("</TR>");
+  WriteHTML("</TABLE>");
+EndFunction
+
+Function StorageLister(area_name := "")
+  If (!area_name)
+    LocationBar();
+
+    WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+    WriteHTML("<TR><TH>Storage Areas ("+(StorageAreas().count)+")</TH></TR>");
+    ForEach area_name in (StorageAreas())
+      WriteHTMLRaw("<TR>");
+      WriteHTMLRaw("<TD><A HREF='"+BASE+"?List=Storage&StorageArea="+area_name+"&"+A_PARAM+"'>"+area_name+"</A></TD>");
+      WriteHTML("</TR>");
+      SleepMS(2);
+    EndForEach
+    WriteHTML("</TABLE>");
+  Else
+    Var areas := StorageAreas();
+    Var area := areas[area_name];
+    If (!area)
+      DoError("Unable to find storage area "+area_name+"<BR> "+area.errortext);
+      Return(0);
+    EndIf
+
+    LocationBar(array{"List=Storage", "Storage Areas"});
+
+    WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+    WriteHTML("<TR><TH>Root Items ("+area.Count+")</TH></TR>");
+    ForEach root_item in (area)
+      WriteHTMLRaw("<TR>");
+      WriteHTMLRaw("<TD><A HREF='"+BASE+"?Serial="+root_item.serial+"&"+A_PARAM+"'>"+root_item.desc+"</A></TD>");
+      WriteHTML("</TR>");
+      SleepMS(2);
+    EndForEach
+    WriteHTML("</TABLE>");
+  EndIf
+EndFunction
+
+Function ShowSerialInfo(serial)
+  Var object := SystemFindObjectBySerial(serial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+  If (object.errortext)
+    DoError("Could not find serial "+serial+"<BR> "+object.errortext);
+    Return(0);
+  EndIf
+
+  If (object.IsA(POLCLASS_MOBILE))
+    ShowCharacterInfo(object);
+  Else
+    ShowItemInfo(object);
+  EndIf
+
+  ShowCPropInfo(object);
+
+  ShowMemberInfo(object);
+
+  If ((object.IsA(POLCLASS_MOBILE)) && (!object.IsA(POLCLASS_NPC)))
+    ShowWeaponInfo(object);
+  EndIf
+EndFunction
+
+Function ShowCharacterInfo(object)
+  If (object.acctname)
+    LocationBar(array{"List=Accounts", "Accounts", "Account="+object.acctname, object.acctname});
+
+    AccountCharacters(object.acct, object);
+  EndIf
+
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR><TH COLSPAN='2'>General Info</TH></TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH>Name</TH><TH>Value</TH>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR><TD>Serial</TD><TD>"+Hex(object.serial)+"</TD></TR>");
+  WriteHTML("<TR><TD>Command Level</TD><TD>"+object.cmdlevel+" ("+GetCmdLevelName(object.cmdlevel)+")</TD></TR>");
+  WriteHTML("<TR><TD>IP Address</TD><TD>"+object.IP+"</TD></TR>");
+  WriteHTML("<TR><TD>X Y Z Realm</TD><TD>"+object.x+", "+object.y+", "+object.z+", "+object.realm+"</TD></TR>");
+  WriteHTML("<TR><TD>PlaceName</TD><TD>"+PlaceName(object)+"</TD></TR>");
+  If (object.multi)
+    Var owner := GetObjProperty(object.multi, PROP_HS_C_OWNER);
+    If (owner)
+      owner := SystemFindObjectBySerial(owner, SYSFIND_SEARCH_OFFLINE_MOBILES);
+    EndIf
+    If (owner)
+      owner := owner.name;
+    Else
+      owner := "Unbekannt";
+    EndIf
+    WriteHTML("<TR><TD>Multi</TD><TD><A HREF='"+BASE+"?Serial="+object.multi.serial+"&"+A_PARAM+"'>"+owner+"</A></TD></TR>");
+  EndIf
+  If (object.isA(POLCLASS_NPC))
+    WriteHTML("<TR><TD>KI</TD><TD>"+object.script+"</TD></TR>");
+    WriteHTML("<TR><TD>Script</TD><TD><A HREF='scriptex.ecl?PID="+object.process.pid+"&"+A_PARAM+"'>"+object.process.pid+"</A></TD></TR>");
+  EndIf
+
+  WriteHTML("</TABLE>");
+
+  WriteHTML("<BR><BR>");
+
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR><TH COLSPAN='2'>Privileges</TH></TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH>Name</TH><TH>Value</TH>");
+  WriteHTML("</TR>");
+  ForEach priv in (object.Privileges())
+    WriteHTMLRaw("<TR>");
+    WriteHTMLRaw("<TD>"+_priv_iter+"</TD>");
+    Var status := "Enabled";
+    If (!priv)
+      status := "Disabled";
+    EndIf
+    WriteHTMLRaw("<TD>"+status+"</TD>");
+    WriteHTML("</TR>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</TABLE>");
+
+  WriteHTML("<BR><BR>");
+
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR><TH COLSPAN='5'>Vitals Info</TH></TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH>Name</TH><TH>Stat</TH><TH>Value</TH><TH>Regen Mod</TH><TH>Lock State</TH>");
+  WriteHTML("</TR>");
+
+
+  WriteHTMLRaw("<TR>");
+  WriteHTMLRaw("<TD>Life</TD>");
+  WriteHTMLRaw("<TD>"+(GetAttributeBaseValue(object, ATTRIBUTEID_STRENGTH)/10.0)+"/"+GetStrModPergon(object)+"</TD>");
+  WriteHTMLRaw("<TD>"+GetHPPergon(object)+"/"+GetMaxHPPergon(object)+"</TD>");
+  WriteHTMLRaw("<TD>"+GetHPRegenRatePergon(object)+"</TD>");
+  WriteHTMLRaw("<TD>"+AttributeLockToString(GetAttributeLock(object, ATTRIBUTEID_STRENGTH))+"</TD>");
+  WriteHTML("</TR>");
+  WriteHTMLRaw("<TR>");
+  WriteHTMLRaw("<TD>Mana</TD>");
+  WriteHTMLRaw("<TD>"+(GetAttributeBaseValue(object, ATTRIBUTEID_INTELLIGENCE)/10.0)+"/"+GetIntModPergon(object)+"</TD>");
+  WriteHTMLRaw("<TD>"+GetManaPergon(object)+"/"+GetMaxManaPergon(object)+"</TD>");
+  WriteHTMLRaw("<TD>"+GetManaRegenRatePergon(object)+"</TD>");
+  WriteHTMLRaw("<TD>"+AttributeLockToString(GetAttributeLock(object, ATTRIBUTEID_INTELLIGENCE))+"</TD>");
+  WriteHTML("</TR>");
+  WriteHTMLRaw("<TR>");
+  WriteHTMLRaw("<TD>Stamina</TD>");
+  WriteHTMLRaw("<TD>"+(GetAttributeBaseValue(object, ATTRIBUTEID_DEXTERITY)/10.0)+"/"+GetDexModPergon(object)+"</TD>");
+  WriteHTMLRaw("<TD>"+GetStaminaPergon(object)+"/"+GetMaxStaminaPergon(object)+"</TD>");
+  WriteHTMLRaw("<TD>"+GetStaminaRegenRatePergon(object)+"</TD>");
+  WriteHTMLRaw("<TD>"+AttributeLockToString(GetAttributeLock(object, ATTRIBUTEID_DEXTERITY))+"</TD>");
+  WriteHTML("</TR>");
+
+
+  WriteHTML("</TABLE>");
+
+  WriteHTML("<BR><BR>");
+
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR><TH COLSPAN='2'>Skill Info</TH></TR>");
+
+  Var skillsinfo := GetSkillsSorted();
+  Var berufskills := {}; // Character nach Skills abgrasen
+  Var hauptskills := {};
+  Var nebenskills := {};
+  Var weitereskills := {};
+  For index := 1 To MAX_SKILLS+1
+    If (object.isA(POLCLASS_NPC))
+      If (GetSkillPergon(object, skillsinfo[index]))
+        berufskills.append(index);
+      EndIf
+    ElseIf (object.cmdlevel>=CMDLEVEL_SEER)
+      berufskills.append(index);
+    Else
+      Case (GetObjProperty(object, SKILLTYPKENNUNG+skillsinfo[index]))
+        SKILLTYP_BERUF:   berufskills.append(index);
+        SKILLTYP_HAUPT:   hauptskills.append(index);
+        SKILLTYP_NEBEN:   nebenskills.append(index);
+        SKILLTYP_WEITERE: weitereskills.append(index);
+      EndCase
+    EndIf
+    SleepMS(2);
+  EndFor
+
+  WriteHTML("<TR><TH COLSPAN='2'>Berufskills</TH></TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH>Name</TH><TH>Value</TH>");
+  WriteHTML("</TR>");
+  For index := 1 To berufskills.size()
+    WriteHTMLRaw("<TR>");
+    WriteHTMLRaw("<TD>"+GetSkillInfo(skillsinfo[berufskills[index]]).TrainName+"</TD>");
+    WriteHTMLRaw("<TD>"+GetSkillFloatPergon(object, skillsinfo[berufskills[index]])+"</TD>");
+    WriteHTML("</TR>");
+    SleepMS(2);
+  EndFor
+  WriteHTML("<TR><TH COLSPAN='2'>Hauptskills</TH></TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH>Name</TH><TH>Value</TH>");
+  WriteHTML("</TR>");
+  For index := 1 To hauptskills.size()
+    WriteHTMLRaw("<TR>");
+    WriteHTMLRaw("<TD>"+GetSkillInfo(skillsinfo[hauptskills[index]]).TrainName+"</TD>");
+    WriteHTMLRaw("<TD>"+GetSkillFloatPergon(object, skillsinfo[hauptskills[index]])+"</TD>");
+    WriteHTML("</TR>");
+    SleepMS(2);
+  EndFor
+  WriteHTML("<TR><TH COLSPAN='2'>Nebenskills</TH></TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH>Name</TH><TH>Value</TH>");
+  WriteHTML("</TR>");
+  For index := 1 To nebenskills.size()
+    WriteHTMLRaw("<TR>");
+    WriteHTMLRaw("<TD>"+GetSkillInfo(skillsinfo[nebenskills[index]]).TrainName+"</TD>");
+    WriteHTMLRaw("<TD>"+GetSkillFloatPergon(object, skillsinfo[nebenskills[index]])+"</TD>");
+    WriteHTML("</TR>");
+    SleepMS(2);
+  EndFor
+  WriteHTML("<TR><TH COLSPAN='2'>Weitereskills</TH></TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH>Name</TH><TH>Value</TH>");
+  WriteHTML("</TR>");
+  For index := 1 To weitereskills.size()
+    WriteHTMLRaw("<TR>");
+    WriteHTMLRaw("<TD>"+GetSkillInfo(skillsinfo[weitereskills[index]]).TrainName+"</TD>");
+    WriteHTMLRaw("<TD>"+GetSkillFloatPergon(object, skillsinfo[weitereskills[index]])+"</TD>");
+    WriteHTML("</TR>");
+    SleepMS(2);
+  EndFor
+
+  WriteHTML("</TABLE>");
+
+  WriteHTML("<BR><BR>");
+
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR><TH>Equipment</TH></TR>");
+  ForEach item in (ListEquippedItems(object))
+    WriteHTMLRaw("<TR><TD>");
+    If (item.isA(POLCLASS_CONTAINER))
+      WriteHtmlRaw("-> ");
+    EndIf
+    WriteHTMLRaw("<A HREF='"+BASE+"?Serial="+item.serial+"&"+A_PARAM+"'>"+item.desc+"</A>");
+    WriteHTML("</TD></TR>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</TABLE>");
+
+  WriteHTML("<BR><BR>");
+
+  If (!object.isA(POLCLASS_NPC))
+    WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+    WriteHTML("<TR><TH>Bank Box</TH></TR>");
+    WriteHTMLRaw("<TR>");
+    WriteHTMLRaw("<TD><A HREF='"+BASE+"?Serial="+FindBankBox(object).serial+"&"+A_PARAM+"'>"+Hex(FindBankBox(object).serial)+"</A></TD>");
+    WriteHTML("</TR>");
+    WriteHTML("</TABLE>");
+  Else
+    Var storage := FindStorageArea(STORAGE_MERCHANT);
+    If (storage)
+      WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+      WriteHTML("<TR><TH>Storage</TH></TR>");
+      Var inv := FindRootItemInStorageArea(storage, object.serial+" FS");
+      If (inv)
+        WriteHTML("<TR><TD><A HREF='"+BASE+"?Serial="+inv.serial+"&"+A_PARAM+"'>-> For Sale</A></TD></TR>");
+      EndIf
+      inv := FindRootItemInStorageArea(storage, object.serial+" PB");
+      If (inv)
+        WriteHTML("<TR><TD><A HREF='"+BASE+"?Serial="+inv.serial+"&"+A_PARAM+"'>-> Player bought Items</A></TD></TR>");
+      EndIf
+      inv := FindRootItemInStorageArea(storage, object.serial+" 1C");
+      If (inv)
+        WriteHTML("<TR><TD><A HREF='"+BASE+"?Serial="+inv.serial+"&"+A_PARAM+"'>-> Buyable</A></TD></TR>");
+      EndIf
+      WriteHTML("</TABLE>");
+    EndIf
+  EndIf
+
+  WriteHTML("<BR><BR>");
+
+EndFunction
+
+Function ShowItemInfo(object)
+  If (object.container)
+    Var tree_array := array;
+    Var temp := object;
+    While (temp)
+      Var name := temp.desc;
+      If (!name)
+        name := temp.name;
+      EndIf
+      tree_array.Insert(1, name);
+      tree_array.Insert(1, "Serial="+temp.serial);
+      If ((temp.multi) && (!temp.container))
+        tree_array.Insert(1,"Multi");
+        tree_array.Insert(1, "Serial="+temp.multi.serial);
+      EndIf
+      temp := temp.container;
+      SleepMS(2);
+    EndWhile
+    LocationBar(tree_array);
+  ElseIf ((object.name[ST_PREF_BANK]) && (object.objtype == UOBJ_BANKBOX))
+    Var temp := object.name;
+    temp[ST_PREF_BANK] := "";
+    temp := CInt(temp);
+    temp := SystemFindObjectBySerial(temp,SYSFIND_SEARCH_OFFLINE_MOBILES);
+    LocationBar({"Serial="+temp.serial,temp.name,"Serial="+object.serial,object.desc});
+  ElseIf (object.multi)
+    LocationBar({"Serial="+object.multi.serial,"Multi"});
+  Else
+    LocationBar();
+  EndIf
+
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR><TH COLSPAN='2'>General Info</TH></TR>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH>Name</TH><TH>Value</TH>");
+  WriteHTML("</TR>");
+  WriteHTML("<TR><TD>Desc</TD><TD>"+object.desc+"</TD></TR>");
+  WriteHTML("<TR><TD>Name</TD><TD>"+object.name+"</TD></TR>");
+  WriteHTML("<TR><TD>Color</TD><TD>"+object.color+"</TD></TR>");
+  WriteHTML("<TR><TD>Graphic</TD><TD>"+object.graphic+"</TD></TR>");
+  WriteHTML("<TR><TD>Object Type</TD><TD>"+Hex(object.objtype)+"</TD></TR>");
+  WriteHTML("<TR><TD>Serial</TD><TD>"+Hex(object.serial)+"</TD></TR>");
+  WriteHTML("<TR><TD>X Y Z Realm</TD><TD>"+object.x+", "+object.y+", "+object.z+", "+object.realm+"</TD></TR>");
+  If (object.container)
+    WriteHTML("<TR><TD>Container</TD><TD><A HREF='"+BASE+"?Serial="+object.container.serial+"&"+A_PARAM+"'>"+Hex(object.container.serial)+"</A></TD></TR>");
+  EndIf
+  If (object.getgottenby)
+    WriteHTML("<TR><TD>GottenBy</TD><TD><A HREF='"+BASE+"?Serial="+object.getgottenby.serial+"&"+A_PARAM+"'>"+Hex(object.getgottenby.serial)+"</A></TD></TR>");
+  EndIf
+  If (object.IsA(POLCLASS_ARMOR))
+    WriteHTML("<TR><TD>AR</TD><TD>"+object.ar+"</TD></TR>");
+    WriteHTML("<TR><TD>AR Mod</TD><TD>"+object.ar_mod+"</TD></TR>");
+  ElseIf (object.IsA(POLCLASS_WEAPON))
+    WriteHTML("<TR><TD>Damage Mod</TD><TD>"+object.dmg_mod+"</TD></TR>");
+  EndIf
+  If (object.IsA(POLCLASS_EQUIPMENT))
+    WriteHTML("<TR><TD>Quality</TD><TD>"+object.quality+"</TD></TR>");
+    WriteHTML("<TR><TD>HP/MaxHP</TD><TD>"+object.hp+"/"+object.maxhp+"</TD></TR>");
+  EndIf
+  If (object.isA(POLCLASS_MULTI))
+    WriteHTML("<TR><TD>PlaceName</TD><TD>"+PlaceName(object)+"</TD></TR>");
+  EndIf
+  WriteHTML("<TR><TD>Newbie</TD><TD>"+object.newbie+"</TD></TR>");
+  WriteHTML("<TR><TD>Amount</TD><TD>"+object.amount+"</TD></TR>");
+  WriteHTML("</TABLE>");
+
+  WriteHTML("<BR><BR>");
+
+  If (object.IsA(POLCLASS_CONTAINER))
+    WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+    WriteHTML("<TR><TH>Container Contents</TH></TR>");
+    ForEach item in (EnumerateItemsInContainer(object,ENUMERATE_ROOT_ONLY))
+      SleepMS(2);
+      WriteHTMLRaw("<TR>");
+      WriteHTMLRaw("<TD>");
+      If ((item.IsA(POLCLASS_CONTAINER)) || (item.objtype == 0x1011))
+        WriteHTMLRaw("-&gt; ");
+      EndIf
+      WriteHTMLRaw("<A HREF='"+BASE+"?Serial="+item.serial+"&"+A_PARAM+"'>"+item.desc+"</A></TD>");
+      WriteHTML("</TR>");
+    EndForEach
+    WriteHTML("</TABLE>");
+    WriteHTML("<BR><BR>");
+  ElseIf (object.isA(POLCLASS_MULTI))
+    ShowHouseInfo(object);
+    WriteHTML("<BR><BR>");
+  ElseIf (object.objtype == 0x1011) // Schlüsselring
+    var keyring := GetBoxInStorageArea(
+      STORAGE_KEYRINGS, ST_PREF_KEYRINGS+Hex(object.serial)
+    );
+    If (keyring)
+      WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+      WriteHTML("<TR><TH>Keyring Contents</TH></TR>");
+      ForEach item in (EnumerateItemsInContainer(keyring, ENUMERATE_ROOT_ONLY))
+        SleepMS(2);
+        WriteHTMLRaw("<TR>");
+        WriteHTMLRaw("<TD>");
+        If (item.IsA(POLCLASS_CONTAINER))
+          WriteHTMLRaw("-&gt; ");
+        EndIf
+        WriteHTMLRaw("<A HREF='"+BASE+"?Serial="+item.serial+"&"+A_PARAM+"'>"+item.desc+"</A></TD>");
+        WriteHTML("</TR>");
+      EndForEach
+      WriteHTML("</TABLE>");
+      WriteHTML("<BR><BR>");
+    EndIf
+  EndIf
+EndFunction
+
+Function ShowCpropInfo(object)
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='2'>");
+  If (object.desc)
+    WriteHTML("CProps on "+object.desc);
+  Else
+    WriteHTML("CProps on "+object.name);
+  EndIf
+  WriteHTML("</TH>");
+  WriteHTML("</TR>");
+
+  WriteHTML("<TR>");
+  WriteHTML("<TH>Prop Name</TH>");
+  WriteHTML("<TH>Prop Value</TH>");
+  WriteHTML("</TR>");
+
+  ForEach prop_name in (object.PropNames())
+    If ((prop_name[1,3]!="Sk_") && (prop_name[1,3]!="St_") && (prop_name[1,5]!="SkCh_"))
+      WriteHTML("<TR>");
+      WriteHTMLRaw("<TD>"+prop_name+"</TD>");
+      WriteHTML("<TD>"+EscapeHTML(object.GetProp(prop_name))+"</TD>");
+      WriteHTML("</TR>");
+    EndIf
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</TABLE>");
+
+  WriteHTML("<BR>");
+EndFunction
+
+Function ShowMemberInfo(object)
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='2'>");
+  If (object.desc)
+    WriteHTML("Members of "+object.desc);
+  Else
+    WriteHTML("Members of "+object.name);
+  EndIf
+  WriteHTML("</TH>");
+  WriteHTML("</TR>");
+
+  WriteHTML("<TR>");
+  WriteHTML("<TH>Member Name</TH>");
+  WriteHTML("<TH>Member Value</TH>");
+  WriteHTML("</TR>");
+
+  If ((object.isA(POLCLASS_MOBILE)))
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Warmode</TD><TD>"+object.warmode+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Gender</TD><TD>"+object.gender+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>TrueObjtype</TD><TD>"+object.trueobjtype+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>TrueColor</TD><TD>"+object.truecolor+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Ar Mod</TD><TD>"+object.ar_mod+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Hidden</TD><TD>"+object.hidden+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Concealed</TD><TD>"+object.concealed+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Frozen</TD><TD>"+object.frozen+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Paralyzed</TD><TD>"+object.paralyzed+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Poisoned</TD><TD>"+object.poisoned+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Stealthsteps</TD><TD>"+object.stealthsteps+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Squelched</TD><TD>"+object.squelched+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Dead</TD><TD>"+object.dead+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>AR</TD><TD>"+object.ar+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Criminal</TD><TD>"+object.criminal+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Gold</TD><TD>"+object.gold+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Title Prefix</TD><TD>"+object.title_prefix+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Title Suffix</TD><TD>"+object.title_suffix+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Title Guild</TD><TD>"+object.title_guild+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Title Race</TD><TD>"+object.title_race+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>GuildID</TD><TD>"+object.guildid+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Murderer</TD><TD>"+object.murderer+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Reportables</TD><TD>"+object.reportables+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>ClientVersion</TD><TD>"+object.clientversion+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>ClientType</TD><TD>"+object.clienttype+" "+GetClientType(object.clienttype)+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>UOExpansionClient</TD><TD>"+object.uo_expansion_client+" "+GetExpansion(object.uo_expansion_client)+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Delay Mod</TD><TD>"+object.delay_mod+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>UCLang</TD><TD>"+object.uclang+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Race</TD><TD>"+object.race+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>AggressorTo</TD><TD>"+object.aggressorto+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>LawfullyDamaged</TD><TD>"+object.lawfullydamaged+"</TD>");
+    WriteHTML("</TR>");
+  EndIf
+  If (object.isA(POLCLASS_NPC))
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Alignment</TD><TD>"+object.alignment+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>NPCTemplate</TD><TD>"+object.npctemplate+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Eventmask</TD><TD>"+object.eventmask+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Speech Color</TD><TD>"+object.speech_color+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Speech Font</TD><TD>"+object.speech_font+"</TD>");
+    WriteHTML("</TR>");
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Run Speed</TD><TD>"+object.run_speed+"</TD>");
+    WriteHTML("</TR>");
+  EndIf
+  If (object.isA(POLCLASS_HOUSE))
+    WriteHTML("<TR>");
+    WriteHTML("<TD>Footprint</TD><TD>"+object.footprint+"</TD>");
+    WriteHTML("</TR>");
+  EndIf
+
+  WriteHTML("</TABLE>");
+EndFunction
+
+Function ShowWeaponInfo(object)
+  Var collectforhtml:={};
+  WriteHTML("<BR>");
+  WriteHTML("<TABLE WIDTH='600' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='1'>Weaponcalc</TH>");
+  WriteHTML("</TR>");
+  Var faktor := 0;
+  faktor := CalcFaktorFight(object, 0,"", 2, 0, 1,1,collectforhtml);
+  WriteHTML("<TR><TD>Factor:"+faktor+"</TR></TD>");
+  ForEach msg in collectforhtml
+    WriteHTML("<TR><TD>"+msg+"</TR></TD>");
+  EndForEach
+  WriteHTML("<TR><TD></TR></TD>");
+  collectforhtml := {};
+  Var faktor_array := {};
+  faktor_array.append(CalcFaktorFight(object, 0,SKILLID_SCHILDKAMPF, 3, 0, 0,1,collectforhtml));
+  faktor_array.append(CalcFaktorFight(object, 0,SKILLID_TAKTIK,      3, 0, 0,1,collectforhtml));
+  faktor_array.append(CalcFaktorFight(object, 0,SKILLID_ANATOMIE,    3, 0, 0,1,collectforhtml));
+  faktor_array.append(CalcFaktorFight(object, 0,SKILLID_AUSWEICHEN,  3, 0, 0,1,collectforhtml));
+  //Waffe suchen
+  Var equipment1 := GetEquipmentByLayer(object, LAYER_HAND1);
+  Var equipment2 := GetEquipmentByLayer(object, LAYER_HAND2);
+  Var weapon;
+  If (equipment1.isa(POLCLASS_WEAPON))
+    weapon := equipment1;
+  ElseIf (equipment2.isa(POLCLASS_WEAPON))
+    weapon := equipment2;
+  EndIf
+  faktor_array.append(CalcFaktorFight(object, 0,weapon.attribute,    3, 0, 0,1,collectforhtml));
+
+  Var min_faktor := 100;
+  Var max_faktor := 0;
+  ForEach wert in faktor_array
+    max_faktor:=Max(max_faktor,wert);
+    min_faktor:=Min(min_faktor,wert);
+  EndForEach
+  ForEach msg in collectforhtml
+    WriteHTML("<TR><TD>"+msg+"</TR></TD>");
+  EndForEach
+  WriteHTML("<TR><TD></TR></TD>");
+  Var faktor_descr := "";
+  If (min_faktor == max_faktor)
+    Faktor_2_String(min_faktor, faktor_descr);
+    WriteHTML("<TR><TD>Ihr erhaltet die Erfahrung fuer eure Kampfskills "+faktor_descr+".</TR></TD>");
+  Else
+    Var text := "zwischen ";
+    Faktor_2_String(min_faktor, faktor_descr);
+    text := text+faktor_descr+" und ";
+    Faktor_2_String(max_faktor, faktor_descr);
+    text := text+faktor_descr;
+    WriteHTML("<TR><TD>Ihr erhaltet die Erfahrung fuer eure Kampfskills "+text+".</TR></TD>");
+  EndIf
+
+  WriteHTML("</TABLE>");
+  WriteHTML("<BR>");
+  WriteHTML("<TABLE WIDTH='600' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR>");
+  WriteHTML("<TH COLSPAN='1'>New Armorcalc</TH>");
+  WriteHTML("</TR>");
+  faktor_array := array;
+  Var armrzone := ReadConfigFile("::armrzone");
+  If (armrzone)
+    Var armorzones := dictionary;
+    Var zonestruct := struct{layer,chance,item};
+
+    ForEach zonename in GetConfigStringKeys(armrzone)
+      Var zone := armrzone[zonename];
+      zonestruct.chance := zone.chance/100.0;
+      zonestruct.layer := GetConfigStringArray(zone, "Layer");
+      zonestruct.item := 0;
+      armorzones[zone.name] := zonestruct;
+    EndForEach
+    SleepMS(2);
+    Var itemdesc;
+    ForEach equip in (ListEquippedItems(object))
+      If ((equip.isA(POLCLASS_ARMOR)) && (equip.serial<>object.shield.serial))
+        itemdesc := GetItemDescriptor(equip.objtype);
+        If (itemdesc.coverage)
+          ForEach cover in (itemdesc.coverage)
+            If (armorzones.exists(cover))
+              If ((!armorzones[cover].item)
+                || (armorzones[cover].item.ar<equip.ar)) // ar_mod enthalten!
+                armorzones[cover].item := equip;
+              EndIf
+            EndIf
+          EndForEach
+        EndIf
+      EndIf
+      SleepMS(2);
+    EndForEach
+
+    Var new_ar := 0.0;
+    Var new_armod := 0.0;
+    ForEach zone in armorzones
+      If (zone.item)
+        new_ar += (zone.item.ar-zone.item.ar_mod)*zone.chance;
+        new_armod += zone.item.ar_mod*zone.chance;
+        faktor_array.append(_zone_iter+" zone.chance "+zone.chance+": "+zone.item.desc+" ar="+((zone.item.ar-zone.item.ar_mod)*zone.chance)+
+                            " ar_mod="+(zone.item.ar_mod*zone.chance));
+      EndIf
+    EndForEach
+    faktor_array.append("Gesamt Ar ohne Schild "+new_ar+"("+new_armod+")="+(new_ar+new_armod)+" CInt="+CInt(new_ar+new_armod));
+
+    If (object.shield)
+      // add AR due to shield : parry skill / 2 is percent of AR
+      Var shieldskillfactor := GetSkillPergon(object,SKILLID_SCHILDKAMPF)*0.5*0.01;
+      Var add := object.shield.ar*shieldskillfactor;
+      Var addmod := 0.0;
+      If (object.shield.ar_mod)
+        addmod := object.shield.ar_mod*shieldskillfactor;
+      EndIf
+      If (add>1.0)
+        new_ar += add-addmod;
+        new_armod += addmod;
+        faktor_array.append("Schild "+add+"("+addmod+") schildfaktor="+shieldskillfactor);
+      Else
+        new_ar += 1.0;
+        faktor_array.append("Schild ar &lt;=1.0 add=1.0");
+      EndIf
+    EndIf
+    faktor_array.append("Gesamt Ar mit Schild "+new_ar+"("+new_armod+")="+(new_ar+new_armod)+" CInt="+CInt(new_ar+new_armod)+" (+who.ar_mod)="+(CInt(new_ar+new_armod)+object.ar_mod));
+    faktor_array.append("Gesamt Ar laut Core "+object.ar+"("+object.ar_mod+")");
+  EndIf
+
+  ForEach msg in faktor_array
+    WriteHTML("<TR><TD>"+msg+"</TR></TD>");
+  EndForEach
+
+  WriteHTML("</TABLE>");
+EndFunction
+
+Function Faktor_2_String(faktor_nbr, byref faktor_descr)
+  faktor_nbr*=100.0;
+  If (faktor_nbr >= 100)
+      faktor_descr := "vollstaendig";
+  ElseIf (faktor_nbr >= 90)
+      faktor_descr := "nicht ganz vollstaendig";
+  ElseIf (faktor_nbr >= 80)
+      faktor_descr := "groestenteils";
+  ElseIf (faktor_nbr >= 70)
+      faktor_descr := "reduziert";
+  ElseIf (faktor_nbr >= 60)
+      faktor_descr := "stark reduziert";
+  ElseIf (faktor_nbr >= 50)
+      faktor_descr := "halbiert";
+  ElseIf (faktor_nbr >= 40)
+      faktor_descr := "eingeschraenkt";
+  ElseIf (faktor_nbr > 0)
+      faktor_descr := "kaum merklich";
+  Else
+      faktor_descr := "gar nicht";
+  EndIf
+EndFunction
+
+Function MultiLister()
+  Var OBJTYPE_BAUPLATZ := {0x6133, 0x6172}; // leere Bauplaetze
+
+  LocationBar();
+
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR><TH>Multis</TH></TR>");
+  ForEach houseserial in (GetGlobalProperty("#houselist"))
+    Var house := SystemFindObjectBySerial(houseserial);
+    If (house)
+      If (!(house.objtype in OBJTYPE_BAUPLATZ)) // Nur wirkliche Haeuser anzeigen...
+        Var owner;
+        Var ownerserial := GetObjProperty(house, PROP_HS_C_OWNER);
+        If (ownerserial)
+          owner := SystemFindObjectBySerial(ownerserial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+        EndIf
+        If (house.isa(POLCLASS_HOUSE)) // Spielerhaus
+          If (owner)
+            WriteHTMLRaw("<TR>");
+            WriteHTMLRaw("<TD><A HREF='"+BASE+"?Serial=");
+            WriteHtmlRaw(house.serial+"&"+A_PARAM+"'>");
+            WriteHtmlRaw(owner.name+" ("+house.x+","+house.y+")");
+            WriteHtmlRaw("</A></TD></TR>");
+          EndIf
+        EndIf
+      EndIf
+    EndIf
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</TABLE>");
+EndFunction
+
+Function ShowHouseInfo(multi)
+  Var owner;
+  Var ownerserial := GetObjProperty(multi, PROP_HS_C_OWNER);
+  If (ownerserial)
+    owner := SystemFindObjectBySerial(ownerserial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+  EndIf
+
+  WriteHTML("<TABLE WIDTH='400' CELLSPACING='1' CELLPADDING='2'>");
+  WriteHTML("<TR><TH>Owner (<A HREF='"+BASE+"?Serial="+owner.serial+"&"+A_PARAM+"'>"+owner.name+"</A>)</TH></TR>");
+  WriteHTML("<TR><TH>Secure Container</TH></TR>");
+  Var x := (multi.footprint.xmax-multi.footprint.xmin)/2;
+  Var y := (multi.footprint.ymax-multi.footprint.ymin)/2;
+  Var range := CInt(Max(x,y))+1;
+  x += multi.footprint.xmin;
+  y += multi.footprint.ymin;
+  ForEach root_item in (ListItemsNearLocationOfType(x, y, LIST_IGNORE_Z, range, 0xe41, multi.realm)+
+                         ListItemsNearLocationOfType(x, y, LIST_IGNORE_Z, range, 0xe40, multi.realm))
+    WriteHTMLRaw("<TR>");
+    WriteHTMLRaw("<TD><A HREF='"+BASE+"?Serial="+root_item.serial+"&"+A_PARAM+"'>");
+    If (root_item.desc)
+      WriteHtmlRaw("-&gt; "+root_item.desc+" ("+root_item.x+","+root_item.y+","+root_item.z+")</A></TD>");
+    Else
+      WriteHtmlRaw("-&gt; "+root_item.name+" ("+root_item.x+","+root_item.y+","+root_item.z+")</A></TD>");
+    EndIf
+    WriteHTML("</TR>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("<TR><TH>Components ("+multi.components.Size()+")</TH></TR>");
+  ForEach root_item in (multi.components)
+    WriteHTMLRaw("<TR>");
+    WriteHTMLRaw("<TD><A HREF='"+BASE+"?Serial="+root_item.serial+"&"+A_PARAM+"'>");
+    If ((root_item.IsA(POLCLASS_CONTAINER)) || (root_item.objtype == 0x1011))
+      WriteHTMLRaw("-&gt ");
+    EndIf
+    If (root_item.desc)
+      WriteHtmlRaw(root_item.desc+" ("+root_item.x+","+root_item.y+","+root_item.z+")</A></TD>");
+    Else
+      WriteHtmlRaw(root_item.name+" ("+root_item.x+","+root_item.y+","+root_item.z+")</A></TD>");
+    EndIf
+    WriteHTML("</TR>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("<TR><TH>Root Items ("+multi.items.Size()+")</TH></TR>");
+  ForEach root_item in (multi.items)
+    WriteHTMLRaw("<TR>");
+    WriteHTMLRaw("<TD><A HREF='"+BASE+"?Serial="+root_item.serial+"&"+A_PARAM+"'>");
+    If ((root_item.IsA(POLCLASS_CONTAINER)) || (root_item.objtype == 0x1011))
+      WriteHTMLRaw("-&gt; ");
+    EndIf
+    If (root_item.desc)
+      WriteHtmlRaw(root_item.desc+" ("+root_item.x+","+root_item.y+","+root_item.z+")</A></TD>");
+    Else
+      WriteHtmlRaw(root_item.name+" ("+root_item.x+","+root_item.y+","+root_item.z+")</A></TD>");
+    EndIf
+    WriteHTML("</TR>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("<TR><TH>Mobiles ("+multi.mobiles.Size()+")</TH></TR>");
+  ForEach root_item in (multi.mobiles)
+    WriteHTMLRaw("<TR>");
+    WriteHTMLRaw("<TD><A HREF='"+BASE+"?Serial="+root_item.serial+"&"+A_PARAM+"'>");
+    WriteHtmlRaw(root_item.name+" ("+root_item.x+","+root_item.y+","+root_item.z+")</A></TD>");
+    WriteHTML("</TR>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</TABLE>");
+EndFunction
+
+Function AttributeLockToString(lockstate)
+  Case (lockstate)
+    0: Return("Up");
+    1: Return("Down");
+    2: Return("Locked");
+    default: Return("-");
+  EndCase
+EndFunction
+
+Function GetClientType(clienttype)
+  If (!clienttype)
+    Return("");
+  EndIf
+  var str:="(";
+  If (clienttype & 0x1)
+    str+="4000,";
+  EndIf
+  If (clienttype & 0x2)
+    str+="4070,";
+  EndIf
+  If (clienttype & 0x4)
+    str+="5000,";
+  EndIf
+  If (clienttype & 0x8)
+    str+="5020,";
+  EndIf
+  If (clienttype & 0x10)
+    str+="6017,";
+  EndIf
+  If (clienttype & 0x20)
+    str+="60142,";
+  EndIf
+  If (clienttype & 0x40)
+    str+="UOKR,";
+  EndIf
+  If (clienttype & 0x80)
+    str+="7000,";
+  EndIf
+  If (clienttype & 0x100)
+    str+="UOSA,";
+  EndIf
+  str:=Trim(str,TRIM_RIGHT,",");
+  str+=")";
+  Return(str);
+EndFunction
+
+Function GetExpansion(expansion)
+  If (!expansion)
+    Return("");
+  EndIf
+  var str:="(";
+//  If (expansion & 0x0)
+//    str+="T2A,";
+//  EndIf
+  If (expansion & 0x1)
+    str+="RE,";
+  EndIf
+  If (expansion & 0x2)
+    str+="3DAWN,";
+  EndIf
+  If (expansion & 0x4)
+    str+="LBR,";
+  EndIf
+  If (expansion & 0x8)
+    str+="AOS,";
+  EndIf
+  If (expansion & 0x10)
+    str+="SE,";
+  EndIf
+  If (expansion & 0x20)
+    str+="SA,";
+  EndIf
+  If (expansion & 0x40)
+    str+="UO3D,";
+  EndIf
+  If (expansion & 0x80)
+    str+="RESERVED,";
+  EndIf
+  If (expansion & 0x100)
+    str+="3DCLIENT,";
+  EndIf
+  str:=Trim(str,TRIM_RIGHT,",");
+  str+=")";
+  Return(str);
+EndFunction

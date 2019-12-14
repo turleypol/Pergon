@@ -1,0 +1,115 @@
+///////////////////////////////////////////////////////////////////////////
+// Movetype - Bewegt Items eines bestimmten Typs aus einem in einen anderen
+//            Container
+
+use uo;
+include "include/itemnpc";
+include "include/msgs";
+include "include/utility";
+
+Program TextCMD_MoveType(who, max_str)
+    var max_items := CInt(max_str);
+    If (max_items.errortext and max_str)
+        SendSysMessagePergon(who,
+            "Ungültige Zahl "+max_str+"; Aufruf: .movetype [max. Anzahl]",
+            "Invalid number "+max_str+"; Usage: .movetype [max. amount]"
+        );
+        return;
+    EndIf
+
+    // zu verschiebender Typ
+    SendSysMessagePergon(who, "Objekt auswählen!", "Select an object!");
+    var object := Target(who);
+    If (!object)
+        SendSysMessagePergon(who, "Abbruch", "Cancelled");
+        return;
+    EndIf
+
+    If (!object.container)
+        SendSysMessagePergon(who,
+            "Abbruch; Objekt muss in Behälter sein.",
+            "Cancelled; object has to be in a container."
+        );
+        return;
+    EndIf
+
+    // Zielcontainer
+    SendSysMessagePergon(who,
+        "Zielbehälter auswählen!",
+        "Select the destination container!"
+    );
+    var tocont := Target(who);
+    If (tocont and tocont.isa(POLCLASS_MOBILE))
+        // bequemes Auswaehlen von Packtieren erlauben
+        tocont := tocont.backpack;
+    EndIf
+    If (!tocont or !tocont.isa(POLCLASS_CONTAINER))
+        SendSysMessagePergon(who,
+            "Abbruch",
+            "Cancelled"
+        );
+        return;
+    EndIf
+    If (!IsMine(who, tocont) and tocont.getprop("myserial") != who.serial)
+        SendSysMessagePergon(who,
+            "Abbruch; Zielbehälter muss euch gehören.",
+            "Cancelled; you must own the destination container."
+        );
+        return;
+    EndIf
+
+    var fromcont := object.container;
+    If (fromcont.serial == tocont.serial)
+        SendSysMessagePergon(who,
+            // zwei Original-Filmzitat
+            "Es tut mir leid, Dave, aber das kann ich nicht tun.",
+            "You see? You see? Your stupid minds! Stupid! Stupid!"
+        );
+        return;
+    EndIf
+
+    // Verschieben vorbereiten
+    If (!ReserveItem(fromcont) or !ReserveItem(tocont))
+        return;
+    EndIf
+
+    var items := FindSubstance(
+        fromcont, object.objtype, 1, 0,
+        FINDSUBSTANCE_FIND_ALL+FINDSUBSTANCE_ROOT_ONLY
+    );
+    var done  := 0;
+    ForEach item in (items)
+        SleepMS(2);
+        var success;
+        If (item.stackable)
+            success := MoveStackingItemToContainer(item, tocont);
+        Else
+            success := MoveItemToContainer(item, tocont);
+        EndIf
+
+        If (success)
+            done += 1;
+            If (max_items and done >= max_items)
+                break;
+            EndIf
+        ElseIf (success.errortext in (array{
+                "Container is too full to add that",
+                "That container is full"
+        }))
+            SendSysMessagePergon(who,
+                "Euer Zielbehälter ist zu voll!",
+                "Your destination container is too full."
+            );
+            break;
+        EndIf
+    EndForEach
+
+    // "done" ist die Anzahl der verschobenen Stacks --
+    // ist das nun ein Bug oder nur eine ungenaue Meldung?
+    SendSysMessagePergon(who,
+        "Fertig. "+done+" Objekte verschoben.",
+        "Done.  "+done+" items moved."
+    );
+    ReleaseItem(fromcont);
+    ReleaseItem(tocont);
+EndProgram

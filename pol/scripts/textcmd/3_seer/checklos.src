@@ -1,0 +1,26 @@
+//
+// 17.10.2005 Fraggulus: sinnloses (leeres) Script mit Anweisungen gefuellt
+//
+
+use uo;
+
+Include "include/msgs";
+
+program check_los(who)
+
+  SendSysMessagePergon(who, "Waehlt ein Item/Mobile, zu dem die Line-Of-Sight gecheckt werden soll.",
+                            "Choose a target to check line of sight."); 
+  Var tgt := target(who);
+  
+  If (tgt)
+    If (CheckLineOfSight(who, tgt))
+      SendSysMessagePergon(who, "Es besteht Sichtlinie (Line-Of-Sight).", "There is line of sight.");
+    Else
+      SendSysMessagePergon(who, "Es besteht keine Sichtlinie (No Line-Of-Sight).", 
+                                "There is no line of sight.");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+
+endprogram

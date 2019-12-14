@@ -1,0 +1,43 @@
+////////////////////////////////////////////////////////////////
+//
+// maction.src -- Laesst umstehende Personen bestimmte Actions ausfuehren
+//
+// Usage: .maction Action(0x22) Anzahl(1) Radius(15) (defaults)
+//
+//     Author: AgtMulda
+//
+//   Modifications:
+//     2004/01/15 AgtMulda: First Write
+//
+//////////////////////////////////////////////////////////////////////////
+
+use os;
+use uo;
+
+program maction(who, params)
+  Var action := SplitWords(params)[1];
+  Var count := SplitWords(params)[2];
+  Var rad := SplitWords(params)[3];
+  Var tcount := 1;
+  If (Cint(count) > 1)
+    tcount := Cint(count);
+  Endif
+  Var actionid := 0x22;
+  If (action)
+    actionid := Cint(action);
+  Endif
+  Var radius := 15;
+  If ((Cint(rad) > 1) AND (Cint(rad) <= 20))
+    radius := Cint(rad);
+  Endif
+  Var i;
+  For ( i := 1; i <= tcount; i += 1)
+    Foreach critter in listmobilesnearlocation(who.x, who.y, who.z, radius,who.realm)
+      If ((critter.graphic in {0x190, 0x191}) && (who.serial != critter.serial))
+        PerformAction(critter, actionid);
+      Endif
+    Endforeach
+    sleep(2);
+  Endfor
+Endprogram
+

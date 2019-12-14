@@ -1,0 +1,11 @@
+<h3 id="online">online</h3>
+
+<h4>Parameter: keiner oder <kbd>&lt;Charactername&gt;</kbd></h4>
+
+<p>Mit Parameter wird angezeigt, ob der angegebene Character online ist
+oder nicht. Ohne Parameter erfolgt eine Auflistung aller Character, wobei
+sich Counselor ausblenden lassen können und Seer und höher
+generell ausgeblendet werden. Falls man allein auf dem Server ist,
+entfällt die Auflistung.</p>
+
+<p>Siehe auch: <a data-href="#onlinefull">onlinefull</a></p>

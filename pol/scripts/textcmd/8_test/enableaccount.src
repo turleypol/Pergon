@@ -1,0 +1,50 @@
+///////////////////////////////////////////////////////////////
+//
+//   TextCMD EnableAccount - Account eines Spielern wieder aktivieren
+//
+//   Modifications:
+//
+///////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+Use os;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/string";
+Include "include/msgs";
+Include "include/pergonutil";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_EnableAccount(who)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  Var buchstabe:=ChooseAccountBuchstabe(who, FillInAccountBuchstaben(SHOW_DISABLED)); // Einen Anfangsbuchstaben auswaehlen
+  If (buchstabe<>-1)
+    Var accountname:=ChooseAccountName(who, FillInAccountNames(buchstabe,SHOW_DISABLED)); // Einen Account auswaehlen
+    If (accountname)
+      Var account:=FindAccount(accountname);
+      If (account)
+        If (!account.enabled)
+          account.enable();
+
+          SendSysMessagePergon(who, "Der Account '"+accountname+"' sollte wieder funktionieren.");
+          SysLog("ENABLE! "+who.name+" ["+who.acctname+"] laesst "+accountname+" wieder auf den Server!");
+        Else
+          SendSysMessagePergon(who, "Der Account '"+accountname+"' war nicht deaktiviert.");
+        EndIf
+      Else
+        SysLog("'"+accountname+"' gibt es nicht !");
+      EndIf
+    EndIf
+  EndIf
+EndProgram

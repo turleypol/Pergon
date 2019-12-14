@@ -1,0 +1,125 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file manavampire.src
+//
+// implements spell 319 <Mana Vampire> - "Mana Vampir"
+//
+// relocates HP from spelltarget to casters mana
+// [ Reflected / Resisted (Magic) ]
+
+///////////////////////////////////////////////////////////////////////////
+// $Log: not supported by cvs2svn $
+// Revision 1.9  2010/01/28 11:51:03  Mentholia
+// ShowDamage von Script auf Core
+//
+// Revision 1.8  2008/07/25 04:29:13  mehdorn
+// - ueberarbeitet, um Fehlermeldungen zu vermeiden
+//
+// Vers. 1.1 - 04.10.2003 Sebastian 'Bihinos' Giese:
+// ueberarbeitet
+//
+// Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese:
+// Erstentwurf
+
+use vitals;
+include "../magicpergon";
+include "../resistance";
+include "../spellattack";
+include "include/packets";
+
+Program Cast_Manavampire(params)
+  var caster;
+  var caston;
+  var power;
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  := params[3];
+    caston := params[4];
+    send_attack(caston, caster, 319);
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_NECRO_MANAVAMPIRE);
+    caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  If (!caston)
+    return;
+  EndIf
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_DIR);
+
+  // get spelltarget -> possible spell reflection
+  var spelltarget := ReflectSpell(
+    caster, caston, power, 1, FX_GLOW, 5, 15, 0, SFX_SPELL_MANA_VAMPIRE
+  );
+  If (!spelltarget)
+    return;
+  EndIf
+
+  var spells := ReadConfigFile("::spells"); // load spelldata
+  var spell := FindConfigElem(spells, SPELLID_NECRO_MANAVAMPIRE);
+
+  var dmg;
+  If (spell.resist)
+    // calc spell damage according to spelltargets magic resistance
+    // and casting power
+    dmg := CInt(MagicResistance(
+      spelltarget, spell.skill, spell.resist, power*spell.primary/100.0, 1
+    ));
+  Else
+    dmg := CInt(power*spell.primary/100.0);
+  EndIf
+  If (spell.primarymin and spell.primarymin > dmg)
+      dmg := spell.primarymin;
+  ElseIf (spell.primarymax and spell.primarymax < dmg)
+      dmg := spell.primarymax;
+  EndIf
+
+  If (dmg <= 0)
+    If (caster)
+      SendSysMessagePergon(caster,
+        spelltarget.name + "'s Wille ist zu stark",
+        spelltarget.name + "'s will is too strong"
+      );
+    EndIf
+    return;
+  EndIf
+
+  // deal damage to spelltarget
+  ApplyRawDamagePergon(spelltarget, dmg);
+
+  // check if spell has been reflected
+  If (spelltarget == caster)
+    var amnt := CInt(GetIntPergon(caston)*power*dmg/10000.0);
+    // give mana to former target
+    SetManaPergon(caston, GetManaPergon(caston)+amnt);
+    SendSysMessagePergon(caster,
+      "Ihr habt nebenher " + amnt + " Mana verschenkt",
+      "You have " + amnt + " Mana given away"
+    );
+  Else
+    If (caster)
+      var amnt := CInt(power*dmg/100.0);
+      // give mana to caster
+      SetManaPergon(caster, GetManaPergon(caster)+amnt);
+      SendSysMessagePergon(caster,
+        "Ihr habt nebenher " + amnt + " Mana gewonnen",
+        "You have gathered " + amnt + " Mana"
+      );
+    EndIf
+  EndIf
+EndProgram
+
+// vim: sw=2 sts=2

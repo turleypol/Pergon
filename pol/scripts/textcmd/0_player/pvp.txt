@@ -1,0 +1,4 @@
+<h3 id="pvp">pvp</h3>
+
+<p>Zeigt zu allen Spielern in der Umgebung an, ob &bdquo;PvP&rdquo; erlaubt
+ist, sie also angegriffen werden können.</p>

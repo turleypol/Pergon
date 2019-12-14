@@ -1,0 +1,183 @@
+<html>
+
+<head>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+<title>CFGFILE Function Module </title>
+</head>
+
+<body>
+
+<h1>CFGFILE Function Module (CFGFILE.EM)</h1>
+
+<p>The CFGFILE function module defines the following functions: 
+
+<ul>
+  <li>ReadConfigFile</li>
+  <li>FindConfigElem</li>
+  <li>GetElemProperty</li>
+</ul>
+
+<h2>General Notes</h2>
+
+<table border="0" width="100%">
+  <tr>
+    <td>A configuration file consists of zero or more elements.&nbsp; <p>Each element has a <strong>type</strong>,
+    a <strong>key</strong>, and zero or more <strong>properties</strong>. At present, the key
+    must be a positive integer.</p>
+    <p>A sample file can be found at the right.&nbsp; It contains two elements, with different
+    keys.&nbsp; </p>
+    <p>The <strong>element type</strong> for each is BowcraftData.&nbsp; This is currently
+    neither used nor accessible.</p>
+    <p>The first element's <strong>key</strong> is 0x1BD4; the second's is 0x13B2.</p>
+    <p>The <strong>properties</strong> for each are contained within the curly braces. &nbsp;
+    All property names and values are treated as <strong>strings</strong>; CInt() must be used
+    to convert to numeric if appropriate.</p>
+    <p>The examples are assumed to access this file.</td>
+    <td width="50%" valign="middle" align="center"><strong>CONFIG/BOWCRAFT.CFG</strong><table
+    border="1" cellspacing="0" cellpadding="5">
+      <tr>
+        <td><pre>
+BowcraftData 0x1BD4
+{
+    Name Shafts
+    Material 1
+    Difficulty 10
+    PointValue 10
+}
+
+BowcraftData 0x13B2
+{
+    Name Bow
+    Material 16
+    Difficulty 30
+    PointValue 20
+}
+</pre>
+        </td>
+      </tr>
+    </table>
+    </td>
+  </tr>
+</table>
+
+<p>&nbsp;</p>
+
+<h2>Functions</h2>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><big><big><big><strong>ReadConfigFile</strong></big></big></big></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>ReadConfigFile( filename );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Reads a configuration file from the config/ directory.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td><strong>Zero</strong> if configuration file does not exist, or has errors.<br>
+    A handle to a config file if the file was read successfully.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>Do not include path information or &quot;.cfg&quot; in the filename.</td>
+  </tr>
+  <tr>
+    <td align="right">Example:</td>
+    <td><pre>
+Global cfile;
+
+cfile := ReadConfigFile( &quot;bowcraft&quot; );
+
+if (cfile)
+    // do stuff with the configuration file
+endif
+<big></big></pre>
+    </td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp;</p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><big><big><big><strong>FindConfigElem</strong></big></big></big></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>FindConfigElem( config_file, key );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Search a configuration file for an element by key.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>A <strong>handle to the element</strong> if found.<br>
+    <strong>Zero</strong> if the element could not be found or if config_file does not refer
+    to a valid configuration file handle.</td>
+  </tr>
+  <tr>
+    <td align="right">Example:</td>
+    <td><pre>
+Local elem;
+
+elem := FindConfigElem( cfile, 0x1BD4 );
+if (elem)
+    // do stuff with the element.
+endif
+<big></big></pre>
+    </td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp;</p>
+<div align="center"><center>
+
+<table border="1" cellspacing="0" cellpadding="5" width="80%">
+  <tr>
+    <td colspan="2"><big><big><big><strong>GetElemProperty</strong></big></big></big></td>
+  </tr>
+  <tr>
+    <td align="right"><small>Declaration:</small></td>
+    <td>GetElemProperty( element, property_name );</td>
+  </tr>
+  <tr>
+    <td align="right">Function:</td>
+    <td>Retrieve a property value from a configuration element.</td>
+  </tr>
+  <tr>
+    <td align="right">Returns:</td>
+    <td>The <strong>property value</strong> if the property value exists.<strong><br>
+    Zero</strong> if the property did not exist or element is not a valid configuration file
+    element.</td>
+  </tr>
+  <tr>
+    <td align="right">Notes:</td>
+    <td>The value returned is a <strong>string</strong>; CInt() must be used to convert this
+    to a numeric value if appropriate.<p>The property_name parameter is case-insensitive.</td>
+  </tr>
+  <tr>
+    <td align="right">Example:</td>
+    <td><pre>
+Local materials, difficulty, pointvalue;
+
+materials := CInt(GetElemProperty( elem, &quot;Materials&quot; ));
+difficulty := CInt(GetElemProperty( elem, &quot;Difficulty&quot; ));
+pointvalue := CInt(GetElemProperty( elem, &quot;PointValue&quot; ));
+<big></big></pre>
+    </td>
+  </tr>
+</table>
+</center></div>
+
+<p>&nbsp; </p>
+</body>
+</html>

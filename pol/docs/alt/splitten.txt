@@ -1,0 +1,189 @@
+hmm, funzt nun setcmdlevel bei pc's & npc's ?
+gewicht... wie isses bei nem stack ?
+hmm. setcriminal(50) und setcriminal(1) gibts dort zeitunterschiede?
+
+UObject
+
+  //* item.color              rw Integer (0..65535) / Farbe
+  //* item.facing             rw Integer (0..31) / Beleuchtung (haengt vom Item selber ab, ob ueberhaupt)
+  //* item.graphic            rw Integer (0..16383) / Grafik (siehe item.objtype)
+  //* item.height             ro Integer (0..257) / Hoehe
+  //* item.multi              ro Integer (0 oder <appobj>) / Befindet sich das Item in 'nem Multi ?
+  //* item.name               rw String / Name / Ist anfaenglich leer, da nimmt er dann item.desc
+   //   (nach dem erstmaligen Schreiben sind item.name & item.desc identisch)
+  //* item.objtype            ro Integer (0..16383) / Template fuer Original-Grafik (siehe item.graphic)
+  //* item.serial             ro Integer (0..unlimmeted) / Seriennummer
+  //* item.setlightlevel      Methode(Integer (0..30), Integer (-unlimmeted..unlimmeted)) / Unbenutzt
+  //* item.weight             ro Integer (0..65536) / Gewicht
+   //   (BUG -> Ueberlauf auf 0...)
+  //* item.x                  ro Integer (0..6143) / X-Koordinate / Setzen -> MoveItemToLocation
+  //* item.y                  ro Integer (0..4095) / Y-Koordinate / Setzen -> MoveItemToLocation
+  //* item.z                  ro Integer (-128..128) / Z-Koordinate / Setzen -> MoveItemToLocation
+
+UObject:Mobile
+
+////* mobile.ar                 ro Integer (0..32767) / Ruestungsstaerke / Abhaengig von der Ruestung, veraenderbar mit mobile.ar_mod
+////* mobile.ar_mod             rw Integer (-32767..32767) / Ruestungsstaerken-Modifikator (relativ, siehe mobile.ar)
+////* mobile.backpack           ro <appobj> / Umgeschnalltes Backpack
+////* mobile.cmdlevel           rw Integer (0..5) / KommandoLevel / (*g* funzt auch bei NPCs, aber nich npc.setcmdlevel)
+// //   BUG -> negative Werte werden zu 5 (macht der eigentlich immer, is hier aber durchaus "kritisch")
+////* mobile.cmdlevelstr        ro String / KommandoLevelBezeichner / Setzen -> mobile.cmdlevel & pc.setcmdlevel
+  ////* mobile.color              rw Integer (0..65535) / Farbe
+////* mobile.concealed          rw Integer (0..5) / Unsichtbar / Der moegliche Maxwert ist an das eigene CMDLevel gekoppelt
+// //   (also Player mit CMDLevel=0 koennen sich somit auch nich concealen), d.h. man sieht nur die Concealten, die dort
+// //   einen <= Wert haben, als das eigene CMDLevel (geht auch mit NPCs, d.h. ich kann NPCs auf GM setzen und concealed=3
+// //   und Seer koennen sie nicht sehen, GMs hingegen schon... :)
+////* mobile.criminal           ro Integer (0..1) / Kriminell / Setzen -> mobile.setcriminal
+////* mobile.dead               ro Integer (0..1) / Tot
+////* mobile.dexterity          ro Integer (1..32977) / Ausdauer / Setzen -> mobile.setdex()+mobile.dexterity_mod
+// //   (die Werte werden vorzeichenbehaftet addiert und notfalls auf 1 hochgesetzt)
+////* mobile.dexterity_mod      rw Integer (-209..32767) / Ausdauer-Modifikator (relativ, siehe mobile.dexterity)
+////* mobile.disable            Methode(String) / EIN Privileg deaktivieren
+////* mobile.enable             Methode(String) / EIN Privileg aktivieren
+////* mobile.enabled            Methode(String):Integer (0..1) / Ist EIN Privileg aktiviert? (Im Zweifelsfall -> 0)
+  ////* mobile.facing             rw Integer (0..7) / Richtung (0=N / 1=NE / 2=E ... 7=NW) (der dreht auch PCs)
+////* mobile.frozen             rw Integer (0..1) / Eingefroren
+
+////* mobile.gender             rw Integer (0..1) / Geschlecht (0=maennlich), pc.graphic muss noch angepasst werden
+////* mobile.gold               ro Integer (0..2147483648) / Gold-Besitz
+  ////* mobile.graphic            rw Integer (1..1023) / Grafik (siehe pc.objtype)
+////* mobile.guildid            rw Integer (-2147483647..2147483647) / GildenNummer
+// //   (aendert auch was an den farben, sobald gesetzt (z.b. tamed -> gruen))
+  ////* mobile.height             ro Integer (0..257) / Hoehe
+////* mobile.hidden             rw Integer (0..1) / Versteckt
+////* mobile.hp                 rw Integer (0..65535) / HitPoints
+////* mobile.hp_regen_rate      rw Integer (-32768..32767) / HitPoint-Regeneration
+// //   (addiert Wert*0.002 Punkte in der Sekunde)
+////* mobile.intelligence       ro Integer (1..32977) / Intelligenz / Setzen -> pc.setint()+pc.intelligence_mod
+// //   (die Werte werden vorzeichenbehaftet addiert und notfalls auf 1 hochgesetzt)
+////* mobile.intelligence_mod   rw Integer (-209..32767) / Intelligenz-Modifikator (relativ, siehe pc.intelligence)
+////* mobile.mana               rw Integer (0..65535) / Mana
+////* mobile.mana_regen_rate    rw Integer (-32768..32767) / Mana-Regeneration
+// //   (addiert Wert*0.002 Punkte in der Sekunde)
+////* mobile.maxhp              ro Integer (1..32977) / max. HitPoints (schnippelt beim HitPoints-Setzen) / Setzen -> pc.setstr()+pc.strength_mod
+////* mobile.maxmana            ro Integer (1..32977) / max. Mana (schnippelt beim Mana-Setzen) / Setzen -> pc.setint()+pc.intelligence_mod
+////* mobile.maxstamina         ro Integer (1..32977) / max. Stamina (schnippelt beim Stamina-Setzen) / Setzen -> pc.setdex()+pc.dexterity_mod
+  ////* mobile.multi              ro Integer (0 oder <appobj>) / Befindet sich der PC in 'nem Multi ?
+////* mobile.murderer           rw Integer (0..1) / Moerder (siehe pc.setmurderer)
+  ////* mobile.name               rw String / PC-Name
+  ////* mobile.objtype            ro Integer (1..1023) / Template fuer Original-Grafik (siehe mobile.graphic, npc.npctemplate)
+////* mobile.paralyzed          rw Integer (0..1) / Paralysiert (siehe mobile.setparalyzed)
+////* mobile.poisoned           rw Integer (0..1) / Vergiftet (siehe mobile.setpoisoned)
+////  mobile.removereportable   Methode (NOCH analysieren !!!)
+// //   (Prinzipiell geht es, allerdings ist ein NPC nicht zur Reinkarnation faehig, also, es wird nie was eingetragen)
+////  mobile.reportables        ro (Array) (NOCH analysieren !!!)
+// //   (Prinzipiell geht es, allerdings ist ein NPC nicht zur Reinkarnation faehig, also, es wird nie was eingetragen)
+  ////* mobile.serial             ro Integer (0..unlimmeted) / Seriennummer
+////* mobile.setcmdlevel        Methode(Integer (0..5)) / Setze KommandoLevel / Unbenutzt, aendert nuescht
+////* mobile.setcriminal        Methode(Integer:=1 (1..1)) / Setze Kriminell / Loeschen geht nicht !
+////* mobile.setdex             Methode(Integer (1..210)) / Setze [Basis]Ausdauer (siehe mobile.dexterity)
+////* mobile.setint             Methode(Integer (1..210)) / Setze [Basis]Intelligenz (siehe mobile.intelligence)
+////* mobile.setmurderer        Methode(Integer (0..1)) / Setze Moerder (siehe mobile.murderer)
+////* mobile.setparalyzed       Methode(Integer (0..1)) / Setze Paralysiert (siehe mobile.paralyzed)
+////* mobile.setpoisoned        Methode(Integer (0..1)) / Setze Vergiftet (siehe mobile.poisoned)
+////* mobile.setstr             Methode(Integer (1..210)) / Setze [Basis]Staerke (siehe mobile.strength)
+////* mobile.spendgold          Methode(Integer (0..2147483648)) / Spendet Gold, wenn nich genuch da, dann spendet er nich
+////* mobile.squelched          ro Integer (0..1) / Stumm / Setzen -> mobile.squelch
+////* mobile.stamina            rw Integer (0..65535) / Stamina
+////* mobile.stamina_regen_rate rw Integer (-32768..32767) / Stamina-Regeneration
+// //   (addiert Wert*0.002 Punkte in der Sekunde)
+////* mobile.stealthsteps       rw Integer (0..65535) / (hmm, hab rumprobiert, hat aber nuescht geaendert)
+// //  (evtl. je groesser der wert, desto schneller schlaegt tarnen fehl ?!?)
+////* mobile.strength           ro Integer (1..32977) / Staerke / Setzen -> mobile.setstr()+mobile.strength_mod
+// //   (die Werte werden vorzeichenbehaftet addiert und notfalls auf 1 hochgesetzt)
+////* mobile.strength_mod       rw Integer (-209..32767) / Staerke-Modifikator (relativ, siehe mobile.strength)
+////* mobile.title_guild        rw String / Gildenanhaengsel zum Mobile-Namen / Unbenutzt
+////* mobile.title_prefix       rw String / Prefix (davor) des Mobile-Namen (ggf. Space einbauen)
+////* mobile.title_race         rw String / Rassenanhaengsel zum Mobile-Namen / Unbenutzt
+////* mobile.title_suffix       rw String / Suffix (danach) des Mobile-Namen (ggf. Space einbauen)
+////* mobile.truecolor          ro Integer (0..65535) / Farbe / Originalwert [aus der NPCDesc] (hmm, tja, wofuer nochmal ?!?)
+////* mobile.trueobjtype        ro Integer (1..1023) / Template fuer Grafik / Originalwert [aus der NPCDesc] (hmm, tja, wofuer nochmal ?!?)
+////* mobile.warmode            ro Integer (0..1) / Kriegsmodus, setzen mittels SetWarMode (geht nur bei NPCs)
+////* mobile.weapon             ro <appobj> / Angelegte Waffe / Hmm, wenn man keine Waffe hat, dann is da trotzdem was (heisst "nodraw")
+  ////* mobile.weight             ro Integer (0..65536) / Gewicht
+  // //   (BUG -> Ueberlauf auf 0...)
+  ////* mobile.x                  ro Integer (0..6143) / X-Koordinate / Setzen -> MoveCharToLocation
+  ////* mobile.y                  ro Integer (0..4095) / Y-Koordinate / Setzen -> MoveCharToLocation
+  ////* mobile.z                  ro Integer (-128..128) / Z-Koordinate / Setzen -> MoveCharToLocation
+
+UObject:Mobile:PC
+
+  //* pc.acct                   ro <acctobj> / Account
+  //* pc.acctname               ro String / Accountname
+  //* pc.ip                     ro String / IP
+  //* pc.setlightlevel          Methode(Integer (0..30), Integer (-unlimmeted..unlimmeted)) / Setzt Lichtlevel fuer bestimmt Zeit
+   //   (Zeit sollen Sekunden sein, aber irgendwie haut das net hin, jedenfalls nicht bei negativen Werten)
+  //* pc.squelch                Methode(Integer (0..unlimmeted)) / Stumm / Blockiert alle Textausgaben *g*
+   //   -1 = dauerhaft / 0 = deaktivieren / pos. Zahl = Anzahl Sekunden
+
+UObject:Mobile:NPC
+
+  //* npc.acct                  ro <acctobj> / Account / Unbenutzt -> "Not attached to an account"
+  //* npc.acctname              ro String / Accountname / Unbenutzt -> "Not attached to an account"
+  //* npc.ip                    ro String / IP / Unbenutzt
+  //* npc.master                ro <appobj_PC> / Master / Setzen -> npc.setmaster
+  //* npc.npctemplate           ro String / Template-Name (siehe NPCDesc.cfg)
+  //* npc.process               ro <appobj> / Scripting-Object des AI-Scripts
+  //* npc.script                rw String / AI-Script / Nach schreiben, muss NPC restartet werden (siehe RestartScript(npc))
+  //* npc.setlightlevel         Methode(Integer (0..30), Integer (-unlimmeted..unlimmeted)) / Unbenutzt
+  //* npc.setmaster             Methode(<appobj_Mobile>) / Setze Master (siehe npc.master)
+   //   (sowohl PC, also auch NPC. funzt auch rekursiv, also er kann sich selber zum Master von sich machen)
+  //* npc.squelch               Methode(Integer (0..unlimmeted)) / Stumm / Blockiert alle Say(), sonst
+   //   nuescht nichmal PrintTextAbove... / -1 = dauerhaft / 0 = deaktivieren / pos. Zahl = Anzahl Sekunden
+
+UObject:Item
+
+  //* item.amount             ro Integer (1..60000) / Menge
+  //* item.container          ro <appobj> / Behaeltnis, in dem sich das Item unmittelbar befindet
+  //* item.decayat            rw Integer (-2147483647..2147483647) / GarbageCollection / Verschwindet zum Zeitpunkt (Sekundengenau)
+   //   (i.d.R. setzt man es auf ReadGameClock()+Sekunden / oder auf 0, dann bleibt es dauerhaft)
+  //* item.desc               ro String / Beschreibung / Setzen -> item.name
+  //* item.equipscript        rw String / EquipScript / Wird beim Anziehen aufgerufen
+   //   (Das neue Script ist nach dem schreiben sofort einsetzbar, Pkg-Pfade sind moeglich, sonst relativ)
+  //* item.invisible          rw Integer (0..1) / Unsichtbar
+  //* item.layer              ro Integer (0..30) / Layer / Der Layer wird erst dann gesetzt, wenn man das Teil anhat
+  //* item.movable            rw Integer (0..1) / Beweglich
+  //* item.newbie             rw Integer (0..1) / Gehoert das Item bei der CharErschaffung/Reinkarnation dazu ?
+   //   (Lassen sich net stacken, die Teile)
+  //* item.sellprice          rw Integer (-2147483647..2147483647) / Verkaufspreis / Unbenutzt (VendorBuysFor hat damit nuescht zu tun?!?)
+   //   (funzt net, auch wenn die core-changes was anderes behauptet:
+   //     added item.sellprice; used instead of 'VendorSellsFor' if nonzero. sellprice on a stack is the price for one unit)
+  //* item.unequipscript      rw String / UnEquipScript / Wird beim Ausziehen aufgerufen
+   //   (Das neue Script ist nach dem schreiben sofort einsetzbar, Pkg-Pfade sind moeglich, sonst relativ)
+  //* item.usescript          rw String / Script / Wird beim Doppelklick ausgeloest
+   //   (Das neue Script ist nach dem schreiben sofort einsetzbar, Pkg-Pfade sind noetig, total absolut)
+   //   (Ist incompatibel zu den Equip-Dingern und liefert auch erstmal nuescht zurueck)
+
+
+
+
+
+
+
+
+After hours and hours of experiments I found that:
+
+maxhp = quality * ( predef_maxhp + maxhp_mod )
+
+where predef_maxhp are the maxhp defined in the itemdesc.cfg files.
+
+And I also found that:
+
+ar = (( predef_ar * quality * hp )/ maxhp) + ar_mod
+
+where predef_ar are the ar defined in the itemdesc.cfg files.
+
+Tha latter seems to be a good formula but using the former in it it results:
+
+ar = (( predef_ar * hp )/ ( predef_maxhp + maxhp_mod )) + ar_mod
+
+So quality disappears with maxhp and here is the problem:
+
+Using no modificators for simpler calculation if we have a below average quality (e.g. 0.5) and predef_maxhp = 100 we obtain maxhp = 50.
+So, if we set hp = maxhp = 50 the item sould be in its full hp status, that is the best armor status.
+But if predef_ar is 20, that is best armor status ar, we obtain ar = 10 instead of 20!!!
+
+I hope this is a bug...
+The ar formula should be at least:
+  ar = (( predef_ar * hp )/ maxhp) + ar_mod
+where hp/maxhp comprises quality.

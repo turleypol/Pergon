@@ -1,0 +1,44 @@
+///////////////////////////////////////////////////////////////////
+//
+//   OnDelete - Runs on Character Deletion
+//
+//     Parameters:
+//       who - Character created
+//
+//     (Runs Critical - May be changed to just Run to Completion)
+//
+///////////////////////////////////////////////////////////////////
+
+Include "include/datafile";
+Include "include/pergonutil";
+Include ":sqlmanager:sqlmanager";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program OnDelete(who)
+  who.acct.setprop("Character"+ReadGameClock(), who.name+" "+ReadGameClock()+" geloescht");
+
+  SysLog(CStr(who.name)+" (Account: "+CStr(who.acctname)+") wurde um "+
+    ReadGameClock()+" ["+polcore().systime+"] geloescht.");
+    
+  //Briefkasten löschen
+  SysLog("Entferne Nachrichtenbox ["+Hex(who.serial)+"] fuer " + who.name);
+
+	var email_datafile := DFOpenDataFile(":letterbox:emails", DF_CREATE);
+	var addresses_datafile := DFOpenDataFile(":letterbox:AddressBooks", DF_CREATE);
+	var block_list_datafile := DFOpenDataFile(":letterbox:BlockLists", DF_CREATE);
+
+	var hex_serial := Hex(who.serial);
+	
+	SendSQLManager(0, SQLStatus_CharDeleted, who.serial);
+
+	email_datafile.DeleteElement(hex_serial);
+	addresses_datafile.DeleteElement(hex_serial);
+	block_list_datafile.DeleteElement(hex_serial);
+	
+	// Profile löschen
+	Var profiledf:=OpenDataFile("profiles");
+	profiledf.DeleteElement(who.serial);
+EndProgram

@@ -1,0 +1,60 @@
+/////////////////////////////////////////////////////////////////////
+//
+//   Snow and Rain - Effect
+//
+//     based on DayNight Pkg (1999/06/02)
+//       Author: Racalac
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//     1999/06/02 Rac: Day/Night transitions for one time zone only
+//     2000/04/23 Raxxla: Played around with a little bit
+//     2000/05/28 Shinigami: Complete ReWrite
+//     2002/01/01 Shinigami: Wetter-Pakete direkt schicken
+//
+/////////////////////////////////////////////////////////////////////
+
+//////////////
+// Libraries
+//////////////
+
+Use uo;
+Use os;
+Use util;
+
+/////////////
+// Includes
+/////////////
+
+Include "daymoonweather";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program SnowAndRain(severity)
+  Var pweather:=GetGlobalProperty("PresentWeather");
+
+ // SysLog("SnowAndRain...");
+
+  Var snowrain:=WEATHER_STARTS_TO_RAIN;
+  If (GetGlobalProperty("Season")==2)
+    snowrain:=WEATHER_BEGINS_SNOW;
+  EndIf
+
+  Var level:=RandomInt(30)+1;
+  If (severity==1)
+    level+=29;
+  EndIf
+
+  While (GetGlobalProperty("PresentWeather")==pweather)
+   // SysLog("GlobalProp = "+GetGlobalProperty("PresentWeather")+" / pweather = "+pweather);
+   // SysLog("snowrain = "+snowrain+" / level = "+level);
+    SetWeatherLevelPergon(snowrain, level);
+    Sleep(30);
+  EndWhile
+
+  DisableWeatherLevelPergon();
+  SetGlobalProperty("PresentWeather", pweather);
+EndProgram

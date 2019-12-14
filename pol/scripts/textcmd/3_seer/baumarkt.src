@@ -1,0 +1,61 @@
+use uo;
+include "include/msgs";
+include "include/place";
+
+Program TextCMD_Baumarkt(who, graphic)
+  graphic := CInt(graphic);
+  If (graphic)
+    // Typ wurde angegeben
+    If ((graphic < 0) or (graphic > 16383))
+      SendSysMessagePergon(who,
+        "Der ObjType darf nur von 0 bis 16383 gehen!"
+      );
+      return;
+    EndIf
+
+    JumpToGraphic(who, graphic);
+    return;
+  EndIf
+
+  // Auf dem Baumarkt gibt es Informationen zum Item
+  If (
+    (5632 <= who.x) And (who.x <= 5904) And
+    (1543 <= who.y) And (who.y <= 1819)
+  )
+    SendSysMessagePergon(who, "Item für Informationen auswählen!");
+
+    var item := TargetCoordinates(who);
+    If (!item.objtype)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+
+    SendSysMessagePergon(who,
+      "ObjType = "+item.objtype+" ("+Lower(Hex(item.objtype))+")"
+    );
+    If (item.objtype <> item.graphic)
+      SendSysMessagePergon(who,
+        "Graphic = "+item.graphic+" ("+Lower(Hex(item.graphic))+")"
+      );
+    EndIf
+    return;
+  EndIf
+
+  // sonst per Item-Auswahl vorgehen
+  SendSysMessagePergon(who, "Item für Sprung auswählen!");
+  var item := Target(who, TGTOPT_NOCHECK_LOS);
+  If (!item or item.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  JumpToGraphic(who, item.graphic);
+EndProgram
+
+Function JumpToGraphic(who, graphic)
+  var y := CInt(graphic/127);
+  var x := graphic-y*127;
+
+  JumpLocationAdd(who);
+  return MoveObjectToLocation(who, 5641+x*2, 1552+y*2, 0, REALM_BRITANNIA);
+EndFunction

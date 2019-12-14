@@ -1,0 +1,55 @@
+///////////////////////////////////////////////////////////////////////////
+// setuprider -- Strafe fuer Reiterstein einstellen
+
+include "include/msgs";
+include "common";
+
+Program SetupRider(who, item)
+    If (who.isa(POLCLASS_NPC) or who.cmdlevel < CMDLEVEL_SEER)
+        return;
+    EndIf
+
+    Const ENTRY_SIZE := 30;
+    Const BUTTONS    := "2104 2103";
+    var layout := array{
+        // Hintergrund
+        "page 0",
+        "nodispose",
+        "resizepic 0 0 2620 310 "+(ENTRY_SIZE*3+112),
+        "gumppic 20 30 2621",
+        "checkertrans 5 6 300 "+(ENTRY_SIZE*3+100),
+        "text 20 10 40 0",
+        "page 1",
+        "text 20 40 40 1",
+
+        // 3 Buttons
+        "text 50 "+  (1*ENTRY_SIZE+50)+" 40 2",
+        "button 20 "+(1*ENTRY_SIZE+55)+" "+BUTTONS+" 1 0 1",
+        "text 50 "+  (2*ENTRY_SIZE+50)+" 40 3",
+        "button 20 "+(2*ENTRY_SIZE+55)+" "+BUTTONS+" 1 0 2",
+        "text 50 "+  (3*ENTRY_SIZE+50)+" 40 4",
+        "button 20 "+(3*ENTRY_SIZE+55)+" "+BUTTONS+" 1 0 3",
+        ""
+    };
+    var data := array{
+        "Reiterstein",
+        "Einstellungen",
+        "Durchgangsverbot",
+        "Verbot und vom Tier stossen",
+        "Verbot und Knast (10 Minuten)"
+    };
+
+    var ret := CInt(SendDialogGump(who, layout, data, 100, 100)[0]);
+    If (!ret)
+        SendSysMessagePergon(who, "Abbruch", "Abort");
+        return;
+    EndIf
+
+    ret -= 1;
+    If (ret)
+        item.setprop("punish", ret);
+    Else
+        item.eraseprop("punish");
+    EndIf
+    SendSysMessagePergon(who, "Änderung ausgeführt.");
+EndProgram

@@ -1,0 +1,27 @@
+//////////////////////////////////
+//
+//   Chat-Button
+//
+//     Author: Turley
+//
+//////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+include "include/pergonutil";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program ChatButton(who)
+  Start_ScriptPergon("textcmd/0_player/guild",who);
+EndProgram

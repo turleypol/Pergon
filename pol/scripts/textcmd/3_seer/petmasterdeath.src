@@ -1,0 +1,36 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD PetMasterDeath -
+// Wandelt "Schiffsteile" wieder in reitbare Tierchen um
+//
+// Author: Shinigami
+
+/////////////////
+// Bibliotheken&Includes
+/////////////////
+use os;
+use uo;
+include "include/animal";
+include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_PetMasterDeath(who)
+  SendSysMessagePergon(who,
+    "Bitte den Spieler auswaehlen!", "Please select a player!"
+  );
+
+  var exghost := Target(who);
+  If (!exghost.isa(POLCLASS_MOBILE) or exghost.isa(POLCLASS_NPC))
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  PetMasterDeath(exghost);
+
+  SendSysMessagePergon(who,
+    "Reitbare Tiere wurden wiederhergestellt.",
+    "Mountable animals were restored."
+  );
+EndProgram

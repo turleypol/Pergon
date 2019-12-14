@@ -1,0 +1,69 @@
+// Autor:     Peter -pJOTTR- Straube
+// kupfert by     Fraggle
+//
+
+use os;
+use cfgfile;
+use vitals;
+use util;
+use uo;
+
+Include "include/poison";
+Include "traps";
+
+Program Walk_on_Hidden_Trap(character, trapon)
+  If (!GetObjProperty(trapon, "trap")) // Keine selbstgebaute Falle
+    If (character.cmdlevel<CMDLEVEL_SEER)
+      If (!character.dead)
+        ApplyDamagePergon(character, RandomDiceRoll(PlayTrapEffect(trapon)));
+      Endif
+    Else
+      SendSysMessagePergon(character, "Ihr betretet eine "+trapon.desc+", da ihr von göttlicher Gesinnung seid, tut sie Euch nichts.");
+    EndIf
+  Else // Eine selbstgebaute Falle
+    Var cfg := ReadConfigFile("traps");
+    Var trap:=FindConfigElem( cfg, GetObjProperty( trapon, "trap"));
+    Var trap_strength:=GetObjProperty(trapon, "trap_strength");
+    Var targetstr:=GetStrPergon(character);
+    //holt aus der traps.cfg alle Daten zur gewaehlten Falle
+
+    If (character.cmdlevel>=CMDLEVEL_SEER)
+      SendSysMessagePergon(character, "Ihr betretet eine "+trap.desc+", da ihr von göttlicher Gesinnung seid, tut sie Euch nichts.");
+      return;
+    EndIf
+
+    If (character.dead)
+      return;
+    Endif
+
+    If (targetstr> RandomInt(trap_strength))     //Staerke entscheidet ueber Haengenbleiben oder nicht
+      return;
+    Endif
+
+    // wenn einmaliger Schaden, dann wirkt die Trapdamagetime als Schaden,
+    // ansonsten in der traps.cfg angegebener Schaden pro zeit (derzeit 1sec)
+    SetScriptController(character);
+    if (trap.once <>1 )
+      var oldfrozen:=character.frozen;
+      character.frozen:=1;
+      IncRevision(character);
+      SendSysMessagePergon( character, "Ihr betretet eine Falle.", "", _DEFAULT_TEXT_FONT, _DEFAULT_TEXT_COLOR );
+      while( trap_strength > targetstr )
+        if(character.dead)
+          character.frozen:=oldfrozen;
+          IncRevision(character);
+          return;
+        endif
+        // Schaden auf target aus gewuerfeltem Fallenschaden
+        ApplyDamagePergon(character, RandomDiceRoll(CSTr(trap.damage)));
+        trap_strength -= 1;
+        Sleep( 1 );
+      endwhile
+      character.frozen:=oldfrozen;
+      IncRevision(character);
+    else
+      SendSysMessagePergon( character, "Schaden: " + trap_strength , "", _DEFAULT_TEXT_FONT, _DEFAULT_TEXT_COLOR );
+      ApplyDamagePergon(character, CDbl(trap_strength));
+    endif
+  EndIf
+EndProgram

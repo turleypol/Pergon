@@ -1,0 +1,60 @@
+///////////////////////////////////////////////////////////////////////////
+// nukerange -- Destroy items in range
+
+use uo;
+include "include/msgs";
+include "include/objtype";
+
+Program TextCMD_Nuke(who, range)
+  var nukerange := CInt(range);
+  If (!nukerange)
+    nukerange := 0;
+  EndIf
+
+  If (nukerange > 10)
+    nukerange := 10;
+    SendSysMessagePergon(who,
+      "Sicherheitshalber wird der Bereich auf 10 Felder reduziert."
+    );
+  EndIf
+
+  SendSysMessagePergon(who, "Mittelpunkt der Zerstörung waehlen!");
+
+  var tgt := TargetCoordinates(who);
+  If (!tgt or tgt.item.container)
+    SendSysMessagePergon(who, "Ungültige Auswahl");
+    return;
+  EndIf
+
+  var count := 0;
+  ForEach item in (ListItemsNearLocation(
+    tgt.x, tgt.y, tgt.z, nukerange, tgt.realm
+  ))
+    SleepMs(2);
+    If (
+      // unsichtbare Dinge verschonen
+      item.invisible or
+      // Runen, Stadt- und Gildensteine nicht begrabbeln
+      item.objtype in (array{UOBJ_SPAWNRUNE, UOBJ_TOWNSTONE, UOBJ_GUILDSTONE})
+    )
+      continue;
+    EndIf
+    If (!item.isa(POLCLASS_CONTAINER))
+      // normale Items einfach zerstoeren
+      DestroyItem(item);
+      count += 1;
+    ElseIf (EnumerateItemsInContainer(item).size() <= 0)
+      // Container nur wenn leer
+      DestroyItem(item);
+      count += 1;
+    EndIf
+  EndForEach
+
+  If (count == 0)
+    SendSysMessagePergon(who, "Es wurde kein Item zerstört.");
+  ElseIf (count == 1)
+    SendSysMessagePergon(who, "Es wurde ein Item zerstört.");
+  Else
+    SendSysMessagePergon(who, "Es wurden "+count+" Items zerstört.");
+  EndIf
+EndProgram

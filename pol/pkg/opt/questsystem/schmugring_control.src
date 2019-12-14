@@ -1,0 +1,88 @@
+/////////////////////////////////////////////////////////
+//
+// Schmugglerring-ControlSkript:
+// 						Controlliert wo er ist und setzt das "quest_mostwanted" cprop
+//						des Trägers der entfernt es
+//             
+//     Author: Hotny
+//
+//   Modifications:
+//
+/////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+
+
+program schmugring(item)
+	if (!GetObjProperty(item,"owners"))
+		var serial:=0;
+		SetObjProperty(item,"owners",serial);
+	endif
+	
+	//Solange das Item existiert, checkt es auf den Ort
+	while(item)
+		//Hier muss unbedingt noch eine Drag Ueberpruefung hin
+		//fuer den Fall das er den Ring am Mauszeiger hat (BUG)
+		var container:=item.container;
+		while(container.container)
+			container:=container.container;
+		endwhile
+
+		var who:=container;
+		//hinzufügen wenn equipt
+		if (who.isa(POLCLASS_MOBILE))
+			//Check auf Ortsänderung
+			var property:=GetObjProperty(item,"owners");
+			if (property != who.serial)
+				if (property)
+					//Es steht noch wer drinnen, dann dort removen und neu setzen
+					var last_owner:=SystemFindObjectBySerial(property);
+					var last_owner_count := GetObjProperty(last_owner,"quest_mostwanted");
+					if (last_owner_count>0)
+						last_owner_count -= 1;
+					else
+						last_owner_count:=0;
+					endif
+					SetObjProperty(last_owner,"quest_mostwanted",last_owner_count);
+					//Jetz beim neuen Ort setzen
+					var owner_count:=GetObjProperty(who,"quest_mostwanted");
+					if (owner_count>0)
+						owner_count+=1;
+					else
+						owner_count:=1;
+					endif
+					SetObjProperty(who,"quest_mostwanted",owner_count);
+					//Letzten benutzer merken
+					SetObjProperty(item,"owners",who.serial);
+				else
+					//Mein letzter Ort war kein Backpack
+					var owner_count:=GetObjProperty(who,"quest_mostwanted");
+					if (owner_count>0)
+						owner_count+=1;
+					else
+						owner_count:=1;
+					endif
+					SetObjProperty(who,"quest_mostwanted",owner_count);
+					SetObjProperty(item,"owners",who.serial);
+				endif
+			endif
+		else
+			//jetzt lieg ich in irgendeinem Container und nicht bei einem Player
+			if (GetObjProperty(item,"owners"))
+				var last_owner:=SystemFindObjectBySerial(GetObjProperty(item,"owners"));
+				var last_owner_count:=GetObjProperty(last_owner,"quest_mostwanted");
+				if (last_owner_count>0)
+					last_owner_count-=1;
+				else
+					last_owner_count:=0;
+				endif
+				SetObjProperty(last_owner,"quest_mostwanted",last_owner_count);
+				//Owners beim Item zurücksetzen
+				SetObjProperty(item,"owners",0);
+			endif
+		endif
+		//Alle 5 Sekunden schauen reicht
+		Sleep(5);
+	endwhile
+endprogram

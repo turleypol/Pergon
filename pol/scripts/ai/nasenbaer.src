@@ -1,0 +1,256 @@
+//
+// nasenbaer.src
+//
+// *der* nasenbaer. keine frage, oder?
+//
+
+use os;
+use cfgfile;
+use uo;
+use npc;
+include "include/animal";
+include "include/client";
+include "include/eventid";
+include "include/itemnpc";
+include "include/msgs";
+include "include/npc";
+include "include/names";
+include "include/speech";
+include "include/vetement";
+
+var me := Self();
+
+Program Nasenbaer()
+  If (me.name["random"])
+    SetName(me, RandomName(me));
+  EndIf
+
+  EnableEvents(SYSEVENT_SPEECH, 10);
+  EnableEvents(SYSEVENT_ENTEREDAREA + SYSEVENT_LEFTAREA, 3);
+
+  EquipNPC(me);
+
+  var labern := 1;
+  While (me)
+    MainLoop(me, labern);
+  EndWhile
+EndProgram
+
+Function MainLoop(byref me, byref labern)
+  var ev := Wait_for_EventLogging(10);
+  If (!ev)
+    return;
+  EndIf
+
+  Case (ev.type)
+  SYSEVENT_ENTEREDAREA:
+    TurnToward(ev.source);
+    PerformAction(me, UACTION_SALUTE);
+    SayPergon(ev.source, "Hi, "+ev.source.name);
+
+  SYSEVENT_LEFTAREA:
+    SayPergon(ev.source, "Bis dann, "+ev.source.name);
+
+  SYSEVENT_SPEECH:
+    If (Distance(me, ev.source) > 10)
+      If (labern)
+        SayPergon(ev.source, "Kommt her, wenn Ihr mit mir reden wollt!");
+      EndIf
+      return;
+    EndIf
+
+    var text := Lower(ev.text);
+    If (text["halts maul"] or text["ruhe"])
+    TurnToward(ev.source);
+    PerformAction(me, 0x20);
+    SayPergon(ev.source, "Na gut ...");
+    labern := 0;
+
+    ElseIf (text["weiterlabern"] or text["unruhe"])
+    SayPergon(ev.source, "Jau, endlich wieder ...");
+    labern := 1;
+
+    ElseIf (text["tisch"])
+    var answer;
+    If (IsTableInFront(me))
+        answer := "Vor mir ist ein Tisch. ";
+    Else
+        answer := "Hier ist kein Tisch. ";
+    EndIf
+    If (IsTableInFront(ev.source))
+        answer += "Vor Euch ist ein Tisch.";
+    Else
+        answer += "Vor Euch ist kein Tisch.";
+    EndIf
+    SayPergon(ev.source, answer);
+
+    ElseIf (text["disconnect me"])
+    SayPergon(ev.source, "Tschüüüüs ... "+ev.source.name);
+    Sleep(2);
+    DisconnectClient(ev.source);
+    EndIf
+    If (ev.source.cmdlevel >= CMDLEVEL_SEER)
+    If (text["spring"])
+        MoveObjectToLocation(me, ev.source.x, ev.source.y, GetWorldHeight(ev.source.x, ev.source.y, me.realm), me.realm);
+        SayPergon(ev.source, "da");
+    ElseIf (text["komm her"])
+        GeheZuZiel(ev.source, ev.source.x, ev.source.y);
+        SayPergon(ev.source, "fertig");
+    ElseIf (text["barriere"])
+        SayPergon(ev.source, "barriere: "+
+        FindeBarriere(ev.source, ev.source.x, ev.source.y).x+
+        ", "+FindeBarriere(ev.source, ev.source.x, ev.source.y).y
+        );
+    EndIf
+    EndIf
+  EndCase
+EndFunction
+
+Function IsTableInFront(who) // {{{
+  var tables := array{
+    0x0b6b, 0x0b90, 0x118b, 0x1192, 0x1201, 0x1202, 0x1203, 0x1206, 0x1667,
+    0x166c, 0x1916, 0x191f, 0x1da5, 0x1dac, 0x1dbb, 0x1dc6
+  };
+  var xmod := ConvertDirectionToLocX(who.facing);
+  var ymod := ConvertDirectionToLocY(who.facing);
+  ForEach item in ListItemsAtLocation(
+    who.x + xmod, who.y + ymod, GetWorldHeight(who.x, who.y), who.realm
+  )
+    SleepMS(2);
+    If (item.objtype in tables)
+      Return 1;
+    EndIf
+  EndForEach
+
+  return 0;
+EndFunction // }}}
+
+Function FaceMe(x, y, facing)
+  // FIXME: durch ConvertDirectionToLocX/ConvertDirectionToLocY ersetzen
+  var dir := struct; dir.+x := x; dir.+y := y;
+  Case (facing)
+  0:
+    dir.y-=1;
+  1:
+    dir.x+=1;
+    dir.y-=1;
+  2:
+    dir.x+=1;
+  3:
+    dir.x+=1;
+    dir.y+=1;
+  4:
+    dir.y+=1;
+  5:
+    dir.x-=1;
+    dir.y+=1;
+  6:
+    dir.x-=1;
+  7:
+    dir.x-=1;
+    dir.y-=1;
+  EndCase
+  return dir;
+EndFunction
+
+Function streckenpunkt(achar, ochar, nr)
+  var distanz:=Distance(achar, ochar);
+  var x, y;
+  If (nr<=distanz)
+    x:=CInt( achar.x + CInt( CDbl( nr ) / CDbl( distanz ) * CDbl( ochar.x - achar.x ) ));
+    y:=CInt( achar.y + CInt ( CDbl( nr ) / CDbl( distanz ) * CDbl( ochar.y - achar.y ) ));
+    var ergebnis:=CheckLosAt(achar, x, y, GetWorldHeight(x, y, me.realm));
+    SendSysMessagePergon(achar, CStr(ergebnis));
+    return ergebnis;
+  EndIf
+EndFunction
+
+Function streckenpunktb(x1, y1, x2, y2, nr)
+  var node_a:= Array;
+  node_a:=CreateItemAtLocationPergon(x1, y1, GetWorldHeight(x1, y1, me.realm), 0x9999, 1);
+  var distanz:=distance2(x1, y1, x2, y2);
+  var x, y;
+  If (nr<=distanz)
+    x:=CInt( x1 + CInt( CDbl( nr ) / CDbl( distanz ) * CDbl( x2 - x1 ) ));
+    y:=CInt( y1 + CInt ( CDbl( nr ) / CDbl( distanz ) * CDbl( y2 - y1 ) ));
+    var ergebnis:=struct;
+    ergebnis.+los:=CInt(CheckLosAt(node_a, x, y, GetWorldHeight(x, y, me.realm)));
+    ergebnis.+x:=x;
+    ergebnis.+y:=y;
+    DestroyItem(node_a);
+    return ergebnis;
+  EndIf
+EndFunction
+
+Function distance2(x1, y1, x2, y2)
+  return CInt(CoordinateDistanceEuclidean(x1, y1, x2, y2));
+EndFunction
+
+Function GeheZuZiel(who, zielx, ziely)
+  TurnTowardLocation(zielx, ziely);
+  If (!CheckLosAt(me, zielx, ziely, GetWorldHeight(zielx, ziely, me.realm)))
+    GeheZuZiel(who, FindeBarriere(who, zielx, ziely).x, FindeBarriere(who, zielx, ziely).y);
+  EndIf
+  While (distance2(me.x, me.y, zielx, ziely)>1)
+    WalkTowardLocation(zielx, ziely);
+  EndWhile
+EndFunction
+
+Function DrehungsRichtung(r_ur, r_l)
+  // FIXME: fixen oder ersetzen
+  var end_r;
+  r_ur := r_ur;
+  Case (CStr(r_l))
+    "rechts":
+      //end_r:=CInt(Mod(CInt(Mod(CInt(r_ur)+1, 8))+1, 8));
+      //end_r:=Mod(Mod(r_ur + 1, 8) + 1, 8);
+    "links":
+      //end_r:=CInt(Mod(CInt(Mod(CInt(r_ur)+1), 8)+5, 8));
+      //end_r:=Mod(Mod(r_ur + 1, 8) + 5, 8);
+  EndCase
+  return end_r;
+EndFunction
+
+Function FindeBarriere(who, zielx, ziely)
+  var dist:=distance2(me.x, me.y, zielx, ziely);
+  SayPergon(who, "dist: "+dist);
+  var richtung:=struct;
+  var neuziel:=struct;
+  richtung.+links:=DrehungsRichtung(me.facing, "links");
+  richtung.+rechts:=DrehungsRichtung(me.facing, "rechts");
+  var wo:=struct;
+  wo.+x;
+  wo.+y;
+  var i, j, k;
+  For (i:=1;i<dist;i+=1);
+    j:=streckenpunktb(me.x, me.y, zielx, ziely, i);
+    If (j.los)
+      continue;
+    Else
+      wo.x:=j.x;
+      wo.y:=j.y;
+      break;
+    EndIf
+  EndFor
+  SayPergon(who, "Barriere ist: "+wo.x+", "+wo.y);
+  var n_c:= array;
+  n_c[1]:=wo; // nach links
+  n_c[2]:=wo; // nach rechts
+  For (i:=1;i<30;i+=1)
+    SayPergon(who, "Iteration: "+i);
+    n_c[1]:=FaceMe(wo.x, wo.y, richtung.links);
+    n_c[2]:=FaceMe(wo.x, wo.y, richtung.rechts);
+    var neben:= array;
+    neben[1]:=FaceMe(n_c[1].x, n_c[1].y, DrehungsRichtung(richtung.links, "links"));
+    neben[2]:=FaceMe(n_c[2].x, n_c[2].y, DrehungsRichtung(richtung.rechts, "rechts"));
+    For (k:=1;k<=2;k+=1)
+      var temp:= array;
+      temp:=streckenpunktb(neben[k].x, neben[k].y, n_c[k].x, n_c[k].y, 1);
+      If (temp.los)
+        neuziel.+x:=temp.x;
+        neuziel.+y:=temp.y;
+        return neuziel;
+      EndIf
+    EndFor
+  EndFor
+EndFunction

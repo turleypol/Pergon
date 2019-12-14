@@ -1,0 +1,134 @@
+//////////////////////////////////////////////////////////////////////////
+// Doppelklickscript für Jals magische Meteoriten
+//
+// Meteoriten werden nach und nach auf Ziel geworfen
+
+include ":newspells:magicpergon";
+include ":newspells:resistance";
+include "common";
+include "include/modifyskill";
+include "include/msgs";
+include "include/packets";
+use cfgfile;
+use os;
+use uo;
+use util;
+
+Program MagicMeteorite(who, item)
+  If (!ArtefactUsable(who, item, ARTEFACT_DELAY))
+    return;
+  EndIf
+
+  If (
+    GetEquipmentByLayer(who, LAYER_HAND1) or
+    GetEquipmentByLayer(who, LAYER_HAND2)
+  )
+    SendSysMessagePergon(who,
+      "Eure Hände müssen frei sein, um das zu werfen!",
+      "Your hands must be free to throw this!"
+    );
+    return;
+  EndIf
+
+  var artefacts := ReadConfigFile(":newinscription:artefacts");
+  var artefact := FindConfigElem(artefacts, GetArtefactID(item));
+  var delay := artefact.delay;
+  var fireDelay := artefact.firedelay;
+  var fireDistance := artefact.firedistance;
+  var difficulty := artefact.useskill;
+  var damage := SplitWords(GetConfigString(artefact, "Damage"));
+  var minDamage := CInt(damage[1]);
+  var maxDamage := CInt(damage[3]);
+
+  If (GetSkillPergon(who, SKILLID_MAGIE) < difficulty)
+      SendSysMessagePergon(who,
+        "Ihr seid dazu nicht fähig", "You cannot use this"
+      );
+      return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Auf wen wollt ihr die Meteoriten werfen?",
+    "Whom do you want to throw the meteorites?"
+  );
+  var victim := Target(who);
+  If (!victim)
+    SendSysMessagePergon(who, "Zielen abgebrochen");
+    return;
+  ElseIf (Distance(who, victim) >= fireDistance)
+    SendSysMessagePergon(who, "Euer Ziel ist zu weit weg!");
+    return;
+  ElseIf (!CheckLineOfSight(who,victim))
+    SendSysMessagePergon(who, "Ihr könnt Euer Ziel nicht sehen.");
+    return;
+  ElseIf (!victim.isa(POLCLASS_MOBILE))
+    SendSysMessagePergon(who,
+      "Ihr msst die Meteoriten schon auf etwas Lebendes werfen",
+      "You have to throw the meteorites at someone alive"
+    );
+    return;
+  EndIf
+
+  // Zeitpunkt setzen ab wann wieder Artefakt nutzbar
+  SetObjProperty(who, "#UsesSomething", (ReadGameClock() + delay));
+
+  // Charposition merken um bei Bewegen abzubrechen
+  var whoX := who.x;
+  var whoY := who.y;
+
+  // Werfen, solange noch Meteoriten da sind und Char sich nicht bewegt hat
+  While (item && whoX == who.x && whoY == who.y)
+    If (!victim)
+      SendSysMessagePergon(who,
+        "Euer Ziel ist verschwunden", "Your target disappeared"
+      );
+      break;
+    ElseIf (Distance(who, victim) >= fireDistance)
+      SendSysMessagePergon(who,
+        "Euer Ziel ist zu weit weg!", "Your target is out of range"
+      );
+      break;
+    ElseIf (!CheckLineOfSight(who,victim) || (victim.hidden == 1))
+      SendSysMessagePergon(who,
+        "Ihr könnt Euer Ziel nicht mehr sehen.",
+        "You cannot see your target anymore"
+      );
+      break;
+    EndIf
+
+    SendSysMessagePergon(who,
+      "Ihr werft einen Meteoriten auf "+victim.name,
+      "You throw a meteorite at "+victim.name
+    );
+
+    TurnCharTo(who, victim);
+    PerformAction(who, ANIM_ATTACK_1HAND_WIDE);
+    SleepMS(700);
+
+    // Schadensberechnung auf aktuellen Werten
+    var resistEarth := 1 - CDbl(GetResistance(victim, "earth"));
+    var resistFire  := 1 - CDbl(GetResistance(victim, "fire"));
+    var rawDamage :=
+      RandomIntMinMax(minDamage, 1+maxDamage)/2*resistEarth +
+      RandomIntMinMax(minDamage, 1+maxDamage)/2*resistFire;
+    ApplyRawDamagePergon(victim, rawDamage);
+
+    SubtractAmount(item, 1);
+    PlayMovingEffectXYZ(
+      who.x, who.y, who.z+15,
+      victim.x, victim.y, victim.z,
+      0x36e4, 8, 0, 0, who.realm
+    );
+    PlaySoundEffect(victim, 0x015F);
+
+    // kurz warten bis der nächste Meteorit geworfen wird
+    Sleep(fireDelay);
+  EndWhile
+
+  SendSysMessagePergon(who,
+    "Ihr hört auf Meteoriten zu werfen",
+    "You stop throwing meteorites"
+  );
+EndProgram
+
+// vim: sts=2 sw=2

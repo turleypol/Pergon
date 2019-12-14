@@ -1,0 +1,50 @@
+// Made By Charles Haustron
+// Active Spell Refect on Char(same as spell)
+use os;
+use math;
+use uo;
+
+include "drinkpotion";
+include "include/modifyskill";
+
+program drink_resist (character, potion)
+if (!checkifcandrink(character))
+        return;
+endif
+
+    if (is_poison(potion))
+        do_poison(character, potion);
+    else
+        empty_bottle(character, potion);
+//        PlaySoundEffect(character, SFX_SPELL_MAGIC_REFLECTION); // used to be SFX_SPELL_PROTECTION
+//        PlayObjectCenteredEffect( character, FX_CURSE_EFFECT, 10,10);
+
+        if (GetObjProperty(character, "spell_reflect"))									// check for current reflection
+          if (GetObjProperty(character, "spell_reflect")[2] == "single")			// check if simple reflection lays on character
+             SendSysMessagePergon(character, "Ihr seid bereits geschützt",
+                                             "You are already protected");
+          elseif (GetObjProperty(character, "spell_reflect")[2] == "mirror");	// check if holy mirror protects character
+             SendSysMessagePergon(character, "Ihr seid bereits oder wart vor kurzem durch einen heiligen Spiegel geschützt",
+                                             "You are already or have been recently protected by a holy mirror");
+          endif
+
+          detach();
+          sleep(10);
+          candrink(character);
+
+          return;																				// deny reflection
+        endif
+
+        Var tag:= array;
+
+        tag[1]:= -1;								// mark duration as 'eternal'
+        tag[2]:= "single";						// mark as simple reflection
+
+        SetObjProperty(character, "spell_reflect", tag);		// set reflection
+
+        detach();
+        sleep(10);
+        candrink(character);
+    endif
+
+endprogram

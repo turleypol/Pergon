@@ -1,0 +1,352 @@
+///////////////////////////////////////////////////////////////////////////
+// Lustsklaven-Script
+//
+// speziell fuer einen NPC im Freudenhaus von Cove
+
+use npc;
+use os;
+use uo;
+use util;
+include "../../pkg/magic/statmod";
+include "include/animal";
+include "include/client";
+include "include/eventid";
+include "include/modifyskill";
+include "include/npc"; //some new functions
+include "include/objtype";
+include "include/names";
+include "include/vetement"; // need For random clothing
+
+const HALT_THRESHOLD := 2; // how close before he barks?
+const ACTION_BOW := 0x20;
+
+var me := Self();
+
+
+Program lustsklave()
+  CheckSuicide();
+  DropAnchor();
+  SetObjProperty(me,"serial",me.serial);
+
+  EnableEvents(
+    SYSEVENT_ENGAGED + SYSEVENT_ENTEREDAREA + SYSEVENT_LEFTAREA,
+    HALT_THRESHOLD
+  );
+
+  SetWarMode(0);
+  set_priority(10);
+  me.frozen := 0;
+  IncRevision(me);
+
+  If (me.name["<random>"])
+    var npcname := RandomName(me);
+    SetName(me, npcname);
+
+    var pos := Find(npcname, ",", 1);
+    If (pos)
+      npcname := npcname[1, pos-1];
+    EndIf
+    SetObjProperty(me, "myname", npcname);
+  EndIf
+
+  var minename := GetObjProperty(me, "myname");
+
+  me.setmaster(SystemFindObjectBySerial(me.serial));
+  // ending configure of npc and starting ai
+
+  var ev;
+  While (me)
+    PerformAction(me, UACTION_LOOK_AROUND);
+    ev := Wait_for_EventLogging(120);
+    CheckSuicide();
+    PerformAction(me, UACTION_LOOK_AROUND);
+
+    If (ev and (!ev.source.isa(POLCLASS_NPC)) and !ev.source.dead)
+      TurnToward (ev.source);
+      Case (ev.type)
+        SYSEVENT_ENGAGED:
+          If (ev.source.gender)
+            SayPergon(ev.source, "Na! Nicht so hysterisch!");
+          Else
+            SayPergon(ev.source, "Was wollt Ihr Knilch mir schon tun?");
+          EndIf
+
+          SayPergon(ev.source, "Verschwindet hier und lasst Euch nie wieder blicken!");
+          PlayerRausschmeissen(ev.source);
+
+        SYSEVENT_ENTEREDAREA:
+          If (GetObjProperty(me, "KundenSerial") != ev.source.serial)
+            SayPergon(ev.source, "Wer seid Ihr? Euch erwarte ich nicht.");
+            MoveObjectToLocation(
+              ev.source, 2223, 1155, 0, REALM_BRITANNIA,
+              MOVEOBJECT_FORCELOCATION
+            );
+            SayPergon(ev.source, "Raus mit Euch!");
+          Else
+            SayPergon(ev.source, "Seid willkommen.");
+            Sleep(2);
+            SayPergon(ev.source, "Ich habe Euch bereits erwartet.");
+            Sleep(4);
+
+            // Sklaveprogramm abspielen
+            // erstmal fuer alle 8 Sklaven identisch
+
+            // Anm.: RitualNPC kann nicht genutzt werden, da dieses
+            // Script hier hinterher weiterlaufen muss
+            SayIt("Ihr seht erschöpft aus.", 3, ev.source);
+            SayIt("Kommt näher und entspannt Euch.", 4, ev.source);
+
+            // die unterschiedlichsten Aktionen randommaessig durchfuehren
+            var Ct;
+            var MaxAnzahlAktionen := 40;
+            For (Ct := 1; Ct <= MaxAnzahlAktionen; Ct += 1)
+              If (!ev.source or Distance(me, ev.source) > 6)
+                break;
+              EndIf
+              Case (RandomInt(86) + 1)
+                 1:
+                 2:
+                 3:
+                 4: Turntoward(ev.source);
+                 5: SayIt("Seid doch nicht so verkrampft.", 4, ev.source);
+                 6: SayIt("Ihr seid ja total verkrampft.", 4, ev.source);
+                 7: SayIt("Kommt noch ein Stückchen näher.", 5, ev.source);
+                 8: If (ev.source.gender)
+                    SayIt("Kommt her, holdes Weib.", 4, ev.source);
+                  Else
+                    SayIt("Kommt her, edler Jüngling.", 4, ev.source);
+                  EndIf
+                 9:
+                10: SayIt("*jauchz*", 2, ev.source);
+                11:
+                12:
+                13: SayIt("*stöhn*", 2, ev.source);
+                14:
+                15: SayIt("*aaahh*", 2, ev.source);
+                16:
+                17: SayIt("*jaaaa*", 2, ev.source);
+                18:
+                19: SayIt("*Yippeeh*", 2, ev.source);
+                20:
+                21: SayIt("*juhuu*", 2, ev.source);
+                22:
+                23: SayIt("*woohooo*", 2, ev.source);
+                24:
+                25: SayIt("Entspannt Euch.", 3, ev.source);
+                26:
+                27: SayIt("Nicht so schüchtern ...", 3, ev.source);
+                28:
+                29: SayIt("Etwas mehr Einsatz bitte!", 3, ev.source);
+                30:
+                31: SayIt("*röchel*", 2, ev.source);
+                32: SayIt("Auf gehts ...", 2, ev.source);
+                33: SayIt("*schwitz*", 1, ev.source);
+                34: SayIt("Ihr braucht doch nicht so schüchtern zu sein.", 6, ev.source);
+                35: SayIt("Ihr seid doch nicht etwa schüchtern?", 5, ev.source);
+                36:
+                37:
+                38:
+                39: Case (GetObjProperty(ev.source, "Puff_Wunsch"))
+                    "ROM":    SayIt("Wollt Ihr nicht ein heißes Bad nehmen?", 5, ev.source);
+                          SayIt("Das tut Euch sicher gut.", 4, ev.source);
+                    "LUXUS":  SayIt("Wünscht Ihr eine kleine Erfrischung?", 4, ev.source);
+                          CreateItemAtLocationPergon(me.x, me.y, me.z, 0x9c7, 1,me.realm);
+                          SayIt("Bittesehr.", 5, ev.source);
+                    "NATUR":  If (ev.source.gender)
+                            SayIt("Nicht so müde, Ziegenpetra!", 4, ev.source);
+                          Else
+                            SayIt("Nicht so müde, Ziegenpeter!", 4, ev.source);
+                          EndIf
+                          SayIt("los los", 3, ev.source);
+                    "SM":   SayIt("Soso, auf die harte Tour also!", 4, ev.source);
+                          SayIt("*kräftig peitsch*", 3, ev.source);
+                  EndCase
+                40:
+                41: StripMe(4); // Hose
+                42:
+                43: StripMe(5); // Shirt
+                44:
+                45: StripMe(0xc); // Huefte
+                46:
+                47: StripMe(0xd); // Rueste
+                48:
+                49: StripMe(0x11); // Torso
+                50:
+                51: StripMe(0x16); // Robe
+                52:
+                53: StripMe(0x18); // Hosenrüste
+                54: StripMe(99); // alles
+                55:
+                56:
+                57:
+                58:
+                59:
+                60: PerformAction(me, ACTION_BOW);
+                  Sleep(3);
+                61:
+                62:
+                63: PerformAction(ev.source, ACTION_BOW);
+                  Sleep(2);
+                64:
+                65: SayIt("Lasst uns Spaß haben!", 3, ev.source);
+                66: SayIt("*kopfkratz*", 2, ev.source);
+                67: If (me.gender)
+                    SayIt("Lasst mich Eure Sklavin sein!", 3, ev.source);
+                  Else
+                    SayIt("Lasst mich Euer Sklave sein!", 3, ev.source);
+                  EndIf
+                68: SayIt("Wollen wir Wilder Reiter spielen?", 3, ev.source);
+                69: SayIt("Ich bereite Euch ein großes Vergnügen.", 3, ev.source);
+                  SayIt("Ihr werdet sehn!", 2, ev.source);
+                70: SayIt("Lasst uns Liebe machen!", 2, ev.source);
+                71: SayIt("Lasst uns heiß lieben!", 2, ev.source);
+                72: SayIt("In ganz Cove werden die Wände wackeln!", 3, ev.source);
+                73: SayIt("Lasst uns eine teuflisch gut Zeit haben!", 3, ev.source);
+                74: SayIt("Ich werde Euer Verlangen besänftigen!", 3, ev.source);
+                75: SayIt("Ich werde Euch viel Vergnügen bereiten!", 3, ev.source);
+                76: SayIt("Kommt näher. Traut Euch doch!", 2, ev.source);
+                77: SayIt("Keine Angst, ich beiße nicht.", 2, ev.source);
+                  SayIt("Ich bin sanft wie ein Kätzchen.", 3, ev.source);
+                78:
+                79:
+                80:
+                81: SayIt("Legt doch Eure Kleider ab.", 2, ev.source);
+                82: SayIt("Gefällt Euch, was ich hier treibe?", 3, ev.source);
+                83:
+                84: SayIt("Woaah, seid Ihr gut!", 2, ev.source);
+                85: If (ev.source.gender)
+                    SayIt("Wollen wir das kleine Kätzchen doch mal besänftigen..!", 4, ev.source);
+                  Else
+                    SayIt("Wollen wir den kleinen Tiger doch mal besänftigen..!", 4, ev.source);
+                  EndIf
+                86: SayIt("Holt schonmal das Öl.", 3, ev.source);
+                default: SayIt("*fummel*", 2, ev.source);
+              EndCase
+            EndFor
+            Sleep(4);
+            SayIt("Ich hoffe, ich konnte Euch etwas Vergnuegen und Entspannung bereiten.", 9, ev.source);
+            SayIt("Vielleicht sehen wir uns ja bald einmal wieder.", 6, ev.source);
+            SayIt("Bis Bald.", 4, ev.source);
+
+            // Ende Sklavenprogramm
+
+            // Nun temporaere Belohnungen verteilen, sofern sich der
+            // Player noch in der Naehe des Sklaven befindet
+            //
+            // ROM   : STR - 1/5, INT + 1/5
+            // LUXUS : DEX - 1/5, INT + 1/5
+            // NATUR : DEX + 1/5, INT - 1/5
+            // SM    : STR + 1/5, DEX - 1/5
+
+            If (Distance(me, ev.source) > 2)
+              SendSysMessagePergon(ev.source, "Ihr habt soeben Eure Belohnung verpasst. Schade.");
+            Else
+              SendSysMessagePergon(ev.source, "Ihr habt Euch soeben eine Belohnung verdient.");
+              Case (GetObjProperty(ev.source, "Puff_Wunsch"))
+                "ROM":
+                    DoTempMod(ev.source, "str", CInt(GetStrPergon(ev.source) * (-0.2)), 420);
+                    DoTempMod(ev.source, "int", CInt(GetStrPergon(ev.source) * 0.2),  420);
+                "LUXUS":
+                    DoTempMod(ev.source, "dex", CInt(GetStrPergon(ev.source) * (-0.2)), 420);
+                    DoTempMod(ev.source, "int", CInt(GetStrPergon(ev.source) * 0.2),  420);
+                "NATUR":
+                    DoTempMod(ev.source, "dex", CInt(GetStrPergon(ev.source) * 0.2),  420);
+                    DoTempMod(ev.source, "int", CInt(GetStrPergon(ev.source) * (-0.2)), 420);
+                "SM":
+                    DoTempMod(ev.source, "str", CInt(GetStrPergon(ev.source) * 0.2),  420);
+                    DoTempMod(ev.source, "dex", CInt(GetStrPergon(ev.source) * (-0.2)), 420);
+                default: PlayerRausschmeissen(ev.source);
+              EndCase
+            EndIf
+
+            // Player auf jeden fall noch refreshen
+            SetHPPergon(ev.source, GetMaxHPPergon(ev.source));
+            SetManaPergon(ev.source, GetMaxManaPergon(ev.source));
+            SetStaminaPergon(ev.source, GetMaxStaminaPergon(ev.source));
+
+            // Property fuer reibungslosen Austritt mitgeben und die restlichen loeschen
+            SetObjProperty(ev.source, "Puff_Austritt", 1);
+            CharReset(ev.source);
+
+            // nun noch den Sklaven beseitigen
+            Sleep(1);
+            MoveObjectToLocation(me, 5272, 1190, 0, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION);
+          EndIf
+
+        SYSEVENT_LEFTAREA:
+          If (GetObjProperty(ev.source, "talkto") == minename)
+            CharReset(ev.source);
+            EraseObjProperty (ev.source, "talkto");
+          EndIf
+
+      EndCase
+    EndIf
+    EndWhile
+EndProgram
+
+// Loescht die Propertys beim Player
+Function CharReset(who)
+  EraseObjProperty(who, "Puff_Wunsch");
+  EraseObjProperty(who, "Puff_WunschMW");
+EndFunction
+
+// Setzt den Player vor die Tuer
+Function PlayerRausschmeissen(who)
+  MoveObjectToLocation(
+    who, 2227, 1169, 0, REALM_BRITANNIA, MOVEOBJECT_FORCELOCATION
+  );
+  CharReset(who);
+
+  who.facing := 4;
+  PrintTextAbovePergon(who, who, who.name + " wurde rausgeschmissen.");
+EndFunction
+
+// Laesst NPC den Text sprechen und wartet die angegebenen Sekunden
+Function SayIt(Text, Time, who)
+
+  TurnToward(who);
+  SayPergon(who, Text);
+  Sleep(Time);
+
+EndFunction
+
+// Entkleidet entweder nur den entsprechenden Layer oder alle Klamotten
+// auf einmal
+Function StripMe(Layer)
+  var GueltigeLayer := {1, 2, 3, 4, 5, 6, 7, 12, 13, 17, 19, 20, 22, 23, 24};
+
+  If ((Layer >= 1) && (Layer <=24))
+    var Item := GetEquipmentByLayer(me, Layer);
+    If (Item)
+      DestroyItem(Item);
+    EndIf
+  ElseIf (Layer == 99)
+    var i;
+    For (i := 1; i <= GueltigeLayer.length(); i += 1)
+      var Item := GetEquipmentByLayer(me, GueltigeLayer[i]);
+      If (Item)
+        DestroyItem(Item);
+      EndIf
+    EndFor
+  EndIf
+EndFunction
+
+// vergessene Lustsklaven entsorgen (sich selbst)
+Function CheckSuicide()
+  var created := me.getprop("TimeStamp");
+  If (!created)
+    // sollte eigentlich die Puffmutter machen, aber falls man manuell
+    // Lustsklaven erzeugen sollte ...
+    me.setprop("TimeStamp", ReadGameClock());
+    return;
+  EndIf
+
+  // nach drei Stunden Selbstmord
+  If (created + 3*3600 > ReadGameClock())
+    // Zeit nicht um, weiterleben
+    return;
+  EndIf
+
+  KillNPCSilent(me, "forgotten prostitute");
+  exit;
+EndFunction

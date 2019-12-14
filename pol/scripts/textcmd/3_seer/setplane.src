@@ -1,0 +1,40 @@
+//
+//
+//
+//  21.10.2005 Fraggulus: urspruenglicher movable-Status der Items wird im Nachhinein wieder gesetzt.
+//
+
+Use uo;
+
+Include "include/msgs";
+
+Program TextCMD_Ebene(who, params)
+  params:=SplitWords(params);
+  If (params.size()==2)
+    Var range:=CInt(params[1]);
+    If (!range)
+      range:=1;
+    EndIf
+
+    Var hoehe:=CInt(params[2]);
+    If (!params[2])
+      hoehe:=1;
+    EndIf
+
+    SendSysMessagePergon(who, "Mittelpunkt zum Einebenen (auf Höhe "+hoehe+") wählen!");
+
+    Var tgt := TargetCoordinates(who);
+    If (tgt)
+      ForEach item in ListItemsNearLocation(tgt.x, tgt.y, tgt.z, range,tgt.realm)
+        If ((0 <= item.z - hoehe + 2) && (item.z - hoehe + 2 <= 4))
+          MoveObjectToLocation(item, item.x, item.y, hoehe, item.realm, MOVEOBJECT_FORCELOCATION+MOVEITEM_IGNOREMOVABLE);
+        EndIf
+      EndForEach
+    Else
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Items in einem Bereich auf einheitliche Höhe setzen (+-2 Differenz).");
+    SendSysMessagePergon(who, "USAGE: .SetPlane range height");
+  EndIf
+EndProgram

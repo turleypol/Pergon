@@ -1,0 +1,448 @@
+//**************************************************************************************************
+// Script file polymorph.src
+//
+//    implements spell 32 <Polymorph> - "Polymorph"
+//
+//	polymorphs caster - i.e. changes his graphic/looks
+//
+//	Vers. 0.9	- 19.11.2001 Sebastian 'Bihinos' Giese
+//	Vers. 1.1	- 27.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//	Vers. 1.11- 15.03.2005 Seppel - kleine Änderungen
+//  Vers. 2.0   - 28.02.2008 Viel mehr Shapes und zusätzlich die Farbe
+//
+//**************************************************************************************************
+
+use util;
+use cfgfile;
+
+Include "../magicpergon";
+Include "include/spellcheck";
+
+//////////////////////
+// Globale Variablen
+//////////////////////
+
+Var Gruppe;
+
+program cast_polymorph (params)
+
+   Var caster;
+
+   Var spells:= ReadConfigFile("::spells"); 									// load spelldata
+   Var spell:=  FindConfigElem(spells, SPELLID_COMMON_POLYMORPH);
+   Var dur:=    spell.duration;
+   Var mindur:= spell.durationmin;
+   Var maxdur:= spell.durationmax;
+   Var power;
+
+   if (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_COMMON_POLYMORPH);
+   endif
+
+   if (caster.graphic == 51)
+      SendSysMessagePergon(caster, "Ein Schleim bleibt ein Schleim bleibt ein Schleim...",
+                                   "A slime stays a slime stays a slime...");
+      PlaySoundEffect(caster, SFX_2C);
+      return;
+   endif
+
+   PerformAction(caster, ANIM_CAST_AREA);
+   PlayObjectCenteredEffect(caster, FX_MARK_EFFECT, 10, 10);
+
+   if (!GetObjProperty(caster, "spell_poly"))			// check if caster is already polymorphed
+																		// preserve and tag only if not
+      Var tag:= array;											// => consecutive morphs only change appearance
+
+      dur:= CInt(power*dur/100.0);							// calc duration according to casting power
+      if (mindur and mindur > dur)
+         dur:= mindur;
+      elseif (maxdur and maxdur < dur)
+         dur:= maxdur;
+      endif
+
+      tag[1]:= ReadGameClock() + dur;
+      tag[2]:= caster.graphic;								// preserve original graphic
+      tag[3]:= ReadMilliSecondClock();
+      tag[4]:= caster.truecolor;
+
+      SetObjProperty(caster, "spell_poly", tag);		// tag spelltarget for spellchecker
+      SendSpellWaiter(caster, "spell_poly", dur, tag[3], caster);
+   endif
+
+   Var critgroup;
+   // Var creature;
+
+   if (power < 82)                        // choose class of critter, caster polymorphs into
+      critgroup:= RandomInt(1);           // critgroup 0
+   elseif (power < 122)
+      critgroup:= RandomInt(2);           // critgroup 0..1
+   elseif (power < 143)
+      critgroup:= RandomInt(3);           // critgroup 0..2
+   else
+      critgroup:= RandomInt(4);           // critgroup 0..3
+   endif
+
+   
+   // Danach sind die erlaubten Shapes im Array Gruppe
+   setShapeGroupe(critgroup);
+   Var critter:= RandomInt(Gruppe.size()) + 1;								// choose critter
+   
+   PlaySoundEffect(caster, SFX_SPELL_POLYMORPH);
+
+   Var template:=GetNPCConfig(Gruppe[critter]);
+   caster.graphic:= template.ObjType;
+   caster.color := template.color;
+   
+//   case (critgroup)												// get critter graphic
+//      0:	case (critter)
+//		   	0:	creature:= 215;	  //giantrat
+//		   	1:	creature:= 42;		//ratman
+//		   	2:	creature:= 39;		//mongbat
+//		   	3:	creature:= 31;		//headless
+//		   	4:	creature:= 29;		//gorilla
+//		   	5:	creature:= 28;		//giant spider
+//		   	6:	creature:= 6;		  //bird
+//		   	7:	creature:= 5;		  //eagle
+//			endcase
+//      1:	case (critter)
+//		   	0:	creature:= 48;		//scorpion
+//		   	1:	creature:= 7;		  //orc
+//		   	2:	creature:= 33;		//lizardman
+//		   	3:	creature:= 30;		//harpy
+//		   	4:	creature:= 26;		//shade
+//		   	5:	creature:= 24;		//lich
+//		   	6:	creature:= 21;		//giant serpent
+//		   	7:	creature:= 17;		//orc
+//			endcase
+//      2:	case (critter)
+//		   	0:	creature:= 22;		//beholder
+//		   	1:	creature:= 54;		//troll
+//		   	2:	creature:= 16;		//water elemental
+//		   	3:	creature:= 15;		//fire elemental
+//		   	4:	creature:= 14;		//earth elemental
+//		   	5:	creature:= 13;		//air elemental
+//		   	6:	creature:= 8;		  //corpser
+//		   	7:	creature:= 4;			//gargoyle
+//			endcase
+//      3:	case (critter)
+//		   	0:	creature:= 12;		//dragon
+//		   	1:	creature:= 10;		//demon w/ sword
+//		   	2:	creature:= 9;		  //demon
+//		   	3:	creature:= 61;		//drake
+//		   	4:	creature:= 792;		//chaosdemon
+//		   	5:	creature:= 76;		//cyclops
+//		   	6:	creature:= 75;		//titan
+//		   	7:	creature:= 18;		//ettin w/ hammer
+//			endcase		
+//   endcase
+
+   //caster.graphic:= creature;									// set casters graphic
+   //caster.color := 0;
+
+endprogram
+
+function setShapeGroupe(GruppenNummer)
+    case (GruppenNummer)
+        0: // Gruppe 1
+
+            Gruppe := {"Bird"  , 
+            "Rat"              ,
+            "Rabbit"           ,
+            "Rabbit_m"         ,
+            "squirrel"         ,
+            "Parrot_Red"       ,
+            "Parrot_Yellow"    ,
+            "Parrot_Green"     ,
+            "Cock"             ,
+            "Cat"              ,
+            "Cat_m"            ,
+            "ferret"           ,
+            "BullFrog"         ,
+            "Pig_w"            ,
+            "Pig"              ,
+            "Dog_w"            ,
+            "Dog"              ,
+            "Sheep"            ,
+            "Sheep_m"          ,
+            "Slime"            ,
+            "Deer"             ,
+            "Goat"             ,
+            "Goat_m"           ,
+            "RabidCat"         ,
+            "Eagle"            ,
+            "Mongbat"          ,
+            "Ape"              ,
+            "Headless"         ,
+            "RabidDog"         ,
+            "Wolf"             ,
+            "Walrus"           ,
+            "Spider"           ,
+            "Vip"              ,
+            "Mummy"            ,
+            "Zombie"           ,
+            "Cow"              ,
+            "Cow2"             ,
+            "Harpy"            ,
+            "Snake"            ,
+            "SilverSnake"      ,
+            "Undead"           ,
+            "GiantRat"         ,
+            "Gheart"           ,
+            "Llama"            ,
+            "Llama_m"          ,
+            "Ratman1"          ,
+            "Ratman2"          ,
+            "Ratman3"          ,
+            "Hildisvini"       ,
+            "RatmanMarksman"   ,
+            "Gremlin"          ,
+            "Skeleton"         ,
+            "Giant_Toad"       ,
+            "Panther"          ,
+            "Corpser"          ,
+            "Bear"             ,
+            "BlackBear"        ,
+            "Bull2"            ,
+            "Bull"             ,
+            "Orc1"             ,
+            "Orc2"             ,
+            "TrollArcher"      ,
+            "FlamingSpider"    ,
+            "Orc_Lord"         ,
+            "LizardManShaman"  ,
+            "LizardMan1"       ,
+            "LizardMan3"       ,
+            "LizardMan2"       ,
+            "Imp"              ,
+            "Ghost"          };
+                 
+        1: // Gruppe 2         
+                 
+            Gruppe := { "Scorp"     ,
+            "HarpyQueen"           ,
+            "FrostGazer"           ,
+            "ForestGazer"          ,
+            "CaveGazer"            ,
+            "RockSpider"           ,
+            "Alligator"            ,
+            "FireLizard"           ,
+            "RockLizard"           ,
+            "Horse3"               ,
+            "Horse2"               ,
+            "Polar"                ,
+            "Horse4"               ,
+            "CaveOstard"           ,
+            "Shade"                ,
+            "DesertOstard"         ,
+            "CaveOstard_m"         ,
+            "DesertOstard_m"       ,
+            "TrollArcher2"         ,
+            "Gargoyle"             ,
+            "LavaLizard"           ,
+            "OrcMage"              ,
+            "StoneGargoyle"        ,
+            "ForestOstard"         ,
+            "ForestOstard_w"       ,
+            "Troll1"               ,
+            "Horse"                ,
+            "Horse_m3"             ,
+            "Horse_m2"             ,
+            "DireWolf"             ,
+            "Horse_m5"             ,
+            "Horse5"               ,
+            "Horse_m4"             ,
+            "Horse6"               ,
+            "Grizzly"              ,
+            "Troll5"               ,
+            "Troll6"               ,
+            "HellCat"              ,
+            "Ratman_Lord"          ,
+            "OrcCleric"            ,
+            "Liche"                ,
+            "Vortex"               ,
+            "SkeletonMage"         ,
+            "UniquePixie"          ,
+            "SandLizard"           ,
+            "Gazer"                ,
+            "BoneKnight"           ,
+            "LavaOstard_w"         ,
+            "IceOstard_w"          ,
+            "Troll2"               ,
+            "FrenziedOstard"       ,
+            "FrenziedOstard_w"     ,
+            "TerathenDrone"        ,
+            "HellHound"            ,
+            "FlamingSkeleton"      ,
+            "LesserWaterElemental" ,
+            "BoneWarlock"          ,
+            "DaemonSpawn"          ,
+            "DarkSpawn"            ,
+            "Wraith"               ,
+            "FrostWolf"            ,
+            "LizardManDefender"    ,
+            "IceTrollShaman"       ,
+            "TrollShaman"          ,
+            "BlackWisp"            ,
+            "LizardManWarLock"     ,
+            "Wisp"                 ,
+            "BlackSlime"           ,
+            "GreenSlime"           ,
+            "Cyclop"               ,
+            "RockScorpion"         ,
+            "TrollKing"            };
+                       
+        2: // Gruppe 3               
+                       
+            Gruppe := { "TrollWarlord"  ,
+            "LesserFireElemental"     ,
+            "LesserAirElemental"      ,
+            "FlameGargoyle"           ,
+            "FrostGargoyle"           ,
+            "ForestGargoyle"          ,
+            "LicheLord"               ,
+            "Ogre"                    ,
+            "IceSkeleton"             ,
+            "IceTroll"                ,
+            "FrostSpider"             ,
+            "IceTrollKing"            ,
+            "GiantBeatle"             ,
+            "Troll_Lord"              ,
+            "Ent"                     ,
+            "LizardManKing"           ,
+            "OrcKing"                 ,
+            "PhaseSpider"             ,
+            "Djinni"                  ,
+            "OrcMasterMage"           ,
+            "TerathenMage"            ,
+            "LesserPoisonElemental"   ,
+            "UniqueSwarm"             ,
+            "DarkWolf"                ,
+            "OrcDefender"             ,
+            "Ettin2"                  ,
+            "Spectre"                 ,
+            "LesserEarthElemental"    ,
+            "TerathenWarrior"         ,
+            "AcidElemental"           ,
+            "LavaOstard_m"            ,
+            "IceOstard_m"             ,
+            "BladeSpirit"             ,
+            "SeaSerpent"              ,
+            "PoisonElemental"         ,
+            "BloodElemental"          ,
+            "Giant_Serpent"           ,
+            "Anaconda"                ,
+            "Ettin"                   ,
+            "SavageRidgeback"         ,
+            "CuSidhe"                 ,
+            "Ridgeback"               ,
+            "LavaRidgeback_w"         ,
+            "LavaRidgeback_m"         ,
+            "PolarRideable"           ,
+            "Kobold"                  ,
+            "UniqueBogling"           ,
+            "UniqueDreadWolf"         ,
+            "IceLiche"                ,
+            "UniqueGiantFrog"         ,
+            "UniqueFireMage"          ,
+            "NightMare"               ,
+            "BloodLiche"              ,
+            "TerathenMasterMage"      ,
+            "questorcmage"            ,
+            "questtrollmage"          ,
+            "PlasmaElemental"         ,
+            "GreaterAirElemental"     ,
+            "SnowElemental"           ,
+            "SwampElemental"          ,
+            "GreaterFireElemental"    ,
+            "SkeletalMount"           ,
+            "StoneGolem"              ,
+            "FleshGolem"              ,
+            "ClayGolem"               ,
+            "MagmaElemental"          ,
+            "Succubus"                };
+                          
+        3: // Gruppe 4                  
+                          
+            Gruppe := { "UniqueSphinx",
+            "UniqueOrcKing"           ,
+            "UniqueGiantBeetle"       ,
+            "EvilFairy"               ,
+            "Kraken"                  ,
+            "CrystalElemental"        ,
+            "ARSwampDragon"           ,
+            "questtrollelite"         ,
+            "questskelettelite"       ,
+            "LavaGolem"               ,
+            "GreaterEarthElemental"   ,
+            "UniqueLavasnake"         ,
+            "UniqueFireAnt"           ,
+            "HaiRiyo"                 ,
+            "SwampDragon"             ,
+            "Chimera"                 ,
+            "UniquePlaqueBeast"       ,
+            "UniqueTerathenAvenger"   ,
+            "UniqueCarrionCreeper"    ,
+            "HordeDaemon"             ,
+            "CentaurShaman"           ,
+            "TerathenGuard"           ,
+            "CentaurArcher"           ,
+            "ForestDrake"             ,
+            "Drake2"                  ,
+            "Titan"                   ,
+            "SilverDragon"            ,
+            "UniqueWyvern"            ,
+            "Drake1"                  ,
+            "ChaosDaemon"             ,
+            "GargoyleGuard"           ,
+            "UniqueBlackWidow"        ,
+            "UniqueFireAntQueen"      ,
+            "UniqueHorror"            ,
+            "Dragonguard"             ,
+            "UniqueGargyle"           ,
+            "UniqueSuccubus"          ,
+            "UniqueShadowKnight"      ,
+            "NagaWarrior"             ,
+            "FallenAngel"             ,
+            "UniqueBogQueen"          ,
+            "TerathenLord"            ,
+            "Daemon"                  ,
+            "HellGuardian"            ,
+            "DaemonLieutenant"        ,
+            "PackLlama"               ,
+            "FrostDrake"              ,
+            "QuestFrostDrake"         ,
+            "PackHorse"               ,
+            "CentaurWarlord"          ,
+            "GreatMummy"              ,
+            "SpectralDrake"           ,
+            "ArcaneDemon"             ,
+            "QuestSpectralDrake"      ,
+            "TerathenQueen"           ,
+            "UniqueSpectralDemon"     ,
+            "CentaurKing"             ,
+            "IceFiend"                ,
+            "UniqueElderDemon"        ,
+            "UniqueFourArmedDemon"    ,
+            "ForrestFiend"            ,
+            "UniqueStoneDragon"       ,
+            "QuestDragon1"            ,
+            "Dragon1"                 ,
+            "BoneDragon"              ,
+            "RiverDragon"             ,
+            "QuestDragon2"            ,
+            "Balron"                  ,
+            "Uniqueunicorn"           ,
+            "Unicorn"                 ,
+            "GreatWyrm"               ,
+            "IceWyrm"                 ,
+            "QuestIceWyrm"            ,
+            "Uniqueghostdragon"       ,
+            "UebelVieh"               };
+                          
+    endcase                          
+endfunction

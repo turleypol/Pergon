@@ -1,0 +1,153 @@
+//**************************************************************************************************
+// Script file revive.src
+//
+//    implements spell 20 <Revive> - "Reparatur"
+//
+//  repairs HP on random armor of spelltarget
+//
+//  Vers. 0.9 - 19.11.2001 Sebastian 'Bihinos' Giese
+//  Vers. 1.1 - 27.06.2003 Sebastian 'Bihinos' Giese - ueberarbeitet
+//
+//**************************************************************************************************
+
+use util;
+
+Include "../magicpergon";
+
+Program cast_revive(params)
+
+  var caster;
+  var caston;
+
+  var spells := ReadConfigFile("::spells");                   // load spelldata
+  var spell :=  FindConfigElem(spells, SPELLID_COMMON_REVIVE);
+  //var difficulty := spell.skill;
+  var amnt :=    spell.primary;
+  //var minamnt := spell.primarymin;
+  //var maxamnt := spell.primarymax;
+  var power;
+
+  If (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_COMMON_REVIVE);
+    caston := TargetThing(caster, TGTOPT_HELPFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+  
+  If (caston.isa(POLCLASS_MULTI))
+    SendSysMessagePergon(caster, "Das kann nicht magisch beschädigt worden sein", "This cannot have been magical damaged");
+    return;
+  EndIf
+
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  var item;
+  If (caston.isa(POLCLASS_MOBILE))
+    
+    TurnCharTo(caster, caston);
+    PlayObjectCenteredEffect(caston, FX_BLESS_EFFECT, 7, 7);
+    PlaySoundEffect(caston, SFX_43);
+        
+    var spellprop := caston.getprop("spell_curse");
+    If (spellprop && spellprop[3] == "dead knight")
+      SendSysMessagePergon(caster, "Der Fluch auf " + caston.name + " ist tödlich, es kann nichts repariert werden",
+                                   "The curse upon " + caston.name + " is deadly and nothing can be repaired");
+      return;
+    EndIf
+  
+    var armor := {};
+    var equipped := ListEquippedItems(caston);                // equipped items on spelltarget
+  
+    ForEach item in equipped                         // gather armor from equipped
+      If (item.isa(POLCLASS_ARMOR) || item.isa(POLCLASS_WEAPON))
+        If (GetObjProperty(item, "spell_rust"))
+          armor.append(item);
+        EndIf
+      EndIf
+    EndForEach
+  
+    If (armor.size())
+      item := armor.randomentry();         // choose random piece of armor
+    EndIf
+    
+  ElseIf (caston.isa(POLCLASS_WEAPON) || caston.isa(POLCLASS_ARMOR))
+    
+    item := caston;
+    var container := item.container;
+    If (container)                              // hat Jemand das Item dabei?
+      While (container.container)
+        container := container.container;
+      EndWhile
+      TurnCharTo(caster, container);
+      PlayObjectCenteredEffect(container, FX_BLESS_EFFECT, 7, 7);
+      PlaySoundEffect(container, SFX_43);
+    Else                                        // oder liegt es irgendwo rum?
+      TurnCharTo(caster, caston);
+      PlayStationaryEffect(item.x, item.y, item.z, FX_BLESS_EFFECT, 7, 7);
+      PlaySoundEffect(item, SFX_43);
+    EndIf
+    
+  EndIf
+  
+  If (item)
+    var cprop_curse := GetObjProperty(item, "spell_curse");
+    If (cprop_curse)
+      SendSysMessagePergon(caster, ModDesc(item.desc)+" ist verflucht und kann nicht repariert werden",
+                                   ModDesc(item.desc)+" is cursed and connot be repaired");
+      return;
+    EndIf
+    
+    var cprop_rust := GetObjProperty(item, "spell_rust");
+    var repair_prozent := 1.0 * power / cprop_rust[1];
+    If (repair_prozent > 1)
+      repair_prozent := 1;
+    EndIf
+
+    amnt := CInt(cprop_rust[3] * repair_prozent);         // calc amount of HP to be repaired
+
+    If (item.hp + amnt >= cprop_rust[2])
+      //mehr als vor dem spruch kann nicht repariert werden
+      item.hp := CInt(cprop_rust[2]);
+      SendSysMessagePergon(caster,"Ihr beseitigt den magischen Rost auf " + ModDesc(item.desc) + " vollständig.",
+                                  "You remove the rust from " + ModDesc(item.desc) + " completly.");
+    ElseIf (item.hp + amnt < cprop_rust[2])
+      //wird weniger repariert
+      item.hp := CInt(item.hp + amnt);
+      SendSysMessagePergon(caster,"Ihr beseitigt den magischen Rost auf " + ModDesc(item.desc) + " nicht ohne Rückstaende.",
+                                  "You remove the rust from " + ModDesc(item.desc) + " not completly.");
+    Else
+      SendSysMessagePergon(caster,"Ihr habt vollständig versagt.", "You have failed.");
+      return;
+    EndIf
+    EraseObjProperty(item, "spell_rust");
+    IncRevision(item);
+
+  Else
+    SendSysMessagePergon(caster, "Ihr repariert nichts, da Ihr nichts reparierbares finden könnt",
+                                 "You do not repair anything, because you cannot find anything repairable");
+  EndIf
+
+EndProgram
+
+Function ModDesc(desc)    // alter description of item (cut a(n) for us Germans)
+
+  If (desc[1, 2] == "a ")
+    desc[1, 2] := "";
+  ElseIf (desc[1, 3] == "an ")
+    desc[1, 3] := "";
+  EndIf
+
+  return(desc);
+
+EndFunction

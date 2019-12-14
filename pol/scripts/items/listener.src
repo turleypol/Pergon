@@ -1,0 +1,163 @@
+///////////////////////////////////////////////////////////////////////////
+// Listener Script - Gesprochenes Analysieren etc. (z.B. auch "bluten")
+//
+// Author: Shinigami
+
+use os;
+use uo;
+use util;
+include "include/clock";
+include "include/eventid";
+include "include/modifyskill";
+include "include/objtype";
+include "include/pergonstatistik";
+include "include/pergonutil";
+include "include/quests";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+var quirolantenwords := GetGlobalProperty("quirolantenwords");
+
+Const secondary :=
+    " jehova jehowa jehofa iehova iehowa iehofa jeh-ova jeh-owa jeh-ofa "+
+    "ieh-ova ieh-owa ieh-ofa jeh0va";
+
+// Achtung! Kleinschreibung unbedingt beachten!
+Const primary :=
+    " arsch arschloch clanmatch counter countie counterstrike dreckschwein "+
+    "emanzipation ficken fuck f**k halflife hure huren niffa operation "+
+    "pisser poppen quake research scheisse sphere tus uox runuo nox "+
+    "vorlesung taubenhorst taubenhorstes "+
+    "*g* *gg* -.- -_- 1o1 1ö1 :( :) :-( :-) :9 :d :p :s ;( ;) ;-( ;-) ;d "+
+    ";o ;o) =d =p ^^ l0l lol o_o oo rofl rotfl xd "+
+    "hilfe!!! hilfe!!!! hilfe!!!!! hilfe!!!!!! hilfe!!!!!!! hilfe!!!!!!!! "+
+    "hilfe!!!!!!!!! hilfe!!!!!!!!!!"+secondary;
+
+Program Listener(who)
+  Set_Script_Option(SCRIPTOPT_NO_RUNAWAY, 1);
+
+  var item := who.backpack;
+  If (!item)
+    SysLog("FEHLER: Spieler "+who.name+" hat kein Backpack!");
+    return;
+  EndIf
+
+  If (GetObjProperty(item, "#Listener"))
+    return;
+  EndIf
+
+  SetObjProperty(item, "#Listener", GetPid());
+
+  RegisterForSpeechEvents(item, 0, LISTENPT_HEAR_GHOSTS);
+
+  var aktgameclock := ReadGameClock();
+  // Wie lange maximal in der EventQueue warten, bis zum naechsten
+  // Blut-Check?
+  var eventwaittime := 120;
+  // Wie lange minimal warten? (max=min, aber nur so funzt es...)
+  var nextbloodcheck := aktgameclock+eventwaittime;
+
+  While (who.ip)
+    var ev := Wait_for_Event(eventwaittime);
+    If (!ev)
+      continue;
+    EndIf
+
+    Case (ev.type)
+      SYSEVENT_SPEECH:
+        If (ev.source == who)
+          // Statistische Analyse durchfuehren
+          StatistikListener(who, ev);
+
+          // Bestimmte Emotes machen Geräusche
+          If ((ev.texttype=="emote") && (!who.dead))
+            SoundEmote(who, Lower(CChrZ(ev.uc_text)));
+          EndIf
+
+          If (
+            // keine Wirkung auf Cmdlevel
+            (ev.source.cmdlevel < CMDLEVEL_SEER) And
+            // Strafe laeuft noch nicht
+            (!GetObjProperty(ev.source, "PunishRuns"))
+          )
+            If (CheckWords(ev.source, ev.text))
+              // ab jezt laeuft Strafe offiziell
+              SetObjProperty(ev.source, "PunishRuns", 1);
+
+              var counter := GetObjProperty(ev.source, "PunishCounter") + 1;
+              If (!counter)
+                counter := 1;
+              EndIf
+              SetObjProperty(ev.source, "PunishCounter", counter);
+
+              Start_ScriptPergon(":QuestTools:punishment", ev.source);
+            EndIf
+          EndIf
+        EndIf
+
+      SYSEVENT_DAMAGED:
+        nextbloodcheck := 0; // Soll sofort checken
+    EndCase
+
+    // Hihi
+    // If (who.cmdlevel < CMDLEVEL_SEER)
+    //   If (RandomInt(200)==1)
+    //     Case (RandomInt(2))
+    //       0: PrintTextAbovePergon(who, who, "*hatschi*");
+    //       1: PrintTextAbovePergon(who, who, "*nies*");
+    //     EndCase
+    //   EndIf
+    // EndIf
+
+    If (who.dead)
+      // Geister bluten nicht, oder?
+      continue;
+    EndIf
+
+    aktgameclock := ReadGameClock();
+    // Jetzt pruefen, ob das Opfer ggf. blutet? (Halt nicht zuuu oft)
+    If (nextbloodcheck <= aktgameclock)
+      var prozent := (1.0*GetHPPergon(who))/GetMaxHPPergon(who);
+      If (prozent<0.25) // Er ist stark verletzt
+        // 120 bis 5 Sekunden Verzoegerung,
+        // je nach Schweregrad der Verletzung
+        eventwaittime := CInt(prozent*4.6)+5;
+
+        var blood := CreateItemAtLocationPergon(who.x, who.y, who.z, UOBJ_BLOOD, 1,who.realm);
+        Start_ScriptPergon("::items/itemdestroy", {blood, 120});
+      Else
+        eventwaittime := 120;
+      EndIf
+
+      // 'n bisschen Reserve, damit der Check auf garantiert erfolgt
+      nextbloodcheck := aktgameclock+eventwaittime-1;
+    Else // Da wohl 'n SpeechEvent erfolgte, die Restzeit kalkulieren
+      // 'n bisschen Reserve, damit der Check auf garantiert erfolgt
+      eventwaittime := nextbloodcheck-aktgameclock+1;
+    EndIf
+  EndWhile
+
+  EraseObjProperty(item, "#Listener");
+EndProgram
+
+Function CheckWords(who, text) // {{{
+    var strafen := 0;
+
+    ForEach word in (SplitWords(Lower(text)))
+        // If (primary[" "+word+" "])
+        If (secondary[" "+word+" "])
+            Start_ScriptPergon(":QuestTools:jehova", who);
+        // Else
+        //     Syslog(
+        //         "STRAFE: " + who.name+" wurde bestraft fuer '"+word+"'"
+        //     );
+        //     strafen := 1;
+        EndIf
+        // EndIf
+    EndForEach
+
+    return strafen;
+EndFunction // }}}
+
+// vim: sw=2 sts=2

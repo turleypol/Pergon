@@ -1,0 +1,197 @@
+///////////////////////////////////////////////////////////////////////////
+// Nest-KontrollSystem -- Controlscript fuer ein aufgebautes Nest
+//
+// Author: Pauker
+//         03/2002
+
+use cfgfile;
+use os;
+use math;
+use uo;
+use util;
+include "include/animaldomest";
+include "include/itemnpc";
+include "include/logutil";
+include "include/npc";
+
+Const DEBUG         := 0;
+// alle TURN Sekunden wird geschaut, ob ein Ei im Nest
+Const TURN          := 2*3600;
+// Maximalanzahl Eier pro Runde
+Const EGGS_TURN     := 3;
+Const EGGS_MAX      := 20;
+// Zustand des Nestes (Quasi-Hitpoints)
+Const PROP_STATE    := "state";
+
+Program ControlNest(nest)
+  While (nest)
+    // schlaeft TURN-Zeit in Sekunden + kleine Varianz
+    Sleep(TURN - 10 + RandomInt(20));
+
+    If (!nest)
+      break;
+    EndIf
+
+    // Nest ist verpackt
+    If (nest.container)
+      continue;
+    EndIf
+
+    var nesthp := nest.getprop(PROP_STATE);
+    If (nesthp == error)
+      nesthp := EGGS_MAX;
+    EndIf
+
+    var mob_count := ListMobilesNearLocation(
+      nest.x, nest.y, LIST_IGNORE_Z, MOBILES_RANGE, nest.realm
+    ).size();
+    If (mob_count >= MOBILES_MAX)
+      If (DEBUG)
+        syslog(
+          "HINWEIS: "+mob_count+" Lebewesen stehen um "+
+          ItemInfoStr(nest, COORDS_REALM)+" herum, "+
+          "Eier werden nicht ausgebruetet"
+        );
+      EndIf
+      continue;
+    EndIf
+
+    var egg_count := 0;
+    ForEach egg in (ListItemsAtLocation(
+        nest.x, nest.y, LIST_IGNORE_Z, nest.realm
+    ))
+      SleepMS(2);
+      If (egg.serial == nest.serial)
+        // Nest findet sich logischerweise selbst in Liste
+        continue;
+      EndIf
+
+      If (Abs(egg.z - nest.z) > 5)
+        // Ei zu hoch/tief gegenueber Nest
+        If (DEBUG)
+          syslog(
+            "HINWEIS: Abstand zu gross zwischen "+
+            ItemInfoStr(nest, COORDS_REALM)+" und "+
+            ItemInfoStr(egg, COORDS_REALM)
+          );
+        EndIf
+        continue;
+      EndIf
+
+      var template := GetTemplateByEgg(egg);
+      If (!template)
+        // kein Template für Ei (oder was auch immer es ist)
+        If (DEBUG)
+          syslog(
+            ItemInfoStr(nest)+" hat Template fuer "+
+            ItemInfoStr(egg, COORDS_REALM)+" nicht gefunden"
+          );
+        EndIf
+        continue;
+      EndIf
+
+      var generation := egg.getprop("Generation");
+      If (!generation)
+        generation := 1;
+      EndIf
+      var exmaster := egg.getprop("ExMaster");
+
+      // einige Aenderungen am Tier vornehmen ...
+      var special := struct;
+      special["CProps"] := dictionary;
+      special["CProps"]["Generation"] := generation;
+      If (exmaster)
+        special["CProps"]["ExMaster"] := exmaster;
+      EndIf
+
+      // bei Ostereiern wird die Farbe uebernommen,
+      // man bekommt bunte Huehner
+      If (egg.objtype == 0x09b5 and egg.color)
+        special["Color"] := egg.color;
+      EndIf
+
+      // animal.scriptdomest benutzen, falls verfuegbar
+      var domesttemplate := GetNPCConfig(template);
+      If (domesttemplate.scriptdomest)
+        special["Script"] := domesttemplate.scriptdomest;
+      EndIf
+
+      // ... und Tier erzeugen
+      var animal := CreateNPCFromTemplate(
+        template, nest.x, nest.y, nest.z, special, nest.realm
+      );
+      If (!animal)
+        syslog(
+          "HINWEIS: "+ItemInfoStr(nest, COORDS_REALM)+
+          " konnte kein Tier "+template+" createn: "+animal.errortext
+        );
+        continue;
+      EndIf
+      animal.name := animal.name+" domestiziert";
+
+      SubtractAmount(egg, 1);
+      egg_count += 1;
+      nesthp    -= 1;
+      nest.setprop(PROP_STATE, nesthp);
+
+      If (DEBUG)
+        syslog(animal.name+" erzeugt mit Script: "+animal.script);
+      EndIf
+
+      // weitere Eier erst in naechster Runde
+      If (egg_count >= EGGS_TURN or nesthp <= 0)
+        break;
+      EndIf
+    EndForEach
+
+    If (nesthp <= 0)
+      DestroyItem(nest);
+    EndIf
+  EndWhile
+EndProgram
+
+Function GetTemplateByEgg(egg) // {{{
+  // FIXME: das ist eher ein Fall fuer Itemdesc/eigenes Cfgfile
+  // 30% der Eier werden zu einem maennlichen Tier
+  If (RandomInt(100) < 30)
+    Case (egg.objtype)
+    0x09b5:
+      return "Cock";           // Hahn
+    0x6c00:
+      return "forestostard";   // Waldostard
+    0x6c01:
+      return "desertostard_m"; // Wuestenostard
+    0x6c02:
+      return "frenziedostard"; // Raubostard
+    0x6c03:
+      return "caveostard_m";   // Hoehlenostard
+    0x6c04:
+      return "Iceostard_m";    // Eisostard
+    0x6c05:
+      return "lavaostard_m";   // Lavaostard
+    EndCase
+  Else
+    Case (egg.objtype)
+    0x09b5:
+      return "Chicken";
+    0x6c00:
+      return "forestostard_w";
+    0x6c01:
+      return "desertostard";
+    0x6c02:
+      return "frenziedostard_w";
+    0x6c03:
+      return "caveostard";
+    0x6c04:
+      return "Iceostard_w";
+    0x6c05:
+      return "lavaostard_w";
+    EndCase
+  EndIf
+
+  var ret := error;
+  ret.errortext := "No template defined for egg "+egg.objtype;
+  return ret;
+EndFunction // }}}
+
+// vim: sw=2 sts=2

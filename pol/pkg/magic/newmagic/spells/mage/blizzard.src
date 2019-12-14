@@ -1,0 +1,178 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file blizzard.src
+//
+// implements spell 115 <Blizzard> - "Blizzards"
+//
+// creates a blizzard which deals water damage
+// [ Resisted (Elemental - Water) ]
+
+///////////////////////////////////////////////////////////////////////////
+// Modification:
+// $Log: not supported by cvs2svn $
+// Revision 1.21  2008/09/25 11:35:28  turley
+// Corefunktion PlaySoundEffectXYZ
+// +kleinkram
+//
+// Revision 1.20  2008/09/23 12:47:32  turley
+// PlaySoundEffectXYZ() -> PlaySoundEffectXYZ_()
+// Pol98 bekommt das als Corefunktion
+//
+// Revision 1.19  2008/09/05 20:04:21  mehdorn
+// - RandomIntMinMax-Umbau
+//
+// 2007-03-06 Seppel
+// macht nun Schaden über Zeit hinweg + Effekt gepimpt
+//
+// 03.08.2005 Seppel
+// Effekte überarbeitet
+//
+// 30.06.2003 Sebastian 'Bihinos' Giese
+// ueberarbeitet
+//
+// 19.11.2001 Sebastian 'Bihinos' Giese
+// erbaut
+
+include "../magicpergon";
+include "../resistance";
+include "../spellattack";
+include "include/packets";
+include "include/effects";
+use os;
+use util;
+use vitals;
+
+Program cast_blizzard (params)
+
+  var caster;
+  var where;
+  var victims;
+
+  var spells := ReadConfigFile("::spells");                   // load spelldata
+  var spell := FindConfigElem(spells, SPELLID_MAGE_BLIZZARD);
+  var resist;
+  var dmg;
+  var basedmg := spell.primary;
+  var mindmg := spell.primarymin;
+  var maxdmg := spell.primarymax;
+  var range := spell.range;
+  var minrange := spell.rangemin;
+  var maxrange := spell.rangemax;
+  var duration := spell.duration;
+  var power;
+
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power := params[3];
+    where := params[4];
+    where := struct{x,y,z,realm};
+    where.x := params[4].x;
+    where.y := params[4].y;
+    where.z := params[4].z;
+    where.realm := params[4].realm;
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power := params[3];
+    where := TargetArea(caster);
+    If (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  Else
+    caster := params[1];
+
+    power := GetCastPowerPergon(caster, SPELLID_MAGE_BLIZZARD);
+    where := TargetArea(caster);
+    If (!where)
+      SendSysMessagePergon(caster, "Kein Ziel", "No target");
+      return;
+    EndIf
+  EndIf
+
+  TurnCharTo(caster, where);
+  PerformAction(caster, ANIM_CAST_AREA);
+
+  basedmg := CDbl(power*basedmg/100.0);       // calc spell range and spell damage
+  range := CInt(power*range/100.0);         // according to casting power
+  If (minrange and minrange > range)
+    range := minrange;
+  ElseIf (maxrange and maxrange < range)
+    range := maxrange;
+  EndIf
+
+
+  var i,j,k;
+  var clouds := {};
+
+  var Cloud_Smoke := GetItemDescriptor(FX_SMOKE);
+  Cloud_Smoke.color := RandomInt(10)+484;
+  Cloud_Smoke.movable := 0;
+  Cloud_Smoke.description := "Blizzard";
+  var Cloud_EXPLODE_1 := GetItemDescriptor(FX_EXPLODE_1);
+  Cloud_EXPLODE_1.color := RandomInt(10)+484;
+  Cloud_EXPLODE_1.movable := 0;
+  Cloud_EXPLODE_1.description := "Blizzard";
+  var Cloud_EXPLODE_2 := GetItemDescriptor(FX_EXPLODE_2);
+  Cloud_EXPLODE_2.color := RandomInt(10)+484;
+  Cloud_EXPLODE_2.movable := 0;
+  Cloud_EXPLODE_2.description := "Blizzard";
+  var Cloud_EXPLODE_3 := GetItemDescriptor(FX_EXPLODE_3);
+  Cloud_EXPLODE_3.color := RandomInt(10)+484;
+  Cloud_EXPLODE_3.movable := 0;
+  Cloud_EXPLODE_3.description := "Blizzard";
+
+  For (k := 1 ; k < range*10; k += 1)                              // Wolken
+    var x:=RandomIntMinMax(where.x - range,where.x+range+1);
+    var y:=RandomIntMinMax(where.y - range,where.y+range+1);
+    var z:=where.z + RandomInt(10)+40;
+    Case (RandomInt(4))
+      0: clouds[k] := CreateItemAtLocation(x,y,z,Cloud_Smoke,1,where.realm);
+      1: clouds[k] := CreateItemAtLocation(x,y,z,Cloud_EXPLODE_1,1,where.realm);
+      2: clouds[k] := CreateItemAtLocation(x,y,z,Cloud_EXPLODE_2,1,where.realm);
+      3: clouds[k] := CreateItemAtLocation(x,y,z,Cloud_EXPLODE_3,1,where.realm);
+    EndCase
+    SleepMS(2);
+  EndFor
+
+  For (i := 1; i<= duration; i := i+1)
+    PlaySoundEffectXYZ(where.x, where.y, where.z, 0x015+RandomInt(3), caster.realm);
+
+    For (j := 1; j<= 40; j := j+1)                                 // Schnee der zu Boden fällt
+      var randX := RandomIntMinMax(-range,range+1);
+      var randY := RandomIntMinMax(-range,range+1);
+
+      var effect:=0x36A0+RandomInt(2);
+
+      SleepMS(25);                                              // 40 Effekte * 25ms Sleep = 1 Sekunde Sleep pro Schadensdurchlauf!!!
+      PlayMovingEffectXYZ(where.x+randX, where.y+randY, where.z+40, where.x+randX+RandomInt(3)-1, where.y+randY+RandomInt(3)-1, where.z - 20, effect, 1,0,0,where.realm);
+    EndFor
+
+    victims := ListMobilesNearLocationEX(where.x, where.y, where.z, range, LISTEX_FLAG_NORMAL + LISTEX_FLAG_HIDDEN,where.realm);
+
+    If (victims)
+      ForEach victim in victims                                 // Schaden
+        If (victim <> caster && !victim.dead)                   // preserve caster and ghosts
+
+          PlayObjectCenteredEffect(victim, FX_SMOKE, 5, 15);    // jedes Opfer kriegt noch nen kleiesn Wölkchen
+          If (victim.isa(POLCLASS_NPC))
+            send_attack(victim, caster, 115);
+          EndIf
+          resist := 1 - CDbl(GetResistance(victim, "water"));    // get water resistance of victim
+          dmg := CInt(basedmg * resist);                         // alter spell damage
+          If (mindmg and mindmg > dmg)
+            dmg := mindmg;
+          ElseIf (maxdmg and maxdmg < dmg)
+            dmg := maxdmg;
+          EndIf
+          ApplyRawDamagePergon(victim, dmg);                    // apply spell damage to victim
+        EndIf
+        SleepMS(2);
+      EndForEach
+    EndIf
+
+  EndFor
+
+  ForEach cloud in clouds
+    DestroyItem(cloud);
+  EndForEach
+
+EndProgram

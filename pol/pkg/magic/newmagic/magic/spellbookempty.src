@@ -1,0 +1,37 @@
+////////////////////////////////////////////////////////////////////////////////////
+//
+//   SpellBook Empty - Das Zauberbuch entruempeln, da oft als Versteck missbraucht
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+////////////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/objtype";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program SpellBookEmpty(spellbook)
+  ForEach item in EnumerateItemsInContainer(spellbook)
+    If (item.objtype<>UOBJ_SPELLPANEL)
+      If (spellbook.container)
+        MoveItemToContainer(item, spellbook.container);
+      Else
+        MoveObjectToLocation(item, spellbook.x, spellbook.y, spellbook.z, spellbook.realm, MOVEOBJECT_FORCELOCATION);
+      EndIf
+    EndIf
+  EndForEach
+EndProgram

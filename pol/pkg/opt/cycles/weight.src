@@ -1,0 +1,37 @@
+//////////////////////////////////
+//
+//   Weight - Cycle
+//
+//     Author: Shinigami
+//
+//////////////////////////////////
+
+//////////////
+// Libraries
+//////////////
+
+Use os;
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+
+/////////////////
+// Main Program
+/////////////////
+
+Program WeightCycle()
+  BroadcastPergon("Gewichts-Zyklus wird aktiviert...", "Weight-cycle activated...");
+  SysLog("Gewichts-Zyklus wird aktiviert...");
+
+  While (1)
+    ForEach player in EnumerateOnlineCharacters()
+      SysLog("Weight: "+player.name+" = "+player.weight);
+    EndForEach
+
+    Sleep(60);
+  EndWhile
+EndProgram

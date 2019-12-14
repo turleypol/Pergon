@@ -1,0 +1,46 @@
+1. Skill advancement (no clue how to modify this or if i should) Is also very difficult to gain skill.
+    Skill advancement rates are set in individual skill scripts.  The
+    'CheckSkill' function takes a 'difficulty' parameter and a 'points'
+    parameter.  The higher the 'points', the faster the skill will rise.
+
+    We're talking about ways to make it easier to customize this; You
+    shouldn't have to edit every skill script in order to run a server
+    with faster advancement.  For now, unfortunately, you do.
+
+2. Possible to make random spawn groups? Etc.. Like define the x different amount of creature and it randomly spawns one of them?
+    This sounds like a nice addition to the spawn system.  
+    "startup/spawner.src" is the spawn script; 
+
+3. Modifying the spawns and the monsters loot... magic weps etc...
+    Loot is defined in lootgroup.cfg and loot.cfg
+    There are no magic weapons in wepndesc.cfg yet (and no core support either)
+
+
+4. Stat advancement. What is this based on? Can it be modified to suit a personal servers need?
+    "skills.cfg" defines the stat advancement amounts for skill use.
+
+5. Any skills that currently dont work correctly? etc.. poisoning, alchemy, inscription? etc..
+    Lots.  We've started a website, at http://poldev.dynip.com/pol, that's 
+    meant to have up-to-date data on what skills are complete, etc.  We're
+    only now starting to get this information up to date, so a lot of skills
+    that are partially functional are listed as "unknown"
+
+6. Create menus.. If i add more things to .menus or etc.. Will an updated file mean i have to redo all that work? 
+    Yes, an update would overwrite your changes.  I've got a package system
+    in mind that would fix this problem, so you could make your own changes
+    yet still install a new release yet retain your changes.
+
+7. Files which I should definitely not touch. (i suppose i just dont know if there are any files that i shouldnt touch at all.) Sounds like dumb question but good to know for reference.
+
+8. How to use the webserver properly? (i couldnt get the "whos online" webpage to work.)
+    Sorry; The POL 073 distribution didn't have scripts in scripts\www
+    defined, so the "List Onlines Characters" page didn't work.
+
+9. any other commands and etc.. That i wouldnt know about? (i just found out objcount last night!) hehe
+    ".help" will list some of them.  I'll try to get a list together.
+
+Im sure this is just the tip of the iceberg.. I think my understanding of the program is getting better. But these are some of the basic things i guess
+i dont understand or cant get to work right. Thanks Syz,
+
+RingLeadeR
+

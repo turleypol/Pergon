@@ -1,0 +1,1 @@
+Den Auswahl-Rahmen, den man nach einem Doppelklick auf eine Person oder ein Tier angezeigt bekommt, kann man mit Druck auf die Escape-Taste ("ESC") verschwinden lassen.

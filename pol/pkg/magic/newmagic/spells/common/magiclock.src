@@ -1,0 +1,132 @@
+///////////////////////////////////////////////////////////////////////////
+// magiclock.src -
+// implements spell 17 <Magic Lock> - "Magisches Schloss"
+// magically locks container
+
+use util;
+Include "../magicpergon";
+Include "include/client";
+Include "include/npc";
+
+program cast_magiclock (params)
+   Var caster;
+   Var caston;
+   Var power;
+
+   if (params[1] == "#SCROLL")
+      caster:= params[2];
+      power:=  params[3];
+      caston:= TargetThing(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   else
+      caster:= params[1];
+
+      power:= GetCastPowerPergon(caster, SPELLID_COMMON_MAGICLOCK);
+      caston:= TargetThing(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+      if (!caston)
+         SendSysMessagePergon(caster, "Kein Ziel", "No target");
+         return;
+      endif
+   endif
+																						// check if caster target is multi
+   if ((caston.multi) or GetObjProperty(caston, PROP_HS_C_SC_HOUSE) or GetObjProperty(caston, PROP_HS_M_HOUSE) Or GetObjProperty(caston, "spawnnet"))
+      SendSysMessagePergon(caster, "Das kann nicht magisch verschlossen werden",
+                                   "This cannot be magically locked");
+      PlayLightningBoltEffect(caster);										// zapp villain ;)
+      return;
+   endif
+
+   if (caston.locked)															// check if target is already locked
+      PlaySoundEffect(caster, SFX_11F);
+      SendSysMessagePergon(caster, "Das ist bereits abgeschlossen", "This is already locked");
+      return;
+   endif
+
+   if (CheckForDoors(caston) and PlaceTown(caston)) // check if target is door in town
+      SendSysMessagePergon(caster, "Das kann nicht magisch verschlossen werden",
+                                   "This cannot be magically locked");
+      return;
+   endIf
+
+   if ( ((caston.graphic<=0x9ab) and (caston.graphic>=0x9a8)) or
+        ((caston.graphic<=0xe43) and (caston.graphic>=0xe3c)) or
+        ((caston.graphic<=0xe80) and (caston.graphic>=0xe7c)) or
+        (checkfordoors(caston)) )											// check if target is door or container
+
+      TurnCharTo(caster, caston);
+      PerformAction(caster, ANIM_CAST_AREA);
+
+      if (GetObjProperty(caston, "lockid"))								// check if target already has a lock
+
+         Var difficult:= GetObjProperty(caston, "LockDifficulty");
+
+         if (!difficult)														// impossible (or buggy) locks
+            SendSysMessagePergon(caster, "Das ist so nicht verschliessbar",
+                                         "This is not lockable");
+            return;
+         endif
+
+         if (Lock(CInt(power/2), difficult))					// check if caster locks existing lock on target
+            caston.locked:= 1;
+         else
+            PlaySoundEffect(caster, SFX_11F);
+            SendSysMessagePergon(caster, "Ihr schafft es nicht, das Schloss magisch zu verschliessen",
+                                         "You fail in trying to magically use the lock");
+         endif
+      else																			// target has no lock
+
+         Var skill:= CInt(power/2);
+
+         if (RandomInt(100) <= skill)										// check if caster locks target
+            PlaySoundEffect(caster, SFX_SPELL_MAGIC_LOCK);
+            PlayObjectCenteredEffect(caston, FX_MARK_EFFECT, 5, 10);
+            SetObjProperty(caston, "lockid" , AllocLockId());		// create lock using functions from key.inc
+            SetObjProperty(caston, "LockDifficulty", skill);
+            caston.locked:= 1;
+            var dur:= CInt(power*dur/100.0);													// calc duration according to casting power
+      		Detach();
+      		Sleep(dur);
+      		EraseObjProperty(caston,"lockid");
+      		EraseObjProperty(caston,"LockDifficulty");
+      		caston.locked:=0;		
+         else
+            PlaySoundEffect(caster, SFX_11F);
+            SendSysMessagePergon(caster, "Ihr scheitert beim Versuch, das magisch zu verschliessen",
+                                         "You fail in trying to magically lock this");
+         endif
+      endif
+
+   else
+      SendSysMessagePergon(caster, "Das kann nicht magisch verschlossen werden",
+                                   "This cannot be magically locked");
+   endif
+
+endprogram
+
+
+
+function checkfordoors (item)					// checks if item is door
+
+   if ( ((item.graphic<=0x1ffc) and (item.graphic>=0x1fed)) or
+        ((UOBJECT_DOORS_START<=item.graphic) And (item.graphic<=UOBJECT_DOORS_END)))
+      return 1;
+   endif
+
+   return 0;
+
+endfunction
+
+
+
+function Lock (skill, difficulty)			// determines whether skill locks or not
+
+   if (skill - difficulty + 20 >= RandomInt(41))		// skill has to be within range of +/- 20
+      return 1;													// of difficulty
+   else
+      return 0;
+   endif
+
+endfunction

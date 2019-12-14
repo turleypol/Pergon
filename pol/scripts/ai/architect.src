@@ -1,0 +1,260 @@
+///////////////////////////////////////////////////////////////////////////
+// Architect - Extra BuyWindow sortiert nach Haustyp
+//
+
+/////////////
+// Includes
+/////////////
+Use cfgfile;
+Use npc;
+Use os;
+Use storage;
+Use uo;
+Include "include/logutil";
+Include "include/merchant";
+Include "include/storage";
+
+///////////////
+// Konstanten
+///////////////
+
+
+///////////////////////////////////
+// StableMaster - Initialisierung
+///////////////////////////////////
+Function SetMerchantType(meprototype)
+  meprototype.merchanttype := "Architect";
+  meprototype.buyhook := 1;
+
+  Return(meprototype);
+EndFunction
+
+/////////////////////
+// Hook_Move_Action
+/////////////////////
+Function Hook_Move_Action(me, medata, ev)
+  Return;
+  me     := me;
+  medata := medata;
+  ev     := ev;
+EndFunction
+
+///////////////////////
+// Hook_Merchant_Sold
+///////////////////////
+Function Hook_Merchant_Sold(me, medata, ev)
+  Return;
+  me     := me;
+  medata := medata;
+  ev     := ev;
+EndFunction
+
+//////////////////////
+// Hook_Entered_Area
+//////////////////////
+Function Hook_Entered_Area(me, medata, ev)
+  Return;
+  me     := me;
+  medata := medata;
+  ev     := ev;
+EndFunction
+
+///////////////////
+// Hook_Left_Area
+///////////////////
+Function Hook_Left_Area(me, medata, ev)
+  Return;
+  me := me;
+  medata := medata;
+  ev := ev;
+EndFunction
+
+/////////////////////////////
+// Hook_Item_Given_Sleeping
+/////////////////////////////
+Function Hook_Item_Given_Sleeping(me, medata, ev)
+  Return;
+  me := me;
+  medata := medata;
+  ev := ev;
+EndFunction
+
+////////////////////
+// Hook_Item_Given
+////////////////////
+Function Hook_Item_Given(me, medata, ev)
+  Return;
+  me := me;
+  medata := medata;
+  ev := ev;
+EndFunction
+
+/////////////////////
+// Hook_Speech_Open
+/////////////////////
+Function Hook_Speech_Open(me, medata, ev)
+  Return;
+  me := me;
+  medata := medata;
+  ev := ev;
+EndFunction
+
+/////////////////////////
+// Hook_Speech_Sleeping
+/////////////////////////
+Function Hook_Speech_Sleeping(me, medata, ev)
+  Return;
+  me := me;
+  medata := medata;
+  ev := ev;
+EndFunction
+
+/////////////////////
+// Hook_Speech_Name
+/////////////////////
+Function Hook_Speech_Name(me, medata, ev)
+  Return;
+  me     := me;
+  medata := medata;
+  ev     := ev;
+EndFunction
+
+////////////////////////
+// Hook_Speech_Default
+////////////////////////
+Function Hook_Speech_Default(me, medata, ev, sayed)
+  Return;
+  me := me;
+  medata := medata;
+  ev := ev;
+  sayed := sayed;
+EndFunction
+
+//////////////////////////////
+// Hook_Ghost_Speech_Default
+//////////////////////////////
+Function Hook_Ghost_Speech_Default(me, medata, ev, sayed)
+  Return;
+  me     := me;
+  medata := medata;
+  ev     := ev;
+  sayed  := sayed;
+EndFunction
+
+Function Hook_Buy(me, medata, who)
+  Var layout:={"page 0",
+               "nodispose",
+               "resizepic 5 25 5100 "+(88*9+15)+" "+(85+25*20)};
+  Var data:={};
+  Var items:=dictionary{"Sonstiges"->{}};
+  Var cfg:=ReadConfigFile("::itemdesc");
+  ForEach item in (EnumerateItemsInContainer(medata.inv_fs))
+    SleepMS(2);
+    If (cfg[item.objtype].HouseType)
+      If (!items[cfg[item.objtype].HouseType])
+        items[cfg[item.objtype].HouseType]:={};
+      EndIf
+      items[cfg[item.objtype].HouseType].append({item.serial,item.objtype,Lower(DescEinzahl(cfg[item.objtype].Desc))});
+    Else
+      items["Sonstiges"].append({item.serial,item.objtype,Lower(DescEinzahl(cfg[item.objtype].Desc))});
+    EndIf
+  EndForEach
+  ForEach element in (items)
+    element:=SortArrayABC(element, 1, 3);
+  EndForEach
+
+  Var x:=10;
+  Var maxy:=10+(items.keys().size()/9)*23;
+  Var y:=maxy;
+  
+  ForEach type in (items.keys())
+    If (_type_iter==1)
+      layout.append("button "+x+" "+y+" 5006 5007 0 "+(1)+" 1");
+    Else
+      layout.append("button "+x+" "+y+" 5006 5007 0 "+((_type_iter-1)*10)+" 1");
+    EndIf
+    layout.append("htmlgump "+x+" "+y+" 88 20 "+data.size()+" 0 0");
+    data.append("<center>"+type+"</center");
+    x+=88;
+    If (_type_iter % 9 == 0)
+      layout.append("gumppic "+(5)+" "+(y+15)+" 5100");
+      layout.append("gumppic "+(88*9+10)+" "+(y+15)+" 5102");
+      y-=23;
+      x:=10;
+    EndIf
+  EndForEach
+  layout.append("page 1");
+  Var page:=1;
+  Var i:=0;
+  y:=maxy;
+  x:=10;
+  ForEach element in (items)
+    If (i>0)
+      page:=i*10;
+      layout.append("page "+page);
+    EndIf
+    layout.append("gumppic "+x+" "+y+" 5007");
+    layout.append("htmlgump "+x+" "+y+" 88 20 "+data.size()+" 0 0");
+    data.append("<center>"+_element_iter+"</center");
+    Var pos_y := maxy+50;
+    ForEach item in element
+      SleepMS(2);
+      If (pos_y>(85+25*20))
+        page+=1;
+        layout.append("button 780 "+(maxy+20)+" 2648 2647 0 "+(page));
+        layout.append("page "+page);
+        layout.append("button 760 "+(maxy+20)+" 2650 2651 0 "+(page-1));
+        layout.append("gumppic "+x+" "+y+" 5007");
+        layout.append("htmlgump "+x+" "+y+" 88 20 "+data.size()+" 0 0");
+        data.append("<center>"+_element_iter+"</center");
+        pos_y:=maxy+50;
+      EndIf
+      layout.append("htmlgump 60 "+pos_y+" 700 20 "+data.size()+" 0 0");
+      data.append(DescEinzahl(cfg[item[2]].Desc));
+      layout.append("button 30 "+(pos_y+4)+" 2361 2360 1 0 "+item[1]);
+      layout.append("htmlgump 700 "+pos_y+" 100 20 "+data.size()+" 0 0");
+      data.append(cfg[item[2]].VendorSellsFor);
+      pos_y += 20;
+    EndForEach
+    x+=88;
+    If ((i+1) % 9 == 0)
+      y-=23;
+      x:=10;
+    EndIf
+    i+=1;
+  EndForEach
+  Var res:=SendDialogGump(who,layout,data,50,50)[0];
+  If (!res)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+  Var item:=SystemFindObjectBySerial(res);
+  If (!item)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+  If (item.container.serial==medata.inv_fs.serial)
+    Var gold:=cfg[item.objtype].VendorSellsFor;
+    If (who.spendgold(gold))
+      NPCSayTextTraditional(me,
+          "Ihr habt "+gold+" Gold ausgegeben.",
+          "You payed out "+gold+" gold.");
+      item.movable:=1;
+      If (item.amount>1)
+        SubtractAmount(item,1);
+        item:=CreateItemCopyAtLocation(1, 1, 1, item, REALM_DEATH); //Kopie erzeugen
+        SubtractAmount(item,item.amount-1);
+      EndIf
+      If (!MoveItemToContainer(item,who.backpack))
+        MoveObjectToLocation(item,who.x,who.y,who.y,who.realm,MOVEOBJECT_FORCELOCATION);
+      EndIf
+    Else
+      NPCSayTextTraditional(me,
+          "Ihr habt nicht genug Gold.",
+          "Insufficient funds");
+    EndIf
+  EndIf
+  me.eraseprop(PROP_CURRENT_CUSTOMER);
+EndFunction
+
+// vim: sw=2 sts=2

@@ -1,0 +1,108 @@
+///////////////////////////////////////////////////////////////////////////
+// Script file blind.src
+//
+// implements spell 308 <Blind> - "Erblinden" [Reflected/Resisted (Magic)]
+//
+// renders spelltarget virtually blind by setting its lightlevel
+// to ultimate darkness
+//
+// 19.11.2001 Sebastian 'Bihinos' Giese
+
+include "include/spellcheck";
+include "../magicpergon";
+include "../spellattack";
+
+Program CastBlind(params)
+  // load spelldata
+  var spells := ReadConfigFile("::spells");
+  var spell  := FindConfigElem(spells, SPELLID_NECRO_BLIND);
+  var dur    := spell.duration;
+
+  var caster;
+  var caston;
+  var power;
+
+  If (params[1] == "#MOB")
+    caster := params[2];
+    power  := params[3];
+    caston := params[4];
+    dur    := spell.NPCDuration;
+    send_attack(caston, caster, 308);
+
+  ElseIf (params[1] == "#SCROLL")
+    caster := params[2];
+    power  := params[3];
+    caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+        SendSysMessagePergon(caster, "Kein Ziel", "No target");
+        return;
+    EndIf
+
+  Else
+    caster := params[1];
+    power  := GetCastPowerPergon(caster, SPELLID_NECRO_BLIND);
+    caston := TargetSpell(caster, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+    If (!caston)
+        SendSysMessagePergon(caster, "Kein Ziel", "No target");
+        return;
+    EndIf
+  EndIf
+
+  If (!caster)
+    return;
+  EndIf
+
+  TurnCharTo(caster, caston);
+  PerformAction(caster, ANIM_CAST_DIR);
+
+  // get spelltarget -> possible spell reflection
+  var spelltarget := ReflectSpell(
+    caster, caston, power, 1, FX_CURSE_EFFECT, 5, 10, 0, SFX_SPELL_CURSE
+  );
+  If (!spelltarget)
+    return;
+  EndIf
+
+  If (GetObjProperty(spelltarget, "spell_blind"))
+    // check If spelltarget is already blinded
+    If (!caster.isa(POLCLASS_NPC))
+      SendSysMessagePergon(caster,
+        "Euer Ziel ist bereits geblendet", "Your target is blind already"
+      );
+    EndIf
+    return;
+  EndIf
+
+  // calc spell duration according to spelltargets magic resistance and
+  // casting power
+  If (spell.resist)
+    dur := CInt(MagicResistance(
+        spelltarget, spell.skill, spell.resist, power*dur/100.0, 1
+    ));
+  Else
+    dur := CInt(power*dur/100.0);
+  EndIf
+
+  If (spell.durationmin and spell.durationmin > dur)
+    dur := spell.durationmin;
+  ElseIf (spell.durationmax and spell.durationmax < dur)
+    dur := spell.durationmax;
+  EndIf
+
+  // activate spellchecker
+  var tag := array{
+    dur + ReadGameClock(),
+    power,
+    ReadMilliSecondClock()
+  };
+  SetObjProperty(spelltarget, "spell_blind", tag);
+  SendSpellWaiter(spelltarget, "spell_blind", dur, tag[3], spelltarget);
+
+  // prepare script parameters
+  var parms := array{};
+  parms[1] := spelltarget;
+  // fire script 'blinded'
+  Start_ScriptPergon("::misc/blinded", parms);
+EndProgram
+
+// vim: sw=2 sts=2

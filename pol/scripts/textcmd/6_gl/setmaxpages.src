@@ -1,0 +1,70 @@
+/////////////////////////////////////////////////////////////////////////////
+//
+//   SetMaxPages TextCMD v1.0 - Setzt die max. Anzahl der Seiten des Buches
+//
+//     Author: Shinigami
+//
+//   Modifications:
+//
+/////////////////////////////////////////////////////////////////////////////
+
+/////////////////
+// Bibliotheken
+/////////////////
+
+Use uo;
+
+/////////////
+// Includes
+/////////////
+
+Include "include/msgs";
+
+//////////////////
+// Hauptprogramm
+//////////////////
+
+Program TextCMD_SetMaxPages(who, newmaxpage)
+  SendSysMessagePergon(who, "Welches Buch wollt ihr verändern?");
+
+  Var book:=Target(who);
+  If (book.isa(POLCLASS_ITEM))
+    If ((0xfef<=book.objtype) And (book.objtype<=0xff4))
+      If (!GetObjProperty(book, "bookcontent")) // Altes oder neues Buch?
+        Var maxpages:=GetObjProperty(book, "maxpages");
+
+        newmaxpage:=CInt(newmaxpage);
+        If (newmaxpage)
+          Var minpages:=1;
+
+          Var contents:=GetObjProperty(book, "contents");
+          If (contents)
+            Var index:=contents.size(); // Den Content trimmen, d.h. Leerseiten rausschmeissen
+            While (((contents[index]=="") Or (!contents[index])) And (index>1))
+              contents.erase(index);
+              index:=index-1;
+            EndWhile
+            SetObjProperty(book, "contents", contents);
+
+            minpages:=CInt((contents.size()+7)/8);
+          EndIf
+
+          If (newmaxpage>=minpages)
+            SetObjProperty(book, "maxpages", newmaxpage);
+            SendSysMessagePergon(who, "Dieses Buch hat jetzt max. "+newmaxpage+" Seiten.");
+          Else
+            SendSysMessagePergon(who, "Beschriebene Seiten könnt ihr nicht entfernen!");
+          EndIf
+        Else
+          SendSysMessagePergon(who, "Dieses Buch hat max. "+maxpages+" Seiten.");
+        EndIf
+      Else
+        SendSysMessagePergon(who, "Ihr könnt nur Bücher neueren Stils automatisch aufnehmen!");
+      EndIf
+    Else
+      SendSysMessagePergon(who, "Dies ist kein Buch!");
+    EndIf
+  Else
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+EndProgram

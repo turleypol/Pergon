@@ -1,0 +1,87 @@
+<html>
+
+<head>
+<meta name="GENERATOR" content="Microsoft FrontPage 3.0">
+<title>IF Statement</title>
+</head>
+
+<body>
+
+<h1>IF Statement</h1>
+
+<h2>General Form</h2>
+
+<table border="1" width="100%" cellspacing="0" cellpadding="3">
+  <tr>
+    <td width="50%"><pre>
+IF (expression1) 
+    statement-block 
+ELSEIF (expression2) 
+    statement-block 
+ELSEIF (expression-n) 
+    statement-block 
+ELSE 
+    statement-block 
+ENDIF 
+</pre>
+    </td>
+    <td width="50%">ELSEIF and ELSE portions are optional.</td>
+  </tr>
+</table>
+
+<p>A <em>statement-block</em> is zero or more statements.&nbsp; Variables can be declared
+here, and will go out of scope when the <em>statement-block</em> is exited.</p>
+
+<p>Note, this construct uses <a href="fbracket.htm">fully bracketed syntax</a>. </p>
+
+<h2>Examples </h2>
+
+<table border="1" width="100%" cellspacing="0" cellpadding="5">
+  <tr>
+    <td width="50%"><pre>IF (a &lt; 5)
+    print &quot;hey&quot;;
+ENDIF</pre>
+    </td>
+    <td width="50%">&nbsp;</td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>IF (a &lt; 5)
+    print &quot;hey&quot;;
+    print &quot;hey again&quot;;
+ENDIF</pre>
+    </td>
+    <td width="50%">&nbsp;</td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>IF (a &lt; 5)
+    print &quot;hey&quot;;
+    print &quot;hey again&quot;;
+ELSE
+    print &quot;or not&quot;;
+ENDIF</pre>
+    </td>
+    <td width="50%">&nbsp;</td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>IF (a &lt; 5)
+    print &quot;a is small&quot;;
+ELSEIF (a &lt; 10)
+    print &quot;a is not so small&quot;;
+ELSE
+    print &quot;a is large&quot;;
+ENDIF</pre>
+    </td>
+    <td width="50%">&nbsp;</td>
+  </tr>
+  <tr>
+    <td width="50%"><pre>IF (a &lt; 5)
+    print &quot;a is small&quot;;
+ELSEIF (a &lt; 10)
+    print &quot;a is not so small&quot;;
+ENDIF</pre>
+    </td>
+    <td width="50%">Note the absence of an ELSE clause</td>
+  </tr>
+</table>
+</body>
+</html>

@@ -1,0 +1,6 @@
+<h3 id="share">share</h3>
+
+<p>Verteilt Items in einem wählbaren Container auf
+gleichmäßig auf mehrere andere Container (müssen leer und
+im Verteilcontainer enthalten sein). Reste, die nicht aufgeteilt werden
+können, landen in einem Rest-Container.</p>

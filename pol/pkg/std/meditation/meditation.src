@@ -1,0 +1,355 @@
+// Version 0.3
+
+use attributes;
+use cfgfile;
+use os;
+use uo;
+use util;
+include ":drinking:common";
+include "include/modifyskill";
+include "include/msgs";
+include "include/resources";
+include "include/server";
+
+Const SOUND_MEDI := 0xff;
+
+Program Meditation(who)
+  // Offline-Ref holen, weil waehrend Meditation haeufiger ausgeloggt wird
+  who := SystemFindObjectBySerial(who.serial, SYSFIND_SEARCH_OFFLINE_MOBILES);
+
+  // viele Checks {{{
+  // Check ob der Player tot ist {{{
+  If (who.dead)
+    SendSysMessagePergon(who,
+      "Ihr braucht Euch der weltlichen Meditation nun nicht mehr hingeben."
+    );
+    return;
+  EndIf
+  // }}}
+
+  // Check ob Regeneration noetig {{{
+  If (
+    (GetManaPergon(who)    >= GetMaxManaPergon(who)) And
+    (GetStaminaPergon(who) >= GetMaxStaminaPergon(who)) And
+    (GetHPPergon(who)      >= GetMaxHPPergon(who))
+  )
+    SendSysMessagePergon(who,
+      "Ihr seid wohlauf und brauchet nicht zu regenerieren."
+    );
+    return 0;
+  EndIf
+  // }}}
+
+  // 5-Sekunden-Check, ob derjenige auch wirklich ruhig steht {{{
+  var pos := struct;
+  pos.x := who.x;
+  pos.y := who.y;
+  PrintTextAbovePergon(who, who, "Oooommm...", "", 3, 0x58);
+  Sleep(5);
+  If ((pos.x != who.x) || (pos.y != who.y) || (who.warmode))
+    SendSysMessagePergon(who,
+      "Wenn Ihr regenerieren wollt, müsst Ihr erst zur Ruhe kommen."
+    );
+    return;
+  EndIf
+  // }}}
+
+  // Check, ob Regeneration bereits laeuft {{{
+  // solang #regeneration aktiv ist, laeuft das script
+  If (GetObjProperty(who, "#regeneration"))
+    SendSysMessagePergon(who, "Ihr gabet Euch bereits der Regeneration hin.");
+    return;
+  EndIf
+  // }}}
+
+  // Check auf Hunger {{{
+  If (getobjproperty(who, PROP_HUNGER) <= 5)
+    SendSysMessagePergon(who,
+      "Wer nicht isst, kann auch nicht regenerieren!", "", 3, 0x22
+    );
+    return 0;
+  ElseIf (getobjproperty(who, PROP_HUNGER) >= 12)
+    SendSysMessagePergon(who,
+      "Wer zuviel isst, kann auch nicht regenerieren!", "", 3, 0x22
+    );
+    return 0;
+  EndIf
+  // }}}
+
+  // Check auf Durst {{{
+  If (getobjproperty(who, PROP_THIRST) <= 5)
+    SendSysMessagePergon(who,
+      "Wer nicht trinkt, kann auch nicht regenerieren!", "", 3, 0x22
+    );
+    return 0;
+  ElseIf (getobjproperty(who, PROP_THIRST) >= 12)
+    SendSysMessagePergon(who,
+      "Wer zuviel trinkt, kann auch nicht regenerieren!", "", 3, 0x22
+    );
+    return 0;
+  EndIf
+  // }}}
+
+  // Check, ob Feinde in der Naehe sind // {{{
+  If (ListHostiles(who, 5, LH_FLAG_LOS).size() > 0)
+    SendSysMessagePergon(who,
+      "Ihr könnt nicht in Ruhe regenerieren, solange Feinde in "+
+      "der Nähe sind!", "", 3, 0x22
+    );
+    return 0;
+  EndIf // }}}
+  // }}}
+
+  // ab hier beginnt die eigentliche Regenerations-Phase
+  SetObjProperty(who, "#regeneration", 1);
+  var resplayer := ReservePlayerPergon();
+
+
+  SendSysMessagePergon(who, "Ihr versucht zu meditieren.", "");
+
+  // im Prinzip könnte jemand die Kerze zwar wegtragen,
+  // aber so spart man den dauernden Check
+  var candlebonus := CandleNear(who);
+
+  var timer := ReadGameClock()+15;
+  // bei Problemen kurz Regeneration beginnen, aber dann abbrechen
+  var breakdelay  := 0;
+  While (
+    who and who.connected and pos.x == who.x and pos.y == who.y and
+    !who.dead and !who.warmode and who.getprop("#regeneration")
+  )
+    // Haende pruefen
+    If (IsThingOnHand(who))
+      SendSysMessagePergon(who,
+        "Machet Eure Hände frei, auf dass Ihr besser regenerieren könnet!"
+      );
+      break;
+    EndIf
+    // nach Kerzen suchen
+
+    var skillvalue := GetSkillPergon(who, SKILLID_REGENERATION);
+
+    // Je besser der Skill desto schneller die Regeneration
+    var delay := 15-RandomInt(CInt(skillvalue/10.0));
+
+    // Die höheren Skills muss man natürlich nochmal extra belohnen
+    If (skillvalue >= 100)
+      delay*=0.5;
+    ElseIf (skillvalue >= 80)
+      delay*=0.7;
+    ElseIf (skillvalue >= 60)
+      delay*=0.85;
+    EndIf
+    delay := Max(1, delay);
+
+    Sleep(CInt(delay));
+    If (!who.connected)
+      break;
+    EndIf
+
+    // Wenn der kleine Hunger kommt ...
+    If (GetObjProperty(who, PROP_HUNGER) <= 5)
+      SendSysMessagePergon(who,
+        "Der Hunger raubt Euch die Konzentration!", "", 3, 0x22
+      );
+      break;
+    EndIf
+
+    // Das Gewicht der Kleidung senkt den Skill und damit die Höhe der
+    // regenerierten Punkte. Bei negativem Skill traegt der Mensch
+    // offensichtlich zuviel Kleidung.
+    var skill := CInt(
+      (skillvalue-ManaLoss(who))/10.0+
+      GetIntPergon(who)/20.0+GetStrPergon(who)/20.0
+    );
+    If (skill < 0)
+      SendSysMessagePergon(who,
+        "Mit Euren schweren Gewändern vermöget Ihr Euch "+
+        "nicht zu konzentrieren!", ""
+      );
+      break;
+    EndIf
+
+    var managain := RandomInt(Skill)-CInt(ManaLoss(who)/5.0);
+    If (managain < 0);
+      managain := 0;
+      // Wir lassen den Fux, der mit zuviel Klamotten regeneriert, mal
+      // ruhig 15 Sekunden regenerieren und sagen ihm erst dann, daß
+      // seine Kleidung zu schwer ist
+      If (!breakdelay)
+        breakdelay := ReadGameClock()+15;
+      ElseIf(ReadGameClock() >= breakdelay)
+        SendSysMessagePergon(who,
+          "Eure schweren Gewänder stören Eure Konzentration immens!"
+        );
+        break;
+      EndIf
+    EndIf
+
+    If (ReadGameClock()>timer)
+      SendSysMessagePergon(who, "Ihr meditiert weiter ...");
+      If (RandomInt(101) <= 2)
+        PrintTextAbovePergon(who, who, "Oooommm...", "", 3, 0x58);
+      EndIf
+      timer := ReadGameClock()+15;
+    EndIf
+
+    var skillgain := managain*30;
+    If (!skillgain)
+      skillgain := 10;
+    EndIf
+
+    If (CheckSkillPergon(who, SKILLID_REGENERATION, -1, skillgain))
+      // Wir regenerieren nach Priorität:
+      // erst kommt Stamina, dann Mana und dann Hitpoints
+      If (GetStaminaPergon(who) < GetMaxStaminaPergon(who))
+        SetStaminaPergon(who, GetStaminaPergon(who)+managain+candlebonus);
+        If (GetStaminaPergon(who) > GetMaxStaminaPergon(who))
+          SetStaminaPergon(who, GetMaxStaminaPergon(who));
+        EndIf
+        PlaySoundEffect(who, SOUND_MEDI);
+      ElseIf (GetManaPergon(who) < GetMaxManaPergon(who))
+        SetManaPergon(who, GetManaPergon(who)+managain+candlebonus);
+        If (GetManaPergon(who) > GetMaxManaPergon(who))
+          SetManaPergon(who, GetMaxManaPergon(who));
+        EndIf
+        PlaySoundEffect(who, SOUND_MEDI);
+      ElseIf (GetHPPergon(who) < GetMaxHPPergon(who))
+        SetHPPergon(who, GetHPPergon(who)+managain+candlebonus);
+        If (GetHPPergon(who) > GetMaxHPPergon(who))
+          SetHPPergon(who, GetMaxHPPergon(who));
+        EndIf
+        PlaySoundEffect(who, SOUND_MEDI);
+      Else
+        SendSysMessagePergon(who, "Ihr seid vollkommen regeneriert.");
+        break;
+      EndIf
+    EndIf
+
+    // doppelte Abfrage, falls es durch normalen Anstieg erreicht wird
+    If (
+      (GetManaPergon(who)    >= GetMaxManaPergon(who)) And
+      (GetStaminaPergon(who) >= GetMaxStaminaPergon(who)) And
+      (GetHPPergon(who)      >= GetMaxHPPergon(who))
+    )
+      SendSysMessagePergon(who, "Ihr seid vollkommen regeneriert.");
+      break;
+    EndIf
+  EndWhile
+
+  Detach();
+  Sleep(5);
+  If (who.connected)
+    SendSysMessagePergon(who, "Ihr beendet Eure Regeneration.");
+  EndIf
+  EraseObjProperty(who, "#regeneration");
+  ReleasePlayerPergon(resplayer, 10000);
+  return 0;
+EndProgram
+
+// Gegenstaende ausser Kerzen und solchen, die Zaubern zulassen, verbieten
+Function IsThingOnHand(who) // {{{
+  var item1 := GetEquipmentByLayer(who, LAYER_HAND1);
+  If (item1)
+    var descriptor := GetItemDescriptor(item1.objtype);
+    If (descriptor.BlocksCastingIfInHand<>0)
+      // mit dem Ding in der Hand darf man nicht zaubern
+      return 1;
+    EndIf
+  EndIf
+
+  var item2 := GetEquipmentByLayer(who, LAYER_HAND2);
+  If (item2)
+    // Sonderfall kleine Kerze
+    If (item2.facing == 2)
+      // so hell leuchtet nur die kleine Kerze
+      // (Check wie beim musikbasieren Verstecken)
+      return 0;
+    EndIf
+
+    var descriptor := GetItemDescriptor(item2.objtype);
+    If (descriptor.BlocksCastingIfInHand<>0)
+      // mit dem Ding in der Hand darf man auch nicht zaubern
+      return 1;
+    EndIf
+  EndIf
+
+  // entweder hat er jetzt nichts oder einen Gegenstand,
+  // mit dem er auch zaubern duerfte, in der Hand
+  return 0;
+EndFunction // }}}
+
+// Durchsucht Hand und Umgebung nach Kerze
+Function CandleNear(who) // {{{
+  var handcand := GetEquipmentByLayer(who, LAYER_HAND2);
+  If (handcand.facing == 2)
+    return 1;
+  EndIf
+
+  ForEach item in (ListItemsNearLocation(
+      who.x, who.y, LIST_IGNORE_Z, 2, who.realm
+  ))
+    SleepMs(2);
+    If (Abs(who.z - item.z) < 15 and item.facing)
+      // in der Naehe und leuchtet
+      If (IsCandle(item))
+        return 1;
+      EndIf
+    EndIf
+  EndForEach
+
+  return 0;
+EndFunction // }}}
+
+// Der Verlust bei der Regeneration entspricht dem Gewicht meiner Kleidung
+// und es senkt auch meine Regenerationsfähigkeit an sich (siehe oben)
+Function ManaLoss(who) // {{{
+  var Item;
+  var Loss := 0;
+
+  // Pants
+  Item := GetEquipmentByLayer(who, LAYER_PANTS);
+  If (Item)
+     Loss += Item.weight;
+  EndIf
+
+  // Legs
+  Item := GetEquipmentByLayer(who, LAYER_LEGS);
+  If (Item);
+    Loss += Item.weight;
+  EndIf
+
+  // Helm
+  Item := GetEquipmentByLayer(who, LAYER_HELMET);
+  If (Item);
+    // Wenns ne Kopfbedeckung gibt
+    Loss += Item.weight;
+  EndIf
+
+  // Gloves
+  Item := GetEquipmentByLayer(who, LAYER_GLOVES);
+  If ((Item.objtype == 0x1414) or (item.objtype == 0x1418)); // Plate Gloves
+    Loss += Item.weight;
+  EndIf
+
+  // Neck
+  Item := GetEquipmentByLayer(who, LAYER_NECK);
+  If (Item.objtype == 0x1413) // Gorget
+    Loss += Item.weight;
+  EndIf
+
+  // Chest
+  Item := GetEquipmentByLayer(who, LAYER_CHEST);
+  If (Item);
+    Loss += Item.weight;
+  EndIf
+
+  // Arms
+  Item := GetEquipmentByLayer(who, LAYER_ARMS);
+  If ((Item.objtype == 0x1410) or (Item.objtype == 0x1417));  // PlateArms
+    Loss += Item.weight;
+  EndIf
+
+  return Loss;
+EndFunction // }}}
+

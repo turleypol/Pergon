@@ -1,0 +1,272 @@
+//
+//  06.02.2001 Pauker:     Foersterei-Optimierung
+//  2004.12.06 Unforgiven: Försterei anfangen
+//  01.08.2005 Turley:     Rawpoints mit Faktor 1,5 versehen
+//  02.10.2005 Fraggulus:  auch Ackerteile in Spielerhaeusern (bzw. einzelne Ackeritems) sind mit Baeumen (ebenerdig) bepflanzbar
+//  20.10.2005 Fraggulus:  Baeume in Nicht-Multis duerfen nur auf Maphoehe angebaut werden
+//  07.09.2007 Taya:       "Maphöhe" etwas erweitert, damit private acker auch gehen
+//
+use attributes;
+use cfgfile;
+use os;
+use uo;
+include "include/modifyskill";
+include "include/objtype";
+
+var cfg := readconfigfile("::itemdesc");
+
+Program Foersterei(character, foersterei)
+
+	If (!cfg)
+	    SysLog("FEHLER: konnte die foersterei itemdesc.cfg nicht oeffnen!");
+	    return;
+	EndIf
+
+	var foersterei_cfg := cfg[foersterei.objtype];
+	If (!foersterei_cfg)
+	    SysLog("FEHLER: Item "+Lower(Hex(foersterei.objtype))+" nicht in der itemdesc.cfg gefunden!");
+	    return;
+	EndIf
+
+	SendSysMessagePergon(character, "Wo möchtet Ihr das anpflanzen?");
+	ReserveItem(foersterei);
+	var where := targetCoordinates(character);
+  If (!where)
+    SendSysMessagePergon(character, "Zielen abgebrochen");
+    return;
+  ElseIf (where.item) // z.B. einzelne Ackeritems in Multihaeusern
+    where := where.item;
+  EndIf
+
+	If (CoordinateDistance(character.x,character.y, where.x,where.y) > 1)
+		SendSysMessagePergon(character, "Das ist zu weit weg!");
+		return;
+	EndIf
+
+	If (!CheckLosAt(character,where.x,where.y,where.z))
+		SendSysMessagePergon(character, "Ihr habt kein freies Blickfeld darauf.");
+		return;
+	EndIf
+
+	If (!is_plantable(getmapinfo(where.x, where.y,where.realm).landtile, where))
+		SendSysMessagePergon(character, "Hier könnt Ihr nichts anpflanzen!");
+		return;
+	EndIf
+
+  var itemsorig := ListItemsNearLocation(where.x, where.y, where.z, 1,where.realm);
+  var i;
+  var items := {};
+
+  For (i := 1; i <= len(itemsorig); i += 1) // Ackeritems aus Liste entfernen +Gras
+    If ((itemsorig[i].objtype == UOBJ_ACKER) || ((itemsorig[i].objtype>=0x177D) && (itemsorig[i].objtype<=0x1781)))
+      continue;
+    EndIf
+    If (itemsorig[i].z<where.z) // Kelleritems rausnehmen
+      continue;
+    EndIf
+    items.append(itemsorig[i]);
+  EndFor
+
+	If (Len(items) > 0)
+		SendSysMessagePergon(character, "Bäume brauchen mehr Platz zum wachsen.");
+		return;
+	EndIf
+
+  items := ListItemsAtLocation(where.x, where.y, where.z,where.realm)
+           +ListItemsAtLocation(where.x, where.y, where.z+1,where.realm);
+	If (Len(items) == 1)
+    If (!where.isa(POLCLASS_MAP) && where.objtype != UOBJ_ACKER)
+      SendSysMessagePergon(character, "Ihr könnt nur auf ein freies Feld pflanzen.", "You only can plant at a free field.");
+      return;
+    ElseIf (where.multi)
+    	If (where.item.objtype==UOBJ_ACKER)
+    		If (where.item.getprop("usable")>=1)
+    		  where.item.setprop("usable",where.item.getprop("usable")-1);
+    	  Else
+    		  DestroyItem(where.item);
+    		  SendSysMessagePergon(character,"Dieser Ackerboden ist nicht mehr fruchtbar.");
+    		  return;
+    	  EndIf
+    	ElseIf (items[1].objtype==UOBJ_ACKER)
+    		If (items[1].getprop("usable")>=1)
+    		  items[1].setprop("usable",items[1].getprop("usable")-1);
+    	  Else
+    		  DestroyItem(items[1]);
+    		  SendSysMessagePergon(character,"Dieser Ackerboden ist nicht mehr fruchtbar.");
+    		  return;
+    	  EndIf
+    	EndIf
+    EndIf
+  ElseIf (Len(items) == 2)  // 2 Items + Multi Gras vielleicht?
+  	If (where.multi)
+  	  ForEach tile in (items)
+  		  If (tile.objtype<>UOBJ_ACKER) // kein Acker
+  			  If ((tile.objtype<0x177D) || (tile.objtype>0x1781)) // kein Gras
+  			    SendSysMessagePergon(character, "Ihr könnt nur auf ein freies Feld pflanzen.", "You only can plant at a free field.");
+  			    return;
+  			  EndIf
+  			Else
+  				If (tile.getprop("usable")>=1)
+    		    tile.setprop("usable",tile.getprop("usable")-1);
+    	    Else
+    		    DestroyItem(tile);
+    		    SendSysMessagePergon(character,"Dieser Ackerboden ist nicht mehr fruchtbar.");
+    		    return;
+    	    EndIf
+  		  EndIf
+  	  EndForEach
+  	Else
+  		SendSysMessagePergon(character, "Ihr könnt nur auf ein freies Feld pflanzen.", "You only can plant at a free field.");
+      return;
+  	EndIf
+  ElseIf (Len(items) > 1)
+    SendSysMessagePergon(character, "Ihr könnt nur auf ein freies Feld pflanzen.", "You only can plant at a free field.");
+    return;
+  EndIf
+
+  // Schaufel im Backpack?
+	var Schaufel := 0;
+	If (FindSubstance(character.backpack,UOBJ_SHOVEL,1,0))
+		Schaufel := 1;
+	ElseIf (FindSubstance(character.backpack,0xF3A,1,0))
+		Schaufel := 1;
+	Else
+		Schaufel := 0;
+	EndIf
+
+	If (!Schaufel)
+		SendSysMessagePergon(character, "Euch fehlt eine Schaufel zum Umgraben.");
+		return;
+	EndIf
+
+  // Baeume in Multis duerfen nicht in den oberen Stockwerken angebaut werden
+  If (where.item.multi)
+    If (where.z > (where.item.multi).z + 8)
+      SendSysMessagePergon(character, "Bäume wachsen nur ebenerdig.");
+      return;
+    EndIf
+  // Baeume in Nicht-Multis duerfen nur auf Maphoehe angebaut werden
+  ElseIf (abs(where.z - GetMapInfo(where.x, where.y,where.realm).z) > 5)
+    SendSysMessagePergon(character, "Bäume wachsen nur ebenerdig.");
+    return;
+  EndIf
+
+  // check Skill zum Anpflanzen
+	var char_skill := GetSkillPergon(character, SKILLID_FOERSTEREI);
+
+	var skill := char_skill+20; // mit 10% unter dem Samen-Skill kann man schon anpflanzen
+	If (skill<1)
+	    skill := 10;
+	EndIf
+	//print("Skill "+skill+" foerstereiSkill "+foersterei_cfg.skill+" Defaultitem "+foersterei_cfg.defaultitem);
+	If ((skill<foersterei_cfg.skill) and (!foersterei_cfg.defaultitem))
+	    SendSysMessagePergon(character, "Ihr habt noch nicht genug Erfahrung, um das anpflanzen zu können.");
+	    return;
+	EndIf
+
+	If (!foersterei_cfg.defaultitem) // braucht Wasser zum Anpflanzen
+	    If (!such_wasser_gefaess(character))
+	        SendSysMessagePergon(character, "Ihr braucht Wasser, um den Samen anzupflanzen.");
+	        return;
+	    EndIf
+	EndIf
+
+	If (!(CheckSkillPergon(character, SKILLID_FOERSTEREI, cint(foersterei_cfg.skill), cint(foersterei_cfg.skill) *9)))
+		subtractamount(foersterei,1);
+	  	SendSysMessagePergon(character, "Eure groben Hände zerbrechen den Samen.");
+	    	return;
+	EndIf
+
+	playsoundeffect(character, SFX_23);
+	Sleep(1);
+	playsoundeffect(character, SFX_23);
+	Sleep(1);
+
+	var holzmenge := foersterei_cfg.amount/3.5;
+	var item;
+
+	// Item, was aus dem Samen entsteht, wird uebergeben
+	If (foersterei_cfg.set)
+	  Item := CreateItemAtLocationPergon(where.x, where.y, where.z, 0xeff1, 1,where.realm);
+	  If (item)
+      SetObjProperty(item, "holzmenge",  holzmenge);
+      SetObjProperty(item, "set",  foersterei_cfg.set);
+      If (foersterei_cfg.seedling > 0)
+        SetObjProperty(item, "seedling",  1);
+      Else
+        SetObjProperty(item, "seedling",  0);
+      EndIf
+      SetObjProperty(item, "same", foersterei.objtype);
+      Item.movable := 0;
+    Else
+      SendSysMessagePergon(character, "An dieser Stelle kann nicht gesäht werden!", "You cannot seed anything at this location!");
+      return;
+    EndIf
+  Else
+    SendSysMessagePergon(character, "Es ist etwas schief gelaufen. Es konnte keine Pflanze aus den Samen wachsen.");
+    SysLog("FEHLER: Property Set bei der Pflanze "+Lower(Hex(foersterei.objtype))+" nicht in der itemdesc.cfg gesetzt!");
+    return;
+  EndIf
+
+	SendSysMessagePergon(character, "Ihr setzt den Samen.");
+	subtractamount(foersterei,1);
+
+EndProgram
+
+Function is_plantable(maptile, itemtile)
+    If (itemtile.objtype == UOBJ_ACKER)
+        return 1;
+    ElseIf (maptile >= 0x9 && maptile <= 0x15)
+        return 1;
+    ElseIf (maptile >= 0x150 && maptile <= 0x15C)
+        return 1;
+    Else
+        return 0;
+    EndIf
+EndFunction
+
+Function such_wasser_gefaess(char)
+
+	var ok := 0;
+	var filled;
+  // Backpack nach Wasser-Gefaess durchsuchen
+  ForEach objtype in ({0x0ffa, 0x0e7b, 0x154d})
+  	//                Eimer ,kl. Fass, gr. Fass
+  	ForEach Gefaess in FindSubstance(char.backpack,objtype,1,0,FINDSUBSTANCE_FIND_ALL)
+  	  filled := GetObjProperty(Gefaess, "filled");
+      If (filled>4.9)
+        If (!ReserveItem(Gefaess))
+  	      continue;
+  	    EndIf
+	      filled-=5; // 1 Liter fuer den Samen
+        PlaySoundEffect(char, 0x12);
+        Sleep(1);
+        If (filled<0.2)
+          var Gefaess_cfg := cfg[Gefaess.objtype];
+          If (gefaess_cfg.targetitem)
+            ok := 1;
+            var werkzeug := GetObjProperty(Gefaess, "Werkzeug");
+            DestroyItem(Gefaess);
+            var new_Gefaess := CreateItemInBackpackPergon(char,Gefaess_cfg.targetitem, 1);
+            new_Gefaess.movable := 1;
+            SetObjProperty(new_Gefaess, "Werkzeug",werkzeug);
+            IncRevision(new_Gefaess);
+            Break;
+          Else
+            SysLog("WARNUNG: Gefaess "+Gefaess.objtype+" hat kein Targetitem in der cfg!");
+          EndIf
+        Else
+          SetObjProperty(Gefaess, "filled",filled);
+          ok := 1;
+          ReleaseItem(Gefaess);
+          Break;
+        EndIf
+      EndIf
+    EndForEach
+  	If (ok)
+  	  Break;
+  	EndIf
+  EndForEach
+
+  return ok;
+EndFunction

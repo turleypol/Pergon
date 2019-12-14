@@ -1,0 +1,481 @@
+///////////////////////////////////////////////////////////////////////////
+// Skill Schnueffeln - Vorbereitung zum Stehlen -> Ziel-Backpack oeffnen
+//
+// Developer Omero - ZuluHotel Italia
+// based on a previous Zulu package
+
+// Props
+// who.boolean(#snooper) - Schon aktiv?
+// item.int(realitem)    - Welches OriginalItem ist damit verknuepft?
+//                         (im ThiefBackpack)
+// item.int(markinfo)    - Wem gehoert dieses Item?
+//                         (im ThiefBackpack)
+
+// TODO:
+// - NPCs bestehlbar machen?
+// - Funzt das mit dem setcriminal richtig?
+// - Hmm, was passiert, wenn 2 Leute den gleichzeitig bestehlen wollen?
+// - Da is noch kein Check drin, der das unterbindet
+// - aber eigentlich sollte das kein problem sein, da es ein reserveitem im
+// - stealing gibt
+// - RemovePack geht irgendwie von aus, auch OriginalItem zu behandeln ...
+//   wieso?
+
+use attributes;
+use file;
+use os;
+use storage;
+use uo;
+use util;
+include "include/clock";
+include "include/eventid";
+include "include/modifyskill";
+include "include/msgs";
+include "include/storage";
+include "include/utility";
+
+Program Skill_Snooping(who)
+  var opfer;
+
+  If (TypeOfInt(who) == OT_ARRAY)
+    // Snooping wurde vom Stehlenscript aufgerufen
+    opfer := who[2];
+    who   := who[1];
+  Else                // ansonsten Abbruch
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+  EndIf
+
+  // diverse Vorbedingungen {{{
+  If (!opfer)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  // Irgendwas in den Haenden?
+  If (
+    GetEquipmentByLayer(who, LAYER_HAND1) or
+    GetEquipmentByLayer(who, LAYER_HAND2)
+  )
+    SendSysMessagePergon(who,
+      "Ihr braucht freie Hände zum Schnüffeln!", "You need free hands!"
+    );
+    return;
+  EndIf
+
+  // Nur Player (spaeter evtl. auch NPCs)
+  If (!opfer.isa(POLCLASS_MOBILE) or (opfer.isa(POLCLASS_NPC)))
+    SendSysMessagePergon(who,
+      "Ihr könnt nur Spieler bestehlen!",
+      "You only can steal from players!"
+    );
+    return;
+  EndIf
+
+
+  If (!opfer or !opfer.ip or opfer.dead)
+    SendSysMessagePergon(who,
+      "Ihr könnt Euer Opfer so nicht bestehlen!",
+      "Your victim is untraceable!"
+    );
+    return;
+  EndIf
+
+  If (GetObjProperty(who, PLACE_ATGODPALACE))
+    SendSysMessagePergon(who,
+      "Ihr könnt in diesen Hemisphären niemanden bestehlen!",
+      "You cannot steal from anyone in this hemispheres!"
+    );
+    return;
+  EndIf
+
+  // Scripter duerfen sich selbst bestehlen zum Test
+  If (who.cmdlevel < CMDLEVEL_SCRIPTER)
+    If (opfer.serial == who.serial)
+      // Nana, sich selber bestehlen zaehlt nicht
+      SendSysMessagePergon(who,
+        "Ihr bemerkt Eure dumme Tat gerade noch rechtzeitig!",
+        "You notice your stupid doing straight still in time!"
+      );
+      return;
+    EndIf
+
+    If (opfer.cmdlevel >= CMDLEVEL_QUESTCHAR)
+      // Staff wird nicht beklaut
+      SendSysMessagePergon(who,
+        "Euch fehlen die Rechte, um in diesen Rucksack zu schauen!",
+        "You're not allowed to look in that backpack!"
+      );
+      return;
+    EndIf
+
+    If (!CheckLineOfSight(who, opfer))
+      // Sichtverbindung nicht ok
+      SendSysMessagePergon(who,
+        "Ihr könnt Euer Opfer nicht sehen!",
+        "You cannot see your victim!"
+      );
+      return;
+    EndIf
+  EndIf
+
+  If (opfer.getprop(TYPNEWBIE))
+    If (!who.getprop(TYPNEWBIE))
+      // nur Newbies duerfen Newbies bestehlen
+      SendSysMessagePergon(who,
+        "Ihr wollt doch nicht etwa einen neuen Einwohner bestehlen?!",
+        "You do not really wanna steal from a newbie?!"
+      );
+      return;
+    EndIf
+  EndIf
+
+  If (Distance(who, opfer) > 1)
+    // Zu weit weg sollte man nicht stehen
+    SendSysMessagePergon(who,
+      "Ihr müsst etwas näher an "+opfer.name+" herantreten!",
+      "You have to stand closer to "+opfer.name+"!"
+    );
+    return;
+  EndIf
+  // }}}
+
+  If (GetObjProperty(who, "#snooper"))
+    // Schnueffelt schon
+    SendSysMessagePergon(who,
+      "Ihr müsst noch etwas warten, bevor Ihr wieder Schnüffeln könnt!",
+      "You must wait a little while!"
+    );
+    return;
+  EndIf
+  SetObjProperty(who, "#snooper", who.serial);
+
+  // Soll dies CProp "#snooper" am Ende geloescht werden?
+  var proploeschen := 1;
+
+  var opferitems := EnumerateItemsInContainer(opfer.backpack);
+  If (opferitems.size())
+    PrintTextAbovePrivatePergon(who,
+      "Ihr versucht, das Backpack zu oeffnen ...",
+      "You try to open the backpack ...", who
+    );
+
+    var delay := Max(
+      // Mindestdelay
+      1,
+      // Bei 60% Skill kaum Delay mehr
+      CInt(10-(GetSkillPergon(who, SKILLID_SCHNUEFFELN) / 6.0))
+    );
+    Sleep(delay);
+
+    // Bin ich immernoch nah genug?
+    If (Distance(who, opfer) <= 1)
+      proploeschen := DoSnooping(who, opfer);
+    Else
+      SendSysMessagePergon(who,
+        opfer.name+" ist inzwischen zu weit weg!",
+        opfer.name+" has moved to far!"
+      );
+    EndIf
+  Else
+    SendSysMessagePergon(who,
+      opfer.name+" scheint rein gar nichts bei sich zu haben!",
+      opfer.name+"'s backpack seems to be empty!"
+    );
+  EndIf
+
+  If (proploeschen) // Soll die CProp "#snooper" geloescht werden?
+    EraseObjProperty(who, "#snooper");
+  EndIf
+EndProgram
+
+///////////////////////////////////////////////////////////////////////
+// DoSnooping - Das Schnueffeln durchfuehren (bisher gabs nur Checks)
+///////////////////////////////////////////////////////////////////////
+Function DoSnooping(who, opfer)
+  // Soll dies CProp "#snooper" am Ende geloescht werden?
+  var proploeschen := 1;
+
+  var schnueffelskill;
+  schnueffelskill := Max(
+    // Wieviel Skill benoetige ich, um erfolgreich zu schnueffeln?
+    CInt(
+      GetIntPergon(opfer) * 3 / 4.0 - GetDexPergon(who) / 10.0
+    ),
+    // Zu einfach solls aber auch nicht sein
+    1
+  );
+
+  // Hab ich den SkillCheck bestanden?
+  If (CheckSkillPergon(
+      who, SKILLID_STEHLEN, schnueffelskill,
+      GetSkillDefaultPoints(SKILLID_STEHLEN)*3
+  ))
+    var storage := FindOrCreateStorage("Thief Storage");
+    If (storage)
+      // Ein verstecktes Backpack erzeugen
+      var thiefbackpack := InitRootItemInStorage(
+        storage, "thief backpack of "+who.serial,  0xff8f
+      );
+      If (thiefbackpack)
+        var duration;
+        var parms := {}; // Parameter fuer 'removepack' zusammenstellen
+        parms.append(who);
+        parms.append(opfer);
+
+        // Wie lange bleibt das Backpack "sichtbar"?
+        If (CheckSkillPergon(
+            who, SKILLID_SCHNUEFFELN, CInt(GetIntPergon(opfer)*2/5.0),
+            GetSkillDefaultPoints(SKILLID_SCHNUEFFELN)
+        ))
+          duration := 10+CInt(GetSkillPergon(who, SKILLID_SCHNUEFFELN)/4.0);
+        Else
+          duration := 10;
+        EndIf
+        parms.append(duration);
+        parms.append("thief backpack of "+who.serial);
+
+        DupliziereContainer(opfer, opfer.backpack, thiefbackpack, duration);
+
+        // Das versteckte Backpack oeffnen (also die Kopie vom Opfer-Backpack)
+        SendOpenSpecialContainer(who, thiefbackpack);
+        // ... eine Weile offenhalten, dann schliessen
+        Start_ScriptPergon("removepack", parms);
+        // "#snooper" nicht hier, sondern in 'removepack' loeschen ...
+        proploeschen := 0;
+
+        PrintTextAbovePrivatePergon(who, "... geschafft!", "... done", who);
+
+        LogToFile(
+          "::log/stealing.log",
+          GetDateTimeStr()+" "+who.name+" ("+Lower(Hex(who.serial))+
+          ") oeffnet Backpack von '"+opfer.name+"' ("+
+          Lower(Hex(opfer.serial))+") bei "+who.x+" "+who.y+" "+who.z+":"
+        );
+
+        // cprop zur Verfolgung von Diebstählen ohne Logfilezugriff
+        var save := GetObjProperty(opfer, "sl");
+        If (!save)
+          save := dictionary;
+        EndIf
+        var teil := save[who.serial];
+        If (teil)
+          teil.count := teil.count+1;
+          teil.lasttime := GetDateTimeStr();
+        Else
+          teil := struct;
+          teil.count := 1;
+          teil.lasttime := GetDateTimeStr();
+        EndIf
+        save[who.serial] := teil;
+        SetObjProperty(opfer, "sl", save);
+
+      Else
+        SendSysMessagePergon(who,
+          "Irgendwas ging schief!", "Something went wrong!"
+        );
+        syslog(
+          "FEHLER: Konnte kein 'Thief Backpack' fuer "+
+          Lower(Hex(who.serial))+" erstellen/oeffnen: "+
+          thiefbackpack.errortext
+        );
+      EndIf
+    Else
+      SendSysMessagePergon(who,
+        "Irgendwas ging schief!", "Something went wrong!"
+      );
+      syslog("FEHLER: Konnte 'Thief Storage' nicht oeffnen!");
+    EndIf
+
+  Else // Wohl nicht ...
+    SendSysMessagePergon(who, "Euer Versuch ging daneben.", "You failed.");
+
+    var range := Max(
+      // 'n besseres Schleichen verhindert zu lautes Rumgebruelle
+      CInt(15-(GetSkillPergon(who, SKILLID_SCHLEICHEN) / 10.0)),
+      // Aber einige sollen es schon mitbekommen
+      3
+    );
+
+    // Je mehr Leute rumstehn, desto oefter wirds bemerkt
+    If (RandomInt(100)<ListMobilesInLineOfSight(who, range).size()*6+50)
+      // Arschkarte, 's hat einer mitbekommen
+      TellPlayers(who, opfer, range);
+
+      // Wachen alarmieren
+      ForEach mob in (ListMobilesNearLocation(
+        who.x, who.y, who.z, 12, who.realm
+      ))
+        If (Lower(mob.npctemplate)["townguard"])
+          PrintTextAbovePergon(who, Mob, "Ahaa! Ein Schnüffler!");
+
+          var ev := struct;
+          ev.+type   := SYSEVENT_ENGAGED;
+          ev.+source := who;
+          SendEvent(Mob, ev);
+        EndIf
+      EndForEach
+    Else
+      SendSysMessagePergon(who,
+        "Zum Glück hats keiner mitbekommen ...",
+        "Fortunately nobody noticed your failure ..."
+      );
+
+      If (RandomInt(100) <= 25) // Commander
+        // Etwas Belohnung
+        AwardRawPointsPergon(who, SKILLID_SCHNUEFFELN, RandomInt(20)+5);
+      EndIf
+    EndIf
+
+    Sleep(6+RandomInt(4)); // 'n paar Strafsekunden ...
+  EndIf
+
+  return (proploeschen);
+EndFunction
+
+///////////////////////////////////////////////////////////////////////////
+// CanStealFrom - Kann ich mein Opfer bestehlen (Check gegen Skill Schnueffeln)
+///////////////////////////////////////////////////////////////////////////
+// ... wird aktuell aber nicht benutzt/abgefragt/gecheckt
+Function CanStealFrom(opfer)
+  If (opfer.isa(POLCLASS_NPC))
+    var opfertemplate := Lower(opfer.npctemplate);
+    If (opfertemplate["person"])
+      return (20);
+    Else
+      Case (opfertemplate)
+        "noble":   return (40);
+        "quest":   return (60);
+        "warrior": return (80);
+        "guard":   return (100);
+
+        default:   return (0);
+      EndCase
+    EndIf
+  Else // Haengt beim Spieler von der Ausdauer ab ...
+    return (GetDexPergon(opfer));
+  EndIf
+EndFunction
+
+////////////////////////////////////////////////////////////////////////
+// TellPlayers - Alle Spieler und das Opfer ringsum warnen/informieren
+////////////////////////////////////////////////////////////////////////
+Function TellPlayers(who, opfer, range)
+  // Karma [noch] nich moeglich
+ /* var lossKarma := 0;
+  If (GetKarma(who)>-625)
+    lossKarma := -(RandomInt(300)+1);
+  EndIf
+  AwardKarma(who, lossKarma); */
+
+  If (who.hidden) // Um unnoetige Events zu sparen ...
+    who.hidden := 0; // Und das wars mit der Tarnung ...
+  EndIf
+
+  var ev := struct; // Einen Event deklarieren
+  ev.+type := SYSEVENT_ENGAGED;
+  ev.+source := who;
+
+  SendEvent(opfer, ev); // ... und abschicken -> das Opfer erstmal "angreifen"
+
+  ForEach mobile in ListMobilesNearLocation(who.x, who.y, who.z, range, who.realm) // Alle Spieler ringsum informieren
+    If (!mobile.isa(POLCLASS_NPC)) // NPCs was zu "erzählen" bringt nix, sieht ja keiner
+      If (mobile.serial != who.serial) // Allen anderen was erzaehlen ...
+        If (!mobile.dead) // ... sofern sie leben
+          SendSysMessagePergon(mobile, "Ihr bemerkt, wie "+who.name+" versucht, im Backpack von "+opfer.name+", rumzuschnüffeln!",
+                                       "You notice " + who.name + " trying to snoop " + opfer.name + "'s backpack!", _DEFAULT_TEXT_FONT, 33);
+        EndIf
+      Else // Mich selber informieren, dass es schiefgelaufen ist ...
+        SendSysMessagePergon(who, "Ihr wurdet erwischt!", "You were caught red-handed!", _DEFAULT_TEXT_FONT, 33);
+        who.setcriminal(1); // Schwups, ich bin kriminell ... (fuer eine gewisse Zeit)
+      EndIf
+    EndIf
+  EndForEach
+EndFunction
+
+///////////////////////////////////////////////////////////////////
+// DupliziereContainer - Rekursives Kopieren eines Containers
+///////////////////////////////////////////////////////////////////
+Function DupliziereContainer(opfer, cont_src, cont_dst, duration)
+  var errorcount := 0;
+
+  ForEach item in (EnumerateItemsInContainer(cont_src, ENUMERATE_ROOT_ONLY))
+    SleepMS(2);
+
+    // Items duplizieren
+    var itemkopie := 0;
+    If ((0x1f2d <= item.objtype) && (item.objtype <= 0x1f6c))
+      // Die alten Spruchrollen (nur noch von NPCs genutzt)
+      // nicht mehr wirklich im Umlauf, ignorieren
+      continue;
+
+    ElseIf ((0x14eb <= item.graphic) && (item.graphic <= 0x14f2))
+      // Alles was nach Karte/Berechtigungsschein "aussieht"
+      // -> "unechte" Kopien erzeugen
+      itemkopie := CreateItemAtLocation(
+        // Erzeugung eines Exemplars im Knast
+        5280, 1190, 0, item.graphic, item.amount, REALM_BRITANNIA
+      );
+      itemkopie.color := item.color;
+      itemkopie.name  := item.name;
+
+    Else
+      // Alle anderen Items duplizieren
+      itemkopie := CreateItemCopyAtLocation(
+        5280, 1190, 0, item, REALM_BRITANNIA
+      );
+    EndIf
+
+    If (!itemkopie)
+      continue;
+    EndIf
+
+    // Welches OriginalItem ist damit verknuepft?
+    itemkopie.setprop("realitem", item.serial);
+    // Wem gehoert dieses Item?
+    itemkopie.setprop("markinfo", opfer.serial);
+    // Zeitstempel setzen (nach dessen Ablauf wird (theoretisch)
+    // das Pack spaetestens geschlossen wenn nicht, wird durch den
+    // Zeitstempel weiteres Klauen verhindert)
+    itemkopie.setprop("duration", ReadGameclock() + duration);
+
+    itemkopie.movable := 1; // Man weiss ja nie ...
+
+    // Den Gegenstand an sein Ziel verschieben (kein Stacking)
+    var res := MoveItemToContainer(itemkopie, cont_dst);
+    If (res)
+      itemkopie.movable := 0;
+      // Originalitem unmovable -> Item nicht stehlbar (siehe stealing)
+      If (!item.movable)
+        SetObjProperty(itemkopie, "unmovable", 1);
+      EndIf
+
+      If (itemkopie.isa(POLCLASS_CONTAINER))
+        // Container: also Rekursion
+        DupliziereContainer(opfer, item, itemkopie, duration);
+      Else
+        // ... bei normalen Items soll jedoch nicht die Funktion,
+        // sondern "stehlen" aufgerufen werden
+        itemkopie.usescript := ":stealing:stealing";
+      EndIf
+
+    Else // Sollte eigentlich nie passieren
+      syslog(
+        "WARNUNG: Das Item '"+itemkopie.desc+
+        "' liess sich nicht verschieben: "+res.errortext
+      );
+      // ... aber sicher ist sicher
+      DestroyItem(itemkopie);
+
+      errorcount += 1;
+      If (errorcount >= 5)
+        // da geht ernsthaft etwas schief, Abbruch
+        syslog(
+          "WARNUNG: DupliziereContainer wegen zu vieler Fehler abgebrochen"
+        );
+        return;
+      EndIf
+    EndIf
+  EndForEach
+EndFunction
+
+// vim: sw=2 sts=2

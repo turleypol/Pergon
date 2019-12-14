@@ -1,0 +1,57 @@
+/////////////////////////////////////////////////////////
+// MultiTest - Erlaubt das direkte Testen von Multi's
+//
+// Author: Shinigami
+
+/////////////////
+// Bibliotheken&Include
+/////////////////
+use os;
+use uo;
+include "include/logutil";
+include "include/msgs";
+
+Program TextCMD_MultiTest(who, params)
+  var arg  := SplitWords(params);
+  var type := CInt(arg[1]);
+
+  If (!params or !type)
+    SendSysMessagePergon(who,
+      "Ihr müsst eine Multi-ItemID aus der ItemDesc angeben!",
+      "You have to enter a multi item ID from the ItemDesc file!"
+    );
+    return;
+  EndIf
+
+  var loc := struct{
+    x := who.x, y := who.y, z := who.z, realm := who.realm
+  };
+  If (arg.size() >= 2)
+    loc := TargetMultiPlacement(who, type);
+    If (!loc)
+      SendSysMessagePergon(who, "Abbruch", "Abort");
+      return;
+    EndIf
+  EndIf
+
+  var multi := CreateMultiAtLocation(
+    loc.x, loc.y, loc.z, type, CRMULTI_IGNORE_ALL, loc.realm
+  );
+  If (!multi)
+    SendSysMessagePergon(who,
+      "Das Haus konnte nicht gebaut werden: "+multi.errortext,
+      "Could not build house: "+multi.errortext
+    );
+    return;
+  EndIf
+
+  SendSysMessagePergon(who,
+    "Fertig. Ihr könnt das Haus mit '.destroymulti "+LHex(multi.serial)+
+    "' wieder abreissen.",
+    "Done. You can tear the house down with '.destroymulti "+
+    LHex(multi.serial)+"' later."
+  );
+  syslog(CharInfoStr(who)+" baut "+ItemInfoStr(multi, COORDS_REALM));
+EndProgram
+
+// vim: sw=2 sts=2

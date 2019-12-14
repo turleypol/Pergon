@@ -1,0 +1,60 @@
+// 23.02.07 Turley - Setserials werden per CProp gespeichert ->keine Planlose Änderung der CProps über ChangePropertySet
+//                   ->Geschwindigkeit^2 oder so 
+use os;
+use util;
+use uo;
+
+Include "include/itemnpc";
+Include "include/set";
+
+Program forstling(Item)
+
+// print("forstling startet");			//debug info
+
+
+        
+        if ( GetObjProperty(Item, "ttl") > 0 )
+//           SysLog("Setling beendet");
+           return;
+        EndIf;
+
+ 
+	Sleep(30 + RandomInt(20)); 	//ToDo: spaeter eventuell mal vom wetter abhaengig machen
+						//Setzling (kleiner Baum), damits besser ausschaut
+	var setzling 	:= CreateItemAtLocationPergon(Item.x, Item.y, Item.z, 0xEFEB, 1,Item.realm);
+
+	Sleep(300 + RandomInt(150));
+
+	DestroyItem(setzling);			//Wenn der Baum wächst. muss der Setzling wieder weg.
+
+	var holzmenge 	:= GetObjProperty(Item, "holzmenge");
+	Var Set 	:= GetObjProperty(Item, "set");
+	var same 	:= GetObjProperty(Item, "same");
+	Var Seedling 	:= GetObjProperty(Item, "seedling");
+
+	If (Item)
+		var serial := makeset(Item, Set, 1);
+		Var items:={};
+		if (serial)
+			ForEach slave in (serial[2])
+				slave.setprop("wood",holzmenge);
+				slave.setprop("fserial", serial[1]);
+				slave.setprop("set", set);
+				slave.setprop("same", same);
+				slave.setprop("seedling",seedling);
+				items.append(slave.serial);
+			EndForEach
+			var master:=SystemFindObjectBySerial(serial[1]);
+			master.setprop("items",items);
+//			ChangePropertySet(set, serial, "wood", holzmenge);
+//			ChangePropertySet(set, serial, "fserial", serial);
+//			ChangePropertySet(set, serial, "set", set);
+//			ChangePropertySet(set, serial, "same", same);
+//			ChangePropertySet(set, serial, "seedling", seedling);
+		else
+		  SysLog("FEHLER: Das Set '"+set+"' konnte nicht erzeugt werden!");
+		endif
+	DestroyItem(Item);
+	EndIf
+// print("forstling ende");
+EndProgram

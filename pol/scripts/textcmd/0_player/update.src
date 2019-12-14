@@ -1,0 +1,16 @@
+//////////////////////////////////////////////////////
+// Update TextCMD - Laedt das letzte Pergon-Update
+//
+// Author: Shinigami
+
+use uo;
+include "include/msgs";
+include "include/urls";
+
+Program TextCMD_Update(who)
+    SendSysMessagePergon(who,
+        "Einfach mit den UO-Login-Daten einloggen, das Update ziehen und "+
+        "gem‰ﬂ liesmich.txt vorgehen."
+    );
+    OpenURL(who, URL_UPDATE);
+EndProgram

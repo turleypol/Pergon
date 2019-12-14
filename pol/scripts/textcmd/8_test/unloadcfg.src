@@ -1,0 +1,22 @@
+Use uo;
+Use cfgfile;
+
+Include "include/msgs";
+
+Program TextCMD_UnloadCfg(who, filename)
+  If (TypeOfInt(who)==OT_ARRAY) // Aufruf via TextCMD ReloadCfg
+    filename:=who[2];
+    who:=who[1];
+  EndIf
+
+  Var res:=UnloadConfigFile(filename);
+  If (res==error)
+    SendSysMessagePergon(who, "Fehler beim Entfernen der Configdatei: "+res.errortext);
+  ElseIf (res<0)
+    SendSysMessagePergon(who, "Diese Configdatei war nicht geladen!");
+  ElseIf (res==1)
+    SendSysMessagePergon(who, "1 Configdatei-Referenz aus dem Cache entfernt.");
+  Else
+    SendSysMessagePergon(who, res+" Configdatei-Referenzen aus dem Cache entfernt.");
+  EndIf
+EndProgram

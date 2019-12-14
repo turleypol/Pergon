@@ -1,0 +1,56 @@
+Script Contexts - a work in progress
+
+
+NPC AI
+================================
+Description: NPC AI scripts control NPC actions.  An NPC AI script should
+             never exit, or the NPC will stop all actions except autodefense.
+             NPC AI scripts are started when an NPC is created, or on
+             server startup.
+Modules available: npc uo cfgfile util
+Declaration:  program npc_ai( npc )
+Parameters:   npc - the npc this script controls
+
+
+
+Item Use (Doubleclick, Walk-on)
+================================
+Description: Item-use scripts execute when an item is doubleclicked, or when
+             a "walk-on" item is stepped on.  
+Modules available: uo cfgfile util
+Declaration: program useitem( ? )
+Parameters:
+
+
+
+Spell Casting
+================================
+Modules available: uo cfgfile util
+
+
+
+Control Scripts
+================================
+Modules available: uo cfgfile util
+
+Equip Scripts
+================================
+Modules available: uo cfgfile util
+Declaration program equip( mobile, item, startup )
+Parameters:
+    mobile:  the mobile equipping the item
+    item:    the item being equipped
+    startup: whether this script is being called because the system is starting
+             (loading data)
+Return Value:
+    true     the mobile is allowed to equip the item
+    false    the mobile is not allowed to equip the item
+
+Unequip Scripts
+================================
+
+
+Boat Scripts
+================================
+Modules available: uuo cfgfile util boat
+

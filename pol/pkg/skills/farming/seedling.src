@@ -1,0 +1,135 @@
+//////////////////////////////////////////////////////////////////////////////
+//
+//   seedling - Controllscript der Farmingpflanzen (Grafik Änderungen)
+//
+//
+//     Author: Turley
+//
+//
+//   Modification:
+//     21.05.07 Turley - Init
+//
+//////////////////////////////////////////////////////////////////////////////
+
+Use uo;
+Use os;
+Use util;
+Use polsys;
+
+Include "include/itemnpc";
+
+Const DUMMY:=0x5de8;
+Const DUMMY1:=0x5de9;
+
+Var cfg:=ReadConfigFile("::itemdesc");
+
+
+Program seedling(rootitem)
+  Var what, amount, phase, item, graphics, name, graph, status;
+  Var south:=0, north:=0;
+
+  what:=CInt(rootitem.getprop("plant"));
+  amount:=CInt(rootitem.getprop("amount"));
+  Var seed_cfg:=cfg[what];
+  status:=CInt(rootitem.getprop("phase"))+1;
+
+  For (phase:=status;phase<=4;phase+=1)
+    Sleep(75+RandomInt(45)); //300 bis 480 bis erntbares Phase4
+
+    If (rootitem)
+      ForEach item in (ListItemsAtLocation(rootitem.x,rootitem.y,rootitem.z,rootitem.realm)) // Alte Items zerstören
+        If (item.objtype == DUMMY1)
+          DestroyItem(item);
+        EndIf
+      EndForEach
+
+      Case (phase)  // Items und Name besorgen
+        2: graphics:=SplitWords(seed_cfg.Phase2,",");  // , = Mehrere Items
+           name:=seed_cfg.Phase2Name;
+        3: graphics:=SplitWords(seed_cfg.Phase3,",");
+           name:=seed_cfg.Phase3Name;
+        4: graphics:=SplitWords(seed_cfg.Phase4,",");
+           name:=seed_cfg.Phase4Name;
+        default:
+           Break; //Irgendwas ging schief
+      EndCase
+      If ((what==0xda19) && (phase>=3)) // Wein
+        south:=0;
+        ForEach item in (ListItemsAtLocation(rootitem.x,rootitem.y+1,rootitem.z,rootitem.realm)) // Südlich eine Weinpflanze?
+          If (item.objtype == DUMMY)
+            If (item.getprop("plant")==0xda19)
+              south:=1;
+              Break;
+            EndIf
+          EndIf
+        EndForEach
+        north:=0;
+        ForEach item in (ListItemsAtLocation(rootitem.x,rootitem.y-1,rootitem.z,rootitem.realm)) // Nördlich eine Weinpflanze?
+          If (item.objtype == DUMMY)
+            If (item.getprop("plant")==0xda19)
+              north:=1;
+              Break;
+            EndIf
+          EndIf
+        EndForEach
+        If ((north) && (south))  // Befindet sich in der Mitte
+          rootitem.graphic:=CInt(graphics[2]);
+          rootitem.name:=name;
+          rootitem.setprop("phase", phase);
+        ElseIf (north) // Südecke
+          rootitem.graphic:=CInt(graphics[1]);
+          rootitem.name:=name;
+          rootitem.setprop("phase", phase);
+        Else // Nordecke und Einzelne
+          rootitem.graphic:=CInt(graphics[3]);
+          rootitem.name:=name;
+          rootitem.setprop("phase", phase);
+        EndIf
+      Else // Standart
+        ForEach graphic in (graphics)
+          graph:=SplitWords(graphic); // Leerzeichen = Zufällige Auswahl
+          If (_graphic_iter==1) // Erste Grafik ist das "Controlitem"
+            rootitem.graphic:=CInt(graph[RandomInt((graph).size())+1]);
+            rootitem.name:=name;
+            rootitem.setprop("phase", phase);
+          Else
+            item:=CreateItemAtLocationPergon(rootitem.x, rootitem.y, rootitem.z, DUMMY1,1,rootitem.realm);
+            If (item)
+              item.graphic:=CInt(graph[RandomInt((graph).size())+1]);
+              item.name:=name;
+            EndIf
+          EndIf
+        EndForEach
+      EndIf
+    Else
+      Break;
+    EndIf
+  EndFor
+
+  Sleep(1200+RandomInt(60)); //20 bis 21 min
+  If (rootitem)  // Samen erzeugen falls nicht abgeerntet
+    ForEach item in (ListItemsAtLocation(rootitem.x,rootitem.y,rootitem.z,rootitem.realm)) // Alte Items zerstören
+      If (item.objtype == DUMMY1)
+        DestroyItem(item);
+      EndIf
+    EndForEach
+    amount:=CInt(rootitem.getprop("amount"));
+    If (amount>=1)
+      amount:=RandomInt(amount+1);  // Zufällige Anzahl 0..amount
+      If (amount)
+        item := GetItemDescriptor(what);
+        // keine Generationsangabe entspricht erster Generation
+        var nextgen := CInt(rootitem.getprop("nextgeneration"));
+        If (nextgen > 1)
+          item.CProps.insert("generation", nextgen);
+        EndIf
+        item:=CreateItemAtLocationPergon(rootitem.x, rootitem.y, rootitem.z, item, amount,rootitem.realm);
+        If (item)
+          // normalen Decay etwas ausbremsen
+          item.decayat := ReadGameClock() + 2*3600;
+        EndIf
+      EndIf
+    EndIf
+    DestroyItem(rootitem);
+  EndIf
+EndProgram

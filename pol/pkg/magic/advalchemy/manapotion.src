@@ -1,0 +1,55 @@
+//
+// Fraggulus' Edition
+//
+// Stand: 3. September 2000
+//
+
+use os;
+use uo;
+use util;
+
+include "drinkpotion";
+include "include/modifyskill";
+
+program drink_mana (character, potion)
+
+	if (!checkifcandrink(character))
+		return;
+	endif
+
+    Var potion_strength := get_potion_strength(potion);
+
+
+	if (is_poison(potion))
+		do_poison(character, potion);
+	elseif (RandomInt(50) == 0)		// alle 50 Schluck ist die Potion schlecht und zieht 1/4 bis 1/2 des Manas ab
+		SetManaPergon(character, GetManaPergon(character)-CInt(GetManaPergon(character)/(5-potion_strength)));
+		SendSysMessagePergon(character, "Der Manatrunk zeigt eine gegenteilige Wirkung.");
+
+		detach();
+		sleep(10);
+		candrink(character);
+	else
+		empty_bottle(character, potion);
+		Var mana_amount := (RandomInt(20) + 1) * potion_strength;
+
+//           PlaySoundEffect( character,  SOUND_EFFECT_HEAL );
+
+		SetManaPergon(character, GetManaPergon(character)+mana_amount);
+		If (GetManaPergon(character)>GetMaxManaPergon(character)) // Stats auf Max-Werte setzen, falls einer zu viel hat
+			SetManaPergon(character, GetMaxManaPergon(character));
+		EndIf
+
+		If (GetHPPergon(character)>GetMaxHPPergon(character))
+			SetHPPergon(character, GetMaxHPPergon(character));
+		EndIf
+
+		If (GetStaminaPergon(character)>GetMaxStaminaPergon(character))
+			SetStaminaPergon(character, GetMaxStaminaPergon(character));
+		EndIf
+
+		detach();
+		sleep(10);
+		candrink(character);
+	endif
+endprogram

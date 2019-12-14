@@ -1,0 +1,63 @@
+//
+// Fraggulus' Edition
+//
+// Fraggulus - Bienenstockscript - gibt Honig
+//
+// 06.06.2002 Fraggulus - writing
+// 18.06.2002 Fraggulus - Bienenwachs im Winter hinzugefuegt
+//
+
+use os;
+use vitals;
+use util;
+use uo;
+
+Include "include/itemnpc";
+Include "include/modifyskill";
+
+program bstock(who, item)
+
+	Var LastHoney := CInt(GetObjProperty(item, "LastHoney"));
+	Var LastWax   := CInt(GetObjProperty(item, "LastWax"));
+
+	If ((GetGlobalProperty("Season") == 2) && (LastWax < ReadGameClock() - 42300))	// Im Winter gibts keinen Honig, dafuer aber Wachs
+
+		Var Wax := CreateItemInBackPackPergon(who, 0x1422, RandomInt(3) + 1);
+		If (Wax)
+			SendSysMessagePergon(who, "Ihr konntet etwas Wachs aus dem Bienenstock entwenden.");
+			SetObjProperty(item, "LastWax", ReadGameClock());
+		Else
+			SendSysMessagePergon(who, "Es scheint unmöglich, etwas in Euren Rucksack legen zu können.");
+		EndIf
+
+	ElseIf (LastHoney < ReadGameClock() - 42300)	// solang der letzte Honig laenger als 1/2 Tag zurueck liegt
+
+		PlayStationaryEffect(item.x, item.y, item.z, 0x91b, 10,0,item.realm);
+
+		Var Honey := CreateItemInBackPackPergon(who, 0x9EC, 1);
+		If (Honey)
+			SendSysMessagePergon(who, "Ihr konntet etwas Honig aus dem Bienenstock entwenden.");
+			SetObjProperty(item, "LastHoney", ReadGameClock());
+		Else
+			SendSysMessagePergon(who, "Es scheint unmöglich, etwas in Euren Rucksack legen zu können.");
+		EndIf
+
+		// kleine Gemeinheit - attackierende Bienen ;o)
+		If (RandomInt(10) >= 0)
+			SendSysMessagePergon(who, "Die Bienen bemerken und attackieren Euch!");
+			Var MaxCounter := 300;
+			While ((GetHPPergon(who) > CInt(GetMaxHPPergon(who) / 2.0)) && (MaxCounter > 0))
+				PlaySoundEffect(who, 0x1F9);
+				PlayStationaryEffect(who.x, who.y, who.z, 0x91b, 10, 10,0,who.realm);
+				ApplyRawDamagePergon(who, 1);
+				SleepMs(150);
+				MaxCounter -= 1;
+			EndWhile
+		EndIf
+	Else
+		SendSysMessagePergon(who, "Die Bienen waren noch nicht fleissig genug.");
+		Sleep(3);
+		SendSysMessagePergon(who, "Ihr findet weder Honig noch Bienenwachs.");
+	EndIf
+
+endprogram

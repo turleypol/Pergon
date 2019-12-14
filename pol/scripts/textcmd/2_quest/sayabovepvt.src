@@ -1,0 +1,56 @@
+///////////////////////////////////////////////////////////////////////////
+// TextCMD SayAbovePvt -
+// Zeigt eine Nachricht ueber einem Spieler, nur fuer diesen sichtbar, an
+//
+// Author: Shinigami
+
+use os;
+use uo;
+include "include/msgs";
+include "include/pergonstatistik";
+include "include/quests";
+
+Program TextCMD_SayAbovePvt(who, text, uc_text, langcode)
+  SendSysMessagePergon(who,
+    "Sage über was oder wem?", "Say above what or whom?"
+  );
+
+  var what := Target(who, TGTOPT_NOCHECK_LOS);
+  If (!what)
+    SendSysMessagePergon(who, "Abbruch", "Abort");
+    return;
+  EndIf
+
+  If (
+    // nur bei Spielern sinnvoll
+    !what.isa(POLCLASS_MOBILE) or what.isa(POLCLASS_NPC) or
+    // oder mit sich selbst reden?
+    what.serial<>who.serial
+  )
+    SendSysMessagePergon(who, "Wie sinnlos ...", "How stupid ...");
+    return;
+  EndIf
+
+  If (uc_text) // UniCode
+    var unicodetext := Struct{uc_text := uc_text, lang := langcode};
+    // Opfer
+    PrintTextAbovePrivatePergon(what, unicodetext, unicodetext, what);
+    // Verursacher
+    PrintTextAbovePrivatePergon(what, unicodetext, unicodetext, who);
+  Else
+    PrintTextAbovePrivatePergon(what, text, text, what); // Opfer
+    PrintTextAbovePrivatePergon(what, text, text, who);  // Verursacher
+  EndIf
+
+  StatistikSayAbovePvt(who, what, text); // Statistische Analyse durchfuehren
+
+  var Spectator := GetGlobalProperty("#Spectator");
+  If (Spectator)
+    var spectatorev := struct;
+    spectatorev.+type := "sayabove";
+    spectatorev.+value := {
+      who.acctname, what.acctname, who.name+" ueber "+what.name+": "+text
+    };
+    GetProcess(Spectator).sendevent(spectatorev);
+  EndIf
+EndProgram

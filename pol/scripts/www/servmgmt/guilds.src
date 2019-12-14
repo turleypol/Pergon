@@ -1,0 +1,149 @@
+/////////////////////////////////////////////////////////
+// guilds - Zeigt Infos über Gilden
+//
+// Author: Turley
+
+use guilds;
+use http;
+use os;
+use uo;
+include "header";
+
+Program HTMLPage()
+  DoHeader("Guilds");
+  WriteHTML("<div id='container'>");
+  WriteHTML("<div id='header'></div>");
+  WriteHTML("<div id='content'>");
+  TableHeader("Guilds");
+
+  DenyAccess(isALLOWED_STRICT);
+
+  var guild := CInt(QueryParam("Guild"));
+  If (guild)
+    Showguild(guild);
+  Else
+    GuildList();
+  EndIf
+
+  WriteHTML("</div>");
+  DoFooter();
+EndProgram
+
+Function ShowGuild(guildid)
+  var guild := FindGuild(guildid);
+  var charref;
+  If (!guild)
+    WriteHTML("<p>Guild not found</p>");
+    WriteHTML("</div>");
+    return;
+  EndIf
+
+  WriteHTML("<h2>Gilde/Orden "+guild.getprop("name")+"</h2>");
+
+  WriteHTML("<table style='width:auto'>");
+  WriteHTML("<tr><th COLSPAN='2'>Guild Info</th></tr>");
+  WriteHTML("<tr><td>ID</td><td>"+guildid+"</td></tr>");
+  WriteHTML("<tr><td>Tag</td><td>["+guild.getprop("guild_tag")+"]</td></tr>");
+  WriteHTML("<tr><td>Name</td><td>"+guild.getprop("name")+"</td></tr>");
+  WriteHTML("<tr><td>Icon</td><td>"+guild.getprop("guildicon")+"</td></tr>");
+  WriteHTML("</table>");
+
+  WriteHTML("<br>");
+  WriteHTML("<table style='width:auto'>");
+  WriteHTML("<tr><th>Diplomacy</th></tr>");
+  WriteHTML("<tr><th>Allied</th></tr>");
+  ForEach entry in (guild.allyguilds)
+    WriteHTML(
+      "<tr><td><a href='?Guild="+entry.guildid+"&"+A_PARAM+"'>"+
+      entry.getprop("name")+"</a></td></tr>"
+    );
+    SleepMS(2);
+  EndForEach
+  WriteHTML("<tr><th>Enemies</th></tr>");
+  ForEach entry in (guild.enemyguilds)
+    WriteHTML(
+      "<tr><td><a href='?Guild="+entry.guildid+"&"+A_PARAM+"'>"+
+      entry.getprop("name")+"</a></td></tr>"
+    );
+    SleepMS(2);
+  EndForEach
+  WriteHTML("<tr><th>Wannabe Allied</th></tr>");
+  ForEach entry in (guild.getprop("wannabe_allies"))
+    If (FindGuild(entry))
+      WriteHTML(
+        "<tr><td><a href='?Guild="+entry+"&"+A_PARAM+"'>"+
+        FindGuild(entry).getprop("name")+"</a></td></tr>"
+      );
+    EndIf
+    SleepMS(2);
+  EndForEach
+  WriteHTML("<tr><th>Wannabe Enemies</th></tr>");
+  ForEach entry in (guild.getprop("wannabe_enemies"))
+    If (FindGuild(entry))
+      WriteHTML(
+        "<tr><td><a href='?Guild="+entry+"&"+A_PARAM+"'>"+
+        FindGuild(entry).getprop("name")+"</a></td></tr>");
+    EndIf
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</table>");
+
+  WriteHTML("<br>");
+  WriteHTML("<table style='width:auto'>");
+  WriteHTML("<tr><th>Members</th></tr>");
+  WriteHTML("<tr><th>Leaders</th></tr>");
+  ForEach entry in (guild.getprop("leaders"))
+    charref := SystemFindObjectBySerial(entry,SYSFIND_SEARCH_OFFLINE_MOBILES);
+    If (charref)
+      WriteHTML(
+        "<tr><td><a href='objviewer.ecl?Serial="+entry+"&"+A_PARAM+"'>"+
+        charref.name+" ("+charref.title_prefix+") ["+
+        charref.title_race+"]</a></td></tr>"
+      );
+    EndIf
+    SleepMS(2);
+  EndForEach
+  WriteHTML("<tr><th>Members</th></tr>");
+  ForEach entry in (guild.members)
+    If (!(entry.serial in guild.getprop("leaders")))
+      WriteHTML(
+        "<tr><td><a href='objviewer.ecl?Serial="+entry.serial+"&"+
+        A_PARAM+"'>"+entry.name+" ("+entry.title_prefix+") ["+
+        entry.title_race+"]</a></td></tr>"
+      );
+    EndIf
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</table>");
+
+  WriteHTML("<br>");
+  WriteHTML("<table style='width:auto'>");
+  WriteHTML("<tr><th>Charta</th></tr>");
+  Var charta := EscapeHTML(guild.getprop("charta"));
+  WriteHTML("<tr><td>"+charta+"</td></tr>");
+  WriteHTML("</table>");
+EndFunction
+
+Function GuildList()
+  WriteHTML("<h2>Guild List</h2>");
+
+  WriteHTML("<table style='width:auto'>");
+  WriteHTML("<tr>");
+  WriteHTML("<th>ID</th>");
+  WriteHTML("<th>Tag</th>");
+  WriteHTML("<th>Name</th>");
+  WriteHTML("<th>Membersize</th>");
+  ForEach entry in ( ListGuilds() )
+    WriteHTML("<tr>");
+    WriteHTML(
+      "<td><a href='?Guild="+entry.guildid+"&"+A_PARAM+"'>"+
+      entry.guildid+"</a></td>"
+    );
+    WriteHTML("<td>["+entry.getprop("guild_tag")+"]</td>");
+    WriteHTML("<td>"+entry.getprop("name")+"</td>");
+    WriteHTML("<td>"+entry.members.size()+"</td>");
+    WriteHTML("</tr>");
+    SleepMS(2);
+  EndForEach
+  WriteHTML("</table>");
+EndFunction

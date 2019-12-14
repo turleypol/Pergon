@@ -1,0 +1,441 @@
+//
+//  Autor:    Peter -pJOTTR- Straube
+//  Date:     12.01.2004
+//
+//  Traps:    Fallen legen-Gump
+//
+//  Modifikation:
+//
+//    Hotny: überarbeitet
+//
+
+use attributes;
+use cfgfile;
+use os;
+use uo;
+use util;
+use vitals;
+include ":newspells:magicpergon";
+include "include/itemnpc";
+include "include/modifyskill";
+include "include/objtype";
+include "traps";
+
+Program traps(character, item)
+  If (item) // Ist es noch eine alte Containerfalle?
+    Start_ScriptPergon("containertrap", {character, item});
+    return;
+  EndIf
+
+  If (!GetObjProperty(character, "TRAPTEST")) // Spieler benutzt noch das alte Script
+    SendSysMessagePergon(character, "Ihr seid nicht als Beta-Tester freigeschaltet!");
+    return;
+  EndIf
+
+  If((character.frozen)||(character.paralyzed))
+    SendSysMessagePergon(character,"Ihr seit eingefroren und könnt so nicht arbeiten","You are frozen and can't work");
+    return;
+  EndIf
+
+  var cfg := ReadConfigFile("traps");
+  var colorcfg := ReadConfigFile("trapscolor");
+  var skillmod := -20;          //+-20% Range fuer Erfolgschancen
+  var itemtocreate := {};
+  var trap := {};           //gewaehlte Falle
+  var trapcolor := {};          //Farbe der versteckten Falle
+  //var damagetime;           //Schadenszeit, der von der Falle hervorgerufen wird
+
+
+    //Grundaufbau des Menues zur Fallenauswahl
+    var menu := CreateTrapMenuFromCFG( character, "traps", "traps", SKILLID_FALLEN_LEGEN, skillmod);
+    If (!menu)
+        SendSysMessagePergon( character, "Konnte Menu nicht aufbauen.");
+        return;
+    EndIf
+
+    //Abfrage des Menues mit Rueckgabe der gewaehlten Falle
+    var op := TrapSelect( character, menu);
+    If ((!op) || (!op.key))
+        SendSysMessagePergon( character, "Abbruch", "Abort");
+        return;
+    EndIf
+
+     //holt aus der traps.cfg alle Daten zur gewaehlten Falle
+    trap := FindConfigElem( cfg, op.key);
+
+    //Check ob noch weitere Fallen des gewaehlten Types gelegt werden duerfen
+    //Ermittlung der aktuellen Fallenanzahl pro Typ
+
+    //var trapstosave := "active_traps_type_"+CStr(trap.type);
+    // hier jetzt test auf CProp ob existent, wenn nicht anlegen
+    If (!character.getprop("Traps_Skill"))
+      //kennt er noch nicht, dann anlegen des CProps
+        var CProp := struct;
+        CProp.+ActivTraps := Dictionary;
+        character.setprop("Traps_Skill",CProp);
+    EndIf
+
+    var TrapSkill := CheckTraps( character, character.getprop("Traps_Skill") );
+    character.setprop("Traps_Skill",TrapSkill);
+
+    If (TrapSkill.ActivTraps[trap.type].size() >= MAXTRAPS[trap.type])
+      SendSysMessagePergon( character, "Ihr dürft keine weitere " + trap.desc +  " aufstellen.","You can't create more of these Traps.");
+      return;
+    EndIf
+
+    //wenn versteckte Falle gewaehlt dann Abfrage der Fallenfarbe
+    If (trap.hidden == 1)
+      //Fallensteller muss bei versteckten Fallen halb so gut sein
+      //wie die zu versteckende Falle
+      If (GetSkillPergon(character, SKILLID_VERSTECKEN) < trap.skill/2)
+            SendSysMessagePergon( character, "Wie wollt ihr eine Falle verstecken, wenn ihr euch nichtmal richtig verstecken könnt.");
+            return;
+      EndIf
+      // Menueaufbau fuer Abfrage der Fallenfarbe
+      var menu := ColorOfTraps("trapscolor", "trapscolor");
+      If (!menu)
+        SendSysMessagePergon( character, "Das Menu konnte nicht aufgebaut werden.");
+        return;
+      EndIf
+      var color := TrapSelect( character, menu); //Abfrage der Farbe mit Rueckgabe der gewaehlten Farbe
+      If ((!color) || (!color.key))
+        SendSysMessagePergon( character, "Abbruch", "Abort");
+        return;
+      EndIf
+      //trapcolor.color enthaelt den Farbcode
+      trapcolor := FindConfigElem( colorcfg, color.key);
+    EndIf
+
+    // wenn es eine normale Falle ist, dann das zu erschaffende Item aus der traps.cfg entnehmen
+    // ansonsten das "versteckte_Falle_item" 0x66B0 (Graphic 0x1122) nutzen
+    If(trap.hidden == 0)
+      If (!trap.itemtocreateonground)
+        itemtocreate := 0x1878;
+      Else
+        itemtocreate := trap.itemtocreateonground;
+      EndIf
+    Else
+      itemtocreate := 0x66B0;
+    EndIf
+
+    // Containerfallen extra checken und bauen, da alle anderen am Boden liegen und noch nen Test auf evtl. vorhandene
+    // Fallen ueber sich ergehen lassen muessen
+    If (trap.type == TRAP_TYPE_KISTENFALLEN)
+      BuildContainerTrap(character, trap);
+      return ;
+    EndIf
+
+    //wohin mit der Falle
+    SendSysMessagePergon(character, "Wo soll die Falle Aufgebaut werden?");
+    var use_on := Targetcoordinates( character);
+    If (!use_on)
+      SendSysMessagePergon(character, "Abbruch", "Abort");
+      return;
+    EndIf
+
+    //Maximal 2 Felder vom Standort des Fallenstellers weg
+    If (Distance(character, use_on) > 2)
+      SendSysMessagePergon(character,"Das ist zu weit weg.");
+      return;
+    EndIf
+
+    //Hier Test darauf, dass der Player in keiner Stadt ist
+    If ((PlaceTown(use_on)) && (!(PlaceName(use_on) in {"Jhelom Nord"})))
+      SendSysMessagePergon(character,"Ihr müsst ausserhalb einer Stadt sein.");
+      return;
+    EndIf
+
+    //Kontrolle ob an dieser stelle schon ne falle liegt
+    ForEach item in ListItemsAtLocation( use_on.x, use_on.y, use_on.z,use_on.realm )
+      If (item.getprop("trap"))
+        SendSysMessagePergon( character, "Dort liegt schon eine Falle.");
+        return ;
+      EndIf
+    EndForEach
+
+    //Test ob Wasserfalle im Wasser und Landfallen an Land gebaut wurde
+    If (IsWater(use_on, GetMapInfo(use_on.x, use_on.y,use_on.realm)) AND  (trap.type!=TRAP_TYPE_SEEFALLEN))
+      SendSysMessagePergon(character, "Eine Landfalle sollte nicht im Wasser stehen.");
+      return;
+    EndIf
+    If ((!IsWater(use_on, GetMapInfo(use_on.x, use_on.y,use_on.realm))) AND  (trap.type==TRAP_TYPE_SEEFALLEN))
+      SendSysMessagePergon(character, "Eine Seefalle sollte schon im Wasser stehen.");
+      return;
+    EndIf
+
+	//Hier jetzt check auf Schlinge (Lernfalle)
+    var viechID := 0;
+    If (trap.desc <> "Schlinge" AND trap.desc <> "Reusenfalle")
+      //Es ist nicht die Lernfalle also Abfrage auf Wunschtierchen
+      //Im CProp unter KnowCreatures
+      viechID := AskForViech(character,trap.type);
+      If (!viechID)
+        SendSysMessagePergon(character,"Abbruch", "Abort");
+        return;
+      EndIf
+      //SendSysMessagePergon(character, "Dieses Feature ist noch nicht implementiert.","This Feature is not implementet yet.");
+    EndIf
+
+    // Kontrolle ob genug Items, die fuer die Falle gebraucht, werden auch im Backpack sind
+    // und wenn alle Items vorhanden sind Aufbrauch der  RequiredItems,
+    If (!CheckRequirements(character, trap))
+      return ;
+    EndIf
+
+    //Bau der Falle nach dem Skillcheck
+    If (CheckSkillPergon(character, SKILLID_FALLEN_LEGEN, CInt(trap.skill), 2.5*GetSkillDefaultPoints(SKILLID_FALLEN_LEGEN)))
+      BuildTrap (character, itemtocreate, trapcolor.color, trap, use_on,viechID);
+      SendSysMessagePergon(character, "Ihr baut eine " + trap.desc + " auf.", "");
+    Else
+      SendSysMessagePergon(character, "Ihr schafft es nicht die Falle aufzustellen", "");
+      // aus nem viertel der MaxHP wir der Schaden gewuerfelt (Ruestung hilft dabei)
+      ApplyDamagePergon( character, RandomInt(CInt(GetMaxHPPergon(character) /4)));
+    EndIf
+EndProgram
+
+////////////////////////////////////////////////////////////////
+// BuildTrap - baut die Falle mit folgenden Kriterien auf:
+// where_x, where_y, where_z:   Ort der Falle (i.a. unter dem fallensteller)
+// item:      welches item soll am boden als falle dienen
+// color:     Farbe der Falle wenn diese gefaerbt werden soll --> tarnen versteckter Fallen
+// builders_dex:    Geschicklichkeit des Fallenstellers, wird fuer spaetere schadensberechnung gebraucht
+// builders_serial:   Serial des Fallenstellers, evtl. fuer ForensicEvaluation gebraucht
+// builders_skill:    Skill des Fallenstellers ---> wird fuer spaetere schadensberechnung gebraucht
+// trap:      id der Falle aus der traps.cfg
+//
+////////////////////////////////////////////////////////////////
+
+Function BuildTrap(character, item, color, trap, use_on, viechID)
+    If(!item)
+      syslog("Item ist nicht definiert!");
+      return ;
+    EndIf
+    If(!color)
+      color := 0;
+    EndIf
+
+    //var cfg := ReadConfigFile("traps");
+    //var trapid := FindConfigElem( cfg, trap);
+
+    var dmgplus := 0;
+    var poilvl := 0;
+    //jetzt mal wegen Sprengflaschen suchen
+    If ((trap.desc=="Spengfalle")or(trap.desc=="Feuerloch")or(trap.desc=="verstecktes Feuerloch"))
+      //Sprengflasche liefer zusätzlichen Grundschaden
+      SendSysMessagePergon(character,"Welchen Trank wollt ihr benutzen?");
+      var trank := Target(character,TGTOPT_CHECK_LOS);
+      If (!trank)
+        return;
+      EndIf
+      var found:=0;
+      ForEach wirk in (trank.getprop("potion").posWirk)
+        If (wirk[1]=="explodierend")
+          dmgplus := wirk[2];
+          SubtractAmount(trank,1);
+          CreateItemInBackpackPergon(character, UOBJ_EMPTY_BOTTLE, 1);
+          found:=1;
+          Break;
+        EndIf
+      EndForEach
+      If (!found)
+        Return;
+      EndIf
+    EndIf
+
+    //jetzt mal wegen der Giftfallen suchen
+    If ((trap.desc=="verstecktes Giftloch")or(trap.desc=="Giftloch")or(trap.desc=="Giftfalle"))
+      SendSysMessagePergon(character,"Welchen Trank wollt ihr benutzen?");
+      //Giftflaschen schreiben Giftlvl als CProp an Falle
+      var trank := Target(character,TGTOPT_CHECK_LOS);
+      If (!trank)
+        return;
+      EndIf
+      var found:=0;
+      ForEach wirk in (trank.getprop("potion").posWirk)
+        If (wirk[1]=="vergiftend")
+          poilvl := wirk[2];
+          SubtractAmount(trank,1);
+          CreateItemInBackpackPergon(character, UOBJ_EMPTY_BOTTLE, 1);
+          found:=1;
+          Break;
+        EndIf
+      EndForEach
+      If (!found)
+        Return;
+      EndIf
+    EndIf
+
+    var Trapitem := CreateItemAtLocationPergon( use_on.x, use_on.y, use_on.z, item , 1 , use_on.realm);
+    If(TrapItem)
+      Trapitem.color := color;
+      If (poilvl>0)
+        TrapItem.setprop("poisonlvl",poilvl);
+      EndIf
+      If (dmgplus > 0)
+        //Sonderfall da beim walkover dieser Fallen extra behandelt
+        TrapItem.setprop("dmgplus",dmgplus);
+      EndIf
+      If (viechID > 0)
+        //Wunschvieh, dann mal das CProp an die Falle schreiben
+        TrapItem.setprop("wishviech",viechID);
+      EndIf
+
+      var expiretime := ReadGameClock() + CInt(GetSkillFloatPergon(character,SKILLID_FALLEN_LEGEN)*360);
+      SetTrapCProps (Trapitem, GetDexPergon(character), character.serial, GetSkillPergon(character,SKILLID_FALLEN_LEGEN), GetSkillPergon(character,SKILLID_FALLEN_LEGEN), expiretime, trap.TrapID, trap.usescript);
+
+      //Hier jetzt Trapsactiv aktualisieren
+
+      var CProp := character.getprop("Traps_Skill");
+      If (!CProp)
+        //kennt er noch nicht, dann anlegen des CProps
+        CProp := struct;
+        CProp.+ActivTraps := Dictionary;
+        CProp.+CatchedViechs := Dictionary;
+        CProp.ActivTraps[trap.type] := {};
+      EndIf
+      If (!CProp.ActivTraps[trap.type])
+        CProp.ActivTraps[trap.type] := {};
+      EndIf
+      CProp.ActivTraps[trap.type].Append(Trapitem.serial);
+      character.setprop("Traps_Skill",CProp);
+    Else
+      SysLog( "traps.src: Fehler beim Erstellen des Fallenitems - >Character="+Character.Name);
+    EndIf
+EndFunction
+
+Function CheckRequirements(character, trap)
+
+  If (character.getprop(I_AM_GOD))
+    //wenn godmodus dann sowieso
+    return 1;
+  EndIf
+
+  var items := Dictionary;
+  var stringarray := GetConfigStringArray(trap,"requiereditem");
+  ForEach ItemString in stringarray
+    //Jetzt schauen ob jedes Item vorhanden ist
+    var item := CInt(Splitwords(ItemString)[2]);
+    var arrayitem := FindSubstance(character.backpack,item,CInt(Splitwords(ItemString)[3]));
+    If (!arrayitem)
+      SendSysMessagePergon(character,"Ihr benötigt mindestens " + (Splitwords(ItemString)[3]) + " " + (Splitwords(ItemString)[1]) + " zum Aufbau der Falle.","");
+      return 0;
+    EndIf
+    items[arrayitem[1].objtype] := CInt(Splitwords(ItemString)[3]);
+  EndForEach
+
+  ForEach item in items
+    If (!ConsumeSubstance(character.backpack,_item_iter,item))
+      return 0;
+    EndIf
+  EndForEach
+
+  return 1;
+EndFunction
+
+Function BuildContainerTrap(character, trap)     // Containerfallen -> konsistent mit CreateMagicTrap() aus
+  //var poison; //gewaehltes gift oder sprengflasche, etc...            traps.inc halten !!!
+  var dmg := 0;
+  var expiretime;
+
+  SendSysMessagePergon(character, "Wählt einen Container aus!");
+  var trapon := Target(character, TGTOPT_HARMFUL + TGTOPT_CHECK_LOS);
+  If (!trapon)
+    SendSysMessagePergon(character, "Kein Ziel", "No target");
+    return;
+  EndIf
+
+  If ((trapon.multi) or GetObjProperty(trapon, PROP_HS_C_SC_HOUSE) or GetObjProperty(trapon, PROP_HS_M_HOUSE))
+    SendSysMessagePergon(character, "Das kann nicht mit einer Falle versehen werden.","This can't contains a trap");
+    return;
+  EndIf
+  If (GetObjProperty(trapon, "locked"))
+    SendSysMessagePergon(character, "Solange das abgeschlossen ist, kann es nicht mit einer Falle versehen werden.","You can't append a trap While it is locked");
+    return;
+  EndIf
+
+  // check if target is container
+  If ( ((trapon.graphic<=0x9ab) and (trapon.graphic>=0x9a8)) or ((trapon.graphic<=0xe43) and (trapon.graphic>=0xe3c)) or ((trapon.graphic<=0xe80) and (trapon.graphic>=0xe7c)) )
+
+    TurnCharTo(character, trapon);
+    //Abstand zur Falle
+    If (Distance( character, trapon)> 2)
+      SendSysMessagePergon(character, "Ihr steht zu weit weg.","You are too far away");
+      return ;
+    EndIf
+
+    trapon.setprop("trap_type",1);  // Nadelfalle
+
+    //jetzt mal wegen Sprengflaschen suchen
+    If ((trap.desc=="Spengfalle")or(trap.desc=="Feuerloch")or(trap.desc=="verstecktes Feuerloch"))
+      //Sprengflasche liefer zusätzlichen Grundschaden
+      var trank := Target(character,TGTOPT_CHECK_LOS);
+      If (!trank)
+        return;
+      EndIf
+      var found:=0;
+      ForEach wirk in (trank.getprop("potion").posWirk)
+        If (wirk[1]=="explodierend")
+          dmg := wirk[2];
+          trapon.setprop("trap_type",3);
+          SubtractAmount(trank,1);
+          CreateItemInBackpackPergon(character, UOBJ_EMPTY_BOTTLE, 1);
+          found:=1;
+          Break;
+        EndIf
+      EndForEach
+      If (!found)
+        Return;
+      EndIf
+    EndIf
+
+    //jetzt mal wegen der Giftfallen suchen
+    If ((trap.desc=="verstecktes Giftloch")or(trap.desc=="Giftloch")or(trap.desc=="Giftfalle"))
+      //Giftflaschen schreiben Giftlvl als CProp an Falle
+      var trank := Target(character,TGTOPT_CHECK_LOS);
+      If (!trank)
+        return;
+      EndIf
+      var found:=0;
+      ForEach wirk in (trank.getprop("potion").posWirk)
+        If (wirk[1]=="vergiftend")
+          trapon.setprop("poisonlvl",wirk[2]);
+          trapon.setprop("trap_type",2);
+          SubtractAmount(trank,1);
+          CreateItemInBackpackPergon(character, UOBJ_EMPTY_BOTTLE, 1);
+          found:=1;
+          Break;
+        EndIf
+      EndForEach
+      If (!found)
+        Return;
+      EndIf
+    EndIf
+
+    //kontrolle ob schon eine Falle am Container ist, wenn Ja dann erfolgt Schadensberehnung --> Entschaerfen ;-)
+    If (GetObjProperty( trapon, "trap_strength"))
+      UnTrapFail(character);
+      EraseTrapCProps (trapon);
+      SendSysMessagePergon(character, "Ihr versuchtet eine Falle auf eine Andere zu setzen.");
+      return;
+    EndIf
+
+    // Kontrolle ob genug Items, die fuer die Falle gebraucht, werden auch im Backpack sind
+    // und wenn alle Items vorhanden sind Aufbrauch der  RequiredItems
+    If (CheckRequirements(character, trap) == 0)
+      return ;
+    EndIf
+
+    If (CheckSkillPergon(character, SKILLID_FALLEN_LEGEN, cint(trap.skill), GetSkillDefaultPoints(SKILLID_FALLEN_LEGEN)))
+      dmg+=CInt((trap.skill + GetSkillFloatPergon(character, SKILLID_FALLEN_LEGEN) + GetDexPergon(character)) /4 ); // calc trap damage
+      expiretime := ReadGameClock() + Cint(GetSkillPergon(character, SKILLID_FALLEN_LEGEN)*360);      //Zeitdauer bis zur Selbstzerstoerung der Falle
+      SendSysMessagePergon(character, "Ihr baut eine " + trap.desc + " auf.", "");
+      SetTrapCProps(trapon, GetDexPergon(character), character.serial, GetSkillPergon(character, SKILLID_FALLEN_LEGEN), dmg, expiretime, trap.TrapID, trap.usescript);
+    Else
+      SendSysMessagePergon(character, "Ihr schafft es nicht die Falle aufzustellen", "");
+      // aus nem zehntel der MaxHP wir der Schaden gewuerfelt
+      ApplyRawDamagePergon( character, RandomInt(CInt(GetMaxHPPergon(character) /10)));
+    EndIf
+  Else
+    SendSysMessagePergon(character, "Ihr solltet wissen, was man mit Fallen versehen kann!");
+  EndIf
+EndFunction

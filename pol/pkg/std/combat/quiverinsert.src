@@ -1,0 +1,31 @@
+/////////////////////////////////////////////////////////
+//
+//   quiverinsert - Nur Pfeile/Bolzen dürfen in Quiver rein
+//
+//
+//     Author: Turley
+//
+//
+//   Modifications:
+//     28.05.09 Turley: Init
+//
+/////////////////////////////////////////////////////////
+
+Use uo;
+
+Program quivercaninsert(character, container, movetype, inserttype, adding_item, existing_stack, amount_to_add)
+  If (inserttype==INSERT_INCREASE_STACK)
+    Return(1);
+  Else
+    If (adding_item.objtype in {0x0F3F,0x1BFB,0x6051}) //pfeil,bolzen,feuerpfeil
+      Return(1);
+    EndIf
+  EndIf
+  Return(0);
+
+  character:=character;
+  container:=container;
+  movetype:=movetype;
+  existing_stack:=existing_stack;
+  amount_to_add:=amount_to_add;
+EndProgram

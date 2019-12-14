@@ -1,0 +1,14 @@
+use os;
+use uo;
+include "include/clock";
+include "include/msgs";
+include "include/place";
+
+Program TextCMD_Time(who)
+  var time  := ReadGameClock();
+  var utime := PolCore().uptime;
+
+  SendSysMessagePergon(who, "Zeit: "+     GetPergonTimeOfDay());
+  SendSysMessagePergon(who, "GameClock: "+Format_Time(time)+ " ("+time+"s)");
+  SendSysMessagePergon(who, "Uptime: "+   Format_Time(utime)+" ("+utime+"s)");
+EndProgram

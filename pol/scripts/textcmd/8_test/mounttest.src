@@ -1,0 +1,51 @@
+Use uo;
+Use os;
+
+Include "include/itemnpc";
+Include "include/msgs";
+
+Program TextCMD_MountTest(who, type)
+  Var values:=SplitWords(type);
+
+  If (type)
+    Var mounttype:=CInt(values[1]);
+    Var mountend;
+    If (values[2])
+      mountend:=CInt(values[2]);
+    Else
+      mountend:=mounttype;
+    EndIf
+
+    While (mounttype<=mountend)
+      Var mount:=GetEquipmentByLayer(who, 25);
+      If (mount)
+        DestroyItem(mount);
+      EndIf
+
+      mount:=CreateItemAtLocationPergon(who.x, who.y, who.z, 0xf021, 1,who.realm);
+      mount.graphic:=mounttype;
+
+      EquipItem(who, mount);
+
+      SendSysMessagePergon(who, "Mount = "+mounttype);
+      SleepMS(250);
+
+      mounttype:=mounttype+1;
+    EndWhile
+  Else
+    Var mount:=GetEquipmentByLayer(who, 25);
+    If (mount)
+      DestroyItem(mount);
+    EndIf
+  EndIf
+
+  // 00000-02527 nuescht
+  // 02528       'n Troll
+  // 02529-08249 nuescht (max. kleinkram, den man sonst so anzieht)
+  // 08250-08300 Frisuren, Roben
+  // 08301-16238 nuescht
+  // 16239       'n Vieh
+  // 16240-16383 nuescht
+  // 16384-16999 Horse
+
+EndProgram

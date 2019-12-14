@@ -1,0 +1,26 @@
+//
+// Counts items in range
+//
+
+use uo;
+
+Include "include/msgs";
+
+Program TextCMD_ItemCount(who, range)
+  Var countrange:=CInt(range);
+  If (!countrange)
+    countrange:=1;
+  EndIf
+
+  SendSysMessagePergon(who, "Mittelpunkt zum Zaehlen waehlen!");
+
+  Var tgt:=TargetCoordinates(who);
+  If (tgt)
+    Var count:=ListItemsNearLocation(tgt.x, tgt.y, tgt.z, countrange,tgt.realm).size();
+    If (count==1)
+      SendSysMessagePergon(who, "Es wurde 1 Item gefunden.");
+    Else
+      SendSysMessagePergon(who, "Es wurden "+count+" Items gefunden.");
+    EndIf
+  EndIf
+EndProgram

@@ -1,0 +1,137 @@
+* {
+    /* font-family:      Helvetica, Verdana, sans-serif; */
+}
+
+co {
+    color: #ff0000;
+}
+
+
+body {
+    color:           #000000;
+    background-color: #3986ac;
+    margin:           0px;
+}
+
+table {
+    border-spacing:  0;
+    border-collapse: collapse;
+    /* width:           100%; */
+    /* margin-left:    auto;
+    margin-right:   auto; */
+    margin: 1px;
+}
+th, td {
+    border-width:   1px;
+    border-style:   solid;
+    border-color:   #3986ac;
+    padding-top:    2px;
+    padding-bottom: 2px;
+    padding-left:   0.5em;
+    padding-right:  0.5em;
+    margin:         0;
+    /* font-family:    Helvetica, Verdana, sans-serif; */
+    /* font-size:      medium; */
+    /* font-style:     normal; */
+}
+th {
+    background:     #d9e5ec;
+    /* font-weight:    normal; */
+}
+td {
+    background:     #f1f1f1;
+}
+.dense td, .dense th {
+    font-size: small;
+}
+
+table th h1,
+table th h2,
+table th h3,
+table th h4,
+table th h5,
+table th h6 {
+    margin-bottom: 0;
+    margin-top: 0;
+}
+
+.num {
+    text-align: right;
+}
+
+fieldset input[type=submit] {
+    display: block;
+    float:   right;
+}
+
+fieldset {
+    margin-top:    1em;
+    margin-bottom: 1em;
+    margin-left:   auto;
+    margin-right:  auto;
+}
+
+.login table {
+    margin-left:  auto;
+    margin-right: auto;
+}
+
+p.warning {
+    color:        #ff0000;
+    font-size:    x-large;
+    font-variant: small-caps;
+    font-weight:  bold;
+    text-align:   center;
+}
+
+.null {
+    color: #cccccc;
+}
+
+li.folder{
+    list-style: disc inside;
+}
+
+#container {
+    background:          #ffffff;
+    border-style:        solid;
+    border-color:        #d9e5ec;
+    border-left-width:   2px;
+    border-right-width:  2px;
+    border-top-width:    1em;
+    border-bottom-width: 3em;
+    margin:              1em 3em 3em 3em;
+    padding:             1em 1em 1em 1em;
+}
+#menu {
+    background: #d9e5ec;
+    margin:     0em 0em 3em 0em;
+    padding:    0.5em;
+}
+#menu a:link {
+    margin: 0em 0.5em 0em 0.5em;
+}
+#menu a:visited {
+    margin: 0em 0.5em 0em 0.5em;
+}
+#footer {
+    color:      #b9b9b9;
+    font-size:  xx-small;
+    text-align: right;
+    margin:     0em 0em 0em 0em;
+    padding:    0em 0em 0em 0em;
+}
+
+.nobr {
+    white-space: nowrap;
+}
+
+.NPCTabelle {
+    font-size: small;
+}
+.NPCSort {
+    font-size: xx-small;
+}
+.TabToggle {
+    font-size: x-small;
+}
